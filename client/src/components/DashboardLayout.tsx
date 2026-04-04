@@ -196,7 +196,7 @@ function DashboardLayoutContent({
                 <div className="flex items-center gap-2 min-w-0">
                   <BarChart2 className="h-5 w-5 text-sidebar-primary shrink-0" />
                   <span className="font-bold tracking-tight truncate text-sidebar-foreground">
-                    منظومة المبيعات
+                    منظومات مبيعات Pro Group
                   </span>
                 </div>
               ) : null}
