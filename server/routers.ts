@@ -1,26 +1,163 @@
-import { COOKIE_NAME } from "@shared/const";
-import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import {
-  createCustomer, createProduct, createSale,
-  deleteCustomer, deleteProduct, deleteSale,
-  getCustomerById, getCustomers,
-  getDashboardStats, getMonthlySalesTrend, getSalesByStatus,
-  getProductById, getProductCategories, getProducts,
-  getSaleById, getSales,
-  isSeeded,
-  updateCustomer, updateProduct, updateSaleStatus,
-} from "./db";
+import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import {
+  getEngineers, createEngineer,
+  getDailyTasksStats, getTasksList, createTask, updateTaskStatus,
+  getLeadsStats, getLeadsList, createLead, updateLeadStatus,
+  getVisitsStats, getVisitsList, createVisit, updateVisitStatus,
+  getDealsStats, getDealsList, createDeal, updateDealStage,
+  getMonthlySalesStats, getMonthlySalesTrend,
+  getEngineersKPI,
+  getCollectionsStats, getCollectionsList, createCollection, updateCollection,
+  getMonthlyTarget, upsertMonthlyTarget,
+  isSeeded,
+  getCustomers, getCustomerById, createCustomer, updateCustomer, deleteCustomer,
+  getProducts, getProductById, createProduct, updateProduct, deleteProduct, getProductCategories,
+  getSales, getSaleById, createSale, updateSaleStatus, deleteSale,
+} from "./db";
 
-// Admin middleware
-const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
-  if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-  return next({ ctx });
-});
+// ─── Seed Data ────────────────────────────────────────────────────────────────
+async function seedData() {
+  const { getDb } = await import("./db");
+  const db = await getDb();
+  if (!db) return;
 
+  const { engineers, dailyTasks, leads, visits, deals, monthlyTargets, collections, customers, products, sales, saleItems } = await import("../drizzle/schema");
+  const { sql } = await import("drizzle-orm");
+
+  // Seed engineers
+  const engData = [
+    { name: 'أحمد محمد علي', email: 'ahmed@company.com', phone: '0501234567', department: 'المبيعات', status: 'active' as const },
+    { name: 'سارة عبدالله', email: 'sara@company.com', phone: '0502345678', department: 'المبيعات', status: 'active' as const },
+    { name: 'محمد الشمري', email: 'mohammed@company.com', phone: '0503456789', department: 'التشغيل', status: 'active' as const },
+    { name: 'فاطمة الزهراني', email: 'fatima@company.com', phone: '0504567890', department: 'المبيعات', status: 'active' as const },
+  ];
+  await db.insert(engineers).values(engData).onDuplicateKeyUpdate({ set: { name: sql`VALUES(name)` } });
+  const engList = await db.select().from(engineers);
+
+  // Seed daily tasks for today and past 7 days
+  const today = new Date();
+  const taskStatuses = ['completed', 'completed', 'completed', 'delayed', 'not_done', 'planned'] as const;
+  const taskTitles = ['متابعة عميل جديد', 'إعداد عرض سعر', 'زيارة ميدانية', 'تحديث قاعدة البيانات', 'اجتماع فريق', 'مراجعة العقود', 'التواصل مع العملاء', 'تقرير يومي'];
+  const priorities = ['high', 'medium', 'medium', 'low', 'high', 'medium', 'urgent', 'low'] as const;
+
+  for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - dayOffset);
+    const dateStr = d.toISOString().split('T')[0];
+    for (const eng of engList) {
+      const taskCount = 4 + Math.floor(Math.random() * 4);
+      for (let i = 0; i < taskCount; i++) {
+        const statusIdx = dayOffset === 0 ? Math.floor(Math.random() * taskStatuses.length) : Math.floor(Math.random() * (taskStatuses.length - 1));
+        await db.insert(dailyTasks).values({
+          engineerId: eng.id, taskDate: new Date(dateStr + 'T00:00:00'),
+          title: taskTitles[i % taskTitles.length],
+          plannedHours: 1 + Math.random() * 2,
+          status: taskStatuses[statusIdx],
+          priority: priorities[i % priorities.length],
+        }).onDuplicateKeyUpdate({ set: { title: sql`VALUES(title)` } }).catch(() => {});
+      }
+    }
+  }
+
+  // Seed leads
+  const sources = ['website', 'referral', 'social_media', 'call', 'walk_in', 'other'] as const;
+  const leadStatuses = ['new', 'contacted', 'qualified', 'unqualified', 'converted'] as const;
+  const clientNames = ['شركة الأفق', 'مؤسسة النور', 'شركة التقنية', 'مجموعة الخليج', 'شركة الإبداع', 'مؤسسة الرياض', 'شركة الأمل', 'مجموعة الفجر', 'شركة الوطن', 'مؤسسة الغد', 'شركة النجاح', 'مجموعة الأعمال'];
+  for (let i = 0; i < 30; i++) {
+    const daysAgo = Math.floor(Math.random() * 30);
+    const createdAt = new Date(); createdAt.setDate(createdAt.getDate() - daysAgo);
+    const status = leadStatuses[Math.floor(Math.random() * leadStatuses.length)];
+    const responseTime = status !== 'new' ? Math.floor(Math.random() * 180) : null;
+    await db.insert(leads).values({
+      name: clientNames[i % clientNames.length] + ` ${i + 1}`,
+      phone: `050${String(Math.floor(Math.random() * 9000000) + 1000000)}`,
+      source: sources[Math.floor(Math.random() * sources.length)],
+      assignedEngineerId: engList[Math.floor(Math.random() * engList.length)].id,
+      status, responseTimeMinutes: responseTime,
+      firstContactAt: status !== 'new' ? createdAt : null,
+      createdAt,
+    }).onDuplicateKeyUpdate({ set: { name: sql`VALUES(name)` } }).catch(() => {});
+  }
+  const leadList = await db.select().from(leads);
+
+  // Seed visits
+  const visitStatuses = ['completed', 'completed', 'completed', 'delayed', 'cancelled', 'scheduled'] as const;
+  const qualities = ['successful', 'successful', 'with_issues', 'rejected', 'repeated'] as const;
+  const addresses = ['حي النزهة، الرياض', 'حي العليا، الرياض', 'حي الملقا، الرياض', 'حي الورود، الرياض', 'حي الروضة، جدة'];
+  for (let i = 0; i < 40; i++) {
+    const daysAgo = Math.floor(Math.random() * 30);
+    const scheduledAt = new Date(); scheduledAt.setDate(scheduledAt.getDate() - daysAgo);
+    const status = visitStatuses[Math.floor(Math.random() * visitStatuses.length)];
+    const quality = status === 'completed' ? qualities[Math.floor(Math.random() * qualities.length)] : null;
+    const lead = leadList[Math.floor(Math.random() * leadList.length)];
+    await db.insert(visits).values({
+      leadId: lead?.id, engineerId: engList[Math.floor(Math.random() * engList.length)].id,
+      clientName: lead?.name ?? `عميل ${i + 1}`,
+      clientPhone: `050${String(Math.floor(Math.random() * 9000000) + 1000000)}`,
+      address: addresses[i % addresses.length],
+      scheduledAt, actualAt: status !== 'scheduled' ? scheduledAt : null,
+      status, quality: quality as any,
+      delayMinutes: status === 'delayed' ? Math.floor(Math.random() * 60) + 10 : 0,
+    }).onDuplicateKeyUpdate({ set: { clientName: sql`VALUES(clientName)` } }).catch(() => {});
+  }
+  const visitList = await db.select().from(visits);
+
+  // Seed deals
+  const stages = ['proposal', 'negotiation', 'contract_sent', 'closed_won', 'closed_lost'] as const;
+  const nextActions = ['إرسال عرض سعر', 'متابعة العميل', 'تحديد موعد اجتماع', 'مراجعة العقد', 'الحصول على توقيع'];
+  const dealValues = [45000, 75000, 120000, 200000, 350000, 80000, 95000, 150000, 60000, 180000];
+  for (let i = 0; i < 25; i++) {
+    const daysAgo = Math.floor(Math.random() * 30);
+    const createdAt = new Date(); createdAt.setDate(createdAt.getDate() - daysAgo);
+    const stage = stages[Math.floor(Math.random() * stages.length)];
+    const visit = visitList[Math.floor(Math.random() * visitList.length)];
+    const nextActionDate = new Date(); nextActionDate.setDate(nextActionDate.getDate() + Math.floor(Math.random() * 14));
+    await db.insert(deals).values({
+      visitId: visit?.id, leadId: visit?.leadId,
+      engineerId: engList[Math.floor(Math.random() * engList.length)].id,
+      clientName: visit?.clientName ?? `عميل ${i + 1}`,
+      value: dealValues[i % dealValues.length].toString(),
+      stage, nextAction: nextActions[i % nextActions.length],
+      nextActionDate: nextActionDate,
+      closedAt: ['closed_won', 'closed_lost'].includes(stage) ? createdAt : null,
+      createdAt,
+    }).onDuplicateKeyUpdate({ set: { clientName: sql`VALUES(clientName)` } }).catch(() => {});
+  }
+
+  // Seed monthly targets for last 6 months
+  const now = new Date();
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    await db.insert(monthlyTargets).values({
+      year: d.getFullYear(), month: d.getMonth() + 1,
+      targetAmount: (500000 + Math.floor(Math.random() * 200000)).toString(),
+      avgDealValue: '85000', closingRate: 0.35, visitToClosingRate: 0.45,
+    }).onDuplicateKeyUpdate({ set: { targetAmount: sql`VALUES(targetAmount)` } }).catch(() => {});
+  }
+
+  // Seed collections
+  const dealList = await db.select().from(deals).where(sql`stage = 'closed_won'`);
+  const collectionStatuses = ['on_track', 'due_soon', 'overdue', 'completed'] as const;
+  for (const deal of dealList.slice(0, 15)) {
+    const contractAmount = parseFloat(deal.value);
+    const collected = contractAmount * (0.3 + Math.random() * 0.7);
+    const status = collectionStatuses[Math.floor(Math.random() * collectionStatuses.length)];
+    const dueDate = new Date(); dueDate.setDate(dueDate.getDate() + Math.floor(Math.random() * 60) - 30);
+    await db.insert(collections).values({
+      dealId: deal.id, clientName: deal.clientName,
+      contractAmount: contractAmount.toString(),
+      collectedAmount: Math.min(collected, contractAmount).toFixed(2),
+      dueDate: dueDate,
+      status,
+    }).onDuplicateKeyUpdate({ set: { clientName: sql`VALUES(clientName)` } }).catch(() => {});
+  }
+}
+
+// ─── App Router ───────────────────────────────────────────────────────────────
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -32,349 +169,162 @@ export const appRouter = router({
     }),
   }),
 
-  // ====== Dashboard ======
-  dashboard: router({
-    stats: protectedProcedure.query(async () => {
-      return await getDashboardStats();
-    }),
-    monthlySalesTrend: protectedProcedure
-      .input(z.object({ months: z.number().min(1).max(24).default(12) }).optional())
-      .query(async ({ input }) => {
-        return await getMonthlySalesTrend(input?.months ?? 12);
-      }),
-    salesByStatus: protectedProcedure.query(async () => {
-      return await getSalesByStatus();
-    }),
-    seedData: protectedProcedure.mutation(async () => {
-      const seeded = await isSeeded();
-      if (seeded) return { message: 'Data already seeded' };
-      await seedDemoData();
-      return { message: 'Demo data seeded successfully' };
-    }),
-    isSeeded: protectedProcedure.query(async () => {
-      return await isSeeded();
+  // ── Seed ──────────────────────────────────────────────────────────────────
+  seed: router({
+    isSeeded: protectedProcedure.query(async () => isSeeded()),
+    run: protectedProcedure.mutation(async () => {
+      await seedData();
+      return { success: true };
     }),
   }),
 
-  // ====== Customers ======
-  customers: router({
-    list: protectedProcedure
-      .input(z.object({
-        search: z.string().optional(),
-        status: z.string().optional(),
-        limit: z.number().min(1).max(100).default(20),
-        offset: z.number().min(0).default(0),
-      }).optional())
-      .query(async ({ input }) => {
-        return await getCustomers(input);
-      }),
-    byId: protectedProcedure
-      .input(z.object({ id: z.number() }))
-      .query(async ({ input }) => {
-        const customer = await getCustomerById(input.id);
-        if (!customer) throw new TRPCError({ code: 'NOT_FOUND' });
-        return customer;
-      }),
-    create: protectedProcedure
-      .input(z.object({
-        name: z.string().min(1),
-        email: z.string().email().optional().or(z.literal('')),
-        phone: z.string().optional(),
-        company: z.string().optional(),
-        city: z.string().optional(),
-        country: z.string().optional(),
-        status: z.enum(['active', 'inactive']).default('active'),
-      }))
-      .mutation(async ({ input }) => {
-        await createCustomer({
-          ...input,
-          email: input.email || undefined,
-        });
-        return { success: true };
-      }),
-    update: protectedProcedure
-      .input(z.object({
-        id: z.number(),
-        name: z.string().min(1).optional(),
-        email: z.string().email().optional().or(z.literal('')),
-        phone: z.string().optional(),
-        company: z.string().optional(),
-        city: z.string().optional(),
-        country: z.string().optional(),
-        status: z.enum(['active', 'inactive']).optional(),
-      }))
-      .mutation(async ({ input }) => {
-        const { id, ...data } = input;
-        await updateCustomer(id, data);
-        return { success: true };
-      }),
-    delete: protectedProcedure
-      .input(z.object({ id: z.number() }))
-      .mutation(async ({ input }) => {
-        await deleteCustomer(input.id);
-        return { success: true };
-      }),
+  // ── Engineers ─────────────────────────────────────────────────────────────
+  engineers: router({
+    list: protectedProcedure.query(async () => getEngineers()),
+    create: protectedProcedure.input(z.object({
+      name: z.string().min(1), email: z.string().email().optional(),
+      phone: z.string().optional(), department: z.string().optional(),
+    })).mutation(async ({ input }) => { await createEngineer(input); return { success: true }; }),
   }),
 
-  // ====== Products ======
-  products: router({
-    list: protectedProcedure
-      .input(z.object({
-        search: z.string().optional(),
-        category: z.string().optional(),
-        status: z.string().optional(),
-        limit: z.number().min(1).max(100).default(20),
-        offset: z.number().min(0).default(0),
-      }).optional())
-      .query(async ({ input }) => {
-        return await getProducts(input);
-      }),
-    byId: protectedProcedure
-      .input(z.object({ id: z.number() }))
-      .query(async ({ input }) => {
-        const product = await getProductById(input.id);
-        if (!product) throw new TRPCError({ code: 'NOT_FOUND' });
-        return product;
-      }),
-    categories: protectedProcedure.query(async () => {
-      return await getProductCategories();
-    }),
-    create: protectedProcedure
-      .input(z.object({
-        name: z.string().min(1),
-        sku: z.string().optional(),
-        category: z.string().optional(),
-        price: z.string(),
-        cost: z.string().optional(),
-        stock: z.number().min(0).default(0),
-        minStock: z.number().min(0).default(10),
-        unit: z.string().default('piece'),
-        description: z.string().optional(),
-        status: z.enum(['active', 'inactive', 'out_of_stock']).default('active'),
-      }))
-      .mutation(async ({ input }) => {
-        await createProduct(input as any);
-        return { success: true };
-      }),
-    update: protectedProcedure
-      .input(z.object({
-        id: z.number(),
-        name: z.string().min(1).optional(),
-        sku: z.string().optional(),
-        category: z.string().optional(),
-        price: z.string().optional(),
-        cost: z.string().optional(),
-        stock: z.number().min(0).optional(),
-        minStock: z.number().min(0).optional(),
-        unit: z.string().optional(),
-        description: z.string().optional(),
-        status: z.enum(['active', 'inactive', 'out_of_stock']).optional(),
-      }))
-      .mutation(async ({ input }) => {
-        const { id, ...data } = input;
-        await updateProduct(id, data as any);
-        return { success: true };
-      }),
-    delete: protectedProcedure
-      .input(z.object({ id: z.number() }))
-      .mutation(async ({ input }) => {
-        await deleteProduct(input.id);
-        return { success: true };
-      }),
+  // ── Daily Tasks ───────────────────────────────────────────────────────────
+  tasks: router({
+    stats: protectedProcedure.input(z.object({ date: z.string() }))
+      .query(async ({ input }) => getDailyTasksStats(input.date)),
+    list: protectedProcedure.input(z.object({ date: z.string(), engineerId: z.number().optional() }))
+      .query(async ({ input }) => getTasksList(input.date, input.engineerId)),
+    create: protectedProcedure.input(z.object({
+      engineerId: z.number(), taskDate: z.string(), title: z.string().min(1),
+      description: z.string().optional(), plannedHours: z.number().optional(),
+      priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
+    })).mutation(async ({ input }) => { await createTask(input); return { success: true }; }),
+    updateStatus: protectedProcedure.input(z.object({
+      id: z.number(), status: z.enum(['planned', 'completed', 'delayed', 'not_done']),
+      notes: z.string().optional(),
+    })).mutation(async ({ input }) => { await updateTaskStatus(input.id, input.status, input.notes); return { success: true }; }),
   }),
 
-  // ====== Sales ======
+  // ── Leads ─────────────────────────────────────────────────────────────────
+  leads: router({
+    stats: protectedProcedure.input(z.object({ year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getLeadsStats(input.year, input.month)),
+    list: protectedProcedure.input(z.object({ limit: z.number().optional(), offset: z.number().optional(), status: z.string().optional() }))
+      .query(async ({ input }) => getLeadsList(input.limit, input.offset, input.status)),
+    create: protectedProcedure.input(z.object({
+      name: z.string().min(1), phone: z.string().optional(), email: z.string().optional(),
+      source: z.string().optional(), assignedEngineerId: z.number().optional(), notes: z.string().optional(),
+    })).mutation(async ({ input }) => { await createLead(input); return { success: true }; }),
+    updateStatus: protectedProcedure.input(z.object({
+      id: z.number(), status: z.enum(['new', 'contacted', 'qualified', 'unqualified', 'converted']),
+      responseTimeMinutes: z.number().optional(),
+    })).mutation(async ({ input }) => { await updateLeadStatus(input.id, input.status, input.responseTimeMinutes); return { success: true }; }),
+  }),
+
+  // ── Visits ────────────────────────────────────────────────────────────────
+  visits: router({
+    stats: protectedProcedure.input(z.object({ year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getVisitsStats(input.year, input.month)),
+    list: protectedProcedure.input(z.object({ limit: z.number().optional(), offset: z.number().optional(), status: z.string().optional() }))
+      .query(async ({ input }) => getVisitsList(input.limit, input.offset, input.status)),
+    create: protectedProcedure.input(z.object({
+      engineerId: z.number(), clientName: z.string().min(1), clientPhone: z.string().optional(),
+      address: z.string().optional(), scheduledAt: z.date(), leadId: z.number().optional(), notes: z.string().optional(),
+    })).mutation(async ({ input }) => { await createVisit(input); return { success: true }; }),
+    updateStatus: protectedProcedure.input(z.object({
+      id: z.number(), status: z.enum(['scheduled', 'completed', 'delayed', 'cancelled']),
+      quality: z.enum(['successful', 'with_issues', 'rejected', 'repeated']).optional(),
+      delayMinutes: z.number().optional(), notes: z.string().optional(),
+    })).mutation(async ({ input }) => { await updateVisitStatus(input.id, input.status, input.quality, input.delayMinutes, input.notes); return { success: true }; }),
+  }),
+
+  // ── Closing / Deals ───────────────────────────────────────────────────────
+  closing: router({
+    stats: protectedProcedure.input(z.object({ year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getDealsStats(input.year, input.month)),
+    list: protectedProcedure.input(z.object({ limit: z.number().optional(), offset: z.number().optional(), stage: z.string().optional() }))
+      .query(async ({ input }) => getDealsList(input.limit, input.offset, input.stage)),
+    create: protectedProcedure.input(z.object({
+      engineerId: z.number(), clientName: z.string().min(1), value: z.number().positive(),
+      visitId: z.number().optional(), leadId: z.number().optional(),
+      nextAction: z.string().optional(), nextActionDate: z.string().optional(), notes: z.string().optional(),
+    })).mutation(async ({ input }) => { await createDeal(input); return { success: true }; }),
+    updateStage: protectedProcedure.input(z.object({
+      id: z.number(), stage: z.enum(['proposal', 'negotiation', 'contract_sent', 'closed_won', 'closed_lost']),
+      nextAction: z.string().optional(), nextActionDate: z.string().optional(), notes: z.string().optional(),
+    })).mutation(async ({ input }) => { await updateDealStage(input.id, input.stage, input.nextAction, input.nextActionDate, input.notes); return { success: true }; }),
+  }),
+
+  // ── Monthly Sales ─────────────────────────────────────────────────────────
   sales: router({
-    list: protectedProcedure
-      .input(z.object({
-        search: z.string().optional(),
-        status: z.string().optional(),
-        paymentStatus: z.string().optional(),
-        customerId: z.number().optional(),
-        dateFrom: z.date().optional(),
-        dateTo: z.date().optional(),
-        limit: z.number().min(1).max(100).default(20),
-        offset: z.number().min(0).default(0),
-      }).optional())
-      .query(async ({ input }) => {
-        return await getSales(input);
-      }),
-    byId: protectedProcedure
-      .input(z.object({ id: z.number() }))
-      .query(async ({ input }) => {
-        const sale = await getSaleById(input.id);
-        if (!sale) throw new TRPCError({ code: 'NOT_FOUND' });
-        return sale;
-      }),
-    create: protectedProcedure
-      .input(z.object({
-        customerId: z.number(),
-        discount: z.string().default('0'),
-        tax: z.string().default('0'),
-        notes: z.string().optional(),
-        saleDate: z.date().optional(),
-        items: z.array(z.object({
-          productId: z.number(),
-          quantity: z.number().min(1),
-          unitPrice: z.string(),
-        })),
-      }))
-      .mutation(async ({ input }) => {
-        const totalAmount = input.items.reduce((sum, item) => sum + parseFloat(item.unitPrice) * item.quantity, 0);
-        const discount = parseFloat(input.discount);
-        const tax = parseFloat(input.tax);
-        const netAmount = totalAmount - discount + tax;
-        const invoiceNumber = `INV-${Date.now()}`;
-        const saleData = {
-          invoiceNumber,
-          customerId: input.customerId,
-          totalAmount: totalAmount.toFixed(2),
-          discount: discount.toFixed(2),
-          tax: tax.toFixed(2),
-          netAmount: netAmount.toFixed(2),
-          notes: input.notes,
-          saleDate: input.saleDate ?? new Date(),
-          status: 'pending' as const,
-          paymentStatus: 'unpaid' as const,
-        };
-        const items = input.items.map(item => ({
-          saleId: 0,
-          productId: item.productId,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          totalPrice: (parseFloat(item.unitPrice) * item.quantity).toFixed(2),
-        }));
-        await createSale(saleData, items);
-        return { success: true, invoiceNumber };
-      }),
-    updateStatus: protectedProcedure
-      .input(z.object({
-        id: z.number(),
-        status: z.enum(['pending', 'confirmed', 'shipped', 'delivered', 'cancelled']).optional(),
-        paymentStatus: z.enum(['unpaid', 'partial', 'paid']).optional(),
-      }))
-      .mutation(async ({ input }) => {
-        await updateSaleStatus(input.id, input.status ?? 'pending', input.paymentStatus);
-        return { success: true };
-      }),
-    delete: protectedProcedure
-      .input(z.object({ id: z.number() }))
-      .mutation(async ({ input }) => {
-        await deleteSale(input.id);
-        return { success: true };
-      }),
+    monthlyStats: protectedProcedure.input(z.object({ year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getMonthlySalesStats(input.year, input.month)),
+    trend: protectedProcedure.input(z.object({ months: z.number().optional() }))
+      .query(async ({ input }) => getMonthlySalesTrend(input.months ?? 6)),
+  }),
+
+  // ── KPI ───────────────────────────────────────────────────────────────────
+  kpi: router({
+    engineers: protectedProcedure.input(z.object({ year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getEngineersKPI(input.year, input.month)),
+  }),
+
+  // ── Collections ───────────────────────────────────────────────────────────
+  collections: router({
+    stats: protectedProcedure.query(async () => getCollectionsStats()),
+    list: protectedProcedure.input(z.object({ limit: z.number().optional(), offset: z.number().optional(), status: z.string().optional() }))
+      .query(async ({ input }) => getCollectionsList(input.limit, input.offset, input.status)),
+    create: protectedProcedure.input(z.object({
+      clientName: z.string().min(1), contractAmount: z.number().positive(),
+      collectedAmount: z.number().optional(), dueDate: z.string().optional(),
+      dealId: z.number().optional(), notes: z.string().optional(),
+    })).mutation(async ({ input }) => { await createCollection(input); return { success: true }; }),
+    update: protectedProcedure.input(z.object({
+      id: z.number(), collectedAmount: z.number(), status: z.string().optional(), notes: z.string().optional(),
+    })).mutation(async ({ input }) => { await updateCollection(input.id, input.collectedAmount, input.status, input.notes); return { success: true }; }),
+  }),
+
+  // ── Planning ──────────────────────────────────────────────────────────────
+  planning: router({
+    getTarget: protectedProcedure.input(z.object({ year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getMonthlyTarget(input.year, input.month)),
+    setTarget: protectedProcedure.input(z.object({
+      year: z.number(), month: z.number(), targetAmount: z.number().positive(),
+      avgDealValue: z.number().optional(), closingRate: z.number().optional(),
+      visitToClosingRate: z.number().optional(), notes: z.string().optional(),
+    })).mutation(async ({ input }) => { await upsertMonthlyTarget(input); return { success: true }; }),
+    calculate: protectedProcedure.input(z.object({
+      targetAmount: z.number(), avgDealValue: z.number(), closingRate: z.number(), visitToClosingRate: z.number(),
+    })).query(async ({ input }) => {
+      const { targetAmount, avgDealValue, closingRate, visitToClosingRate } = input;
+      const dealsNeeded = Math.ceil(targetAmount / avgDealValue);
+      const visitsNeeded = Math.ceil(dealsNeeded / closingRate);
+      const leadsNeeded = Math.ceil(visitsNeeded / visitToClosingRate);
+      return { dealsNeeded, visitsNeeded, leadsNeeded, avgDealValue, closingRate, visitToClosingRate };
+    }),
+  }),
+
+  // ── Legacy: Customers / Products ─────────────────────────────────────────
+  customers: router({
+    list: protectedProcedure.input(z.object({ search: z.string().optional(), status: z.string().optional(), limit: z.number().optional(), offset: z.number().optional() }))
+      .query(async ({ input }) => getCustomers(input)),
+    create: protectedProcedure.input(z.object({ name: z.string().min(1), email: z.string().optional(), phone: z.string().optional(), company: z.string().optional(), status: z.string().optional() }))
+      .mutation(async ({ input }) => { await createCustomer({ ...input, status: input.status ?? 'active' }); return { success: true }; }),
+    update: protectedProcedure.input(z.object({ id: z.number(), name: z.string().optional(), email: z.string().optional(), phone: z.string().optional(), company: z.string().optional(), status: z.string().optional() }))
+      .mutation(async ({ input }) => { const { id, ...data } = input; await updateCustomer(id, data); return { success: true }; }),
+    delete: protectedProcedure.input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => { await deleteCustomer(input.id); return { success: true }; }),
+  }),
+  products: router({
+    list: protectedProcedure.input(z.object({ search: z.string().optional(), category: z.string().optional(), status: z.string().optional(), limit: z.number().optional(), offset: z.number().optional() }))
+      .query(async ({ input }) => getProducts(input)),
+    categories: protectedProcedure.query(async () => getProductCategories()),
+    create: protectedProcedure.input(z.object({ name: z.string().min(1), sku: z.string().optional(), category: z.string().optional(), price: z.string(), cost: z.string().optional(), stock: z.number().optional(), minStock: z.number().optional(), unit: z.string().optional(), description: z.string().optional(), status: z.string().optional() }))
+      .mutation(async ({ input }) => { await createProduct({ ...input, status: input.status ?? 'active' }); return { success: true }; }),
+    update: protectedProcedure.input(z.object({ id: z.number(), name: z.string().optional(), sku: z.string().optional(), category: z.string().optional(), price: z.string().optional(), cost: z.string().optional(), stock: z.number().optional(), minStock: z.number().optional(), unit: z.string().optional(), description: z.string().optional(), status: z.string().optional() }))
+      .mutation(async ({ input }) => { const { id, ...data } = input; await updateProduct(id, data); return { success: true }; }),
+    delete: protectedProcedure.input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => { await deleteProduct(input.id); return { success: true }; }),
   }),
 });
 
 export type AppRouter = typeof appRouter;
-
-// ====== Seed Demo Data ======
-async function seedDemoData() {
-  const { getDb } = await import('./db');
-  const { customers: customersTable, products: productsTable, sales: salesTable, saleItems: saleItemsTable } = await import('../drizzle/schema');
-  const { sql } = await import('drizzle-orm');
-  const db = await getDb();
-  if (!db) return;
-
-  // Insert customers
-  const customerData = [
-    { name: 'شركة الأفق للتقنية', email: 'info@ufuq-tech.com', phone: '+966501234567', company: 'الأفق للتقنية', city: 'الرياض', country: 'Saudi Arabia', status: 'active' as const, totalPurchases: '0' },
-    { name: 'مؤسسة النجم الذهبي', email: 'contact@golden-star.com', phone: '+966512345678', company: 'النجم الذهبي', city: 'جدة', country: 'Saudi Arabia', status: 'active' as const, totalPurchases: '0' },
-    { name: 'شركة الريادة للاستثمار', email: 'info@riyadah.com', phone: '+966523456789', company: 'الريادة للاستثمار', city: 'الدمام', country: 'Saudi Arabia', status: 'active' as const, totalPurchases: '0' },
-    { name: 'مجموعة الواحة التجارية', email: 'sales@waha-group.com', phone: '+966534567890', company: 'الواحة التجارية', city: 'مكة المكرمة', country: 'Saudi Arabia', status: 'active' as const, totalPurchases: '0' },
-    { name: 'شركة البناء الحديث', email: 'info@modern-build.com', phone: '+966545678901', company: 'البناء الحديث', city: 'المدينة المنورة', country: 'Saudi Arabia', status: 'active' as const, totalPurchases: '0' },
-    { name: 'مؤسسة الإبداع الرقمي', email: 'hello@digital-ibda.com', phone: '+966556789012', company: 'الإبداع الرقمي', city: 'الرياض', country: 'Saudi Arabia', status: 'active' as const, totalPurchases: '0' },
-    { name: 'شركة التقدم للخدمات', email: 'info@taqadum.com', phone: '+966567890123', company: 'التقدم للخدمات', city: 'جدة', country: 'Saudi Arabia', status: 'inactive' as const, totalPurchases: '0' },
-    { name: 'مجموعة الأمانة التجارية', email: 'contact@amanah.com', phone: '+966578901234', company: 'الأمانة التجارية', city: 'الرياض', country: 'Saudi Arabia', status: 'active' as const, totalPurchases: '0' },
-  ];
-  await db.insert(customersTable).values(customerData);
-
-  // Insert products
-  const productData = [
-    { name: 'لابتوب Dell XPS 15', sku: 'DELL-XPS-15', category: 'أجهزة الحاسب', price: '4500.00', cost: '3200.00', stock: 25, minStock: 5, unit: 'جهاز', description: 'لابتوب احترافي للأعمال', status: 'active' as const },
-    { name: 'شاشة Samsung 27"', sku: 'SAM-MON-27', category: 'الشاشات', price: '1200.00', cost: '800.00', stock: 40, minStock: 10, unit: 'شاشة', description: 'شاشة 4K عالية الدقة', status: 'active' as const },
-    { name: 'طابعة HP LaserJet', sku: 'HP-LJ-PRO', category: 'الطابعات', price: '850.00', cost: '550.00', stock: 15, minStock: 5, unit: 'طابعة', description: 'طابعة ليزر للمكاتب', status: 'active' as const },
-    { name: 'كيبورد لاسلكي Logitech', sku: 'LOG-KB-WL', category: 'الملحقات', price: '280.00', cost: '150.00', stock: 60, minStock: 15, unit: 'قطعة', description: 'كيبورد لاسلكي مريح', status: 'active' as const },
-    { name: 'ماوس Logitech MX Master', sku: 'LOG-MX-3', category: 'الملحقات', price: '350.00', cost: '200.00', stock: 55, minStock: 15, unit: 'قطعة', description: 'ماوس احترافي للإنتاجية', status: 'active' as const },
-    { name: 'سماعات Sony WH-1000XM5', sku: 'SNY-WH-1000', category: 'الصوتيات', price: '1500.00', cost: '950.00', stock: 20, minStock: 5, unit: 'قطعة', description: 'سماعات بإلغاء الضوضاء', status: 'active' as const },
-    { name: 'كاميرا ويب Logitech C920', sku: 'LOG-C920', category: 'الملحقات', price: '420.00', cost: '250.00', stock: 30, minStock: 8, unit: 'قطعة', description: 'كاميرا ويب HD للاجتماعات', status: 'active' as const },
-    { name: 'هارد ديسك خارجي 2TB', sku: 'WD-EXT-2TB', category: 'التخزين', price: '380.00', cost: '220.00', stock: 45, minStock: 10, unit: 'قطعة', description: 'هارد ديسك خارجي USB 3.0', status: 'active' as const },
-    { name: 'راوتر WiFi 6 ASUS', sku: 'ASUS-RT-AX88', category: 'الشبكات', price: '950.00', cost: '600.00', stock: 18, minStock: 5, unit: 'جهاز', description: 'راوتر WiFi 6 عالي الأداء', status: 'active' as const },
-    { name: 'UPS APC 1500VA', sku: 'APC-UPS-1500', category: 'الطاقة', price: '750.00', cost: '480.00', stock: 8, minStock: 3, unit: 'جهاز', description: 'مزود طاقة احتياطي', status: 'active' as const },
-  ];
-  await db.insert(productsTable).values(productData);
-
-  // Get inserted IDs
-  const insertedCustomers = await db.select().from(customersTable);
-  const insertedProducts = await db.select().from(productsTable);
-
-  // Generate sales over the past 12 months
-  const statuses = ['delivered', 'delivered', 'delivered', 'confirmed', 'pending', 'shipped', 'cancelled'] as const;
-  const paymentStatuses = ['paid', 'paid', 'paid', 'partial', 'unpaid'] as const;
-
-  const salesData = [];
-  const saleItemsData: any[] = [];
-
-  for (let i = 0; i < 80; i++) {
-    const daysAgo = Math.floor(Math.random() * 365);
-    const saleDate = new Date();
-    saleDate.setDate(saleDate.getDate() - daysAgo);
-
-    const customer = insertedCustomers[Math.floor(Math.random() * insertedCustomers.length)];
-    const status = statuses[Math.floor(Math.random() * statuses.length)];
-    const paymentStatus = status === 'delivered' ? paymentStatuses[Math.floor(Math.random() * 3)] : paymentStatuses[Math.floor(Math.random() * paymentStatuses.length)];
-
-    const numItems = Math.floor(Math.random() * 3) + 1;
-    const selectedProducts = [...insertedProducts].sort(() => 0.5 - Math.random()).slice(0, numItems);
-
-    let totalAmount = 0;
-    const items = selectedProducts.map(product => {
-      const quantity = Math.floor(Math.random() * 5) + 1;
-      const unitPrice = parseFloat(product.price);
-      const totalPrice = unitPrice * quantity;
-      totalAmount += totalPrice;
-      return { productId: product.id, quantity, unitPrice: unitPrice.toFixed(2), totalPrice: totalPrice.toFixed(2) };
-    });
-
-    const discount = Math.random() > 0.7 ? (totalAmount * 0.05).toFixed(2) : '0';
-    const tax = (totalAmount * 0.15).toFixed(2);
-    const netAmount = (totalAmount - parseFloat(discount) + parseFloat(tax)).toFixed(2);
-
-    salesData.push({
-      invoiceNumber: `INV-${String(i + 1).padStart(4, '0')}`,
-      customerId: customer.id,
-      totalAmount: totalAmount.toFixed(2),
-      discount,
-      tax,
-      netAmount,
-      status,
-      paymentStatus,
-      saleDate,
-    });
-    saleItemsData.push({ saleIndex: i, items });
-  }
-
-  // Insert sales in batches
-  for (let i = 0; i < salesData.length; i++) {
-    await db.insert(salesTable).values(salesData[i]);
-  }
-
-  const insertedSales = await db.select().from(salesTable);
-  for (let i = 0; i < insertedSales.length; i++) {
-    const saleItemGroup = saleItemsData.find(s => s.saleIndex === i);
-    if (saleItemGroup) {
-      await db.insert(saleItemsTable).values(
-        saleItemGroup.items.map((item: any) => ({ ...item, saleId: insertedSales[i].id }))
-      );
-    }
-  }
-
-  // Update customer total purchases
-  for (const customer of insertedCustomers) {
-    const customerSales = insertedSales.filter(s => s.customerId === customer.id && s.status === 'delivered');
-    const total = customerSales.reduce((sum, s) => sum + parseFloat(s.netAmount), 0);
-    if (total > 0) {
-      await db.update(customersTable).set({ totalPurchases: total.toFixed(2) }).where(sql`id = ${customer.id}`);
-    }
-  }
-}

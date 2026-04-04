@@ -175,9 +175,21 @@
 
   @media (min-width: 1024px) {
     .container {
-      padding-left: 2rem; /* 32px - desktop padding */
+      padding-left: 2rem;
       padding-right: 2rem;
-      max-width: 1280px; /* Standard content width */
+      max-width: 1400px;
     }
   }
+
+  /* KPI Card gradient accents */
+  .kpi-blue { background: linear-gradient(135deg, oklch(0.42 0.18 265 / 0.08), transparent); border-color: oklch(0.42 0.18 265 / 0.25); }
+  .kpi-green { background: linear-gradient(135deg, oklch(0.55 0.18 160 / 0.08), transparent); border-color: oklch(0.55 0.18 160 / 0.25); }
+  .kpi-amber { background: linear-gradient(135deg, oklch(0.7 0.15 55 / 0.08), transparent); border-color: oklch(0.7 0.15 55 / 0.25); }
+  .kpi-red { background: linear-gradient(135deg, oklch(0.55 0.22 25 / 0.08), transparent); border-color: oklch(0.55 0.22 25 / 0.25); }
+  .kpi-purple { background: linear-gradient(135deg, oklch(0.55 0.2 310 / 0.08), transparent); border-color: oklch(0.55 0.2 310 / 0.25); }
+
+  /* Alert badges */
+  .alert-critical { @apply bg-red-50 border border-red-200 text-red-800 dark:bg-red-950/30 dark:border-red-800/50 dark:text-red-300; }
+  .alert-warning { @apply bg-amber-50 border border-amber-200 text-amber-800 dark:bg-amber-950/30 dark:border-amber-800/50 dark:text-amber-300; }
+  .alert-info { @apply bg-blue-50 border border-blue-200 text-blue-800 dark:bg-blue-950/30 dark:border-blue-800/50 dark:text-blue-300; }
 }
