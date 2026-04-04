@@ -64,7 +64,7 @@ export default function ClosingModule() {
     <div className="space-y-6 p-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Negotiation / Closing Module</h1>
+          <h1 className="text-2xl font-bold">موديول التفاوض والإغلاق</h1>
           <p className="text-sm text-muted-foreground">متابعة الصفقات من التفاوض حتى الإغلاق</p>
         </div>
         <Button size="sm" onClick={() => setShowAdd(true)} className="gap-1.5"><Plus className="w-4 h-4" />إضافة صفقة</Button>
@@ -86,13 +86,13 @@ export default function ClosingModule() {
         </CardContent></Card>
         <Card><CardContent className="p-5 flex items-center gap-4">
           <div className="p-2.5 rounded-xl bg-purple-100"><DollarSign className="w-5 h-5 text-purple-600" /></div>
-          <div><p className="text-xl font-bold">{(stats?.closedValue ?? 0).toLocaleString('ar-SA')}</p><p className="text-xs text-muted-foreground">قيمة الصفقات المغلقة (ر.س)</p></div>
+          <div><p className="text-xl font-bold">{(stats?.closedValue ?? 0).toLocaleString('ar-EG')}</p><p className="text-xs text-muted-foreground">قيمة الصفقات المغلقة (ج.م)</p></div>
         </CardContent></Card>
       </div>
 
       {/* Pipeline Stages */}
       <Card>
-        <CardHeader className="pb-3"><CardTitle className="text-base">Pipeline الصفقات</CardTitle></CardHeader>
+        <CardHeader className="pb-3"><CardTitle className="text-base">مسار الصفقات</CardTitle></CardHeader>
         <CardContent>
           <div className="flex items-center gap-2 overflow-x-auto pb-2">
             {STAGE_ORDER.map((stage, i) => {
@@ -103,7 +103,7 @@ export default function ClosingModule() {
                     <div className="text-2xl font-bold">{stageInfo?.count ?? 0}</div>
                     <div className="text-xs mt-0.5">{STAGE_LABELS[stage]}</div>
                     {stageInfo?.value && stageInfo.value > 0 && (
-                      <div className="text-xs opacity-70 mt-0.5">{(stageInfo.value / 1000).toFixed(0)}k ر.س</div>
+                      <div className="text-xs opacity-70 mt-0.5">{(stageInfo.value / 1000).toFixed(0)}k ج.م</div>
                     )}
                   </div>
                   {i < STAGE_ORDER.length - 1 && <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />}
@@ -136,12 +136,12 @@ export default function ClosingModule() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-semibold text-sm">{deal.clientName}</span>
                     <Badge className={`text-xs ${STAGE_COLORS[deal.stage]}`}>{STAGE_LABELS[deal.stage]}</Badge>
-                    <span className="text-sm font-bold text-indigo-600">{parseFloat(deal.value).toLocaleString('ar-SA')} ر.س</span>
+                    <span className="text-sm font-bold text-indigo-600">{parseFloat(deal.value).toLocaleString('ar-EG')} ج.م</span>
                   </div>
                   {deal.nextAction && (
                     <div className="text-xs text-muted-foreground mt-1">
                       🎯 الخطوة التالية: <span className="text-foreground font-medium">{deal.nextAction}</span>
-                      {deal.nextActionDate && <span className="mr-2">📅 {new Date(deal.nextActionDate).toLocaleDateString('ar-SA')}</span>}
+                      {deal.nextActionDate && <span className="mr-2">📅 {new Date(deal.nextActionDate).toLocaleDateString('ar-EG')}</span>}
                     </div>
                   )}
                 </div>
@@ -168,7 +168,7 @@ export default function ClosingModule() {
               </Select>
             </div>
             <div><Label>اسم العميل *</Label><Input value={newDeal.clientName} onChange={e => setNewDeal(p => ({ ...p, clientName: e.target.value }))} /></div>
-            <div><Label>قيمة الصفقة (ر.س) *</Label><Input type="number" value={newDeal.value} onChange={e => setNewDeal(p => ({ ...p, value: e.target.value }))} /></div>
+            <div><Label>قيمة الصفقة (ج.م) *</Label><Input type="number" value={newDeal.value} onChange={e => setNewDeal(p => ({ ...p, value: e.target.value }))} /></div>
             <div><Label>الخطوة التالية</Label><Input value={newDeal.nextAction} onChange={e => setNewDeal(p => ({ ...p, nextAction: e.target.value }))} /></div>
             <div><Label>تاريخ الخطوة التالية</Label><Input type="date" value={newDeal.nextActionDate} onChange={e => setNewDeal(p => ({ ...p, nextActionDate: e.target.value }))} /></div>
             <div><Label>ملاحظات</Label><Textarea value={newDeal.notes} onChange={e => setNewDeal(p => ({ ...p, notes: e.target.value }))} rows={2} /></div>

@@ -49,7 +49,7 @@ export default function TasksModule() {
 
   const chartData = useMemo(() => stats?.byEngineer?.map(e => ({
     name: e.engineerName.split(' ')[0],
-    'Execution Score': e.executionScore,
+    'نسبة التنفيذ': e.executionScore,
     منجز: e.completed, متأخر: e.delayed, 'لم يُنفذ': e.not_done,
   })) ?? [], [stats]);
 
@@ -63,13 +63,13 @@ export default function TasksModule() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Daily Tasks Module</h1>
+          <h1 className="text-2xl font-bold">موديول المهام اليومية</h1>
           <p className="text-sm text-muted-foreground">متابعة تنفيذ المهام اليومية للمهندسين</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="icon" onClick={() => setDateOffset(d => d - 1)}><ChevronRight className="w-4 h-4" /></Button>
           <div className="text-sm font-medium px-3 py-1.5 bg-muted rounded-lg min-w-[120px] text-center">
-            {dateOffset === 0 ? 'اليوم' : dateOffset === -1 ? 'أمس' : new Date(dateStr).toLocaleDateString('ar-SA', { month: 'short', day: 'numeric' })}
+            {dateOffset === 0 ? 'اليوم' : dateOffset === -1 ? 'أمس' : new Date(dateStr).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' })}
           </div>
           <Button variant="outline" size="icon" onClick={() => setDateOffset(d => d + 1)} disabled={dateOffset >= 0}><ChevronLeft className="w-4 h-4" /></Button>
           <Button size="sm" onClick={() => setShowAdd(true)} className="gap-1.5"><Plus className="w-4 h-4" />إضافة مهمة</Button>
@@ -97,7 +97,7 @@ export default function TasksModule() {
       {stats?.byEngineer && stats.byEngineer.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>
-            <CardHeader className="pb-2"><CardTitle className="text-base">أداء المهندسين - Execution Score</CardTitle></CardHeader>
+            <CardHeader className="pb-2"><CardTitle className="text-base">أداء المهندسين - نسبة التنفيذ</CardTitle></CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart data={chartData}>
@@ -105,9 +105,9 @@ export default function TasksModule() {
                   <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                   <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
                   <Tooltip formatter={(v: number) => [`${v}%`]} />
-                  <Bar dataKey="Execution Score" radius={[4, 4, 0, 0]}>
+                  <Bar dataKey="نسبة التنفيذ" radius={[4, 4, 0, 0]}>
                     {chartData.map((entry, i) => (
-                      <Cell key={i} fill={entry['Execution Score'] >= 90 ? '#10b981' : entry['Execution Score'] >= 70 ? '#6366f1' : entry['Execution Score'] >= 50 ? '#f59e0b' : '#ef4444'} />
+                      <Cell key={i} fill={entry['نسبة التنفيذ'] >= 90 ? '#10b981' : entry['نسبة التنفيذ'] >= 70 ? '#6366f1' : entry['نسبة التنفيذ'] >= 50 ? '#f59e0b' : '#ef4444'} />
                     ))}
                   </Bar>
                 </BarChart>

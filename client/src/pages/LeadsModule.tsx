@@ -32,7 +32,7 @@ export default function LeadsModule() {
   const { data: engineers } = trpc.engineers.list.useQuery();
 
   const createMutation = trpc.leads.create.useMutation({
-    onSuccess: () => { toast.success('تم إضافة الـ Lead'); setShowAdd(false); utils.leads.list.invalidate(); utils.leads.stats.invalidate(); },
+    onSuccess: () => { toast.success('تم إضافة العميل المحتمل'); setShowAdd(false); utils.leads.list.invalidate(); utils.leads.stats.invalidate(); },
     onError: () => toast.error('حدث خطأ'),
   });
   const updateMutation = trpc.leads.updateStatus.useMutation({
@@ -47,7 +47,7 @@ export default function LeadsModule() {
   })) ?? [];
 
   const funnelData = stats ? [
-    { name: 'إجمالي Leads', value: stats.total, fill: '#6366f1' },
+    { name: 'إجمالي العملاء المحتملين', value: stats.total, fill: '#6366f1' },
     { name: 'تم التواصل', value: stats.contacted, fill: '#8b5cf6' },
     { name: 'مؤهل', value: stats.qualified, fill: '#10b981' },
     { name: 'تحول لصفقة', value: stats.converted, fill: '#f59e0b' },
@@ -62,17 +62,17 @@ export default function LeadsModule() {
     <div className="space-y-6 p-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Leads Module</h1>
-          <p className="text-sm text-muted-foreground">متابعة الـ Leads وسرعة الاستجابة</p>
+          <h1 className="text-2xl font-bold">موديول العملاء المحتملين</h1>
+          <p className="text-sm text-muted-foreground">متابعة العملاء المحتملين وسرعة الاستجابة</p>
         </div>
-        <Button size="sm" onClick={() => setShowAdd(true)} className="gap-1.5"><Plus className="w-4 h-4" />إضافة Lead</Button>
+        <Button size="sm" onClick={() => setShowAdd(true)} className="gap-1.5"><Plus className="w-4 h-4" />إضافة عميل محتمل</Button>
       </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="kpi-blue border"><CardContent className="p-5">
           <div className="flex items-center gap-3"><div className="p-2.5 rounded-xl bg-indigo-100"><Users className="w-5 h-5 text-indigo-600" /></div>
-          <div><p className="text-2xl font-bold">{stats?.total ?? 0}</p><p className="text-xs text-muted-foreground">إجمالي Leads</p></div></div>
+          <div><p className="text-2xl font-bold">{stats?.total ?? 0}</p><p className="text-xs text-muted-foreground">إجمالي العملاء المحتملين</p></div></div>
         </CardContent></Card>
         <Card className="kpi-green border"><CardContent className="p-5">
           <div className="flex items-center gap-3"><div className="p-2.5 rounded-xl bg-emerald-100"><TrendingUp className="w-5 h-5 text-emerald-600" /></div>
@@ -92,7 +92,7 @@ export default function LeadsModule() {
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-base">مصادر الـ Leads</CardTitle></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-base">مصادر العملاء المحتملين</CardTitle></CardHeader>
           <CardContent>
             {sourceChartData.length > 0 ? (
               <>
@@ -110,7 +110,7 @@ export default function LeadsModule() {
         </Card>
 
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-base">Funnel التحويل</CardTitle></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-base">مسار التحويل</CardTitle></CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={funnelData} layout="vertical">
@@ -131,7 +131,7 @@ export default function LeadsModule() {
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-base">قائمة الـ Leads</CardTitle>
+            <CardTitle className="text-base">قائمة العملاء المحتملين</CardTitle>
             <Select value={filterStatus} onValueChange={setFilterStatus}>
               <SelectTrigger className="w-40 h-8 text-sm"><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -179,7 +179,7 @@ export default function LeadsModule() {
       {/* Add Lead Dialog */}
       <Dialog open={showAdd} onOpenChange={setShowAdd}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>إضافة Lead جديد</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>إضافة عميل محتمل جديد</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div><Label>الاسم *</Label><Input value={newLead.name} onChange={e => setNewLead(p => ({ ...p, name: e.target.value }))} /></div>
             <div className="grid grid-cols-2 gap-3">

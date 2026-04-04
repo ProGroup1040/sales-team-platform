@@ -65,7 +65,7 @@ export default function VisitsModule() {
     <div className="space-y-6 p-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Visits Module</h1>
+          <h1 className="text-2xl font-bold">موديول المعاينات</h1>
           <p className="text-sm text-muted-foreground">متابعة المعاينات الميدانية وجودتها</p>
         </div>
         <Button size="sm" onClick={() => setShowAdd(true)} className="gap-1.5"><Plus className="w-4 h-4" />إضافة معاينة</Button>
@@ -171,7 +171,7 @@ export default function VisitsModule() {
                   </div>
                   <div className="flex gap-3 text-xs text-muted-foreground mt-0.5">
                     {visit.address && <span>📍 {visit.address}</span>}
-                    <span>📅 {new Date(visit.scheduledAt).toLocaleDateString('ar-SA')}</span>
+                    <span>📅 {new Date(visit.scheduledAt).toLocaleDateString('ar-EG')}</span>
                     {visit.delayMinutes && visit.delayMinutes > 0 && <span className="text-amber-600">⏰ تأخير {visit.delayMinutes} د</span>}
                   </div>
                 </div>

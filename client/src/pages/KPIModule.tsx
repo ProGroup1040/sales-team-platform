@@ -23,7 +23,7 @@ export default function KPIModule() {
 
   const chartData = sorted.map(eng => ({
     name: eng.engineerName.split(' ')[0],
-    'Execution Score': eng.executionScore,
+    'نسبة التنفيذ': eng.executionScore,
     'عدد الصفقات': eng.closedWon,
     'عدد المعاينات': eng.visitsCount,
   }));
@@ -32,7 +32,7 @@ export default function KPIModule() {
     { metric: 'المهام', value: topPerformer.executionScore },
     { metric: 'المعاينات', value: Math.min(100, topPerformer.visitsCount * 5) },
     { metric: 'الصفقات', value: Math.min(100, topPerformer.closedWon * 20) },
-    { metric: 'الـ Leads', value: Math.min(100, topPerformer.leadsCount * 10) },
+    { metric: 'العملاء المحتملون', value: Math.min(100, topPerformer.leadsCount * 10) },
     { metric: 'القيمة', value: Math.min(100, topPerformer.totalDealValue / 10000) },
   ] : [];
 
@@ -54,7 +54,7 @@ export default function KPIModule() {
     <div className="space-y-6 p-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">KPI Module</h1>
+          <h1 className="text-2xl font-bold">موديول مؤشرات الأداء</h1>
           <p className="text-sm text-muted-foreground">مؤشرات الأداء الرئيسية للمهندسين</p>
         </div>
         <div className="flex items-center gap-2">
@@ -81,7 +81,7 @@ export default function KPIModule() {
                 <div>
                   <p className="text-xs text-emerald-600 font-medium mb-0.5">الأعلى أداءً</p>
                   <p className="font-bold text-lg">{topPerformer.engineerName}</p>
-                  <p className="text-sm text-muted-foreground">Execution Score: <span className="font-semibold text-emerald-600">{topPerformer.executionScore}%</span></p>
+                  <p className="text-sm text-muted-foreground">نسبة التنفيذ: <span className="font-semibold text-emerald-600">{topPerformer.executionScore}%</span></p>
                 </div>
               </CardContent>
             </Card>
@@ -93,7 +93,7 @@ export default function KPIModule() {
                 <div>
                   <p className="text-xs text-red-600 font-medium mb-0.5">يحتاج دعم</p>
                   <p className="font-bold text-lg">{lowPerformer.engineerName}</p>
-                  <p className="text-sm text-muted-foreground">Execution Score: <span className="font-semibold text-red-600">{lowPerformer.executionScore}%</span></p>
+                  <p className="text-sm text-muted-foreground">نسبة التنفيذ: <span className="font-semibold text-red-600">{lowPerformer.executionScore}%</span></p>
                 </div>
               </CardContent>
             </Card>
@@ -117,7 +117,7 @@ export default function KPIModule() {
                 <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
                 <Tooltip formatter={(v: number) => [`${v}%`]} />
                 <Legend />
-                <Bar dataKey="Execution Score" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="نسبة التنفيذ" fill="#6366f1" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="نسبة الإغلاق" fill="#10b981" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="إتمام المعاينات" fill="#f59e0b" radius={[4, 4, 0, 0]} />
               </BarChart>
@@ -147,7 +147,7 @@ export default function KPIModule() {
               {/* Execution Score */}
               <div className="mb-4">
                 <div className="flex justify-between text-sm mb-1.5">
-                  <span className="text-muted-foreground">Execution Score</span>
+                  <span className="text-muted-foreground">نسبة التنفيذ</span>
                   <span className="font-bold" style={{ color: getScoreColor(eng.executionScore) }}>{eng.executionScore}%</span>
                 </div>
                 <div className="h-2.5 bg-muted rounded-full overflow-hidden">
@@ -183,7 +183,7 @@ export default function KPIModule() {
                 </div>
                 <div className="flex justify-between text-xs">
                   <span className="text-muted-foreground">قيمة الصفقات المغلقة</span>
-                  <span className="font-medium">{eng.totalDealValue.toLocaleString('ar-SA')} ر.س</span>
+                  <span className="font-medium">{eng.totalDealValue.toLocaleString('ar-EG')} ج.م</span>
                 </div>
               </div>
             </CardContent>

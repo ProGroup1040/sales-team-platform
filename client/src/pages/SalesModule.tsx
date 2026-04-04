@@ -37,7 +37,7 @@ export default function SalesModule() {
     <div className="space-y-6 p-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Sales Module</h1>
+          <h1 className="text-2xl font-bold">موديول المبيعات</h1>
           <p className="text-sm text-muted-foreground">تحليل المبيعات ومقارنة الأهداف</p>
         </div>
         <div className="flex items-center gap-2">
@@ -56,11 +56,11 @@ export default function SalesModule() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Card><CardContent className="p-5">
           <div className="flex items-center gap-3 mb-2"><div className="p-2 rounded-xl bg-indigo-100"><Target className="w-4 h-4 text-indigo-600" /></div><p className="text-xs text-muted-foreground">الهدف الشهري</p></div>
-          <p className="text-xl font-bold">{(stats?.target ?? 0).toLocaleString('ar-SA')}</p><p className="text-xs text-muted-foreground">ر.س</p>
+          <p className="text-xl font-bold">{(stats?.target ?? 0).toLocaleString('ar-EG')}</p><p className="text-xs text-muted-foreground">ج.م</p>
         </CardContent></Card>
         <Card><CardContent className="p-5">
           <div className="flex items-center gap-3 mb-2"><div className="p-2 rounded-xl bg-emerald-100"><DollarSign className="w-4 h-4 text-emerald-600" /></div><p className="text-xs text-muted-foreground">المبيعات الفعلية</p></div>
-          <p className="text-xl font-bold text-emerald-600">{(stats?.actual ?? 0).toLocaleString('ar-SA')}</p><p className="text-xs text-muted-foreground">ر.س</p>
+          <p className="text-xl font-bold text-emerald-600">{(stats?.actual ?? 0).toLocaleString('ar-EG')}</p><p className="text-xs text-muted-foreground">ج.م</p>
         </CardContent></Card>
         <Card><CardContent className="p-5">
           <div className="flex items-center gap-3 mb-2"><div className="p-2 rounded-xl bg-amber-100"><TrendingUp className="w-4 h-4 text-amber-600" /></div><p className="text-xs text-muted-foreground">نسبة التحقيق</p></div>
@@ -83,9 +83,9 @@ export default function SalesModule() {
           </div>
           <Progress value={Math.min(achievementRate, 100)} className="h-4" />
           <div className="flex justify-between text-xs text-muted-foreground mt-2">
-            <span>الفعلي: {(stats?.actual ?? 0).toLocaleString('ar-SA')} ر.س</span>
-            <span>المتبقي: {Math.max(0, (stats?.target ?? 0) - (stats?.actual ?? 0)).toLocaleString('ar-SA')} ر.س</span>
-            <span>الهدف: {(stats?.target ?? 0).toLocaleString('ar-SA')} ر.س</span>
+            <span>الفعلي: {(stats?.actual ?? 0).toLocaleString('ar-EG')} ج.م</span>
+            <span>المتبقي: {Math.max(0, (stats?.target ?? 0) - (stats?.actual ?? 0)).toLocaleString('ar-EG')} ج.م</span>
+            <span>الهدف: {(stats?.target ?? 0).toLocaleString('ar-EG')} ج.م</span>
           </div>
         </CardContent>
       </Card>
@@ -109,7 +109,7 @@ export default function SalesModule() {
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="name" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
-              <Tooltip formatter={(v: number) => [`${v.toLocaleString('ar-SA')} ر.س`]} />
+              <Tooltip formatter={(v: number) => [`${v.toLocaleString('ar-EG')} ج.م`]} />
               <Legend />
               <Area type="monotone" dataKey="الهدف" stroke="#10b981" fill="url(#targetGrad2)" strokeWidth={2} />
               <Area type="monotone" dataKey="المبيعات" stroke="#6366f1" fill="url(#salesGrad2)" strokeWidth={2} />

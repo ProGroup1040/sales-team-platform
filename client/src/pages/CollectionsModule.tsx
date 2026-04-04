@@ -50,7 +50,7 @@ export default function CollectionsModule() {
     <div className="space-y-6 p-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Financial Module (Collections)</h1>
+          <h1 className="text-2xl font-bold">موديول التحصيل المالي</h1>
           <p className="text-sm text-muted-foreground">متابعة التحصيل والمبالغ المستحقة</p>
         </div>
         <Button size="sm" onClick={() => setShowAdd(true)} className="gap-1.5"><Plus className="w-4 h-4" />إضافة عقد</Button>
@@ -63,15 +63,15 @@ export default function CollectionsModule() {
             <div className="p-2 rounded-xl bg-indigo-100"><DollarSign className="w-4 h-4 text-indigo-600" /></div>
             <p className="text-xs text-muted-foreground">إجمالي العقود</p>
           </div>
-          <p className="text-xl font-bold">{(stats?.totalContracts ?? 0).toLocaleString('ar-SA')}</p>
-          <p className="text-xs text-muted-foreground">ر.س</p>
+          <p className="text-xl font-bold">{(stats?.totalContracts ?? 0).toLocaleString('ar-EG')}</p>
+          <p className="text-xs text-muted-foreground">ج.م</p>
         </CardContent></Card>
         <Card><CardContent className="p-5">
           <div className="flex items-center gap-3 mb-2">
             <div className="p-2 rounded-xl bg-emerald-100"><TrendingUp className="w-4 h-4 text-emerald-600" /></div>
             <p className="text-xs text-muted-foreground">المحصّل</p>
           </div>
-          <p className="text-xl font-bold text-emerald-600">{(stats?.totalCollected ?? 0).toLocaleString('ar-SA')}</p>
+          <p className="text-xl font-bold text-emerald-600">{(stats?.totalCollected ?? 0).toLocaleString('ar-EG')}</p>
           <p className="text-xs text-muted-foreground">{stats?.collectionRate ?? 0}% من الإجمالي</p>
         </CardContent></Card>
         <Card><CardContent className="p-5">
@@ -79,16 +79,16 @@ export default function CollectionsModule() {
             <div className="p-2 rounded-xl bg-amber-100"><CheckCircle className="w-4 h-4 text-amber-600" /></div>
             <p className="text-xs text-muted-foreground">المستحق</p>
           </div>
-          <p className="text-xl font-bold text-amber-600">{(stats?.outstanding ?? 0).toLocaleString('ar-SA')}</p>
-          <p className="text-xs text-muted-foreground">ر.س</p>
+          <p className="text-xl font-bold text-amber-600">{(stats?.outstanding ?? 0).toLocaleString('ar-EG')}</p>
+          <p className="text-xs text-muted-foreground">ج.م</p>
         </CardContent></Card>
         <Card className={`${(stats?.overdue ?? 0) > 0 ? 'border-red-200 bg-red-50/30 dark:bg-red-950/10' : ''}`}><CardContent className="p-5">
           <div className="flex items-center gap-3 mb-2">
             <div className="p-2 rounded-xl bg-red-100"><AlertTriangle className="w-4 h-4 text-red-600" /></div>
             <p className="text-xs text-muted-foreground">المتأخر</p>
           </div>
-          <p className="text-xl font-bold text-red-600">{(stats?.overdue ?? 0).toLocaleString('ar-SA')}</p>
-          <p className="text-xs text-muted-foreground">ر.س - يحتاج متابعة</p>
+          <p className="text-xl font-bold text-red-600">{(stats?.overdue ?? 0).toLocaleString('ar-EG')}</p>
+          <p className="text-xs text-muted-foreground">ج.م - يحتاج متابعة</p>
         </CardContent></Card>
       </div>
 
@@ -102,9 +102,9 @@ export default function CollectionsModule() {
           </div>
           <Progress value={stats?.collectionRate ?? 0} className="h-4" />
           <div className="flex justify-between text-xs text-muted-foreground mt-2">
-            <span>محصّل: {(stats?.totalCollected ?? 0).toLocaleString('ar-SA')} ر.س</span>
-            <span>الفرق: {((stats?.totalContracts ?? 0) - (stats?.totalCollected ?? 0)).toLocaleString('ar-SA')} ر.س</span>
-            <span>إجمالي: {(stats?.totalContracts ?? 0).toLocaleString('ar-SA')} ر.س</span>
+            <span>محصّل: {(stats?.totalCollected ?? 0).toLocaleString('ar-EG')} ج.م</span>
+            <span>الفرق: {((stats?.totalContracts ?? 0) - (stats?.totalCollected ?? 0)).toLocaleString('ar-EG')} ج.م</span>
+            <span>إجمالي: {(stats?.totalContracts ?? 0).toLocaleString('ar-EG')} ج.م</span>
           </div>
         </CardContent>
       </Card>
@@ -118,7 +118,7 @@ export default function CollectionsModule() {
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="name" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
-              <Tooltip formatter={(v: number) => [`${v.toLocaleString('ar-SA')} ر.س`]} />
+              <Tooltip formatter={(v: number) => [`${v.toLocaleString('ar-EG')} ج.م`]} />
               <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                 {chartData.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
               </Bar>
@@ -160,13 +160,13 @@ export default function CollectionsModule() {
                     </Button>
                   </div>
                   <div className="flex justify-between text-xs text-muted-foreground mb-1.5">
-                    <span>العقد: {contract.toLocaleString('ar-SA')} ر.س</span>
-                    <span>المحصّل: <span className="font-semibold text-foreground">{collected.toLocaleString('ar-SA')} ر.س</span></span>
+                    <span>العقد: {contract.toLocaleString('ar-EG')} ج.م</span>
+                    <span>المحصّل: <span className="font-semibold text-foreground">{collected.toLocaleString('ar-EG')} ج.م</span></span>
                     <span className="font-semibold">{pct}%</span>
                   </div>
                   <Progress value={pct} className="h-2" />
                   {col.dueDate && (
-                    <p className="text-xs text-muted-foreground mt-1">📅 الاستحقاق: {new Date(col.dueDate).toLocaleDateString('ar-SA')}</p>
+                    <p className="text-xs text-muted-foreground mt-1">📅 الاستحقاق: {new Date(col.dueDate).toLocaleDateString('ar-EG')}</p>
                   )}
                 </div>
               );
@@ -182,7 +182,7 @@ export default function CollectionsModule() {
           <div className="space-y-3">
             <div><Label>اسم العميل *</Label><Input value={newCollection.clientName} onChange={e => setNewCollection(p => ({ ...p, clientName: e.target.value }))} /></div>
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>قيمة العقد (ر.س) *</Label><Input type="number" value={newCollection.contractAmount} onChange={e => setNewCollection(p => ({ ...p, contractAmount: e.target.value }))} /></div>
+              <div><Label>قيمة العقد (ج.م) *</Label><Input type="number" value={newCollection.contractAmount} onChange={e => setNewCollection(p => ({ ...p, contractAmount: e.target.value }))} /></div>
               <div><Label>المحصّل حتى الآن</Label><Input type="number" value={newCollection.collectedAmount} onChange={e => setNewCollection(p => ({ ...p, collectedAmount: e.target.value }))} /></div>
             </div>
             <div><Label>تاريخ الاستحقاق</Label><Input type="date" value={newCollection.dueDate} onChange={e => setNewCollection(p => ({ ...p, dueDate: e.target.value }))} /></div>
@@ -200,7 +200,7 @@ export default function CollectionsModule() {
           <DialogHeader><DialogTitle>تحديث التحصيل</DialogTitle></DialogHeader>
           {updateDialog && (
             <div className="space-y-3">
-              <div><Label>المبلغ المحصّل (ر.س)</Label><Input type="number" value={updateDialog.collectedAmount} onChange={e => setUpdateDialog(d => d ? { ...d, collectedAmount: e.target.value } : null)} /></div>
+              <div><Label>المبلغ المحصّل (ج.م)</Label><Input type="number" value={updateDialog.collectedAmount} onChange={e => setUpdateDialog(d => d ? { ...d, collectedAmount: e.target.value } : null)} /></div>
               <div><Label>الحالة</Label>
                 <Select value={updateDialog.status} onValueChange={v => setUpdateDialog(d => d ? { ...d, status: v } : null)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>

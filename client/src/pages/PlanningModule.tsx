@@ -78,7 +78,7 @@ export default function PlanningModule() {
     <div className="space-y-6 p-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Target Planning Module</h1>
+          <h1 className="text-2xl font-bold">موديول تخطيط الأهداف</h1>
           <p className="text-sm text-muted-foreground">تخطيط الأهداف وحساب المتطلبات</p>
         </div>
         <div className="flex items-center gap-2">
@@ -98,11 +98,11 @@ export default function PlanningModule() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
               <div>
                 <p className="text-sm text-muted-foreground">هدف {MONTHS[month - 1]} {year}</p>
-                <p className="text-3xl font-bold">{currentTargetAmount.toLocaleString('ar-SA')} ر.س</p>
+                <p className="text-3xl font-bold">{currentTargetAmount.toLocaleString('ar-EG')} ج.م</p>
               </div>
               <div className="text-right">
                 <p className="text-sm text-muted-foreground">الفعلي حتى الآن</p>
-                <p className="text-2xl font-bold text-indigo-600">{currentActual.toLocaleString('ar-SA')} ر.س</p>
+                <p className="text-2xl font-bold text-indigo-600">{currentActual.toLocaleString('ar-EG')} ج.م</p>
               </div>
               <div className="text-center">
                 <div className={`text-4xl font-bold ${achievementRate >= 100 ? 'text-emerald-600' : achievementRate >= 70 ? 'text-indigo-600' : achievementRate >= 50 ? 'text-amber-600' : 'text-red-600'}`}>
@@ -113,7 +113,7 @@ export default function PlanningModule() {
             </div>
             <Progress value={Math.min(achievementRate, 100)} className="h-3" />
             <div className="flex justify-between text-xs text-muted-foreground mt-1">
-              <span>المتبقي: {Math.max(0, currentTargetAmount - currentActual).toLocaleString('ar-SA')} ر.س</span>
+              <span>المتبقي: {Math.max(0, currentTargetAmount - currentActual).toLocaleString('ar-EG')} ج.م</span>
               <span>{achievementRate >= 100 ? '🎉 تم تحقيق الهدف!' : achievementRate >= 80 ? '💪 قريب من الهدف' : achievementRate >= 50 ? '⚡ يحتاج تسريع' : '🚨 يحتاج مراجعة'}</span>
             </div>
           </CardContent>
@@ -126,16 +126,16 @@ export default function PlanningModule() {
           <CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2"><Target className="w-4 h-4" />إدخال الهدف الشهري</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <Label>الهدف الشهري (ر.س) *</Label>
+              <Label>الهدف الشهري (ج.م) *</Label>
               <Input type="number" value={targetAmount} onChange={e => setTargetAmount(e.target.value)} placeholder={currentTarget ? String(currentTarget.targetAmount) : 'مثال: 500000'} className="text-lg font-semibold" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>متوسط قيمة الصفقة (ر.س)</Label>
+                <Label>متوسط قيمة الصفقة (ج.م)</Label>
                 <Input type="number" value={avgDealValue} onChange={e => setAvgDealValue(e.target.value)} />
               </div>
               <div>
-                <Label>نسبة الـ Closing (%)</Label>
+                <Label>نسبة الإغلاق (%)</Label>
                 <Input type="number" value={closingRate} onChange={e => setClosingRate(e.target.value)} min="1" max="100" />
               </div>
             </div>
@@ -158,7 +158,7 @@ export default function PlanningModule() {
               <div className="space-y-4">
                 <div className="p-4 rounded-xl bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-800/30">
                   <p className="text-xs text-indigo-600 font-medium mb-1">الهدف المطلوب تحقيقه</p>
-                  <p className="text-2xl font-bold text-indigo-700">{calculations.target.toLocaleString('ar-SA')} ر.س</p>
+                  <p className="text-2xl font-bold text-indigo-700">{calculations.target.toLocaleString('ar-EG')} ج.م</p>
                 </div>
                 <div className="grid grid-cols-3 gap-3">
                   <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/30 text-center">
@@ -171,13 +171,13 @@ export default function PlanningModule() {
                   </div>
                   <div className="p-3 rounded-xl bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800/30 text-center">
                     <p className="text-2xl font-bold text-purple-700">{calculations.leadsNeeded}</p>
-                    <p className="text-xs text-purple-600 mt-0.5">Lead مطلوب</p>
+                    <p className="text-xs text-purple-600 mt-0.5">عميل محتمل مطلوب</p>
                   </div>
                 </div>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between py-1.5 border-b">
                     <span className="text-muted-foreground">متوسط قيمة الصفقة</span>
-                    <span className="font-medium">{calculations.avgDeal.toLocaleString('ar-SA')} ر.س</span>
+                    <span className="font-medium">{calculations.avgDeal.toLocaleString('ar-EG')} ج.م</span>
                   </div>
                   <div className="flex justify-between py-1.5 border-b">
                     <span className="text-muted-foreground">نسبة الإغلاق</span>
@@ -209,7 +209,7 @@ export default function PlanningModule() {
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
-                <Tooltip formatter={(v: number) => [`${v.toLocaleString('ar-SA')} ر.س`]} />
+                <Tooltip formatter={(v: number) => [`${v.toLocaleString('ar-EG')} ج.م`]} />
                 <Bar dataKey="الهدف" fill="#6366f1" radius={[4, 4, 0, 0]} opacity={0.7} />
                 <Bar dataKey="الفعلي" fill="#10b981" radius={[4, 4, 0, 0]} />
               </BarChart>

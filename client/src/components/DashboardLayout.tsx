@@ -29,27 +29,27 @@ import { Button } from "./ui/button";
 
 const menuGroups = [
   {
-    label: 'Control Panel',
+    label: 'لوحة التحكم',
     items: [
-      { icon: LayoutDashboard, label: 'Overview', path: '/overview' },
+      { icon: LayoutDashboard, label: 'نظرة عامة', path: '/overview' },
     ]
   },
   {
     label: 'التشغيل',
     items: [
-      { icon: CheckSquare, label: 'Daily Tasks', path: '/tasks' },
-      { icon: UserPlus, label: 'Leads', path: '/leads' },
-      { icon: MapPin, label: 'Visits', path: '/visits' },
-      { icon: Handshake, label: 'Closing', path: '/closing' },
+      { icon: CheckSquare, label: 'المهام اليومية', path: '/tasks' },
+      { icon: UserPlus, label: 'العملاء المحتملون', path: '/leads' },
+      { icon: MapPin, label: 'المعاينات', path: '/visits' },
+      { icon: Handshake, label: 'الإغلاق والتفاوض', path: '/closing' },
     ]
   },
   {
-    label: 'الأداء',
+    label: 'الأداء والمالية',
     items: [
-      { icon: TrendingUp, label: 'Sales', path: '/sales-module' },
-      { icon: Award, label: 'KPI', path: '/kpi' },
-      { icon: DollarSign, label: 'Collections', path: '/collections' },
-      { icon: Target, label: 'Planning', path: '/planning' },
+      { icon: TrendingUp, label: 'المبيعات', path: '/sales-module' },
+      { icon: Award, label: 'مؤشرات الأداء', path: '/kpi' },
+      { icon: DollarSign, label: 'التحصيل المالي', path: '/collections' },
+      { icon: Target, label: 'تخطيط الأهداف', path: '/planning' },
     ]
   },
 ];

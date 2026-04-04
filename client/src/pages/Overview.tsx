@@ -91,11 +91,11 @@ export default function Overview() {
     const list: { type: 'critical' | 'warning' | 'info'; text: string }[] = [];
     if (taskStats && taskStats.not_done > 0) list.push({ type: 'critical', text: `${taskStats.not_done} مهمة لم تُنفذ اليوم` });
     if (taskStats && taskStats.delayed > 0) list.push({ type: 'warning', text: `${taskStats.delayed} مهمة متأخرة اليوم` });
-    if (leadsStats && leadsStats.delayedRate > 30) list.push({ type: 'warning', text: `نسبة التأخير في الرد على الـ Leads: ${leadsStats.delayedRate}%` });
+    if (leadsStats && leadsStats.delayedRate > 30) list.push({ type: 'warning', text: `نسبة التأخير في الرد على العملاء المحتملين: ${leadsStats.delayedRate}%` });
     if (visitsStats && visitsStats.delayRate > 20) list.push({ type: 'warning', text: `نسبة تأخير المعاينات: ${visitsStats.delayRate}%` });
-    if (closingStats && closingStats.conversionRate < 20) list.push({ type: 'critical', text: `نسبة الـ Closing منخفضة: ${closingStats.conversionRate}%` });
+    if (closingStats && closingStats.conversionRate < 20) list.push({ type: 'critical', text: `نسبة إغلاق الصفقات منخفضة: ${closingStats.conversionRate}%` });
     if (salesStats && salesStats.target > 0 && salesStats.achievementRate < 50) list.push({ type: 'warning', text: `تحقيق الهدف الشهري: ${salesStats.achievementRate}% فقط` });
-    if (collectionsStats && collectionsStats.overdue > 0) list.push({ type: 'critical', text: `مبالغ متأخرة: ${collectionsStats.overdue.toLocaleString('ar-SA')} ر.س` });
+    if (collectionsStats && collectionsStats.overdue > 0) list.push({ type: 'critical', text: `مبالغ متأخرة: ${collectionsStats.overdue.toLocaleString('ar-EG')} ج.م` });
     if (kpiData) {
       const lowPerf = kpiData.filter(e => e.executionScore < 50);
       if (lowPerf.length > 0) list.push({ type: 'warning', text: `${lowPerf.length} مهندس أداؤهم ضعيف هذا الشهر` });
@@ -135,7 +135,7 @@ export default function Overview() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">لوحة التحكم الرئيسية</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {new Date().toLocaleDateString('ar-SA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            {new Date().toLocaleDateString('ar-EG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
           </p>
         </div>
         {!isSeeded && (
@@ -169,7 +169,7 @@ export default function Overview() {
           <KPICard title="المهام المخططة اليوم" value={String(taskStats?.planned ?? 0)} icon={Calendar} color="blue" sub={`${taskStats?.completed ?? 0} منجزة`} />
           <KPICard title="المهام المتأخرة" value={String(taskStats?.delayed ?? 0)} icon={Clock} color="amber" trend={taskStats && taskStats.delayed > 2 ? 'down' : 'up'} trendVal={taskStats?.delayed ? `${Math.round((taskStats.delayed / Math.max(taskStats.planned, 1)) * 100)}% من الإجمالي` : undefined} />
           <KPICard title="لم تُنفذ" value={String(taskStats?.not_done ?? 0)} icon={AlertTriangle} color="red" />
-          <KPICard title="Leads هذا الشهر" value={String(leadsStats?.total ?? 0)} icon={Users} color="purple" sub={`${leadsStats?.contacted ?? 0} تم التواصل`} trend="up" trendVal={`${leadsStats?.converted ?? 0} تحول لصفقة`} />
+          <KPICard title="العملاء المحتملون هذا الشهر" value={String(leadsStats?.total ?? 0)} icon={Users} color="purple" sub={`${leadsStats?.contacted ?? 0} تم التواصل`} trend="up" trendVal={`${leadsStats?.converted ?? 0} تحول لصفقة`} />
         </div>
       </div>
 
@@ -180,7 +180,7 @@ export default function Overview() {
           <KPICard title="المعاينات المجدولة" value={String(visitsStats?.scheduled ?? 0)} icon={Activity} color="blue" sub={`${visitsStats?.completionRate ?? 0}% معدل الإتمام`} />
           <KPICard title="معاينات ناجحة" value={String(visitsStats?.successful ?? 0)} icon={CheckCircle} color="green" sub={`${visitsStats?.successRate ?? 0}% نسبة النجاح`} />
           <KPICard title="صفقات مفتوحة" value={String(closingStats?.open ?? 0)} icon={Zap} color="amber" sub={`${closingStats?.conversionRate ?? 0}% نسبة الإغلاق`} />
-          <KPICard title="صفقات مغلقة ✓" value={String(closingStats?.closedWon ?? 0)} icon={TrendingUp} color="green" sub={`${(closingStats?.closedValue ?? 0).toLocaleString('ar-SA')} ر.س`} />
+          <KPICard title="صفقات مغلقة ✓" value={String(closingStats?.closedWon ?? 0)} icon={TrendingUp} color="green" sub={`${(closingStats?.closedValue ?? 0).toLocaleString('ar-EG')} ج.م`} />
         </div>
       </div>
 
@@ -188,10 +188,10 @@ export default function Overview() {
       <div>
         <h2 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wide">المبيعات والتحصيل</h2>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <KPICard title="هدف الشهر" value={`${(salesStats?.target ?? 0).toLocaleString('ar-SA')} ر.س`} icon={Target} color="blue" />
-          <KPICard title="المبيعات الفعلية" value={`${(salesStats?.actual ?? 0).toLocaleString('ar-SA')} ر.س`} icon={DollarSign} color="green" sub={`${salesStats?.achievementRate ?? 0}% من الهدف`} trend={salesStats && salesStats.achievementRate >= 80 ? 'up' : 'down'} trendVal={`${salesStats?.achievementRate ?? 0}% تحقيق`} />
-          <KPICard title="إجمالي التحصيل" value={`${(collectionsStats?.totalCollected ?? 0).toLocaleString('ar-SA')} ر.س`} icon={TrendingUp} color="green" sub={`${collectionsStats?.collectionRate ?? 0}% معدل التحصيل`} />
-          <KPICard title="مبالغ متأخرة" value={`${(collectionsStats?.overdue ?? 0).toLocaleString('ar-SA')} ر.س`} icon={AlertTriangle} color="red" trend="down" trendVal="تحتاج متابعة عاجلة" />
+          <KPICard title="هدف الشهر" value={`${(salesStats?.target ?? 0).toLocaleString('ar-EG')} ج.م`} icon={Target} color="blue" />
+          <KPICard title="المبيعات الفعلية" value={`${(salesStats?.actual ?? 0).toLocaleString('ar-EG')} ج.م`} icon={DollarSign} color="green" sub={`${salesStats?.achievementRate ?? 0}% من الهدف`} trend={salesStats && salesStats.achievementRate >= 80 ? 'up' : 'down'} trendVal={`${salesStats?.achievementRate ?? 0}% تحقيق`} />
+          <KPICard title="إجمالي التحصيل" value={`${(collectionsStats?.totalCollected ?? 0).toLocaleString('ar-EG')} ج.م`} icon={TrendingUp} color="green" sub={`${collectionsStats?.collectionRate ?? 0}% معدل التحصيل`} />
+          <KPICard title="مبالغ متأخرة" value={`${(collectionsStats?.overdue ?? 0).toLocaleString('ar-EG')} ج.م`} icon={AlertTriangle} color="red" trend="down" trendVal="تحتاج متابعة عاجلة" />
         </div>
       </div>
 
@@ -218,7 +218,7 @@ export default function Overview() {
                 <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.9 0.01 240)" />
                 <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
-                <Tooltip formatter={(v: number) => [`${v.toLocaleString('ar-SA')} ر.س`]} />
+                <Tooltip formatter={(v: number) => [`${v.toLocaleString('ar-EG')} ج.م`]} />
                 <Legend />
                 <Area type="monotone" dataKey="الهدف" stroke="#10b981" fill="url(#targetGrad)" strokeWidth={2} />
                 <Area type="monotone" dataKey="المبيعات الفعلية" stroke="#6366f1" fill="url(#salesGrad)" strokeWidth={2} />
@@ -274,8 +274,8 @@ export default function Overview() {
               </div>
               <Progress value={salesStats?.achievementRate ?? 0} className="h-3" />
               <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                <span>{(salesStats?.actual ?? 0).toLocaleString('ar-SA')} ر.س</span>
-                <span>الهدف: {(salesStats?.target ?? 0).toLocaleString('ar-SA')} ر.س</span>
+                <span>{(salesStats?.actual ?? 0).toLocaleString('ar-EG')} ج.م</span>
+                <span>الهدف: {(salesStats?.target ?? 0).toLocaleString('ar-EG')} ج.م</span>
               </div>
             </div>
             <div>
@@ -298,7 +298,7 @@ export default function Overview() {
         {/* Deals Pipeline */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold">Pipeline الصفقات</CardTitle>
+            <CardTitle className="text-base font-semibold">مسار الصفقات</CardTitle>
           </CardHeader>
           <CardContent>
             {stageData.length > 0 ? (
@@ -338,7 +338,7 @@ export default function Overview() {
                   </div>
                   <div className="space-y-1.5">
                     <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>Execution Score</span>
+                      <span>نسبة التنفيذ</span>
                       <span className="font-semibold text-foreground">{eng.executionScore}%</span>
                     </div>
                     <Progress value={eng.executionScore} className="h-1.5" />
