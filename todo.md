@@ -51,3 +51,9 @@
 - [x] تعريب صفحة Planning
 - [x] تغيير العملة إلى الجنيه المصري (ج.م) في جميع الصفحات
 - [x] تعريب صفحة Home
+
+## إزالة شرط تسجيل الدخول
+- [x] تحديث App.tsx لتوجيه المستخدم مباشرة إلى Overview بدون login
+- [x] تحديث DashboardLayout لإزالة شرط المصادقة
+- [x] تحويل جميع الـ routers من protectedProcedure إلى publicProcedure
+- [x] تحديث Home.tsx لتوجيه مباشر إلى لوحة التحكم

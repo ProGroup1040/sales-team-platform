@@ -171,8 +171,8 @@ export const appRouter = router({
 
   // ── Seed ──────────────────────────────────────────────────────────────────
   seed: router({
-    isSeeded: protectedProcedure.query(async () => isSeeded()),
-    run: protectedProcedure.mutation(async () => {
+    isSeeded: publicProcedure.query(async () => isSeeded()),
+    run: publicProcedure.mutation(async () => {
       await seedData();
       return { success: true };
     }),
@@ -180,8 +180,8 @@ export const appRouter = router({
 
   // ── Engineers ─────────────────────────────────────────────────────────────
   engineers: router({
-    list: protectedProcedure.query(async () => getEngineers()),
-    create: protectedProcedure.input(z.object({
+    list: publicProcedure.query(async () => getEngineers()),
+    create: publicProcedure.input(z.object({
       name: z.string().min(1), email: z.string().email().optional(),
       phone: z.string().optional(), department: z.string().optional(),
     })).mutation(async ({ input }) => { await createEngineer(input); return { success: true }; }),
@@ -189,16 +189,16 @@ export const appRouter = router({
 
   // ── Daily Tasks ───────────────────────────────────────────────────────────
   tasks: router({
-    stats: protectedProcedure.input(z.object({ date: z.string() }))
+    stats: publicProcedure.input(z.object({ date: z.string() }))
       .query(async ({ input }) => getDailyTasksStats(input.date)),
-    list: protectedProcedure.input(z.object({ date: z.string(), engineerId: z.number().optional() }))
+    list: publicProcedure.input(z.object({ date: z.string(), engineerId: z.number().optional() }))
       .query(async ({ input }) => getTasksList(input.date, input.engineerId)),
-    create: protectedProcedure.input(z.object({
+    create: publicProcedure.input(z.object({
       engineerId: z.number(), taskDate: z.string(), title: z.string().min(1),
       description: z.string().optional(), plannedHours: z.number().optional(),
       priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
     })).mutation(async ({ input }) => { await createTask(input); return { success: true }; }),
-    updateStatus: protectedProcedure.input(z.object({
+    updateStatus: publicProcedure.input(z.object({
       id: z.number(), status: z.enum(['planned', 'completed', 'delayed', 'not_done']),
       notes: z.string().optional(),
     })).mutation(async ({ input }) => { await updateTaskStatus(input.id, input.status, input.notes); return { success: true }; }),
@@ -206,15 +206,15 @@ export const appRouter = router({
 
   // ── Leads ─────────────────────────────────────────────────────────────────
   leads: router({
-    stats: protectedProcedure.input(z.object({ year: z.number(), month: z.number() }))
+    stats: publicProcedure.input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getLeadsStats(input.year, input.month)),
-    list: protectedProcedure.input(z.object({ limit: z.number().optional(), offset: z.number().optional(), status: z.string().optional() }))
+    list: publicProcedure.input(z.object({ limit: z.number().optional(), offset: z.number().optional(), status: z.string().optional() }))
       .query(async ({ input }) => getLeadsList(input.limit, input.offset, input.status)),
-    create: protectedProcedure.input(z.object({
+    create: publicProcedure.input(z.object({
       name: z.string().min(1), phone: z.string().optional(), email: z.string().optional(),
       source: z.string().optional(), assignedEngineerId: z.number().optional(), notes: z.string().optional(),
     })).mutation(async ({ input }) => { await createLead(input); return { success: true }; }),
-    updateStatus: protectedProcedure.input(z.object({
+    updateStatus: publicProcedure.input(z.object({
       id: z.number(), status: z.enum(['new', 'contacted', 'qualified', 'unqualified', 'converted']),
       responseTimeMinutes: z.number().optional(),
     })).mutation(async ({ input }) => { await updateLeadStatus(input.id, input.status, input.responseTimeMinutes); return { success: true }; }),
@@ -222,15 +222,15 @@ export const appRouter = router({
 
   // ── Visits ────────────────────────────────────────────────────────────────
   visits: router({
-    stats: protectedProcedure.input(z.object({ year: z.number(), month: z.number() }))
+    stats: publicProcedure.input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getVisitsStats(input.year, input.month)),
-    list: protectedProcedure.input(z.object({ limit: z.number().optional(), offset: z.number().optional(), status: z.string().optional() }))
+    list: publicProcedure.input(z.object({ limit: z.number().optional(), offset: z.number().optional(), status: z.string().optional() }))
       .query(async ({ input }) => getVisitsList(input.limit, input.offset, input.status)),
-    create: protectedProcedure.input(z.object({
+    create: publicProcedure.input(z.object({
       engineerId: z.number(), clientName: z.string().min(1), clientPhone: z.string().optional(),
       address: z.string().optional(), scheduledAt: z.date(), leadId: z.number().optional(), notes: z.string().optional(),
     })).mutation(async ({ input }) => { await createVisit(input); return { success: true }; }),
-    updateStatus: protectedProcedure.input(z.object({
+    updateStatus: publicProcedure.input(z.object({
       id: z.number(), status: z.enum(['scheduled', 'completed', 'delayed', 'cancelled']),
       quality: z.enum(['successful', 'with_issues', 'rejected', 'repeated']).optional(),
       delayMinutes: z.number().optional(), notes: z.string().optional(),
@@ -239,16 +239,16 @@ export const appRouter = router({
 
   // ── Closing / Deals ───────────────────────────────────────────────────────
   closing: router({
-    stats: protectedProcedure.input(z.object({ year: z.number(), month: z.number() }))
+    stats: publicProcedure.input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getDealsStats(input.year, input.month)),
-    list: protectedProcedure.input(z.object({ limit: z.number().optional(), offset: z.number().optional(), stage: z.string().optional() }))
+    list: publicProcedure.input(z.object({ limit: z.number().optional(), offset: z.number().optional(), stage: z.string().optional() }))
       .query(async ({ input }) => getDealsList(input.limit, input.offset, input.stage)),
-    create: protectedProcedure.input(z.object({
+    create: publicProcedure.input(z.object({
       engineerId: z.number(), clientName: z.string().min(1), value: z.number().positive(),
       visitId: z.number().optional(), leadId: z.number().optional(),
       nextAction: z.string().optional(), nextActionDate: z.string().optional(), notes: z.string().optional(),
     })).mutation(async ({ input }) => { await createDeal(input); return { success: true }; }),
-    updateStage: protectedProcedure.input(z.object({
+    updateStage: publicProcedure.input(z.object({
       id: z.number(), stage: z.enum(['proposal', 'negotiation', 'contract_sent', 'closed_won', 'closed_lost']),
       nextAction: z.string().optional(), nextActionDate: z.string().optional(), notes: z.string().optional(),
     })).mutation(async ({ input }) => { await updateDealStage(input.id, input.stage, input.nextAction, input.nextActionDate, input.notes); return { success: true }; }),
@@ -256,43 +256,43 @@ export const appRouter = router({
 
   // ── Monthly Sales ─────────────────────────────────────────────────────────
   sales: router({
-    monthlyStats: protectedProcedure.input(z.object({ year: z.number(), month: z.number() }))
+    monthlyStats: publicProcedure.input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getMonthlySalesStats(input.year, input.month)),
-    trend: protectedProcedure.input(z.object({ months: z.number().optional() }))
+    trend: publicProcedure.input(z.object({ months: z.number().optional() }))
       .query(async ({ input }) => getMonthlySalesTrend(input.months ?? 6)),
   }),
 
   // ── KPI ───────────────────────────────────────────────────────────────────
   kpi: router({
-    engineers: protectedProcedure.input(z.object({ year: z.number(), month: z.number() }))
+    engineers: publicProcedure.input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getEngineersKPI(input.year, input.month)),
   }),
 
   // ── Collections ───────────────────────────────────────────────────────────
   collections: router({
-    stats: protectedProcedure.query(async () => getCollectionsStats()),
-    list: protectedProcedure.input(z.object({ limit: z.number().optional(), offset: z.number().optional(), status: z.string().optional() }))
+    stats: publicProcedure.query(async () => getCollectionsStats()),
+    list: publicProcedure.input(z.object({ limit: z.number().optional(), offset: z.number().optional(), status: z.string().optional() }))
       .query(async ({ input }) => getCollectionsList(input.limit, input.offset, input.status)),
-    create: protectedProcedure.input(z.object({
+    create: publicProcedure.input(z.object({
       clientName: z.string().min(1), contractAmount: z.number().positive(),
       collectedAmount: z.number().optional(), dueDate: z.string().optional(),
       dealId: z.number().optional(), notes: z.string().optional(),
     })).mutation(async ({ input }) => { await createCollection(input); return { success: true }; }),
-    update: protectedProcedure.input(z.object({
+    update: publicProcedure.input(z.object({
       id: z.number(), collectedAmount: z.number(), status: z.string().optional(), notes: z.string().optional(),
     })).mutation(async ({ input }) => { await updateCollection(input.id, input.collectedAmount, input.status, input.notes); return { success: true }; }),
   }),
 
   // ── Planning ──────────────────────────────────────────────────────────────
   planning: router({
-    getTarget: protectedProcedure.input(z.object({ year: z.number(), month: z.number() }))
+    getTarget: publicProcedure.input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getMonthlyTarget(input.year, input.month)),
-    setTarget: protectedProcedure.input(z.object({
+    setTarget: publicProcedure.input(z.object({
       year: z.number(), month: z.number(), targetAmount: z.number().positive(),
       avgDealValue: z.number().optional(), closingRate: z.number().optional(),
       visitToClosingRate: z.number().optional(), notes: z.string().optional(),
     })).mutation(async ({ input }) => { await upsertMonthlyTarget(input); return { success: true }; }),
-    calculate: protectedProcedure.input(z.object({
+    calculate: publicProcedure.input(z.object({
       targetAmount: z.number(), avgDealValue: z.number(), closingRate: z.number(), visitToClosingRate: z.number(),
     })).query(async ({ input }) => {
       const { targetAmount, avgDealValue, closingRate, visitToClosingRate } = input;
@@ -305,24 +305,24 @@ export const appRouter = router({
 
   // ── Legacy: Customers / Products ─────────────────────────────────────────
   customers: router({
-    list: protectedProcedure.input(z.object({ search: z.string().optional(), status: z.string().optional(), limit: z.number().optional(), offset: z.number().optional() }))
+    list: publicProcedure.input(z.object({ search: z.string().optional(), status: z.string().optional(), limit: z.number().optional(), offset: z.number().optional() }))
       .query(async ({ input }) => getCustomers(input)),
-    create: protectedProcedure.input(z.object({ name: z.string().min(1), email: z.string().optional(), phone: z.string().optional(), company: z.string().optional(), status: z.string().optional() }))
+    create: publicProcedure.input(z.object({ name: z.string().min(1), email: z.string().optional(), phone: z.string().optional(), company: z.string().optional(), status: z.string().optional() }))
       .mutation(async ({ input }) => { await createCustomer({ ...input, status: input.status ?? 'active' }); return { success: true }; }),
-    update: protectedProcedure.input(z.object({ id: z.number(), name: z.string().optional(), email: z.string().optional(), phone: z.string().optional(), company: z.string().optional(), status: z.string().optional() }))
+    update: publicProcedure.input(z.object({ id: z.number(), name: z.string().optional(), email: z.string().optional(), phone: z.string().optional(), company: z.string().optional(), status: z.string().optional() }))
       .mutation(async ({ input }) => { const { id, ...data } = input; await updateCustomer(id, data); return { success: true }; }),
-    delete: protectedProcedure.input(z.object({ id: z.number() }))
+    delete: publicProcedure.input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => { await deleteCustomer(input.id); return { success: true }; }),
   }),
   products: router({
-    list: protectedProcedure.input(z.object({ search: z.string().optional(), category: z.string().optional(), status: z.string().optional(), limit: z.number().optional(), offset: z.number().optional() }))
+    list: publicProcedure.input(z.object({ search: z.string().optional(), category: z.string().optional(), status: z.string().optional(), limit: z.number().optional(), offset: z.number().optional() }))
       .query(async ({ input }) => getProducts(input)),
-    categories: protectedProcedure.query(async () => getProductCategories()),
-    create: protectedProcedure.input(z.object({ name: z.string().min(1), sku: z.string().optional(), category: z.string().optional(), price: z.string(), cost: z.string().optional(), stock: z.number().optional(), minStock: z.number().optional(), unit: z.string().optional(), description: z.string().optional(), status: z.string().optional() }))
+    categories: publicProcedure.query(async () => getProductCategories()),
+    create: publicProcedure.input(z.object({ name: z.string().min(1), sku: z.string().optional(), category: z.string().optional(), price: z.string(), cost: z.string().optional(), stock: z.number().optional(), minStock: z.number().optional(), unit: z.string().optional(), description: z.string().optional(), status: z.string().optional() }))
       .mutation(async ({ input }) => { await createProduct({ ...input, status: input.status ?? 'active' }); return { success: true }; }),
-    update: protectedProcedure.input(z.object({ id: z.number(), name: z.string().optional(), sku: z.string().optional(), category: z.string().optional(), price: z.string().optional(), cost: z.string().optional(), stock: z.number().optional(), minStock: z.number().optional(), unit: z.string().optional(), description: z.string().optional(), status: z.string().optional() }))
+    update: publicProcedure.input(z.object({ id: z.number(), name: z.string().optional(), sku: z.string().optional(), category: z.string().optional(), price: z.string().optional(), cost: z.string().optional(), stock: z.number().optional(), minStock: z.number().optional(), unit: z.string().optional(), description: z.string().optional(), status: z.string().optional() }))
       .mutation(async ({ input }) => { const { id, ...data } = input; await updateProduct(id, data); return { success: true }; }),
-    delete: protectedProcedure.input(z.object({ id: z.number() }))
+    delete: publicProcedure.input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => { await deleteProduct(input.id); return { success: true }; }),
   }),
 });
