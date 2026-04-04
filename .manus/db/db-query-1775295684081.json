@@ -1,0 +1,9 @@
+{
+  "query": "CREATE TABLE `sales` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`invoiceNumber` varchar(50) NOT NULL,\n\t`customerId` int NOT NULL,\n\t`totalAmount` decimal(15,2) NOT NULL,\n\t`discount` decimal(15,2) DEFAULT '0',\n\t`tax` decimal(15,2) DEFAULT '0',\n\t`netAmount` decimal(15,2) NOT NULL,\n\t`status` enum('pending','confirmed','shipped','delivered','cancelled') NOT NULL DEFAULT 'pending',\n\t`paymentStatus` enum('unpaid','partial','paid') NOT NULL DEFAULT 'unpaid',\n\t`notes` text,\n\t`saleDate` timestamp NOT NULL DEFAULT (now()),\n\t`createdAt` timestamp NOT NULL DEFAULT (now()),\n\t`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,\n\tCONSTRAINT `sales_id` PRIMARY KEY(`id`),\n\tCONSTRAINT `sales_invoiceNumber_unique` UNIQUE(`invoiceNumber`)\n)",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user fZydmv6Jueen1GW.d1ac4e774f80 --database 9B5dXFSohC6AundZRCEr3i --execute CREATE TABLE `sales` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`invoiceNumber` varchar(50) NOT NULL,\n\t`customerId` int NOT NULL,\n\t`totalAmount` decimal(15,2) NOT NULL,\n\t`discount` decimal(15,2) DEFAULT '0',\n\t`tax` decimal(15,2) DEFAULT '0',\n\t`netAmount` decimal(15,2) NOT NULL,\n\t`status` enum('pending','confirmed','shipped','delivered','cancelled') NOT NULL DEFAULT 'pending',\n\t`paymentStatus` enum('unpaid','partial','paid') NOT NULL DEFAULT 'unpaid',\n\t`notes` text,\n\t`saleDate` timestamp NOT NULL DEFAULT (now()),\n\t`createdAt` timestamp NOT NULL DEFAULT (now()),\n\t`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,\n\tCONSTRAINT `sales_id` PRIMARY KEY(`id`),\n\tCONSTRAINT `sales_invoiceNumber_unique` UNIQUE(`invoiceNumber`)\n)",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 1701
+}

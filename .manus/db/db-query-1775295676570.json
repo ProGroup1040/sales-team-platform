@@ -1,0 +1,9 @@
+{
+  "query": "CREATE TABLE `products` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`name` varchar(255) NOT NULL,\n\t`sku` varchar(100),\n\t`category` varchar(100),\n\t`price` decimal(15,2) NOT NULL,\n\t`cost` decimal(15,2),\n\t`stock` int NOT NULL DEFAULT 0,\n\t`minStock` int DEFAULT 10,\n\t`unit` varchar(50) DEFAULT 'piece',\n\t`description` text,\n\t`status` enum('active','inactive','out_of_stock') NOT NULL DEFAULT 'active',\n\t`createdAt` timestamp NOT NULL DEFAULT (now()),\n\t`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,\n\tCONSTRAINT `products_id` PRIMARY KEY(`id`),\n\tCONSTRAINT `products_sku_unique` UNIQUE(`sku`)\n)",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user fZydmv6Jueen1GW.d1ac4e774f80 --database 9B5dXFSohC6AundZRCEr3i --execute CREATE TABLE `products` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`name` varchar(255) NOT NULL,\n\t`sku` varchar(100),\n\t`category` varchar(100),\n\t`price` decimal(15,2) NOT NULL,\n\t`cost` decimal(15,2),\n\t`stock` int NOT NULL DEFAULT 0,\n\t`minStock` int DEFAULT 10,\n\t`unit` varchar(50) DEFAULT 'piece',\n\t`description` text,\n\t`status` enum('active','inactive','out_of_stock') NOT NULL DEFAULT 'active',\n\t`createdAt` timestamp NOT NULL DEFAULT (now()),\n\t`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,\n\tCONSTRAINT `products_id` PRIMARY KEY(`id`),\n\tCONSTRAINT `products_sku_unique` UNIQUE(`sku`)\n)",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 1843
+}

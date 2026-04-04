@@ -1,0 +1,9 @@
+{
+  "query": "CREATE TABLE `sale_items` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`saleId` int NOT NULL,\n\t`productId` int NOT NULL,\n\t`quantity` int NOT NULL,\n\t`unitPrice` decimal(15,2) NOT NULL,\n\t`totalPrice` decimal(15,2) NOT NULL,\n\t`createdAt` timestamp NOT NULL DEFAULT (now()),\n\tCONSTRAINT `sale_items_id` PRIMARY KEY(`id`)\n)",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user fZydmv6Jueen1GW.d1ac4e774f80 --database 9B5dXFSohC6AundZRCEr3i --execute CREATE TABLE `sale_items` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`saleId` int NOT NULL,\n\t`productId` int NOT NULL,\n\t`quantity` int NOT NULL,\n\t`unitPrice` decimal(15,2) NOT NULL,\n\t`totalPrice` decimal(15,2) NOT NULL,\n\t`createdAt` timestamp NOT NULL DEFAULT (now()),\n\tCONSTRAINT `sale_items_id` PRIMARY KEY(`id`)\n)",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 1669
+}
