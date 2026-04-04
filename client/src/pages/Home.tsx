@@ -46,10 +46,10 @@ export default function Home() {
         {/* Feature Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { icon: TrendingUp, title: 'تحليلات متقدمة', desc: 'رسوم بيانية تفاعلية' },
-            { icon: ShoppingCart, title: 'إدارة المبيعات', desc: 'تتبع كل عملية' },
-            { icon: Users, title: 'إدارة العملاء', desc: 'قاعدة بيانات شاملة' },
-            { icon: Package, title: 'إدارة المنتجات', desc: 'مراقبة المخزون' },
+            { icon: TrendingUp, title: 'متابعة يومية', desc: 'مهام وأداء المهندسين' },
+            { icon: ShoppingCart, title: 'إدارة الصفقات', desc: 'تتبع كل عملية بيع' },
+            { icon: Users, title: 'العملاء والمعاينات', desc: 'متابعة شاملة' },
+            { icon: Package, title: 'تحصيل وأهداف', desc: 'مؤشرات مالية وتخطيط' },
           ].map((feature) => (
             <div key={feature.title} className="bg-white/5 border border-white/10 rounded-2xl p-5 backdrop-blur-sm hover:bg-white/8 transition-colors">
               <feature.icon className="w-7 h-7 text-indigo-400 mb-3 mx-auto" />
