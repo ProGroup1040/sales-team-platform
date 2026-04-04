@@ -1,39 +1,39 @@
 # Sales Control Panel - TODO
 
 ## قاعدة البيانات
-- [ ] جدول engineers (المهندسون)
-- [ ] جدول daily_tasks (المهام اليومية)
-- [ ] جدول leads (العملاء المحتملون)
-- [ ] جدول visits (المعاينات)
-- [ ] جدول deals (الصفقات / Closing)
-- [ ] جدول monthly_targets (الأهداف الشهرية)
-- [ ] جدول collections (التحصيل المالي)
-- [ ] تطبيق migrations وإدراج بيانات تجريبية
+- [x] جدول engineers (المهندسون)
+- [x] جدول daily_tasks (المهام اليومية)
+- [x] جدول leads (العملاء المحتملون)
+- [x] جدول visits (المعاينات)
+- [x] جدول deals (الصفقات / Closing)
+- [x] جدول monthly_targets (الأهداف الشهرية)
+- [x] جدول collections (التحصيل المالي)
+- [x] تطبيق migrations وإدراج بيانات تجريبية
 
 ## Backend (tRPC Routers)
-- [ ] router: tasks (المهام اليومية + Execution Score)
-- [ ] router: leads (الـ Leads + سرعة الرد)
-- [ ] router: visits (المعاينات + Rates)
-- [ ] router: closing (الصفقات + Conversion Rate)
-- [ ] router: sales (Monthly Sales + Target)
-- [ ] router: kpi (مقارنة أداء المهندسين)
-- [ ] router: collections (التحصيل المالي)
-- [ ] router: planning (Target Planning + حسابات)
+- [x] router: tasks (المهام اليومية + Execution Score)
+- [x] router: leads (الـ Leads + سرعة الرد)
+- [x] router: visits (المعاينات + Rates)
+- [x] router: closing (الصفقات + Conversion Rate)
+- [x] router: sales (Monthly Sales + Target)
+- [x] router: kpi (مقارنة أداء المهندسين)
+- [x] router: collections (التحصيل المالي)
+- [x] router: planning (Target Planning + حسابات)
 
 ## واجهة المستخدم
-- [ ] تحديث DashboardLayout بقائمة الـ 8 Modules
-- [ ] صفحة Overview (نظرة عامة مع Alerts)
-- [ ] صفحة Tasks Module
-- [ ] صفحة Leads Module
-- [ ] صفحة Visits Module
-- [ ] صفحة Closing Module
-- [ ] صفحة Sales Module
-- [ ] صفحة KPI Module
-- [ ] صفحة Collections Module
-- [ ] صفحة Planning Module
-- [ ] نظام Alerts للحالات الحرجة
+- [x] تحديث DashboardLayout بقائمة الـ 8 Modules
+- [x] صفحة Overview (نظرة عامة مع Alerts)
+- [x] صفحة Tasks Module
+- [x] صفحة Leads Module
+- [x] صفحة Visits Module
+- [x] صفحة Closing Module
+- [x] صفحة Sales Module
+- [x] صفحة KPI Module
+- [x] صفحة Collections Module
+- [x] صفحة Planning Module
+- [x] نظام Alerts للحالات الحرجة
 
 ## الاختبارات والتسليم
-- [ ] Vitest tests للـ routers الجديدة
-- [ ] حفظ checkpoint نهائي
-- [ ] تسليم النتيجة للمستخدم
+- [x] Vitest tests للـ routers الجديدة (23 اختبار ناجح)
+- [x] حفظ checkpoint نهائي
+- [x] تسليم النتيجة للمستخدم
