@@ -298,23 +298,93 @@ export async function updateLeadStatus(id: number, status: string, responseTimeM
 // ─── Visits ───────────────────────────────────────────────────────────────────
 export async function getVisitsStats(year: number, month: number) {
   const db = await getDb();
-  if (!db) return { scheduled: 0, completed: 0, delayed: 0, cancelled: 0, successful: 0, with_issues: 0, rejected: 0, repeated: 0, completionRate: 0, delayRate: 0, successRate: 0, issueRate: 0 };
+  const empty = {
+    // Booking
+    booked: 0, assigned: 0, assignedDelayCount: 0,
+    // Confirmation
+    confirmedSameDay: 0, confirmedLate: 0, notConfirmed: 0,
+    // Execution
+    scheduled: 0, completed: 0, delayed: 0, cancelled: 0, rescheduled: 0,
+    // Upload
+    uploadedSameDay: 0, uploadedLate: 0, notUploaded: 0,
+    deliveredToAdmin: 0, deliveryDelayCount: 0,
+    // Quality
+    successful: 0, withIssues: 0, designRejected: 0, repeated: 0,
+    // Admin
+    groupOnTime: 0, groupDelayed: 0, notAssignedToDesigner: 0,
+    // Financial
+    totalFeeAmount: 0, feeCollectedCount: 0, feeNotCollectedCount: 0, feeCollectedAmount: 0,
+    // KPIs
+    confirmationRate: 0, delayRate: 0, uploadSameDayRate: 0,
+    cancellationRate: 0, revisitRate: 0, collectionRate: 0, completionRate: 0,
+  };
+  if (!db) return empty;
   const startDate = new Date(year, month - 1, 1);
   const endDate = new Date(year, month, 0, 23, 59, 59);
   const allVisits = await db.select().from(visits).where(between(visits.scheduledAt, startDate, endDate));
-  const scheduled = allVisits.length;
+  const total = allVisits.length;
+  if (total === 0) return empty;
+
+  // ── 1. Booking & Assignment ──
+  const booked = total;
+  const assigned = allVisits.filter(v => v.engineerId).length;
+  const assignedDelayCount = allVisits.filter(v => (v.assignedDelay ?? 0) > 0).length;
+
+  // ── 2. Confirmation ──
+  const confirmedSameDay = allVisits.filter(v => v.confirmationStatus === 'confirmed_same_day').length;
+  const confirmedLate = allVisits.filter(v => v.confirmationStatus === 'confirmed_late').length;
+  const notConfirmed = allVisits.filter(v => v.confirmationStatus === 'not_confirmed').length;
+
+  // ── 3. Execution ──
   const completed = allVisits.filter(v => v.status === 'completed').length;
   const delayed = allVisits.filter(v => v.status === 'delayed').length;
   const cancelled = allVisits.filter(v => v.status === 'cancelled').length;
+  const rescheduled = allVisits.filter(v => v.status === 'rescheduled').length;
+  const scheduled = allVisits.filter(v => v.status === 'scheduled').length;
+
+  // ── 4. Upload & Delivery ──
+  const uploadedSameDay = allVisits.filter(v => v.uploadStatus === 'uploaded_same_day').length;
+  const uploadedLate = allVisits.filter(v => v.uploadStatus === 'uploaded_late').length;
+  const notUploaded = allVisits.filter(v => v.uploadStatus === 'not_uploaded').length;
+  const deliveredToAdmin = allVisits.filter(v => v.deliveredToAdmin === 1).length;
+  const deliveryDelayCount = allVisits.filter(v => (v.deliveryDelayHours ?? 0) > 0).length;
+
+  // ── 5. Quality ──
   const successful = allVisits.filter(v => v.quality === 'successful').length;
-  const with_issues = allVisits.filter(v => v.quality === 'with_issues').length;
-  const rejected = allVisits.filter(v => v.quality === 'rejected').length;
+  const withIssues = allVisits.filter(v => v.quality === 'with_issues').length;
+  const designRejected = allVisits.filter(v => v.quality === 'design_rejected').length;
   const repeated = allVisits.filter(v => v.quality === 'repeated').length;
-  const completionRate = scheduled > 0 ? Math.round((completed / scheduled) * 100) : 0;
-  const delayRate = scheduled > 0 ? Math.round((delayed / scheduled) * 100) : 0;
-  const successRate = completed > 0 ? Math.round((successful / completed) * 100) : 0;
-  const issueRate = completed > 0 ? Math.round((with_issues / completed) * 100) : 0;
-  return { scheduled, completed, delayed, cancelled, successful, with_issues, rejected, repeated, completionRate, delayRate, successRate, issueRate };
+
+  // ── 6. Admin Handling ──
+  const groupOnTime = allVisits.filter(v => v.groupStatus === 'created_on_time').length;
+  const groupDelayed = allVisits.filter(v => v.groupStatus === 'created_late').length;
+  const notAssignedToDesigner = allVisits.filter(v => v.assignedToDesigner === 0).length;
+
+  // ── 7. Financial ──
+  const totalFeeAmount = allVisits.reduce((sum, v) => sum + parseFloat(v.feeAmount ?? '0'), 0);
+  const feeCollectedCount = allVisits.filter(v => v.feeCollected === 1).length;
+  const feeNotCollectedCount = allVisits.filter(v => v.feeCollected === 0).length;
+  const feeCollectedAmount = allVisits.filter(v => v.feeCollected === 1).reduce((sum, v) => sum + parseFloat(v.feeAmount ?? '0'), 0);
+
+  // ── KPI Calculations ──
+  const confirmationRate = total > 0 ? Math.round(((confirmedSameDay + confirmedLate) / total) * 100) : 0;
+  const delayRate = total > 0 ? Math.round((delayed / total) * 100) : 0;
+  const uploadSameDayRate = (completed + delayed) > 0 ? Math.round((uploadedSameDay / (completed + delayed)) * 100) : 0;
+  const cancellationRate = total > 0 ? Math.round((cancelled / total) * 100) : 0;
+  const revisitRate = total > 0 ? Math.round((repeated / total) * 100) : 0;
+  const collectionRate = total > 0 ? Math.round((feeCollectedCount / total) * 100) : 0;
+  const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+  return {
+    booked, assigned, assignedDelayCount,
+    confirmedSameDay, confirmedLate, notConfirmed,
+    scheduled, completed, delayed, cancelled, rescheduled,
+    uploadedSameDay, uploadedLate, notUploaded, deliveredToAdmin, deliveryDelayCount,
+    successful, withIssues, designRejected, repeated,
+    groupOnTime, groupDelayed, notAssignedToDesigner,
+    totalFeeAmount, feeCollectedCount, feeNotCollectedCount, feeCollectedAmount,
+    confirmationRate, delayRate, uploadSameDayRate, cancellationRate, revisitRate, collectionRate, completionRate,
+  };
 }
 
 export async function getVisitsList(limit = 20, offset = 0, status?: string) {

@@ -253,7 +253,7 @@ export default function Overview() {
         <h2 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wide">المعاينات والإغلاق</h2>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <KPICard title="المعاينات المجدولة" value={String(visitsStats?.scheduled ?? 0)} icon={Activity} color="blue" sub={`${visitsStats?.completionRate ?? 0}% معدل الإتمام`} />
-          <KPICard title="معاينات ناجحة" value={String(visitsStats?.successful ?? 0)} icon={CheckCircle} color="green" sub={`${visitsStats?.successRate ?? 0}% نسبة النجاح`} />
+          <KPICard title="معاينات ناجحة" value={String(visitsStats?.successful ?? 0)} icon={CheckCircle} color="green" sub={`${visitsStats?.collectionRate ?? 0}% نسبة التحصيل`} />
           <KPICard title="صفقات مفتوحة" value={String(closingStats?.open ?? 0)} icon={Zap} color="amber" sub={`${closingStats?.conversionRate ?? 0}% نسبة الإغلاق`} />
           <KPICard title="صفقات مغلقة ✓" value={String(closingStats?.closedWon ?? 0)} icon={TrendingUp} color="green" sub={`${(closingStats?.closedValue ?? 0).toLocaleString('ar-EG')} ج.م`} />
         </div>

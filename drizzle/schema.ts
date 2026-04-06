@@ -79,9 +79,37 @@ export const visits = mysqlTable("visits", {
   address: text("address"),
   scheduledAt: timestamp("scheduledAt").notNull(),
   actualAt: timestamp("actualAt"),
-  status: mysqlEnum("status", ["scheduled", "completed", "delayed", "cancelled"]).default("scheduled").notNull(),
-  quality: mysqlEnum("quality", ["successful", "with_issues", "rejected", "repeated"]),
+
+  // ── 1. Booking & Assignment ──────────────────────────────────────────────────
+  assignedDelay: int("assignedDelay").default(0).notNull(),        // تأخير التوزيع بالدقائق
+
+  // ── 2. Confirmation ──────────────────────────────────────────────────────────
+  confirmationStatus: mysqlEnum("confirmationStatus", ["confirmed_same_day", "confirmed_late", "not_confirmed"]).default("not_confirmed").notNull(),
+  confirmedAt: timestamp("confirmedAt"),
+  confirmationDelayHours: int("confirmationDelayHours").default(0).notNull(),
+
+  // ── 3. Execution ─────────────────────────────────────────────────────────────
+  status: mysqlEnum("status", ["scheduled", "completed", "delayed", "cancelled", "rescheduled"]).default("scheduled").notNull(),
   delayMinutes: int("delayMinutes").default(0),
+  rescheduledFromId: int("rescheduledFromId"),
+
+  // ── 4. Upload & Delivery ─────────────────────────────────────────────────────
+  uploadStatus: mysqlEnum("uploadStatus", ["uploaded_same_day", "uploaded_late", "not_uploaded"]).default("not_uploaded").notNull(),
+  uploadedAt: timestamp("uploadedAt"),
+  deliveredToAdmin: int("deliveredToAdmin").default(0).notNull(),  // 1 = نعم
+  deliveryDelayHours: int("deliveryDelayHours").default(0).notNull(),
+
+  // ── 5. Quality ───────────────────────────────────────────────────────────────
+  quality: mysqlEnum("quality", ["successful", "with_issues", "design_rejected", "repeated", "pending"]).default("pending").notNull(),
+
+  // ── 6. Admin Handling ────────────────────────────────────────────────────────
+  groupStatus: mysqlEnum("groupStatus", ["created_on_time", "created_late", "not_created"]).default("not_created").notNull(),
+  assignedToDesigner: int("assignedToDesigner").default(0).notNull(), // 1 = نعم
+
+  // ── 7. Financial ─────────────────────────────────────────────────────────────
+  feeAmount: decimal("feeAmount", { precision: 10, scale: 2 }).default("0").notNull(),
+  feeCollected: int("feeCollected").default(0).notNull(),           // 1 = محصّل
+
   notes: text("notes"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
