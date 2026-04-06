@@ -78,6 +78,7 @@ export default function Overview() {
   const utils = trpc.useUtils();
 
   const { data: taskStats } = trpc.tasks.stats.useQuery({ date: TODAY });
+  const { data: criticalTasks } = trpc.tasks.critical.useQuery();
   const { data: leadsStats } = trpc.leads.stats.useQuery({ year: YEAR, month: MONTH });
   const { data: visitsStats } = trpc.visits.stats.useQuery({ year: YEAR, month: MONTH });
   const { data: closingStats } = trpc.closing.stats.useQuery({ year: YEAR, month: MONTH });
@@ -91,6 +92,7 @@ export default function Overview() {
     const list: { type: 'critical' | 'warning' | 'info'; text: string }[] = [];
     if (taskStats && taskStats.not_done > 0) list.push({ type: 'critical', text: `${taskStats.not_done} مهمة لم تُنفذ اليوم` });
     if (taskStats && taskStats.delayed > 0) list.push({ type: 'warning', text: `${taskStats.delayed} مهمة متأخرة اليوم` });
+    if (taskStats && (taskStats as any).critical > 0) list.push({ type: 'critical', text: `🔥 ${(taskStats as any).critical} مهمة حرجة - تأخير أكثر من يومين` });
     if (leadsStats && leadsStats.delayedRate > 30) list.push({ type: 'warning', text: `نسبة التأخير في الرد على العملاء المحتملين: ${leadsStats.delayedRate}%` });
     if (visitsStats && visitsStats.delayRate > 20) list.push({ type: 'warning', text: `نسبة تأخير المعاينات: ${visitsStats.delayRate}%` });
     if (closingStats && closingStats.conversionRate < 20) list.push({ type: 'critical', text: `نسبة إغلاق الصفقات منخفضة: ${closingStats.conversionRate}%` });
@@ -165,13 +167,86 @@ export default function Overview() {
       {/* KPI Row 1: Tasks & Leads */}
       <div>
         <h2 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wide">المتابعة اليومية</h2>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
           <KPICard title="المهام المخططة اليوم" value={String(taskStats?.planned ?? 0)} icon={Calendar} color="blue" sub={`${taskStats?.completed ?? 0} منجزة`} />
           <KPICard title="المهام المتأخرة" value={String(taskStats?.delayed ?? 0)} icon={Clock} color="amber" trend={taskStats && taskStats.delayed > 2 ? 'down' : 'up'} trendVal={taskStats?.delayed ? `${Math.round((taskStats.delayed / Math.max(taskStats.planned, 1)) * 100)}% من الإجمالي` : undefined} />
           <KPICard title="لم تُنفذ" value={String(taskStats?.not_done ?? 0)} icon={AlertTriangle} color="red" />
+          <KPICard title="🔥 مهام حرجة" value={String((taskStats as any)?.critical ?? 0)} icon={AlertTriangle} color="red" sub={(taskStats as any)?.critical > 0 ? 'تأخير +2 يوم' : 'لا توجد مهام حرجة'} trend={(taskStats as any)?.critical > 0 ? 'down' : 'up'} />
           <KPICard title="العملاء المحتملون هذا الشهر" value={String(leadsStats?.total ?? 0)} icon={Users} color="purple" sub={`${leadsStats?.contacted ?? 0} تم التواصل`} trend="up" trendVal={`${leadsStats?.converted ?? 0} تحول لصفقة`} />
         </div>
       </div>
+
+      {/* Critical Tasks Quick View */}
+      {criticalTasks && criticalTasks.length > 0 && (
+        <Card className="border-red-200 dark:border-red-900/40 bg-red-50/50 dark:bg-red-950/10">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold text-red-700 dark:text-red-400 flex items-center gap-2">
+              🔥 المهام الحرجة ({criticalTasks.length}) — تحتاج تدخلاً فورياً
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {(criticalTasks as any[]).slice(0, 6).map((task: any) => (
+                <div key={task.id} className="flex items-center justify-between p-2.5 rounded-lg bg-red-100/50 dark:bg-red-900/20 border border-red-200/50 dark:border-red-800/30">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-red-800 dark:text-red-300 truncate">{task.title}</p>
+                    <p className="text-xs text-red-600/70 dark:text-red-400/70">{task.delayDays} {task.delayDays === 1 ? 'يوم' : 'أيام'} تأخير</p>
+                  </div>
+                  <Badge className="mr-2 bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 text-xs shrink-0">حرجة</Badge>
+                </div>
+              ))}
+            </div>
+            {criticalTasks.length > 6 && (
+              <p className="text-xs text-red-500 text-center mt-2">و {criticalTasks.length - 6} مهام حرجة أخرى — اذهب لموديول المهام للتفاصيل</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Today's Engineers Ranking */}
+      {taskStats && (taskStats as any).topEngineers && (taskStats as any).topEngineers.length > 0 && (
+        <div>
+          <h2 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wide">ترتيب المهندسين اليوم</h2>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <Card className="border-emerald-200/50 dark:border-emerald-900/30">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">🏆 أفضل 3 مهندسين</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {(taskStats as any).topEngineers.map((eng: any, i: number) => (
+                  <div key={eng.engineerId} className="flex items-center gap-3 p-2.5 rounded-lg bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/30 dark:border-emerald-800/20">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${i === 0 ? 'bg-amber-100 text-amber-700' : i === 1 ? 'bg-slate-100 text-slate-600' : 'bg-orange-100 text-orange-700'}`}>{i + 1}</div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate">{eng.engineerName}</p>
+                      <p className="text-xs text-muted-foreground">{eng.completed} منجزة / {eng.planned} مخططة</p>
+                    </div>
+                    <Badge className={`text-xs ${eng.executionScore >= 90 ? 'bg-emerald-100 text-emerald-700' : eng.executionScore >= 70 ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>{eng.executionScore}%</Badge>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+            {(taskStats as any).bottomEngineers && (taskStats as any).bottomEngineers.length > 0 && (
+              <Card className="border-red-200/50 dark:border-red-900/30">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-semibold text-red-700 dark:text-red-400">⚠ يحتاجون متابعة</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {(taskStats as any).bottomEngineers.map((eng: any, i: number) => (
+                    <div key={eng.engineerId} className="flex items-center gap-3 p-2.5 rounded-lg bg-red-50/50 dark:bg-red-950/20 border border-red-200/30 dark:border-red-800/20">
+                      <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold bg-red-100 text-red-700">{i + 1}</div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm truncate">{eng.engineerName}</p>
+                        <p className="text-xs text-muted-foreground">{eng.not_done} لم تُنفذ، {eng.delayed} متأخرة</p>
+                      </div>
+                      <Badge className="text-xs bg-red-100 text-red-700">{eng.executionScore}%</Badge>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* KPI Row 2: Visits & Closing */}
       <div>

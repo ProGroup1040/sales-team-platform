@@ -5,7 +5,8 @@ import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import {
   getEngineers, createEngineer,
-  getDailyTasksStats, getTasksList, createTask, updateTaskStatus,
+  getDailyTasksStats, getTasksList, createTask, updateTaskStatus, deleteTask, rescheduleTask,
+  getCriticalTasks, getEngineersWithRole, createEngineerWithRole, deleteEngineer,
   getLeadsStats, getLeadsList, createLead, updateLeadStatus,
   getVisitsStats, getVisitsList, createVisit, updateVisitStatus,
   getDealsStats, getDealsList, createDeal, updateDealStage,
@@ -199,9 +200,21 @@ export const appRouter = router({
       priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
     })).mutation(async ({ input }) => { await createTask(input); return { success: true }; }),
     updateStatus: publicProcedure.input(z.object({
-      id: z.number(), status: z.enum(['planned', 'completed', 'delayed', 'not_done']),
-      notes: z.string().optional(),
-    })).mutation(async ({ input }) => { await updateTaskStatus(input.id, input.status, input.notes); return { success: true }; }),
+      id: z.number(), status: z.enum(['planned', 'completed', 'delayed', 'not_done', 'client_delay']),
+      delayDays: z.number().optional(), notes: z.string().optional(),
+    })).mutation(async ({ input }) => { return await updateTaskStatus(input.id, input.status, input.delayDays, input.notes); }),
+    delete: publicProcedure.input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => { await deleteTask(input.id); return { success: true }; }),
+    reschedule: publicProcedure.input(z.object({ id: z.number(), newDate: z.string() }))
+      .mutation(async ({ input }) => { await rescheduleTask(input.id, input.newDate); return { success: true }; }),
+    critical: publicProcedure.query(async () => getCriticalTasks()),
+    engineers: publicProcedure.query(async () => getEngineersWithRole()),
+    createEngineer: publicProcedure.input(z.object({
+      name: z.string().min(1), email: z.string().optional(), phone: z.string().optional(),
+      department: z.string().optional(), role: z.enum(['admin', 'engineer']).optional(),
+    })).mutation(async ({ input }) => { await createEngineerWithRole(input); return { success: true }; }),
+    deleteEngineer: publicProcedure.input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => { await deleteEngineer(input.id); return { success: true }; }),
   }),
 
   // ── Leads ─────────────────────────────────────────────────────────────────

@@ -57,3 +57,20 @@
 - [x] تحديث DashboardLayout لإزالة شرط المصادقة
 - [x] تحويل جميع الـ routers من protectedProcedure إلى publicProcedure
 - [x] تحديث Home.tsx لتوجيه مباشر إلى لوحة التحكم
+
+## تطوير موديول المهام اليومية المتقدم
+- [ ] تحديث schema: إضافة delayDays, clientDelay, rescheduledFromId, isRescheduled للمهام
+- [ ] تحديث schema: إضافة role للمهندسين (admin/engineer)
+- [ ] تطبيق migration SQL الجديد
+- [ ] تحديث Backend: منطق Dynamic Scoring (Done=1, Delayed 1d=0.5, 2d=0.3, 3d=0.1, >3d=0)
+- [ ] تحديث Backend: Client Delay لا يؤثر على Score + إنشاء Task جديدة تلقائياً
+- [ ] تحديث Backend: تصنيف Critical Tasks (تأخير > يومين)
+- [ ] تحديث Backend: Ranking System (Top 3 / Bottom 3)
+- [ ] تحديث Backend: Alerts (تأخير، Critical، أداء < 70%)
+- [ ] بناء Admin View: إضافة/تعديل/حذف Tasks مع تحديد الحالة وعدد أيام التأخير
+- [ ] بناء Engineer View: عرض المهام الخاصة فقط بدون صلاحية تعديل
+- [ ] بناء قسم Critical Tasks منفصل في الموديول
+- [ ] بناء Ranking Section (Top 3 / Bottom 3)
+- [ ] بناء Alerts Section في الموديول والـ Overview
+- [ ] تحديث Overview لعرض Critical Tasks والـ Alerts الجديدة
+- [ ] كتابة اختبارات للـ Scoring Logic

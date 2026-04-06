@@ -62,33 +62,76 @@ export async function createEngineer(data: { name: string; email?: string; phone
 }
 
 // ─── Daily Tasks ──────────────────────────────────────────────────────────────
+
+/** حساب نقطة المهمة حسب الحالة وعدد أيام التأخير */
+export function calcTaskScore(status: string, delayDays: number): number {
+  if (status === 'completed') return 1;
+  if (status === 'delayed') {
+    if (delayDays <= 1) return 0.5;
+    if (delayDays === 2) return 0.3;
+    if (delayDays === 3) return 0.1;
+    return 0;
+  }
+  if (status === 'not_done') return 0;
+  if (status === 'client_delay') return -1; // علامة خاصة: لا تحتسب
+  return -1; // planned = لا تحتسب
+}
+
 export async function getDailyTasksStats(dateStr: string) {
   const db = await getDb();
-  if (!db) return { planned: 0, completed: 0, delayed: 0, not_done: 0, byEngineer: [] };
+  if (!db) return { planned: 0, completed: 0, delayed: 0, not_done: 0, client_delay: 0, critical: 0, byEngineer: [], topEngineers: [], bottomEngineers: [], alerts: [] };
   const taskDateObj = new Date(dateStr + 'T00:00:00');
   const allTasks = await db.select().from(dailyTasks).where(eq(dailyTasks.taskDate, taskDateObj));
-  const planned = allTasks.length;
+
+  const planned = allTasks.filter(t => t.status === 'planned').length;
   const completed = allTasks.filter(t => t.status === 'completed').length;
   const delayed = allTasks.filter(t => t.status === 'delayed').length;
   const not_done = allTasks.filter(t => t.status === 'not_done').length;
+  const client_delay = allTasks.filter(t => t.status === 'client_delay').length;
+  const critical = allTasks.filter(t => t.isCritical === 1).length;
+  const total = allTasks.length;
 
-  const engList = await getEngineers();
+  const engList = await db.select().from(engineers).where(eq(engineers.status, 'active')).orderBy(engineers.name);
   const byEngineer = engList.map(eng => {
     const engTasks = allTasks.filter(t => t.engineerId === eng.id);
+    const scorableTasks = engTasks.filter(t => t.status !== 'client_delay' && t.status !== 'planned');
     const ePlanned = engTasks.length;
     const eCompleted = engTasks.filter(t => t.status === 'completed').length;
     const eDelayed = engTasks.filter(t => t.status === 'delayed').length;
     const eNotDone = engTasks.filter(t => t.status === 'not_done').length;
-    const executionScore = ePlanned > 0 ? ((eCompleted + 0.5 * eDelayed) / ePlanned) * 100 : 0;
+    const eClientDelay = engTasks.filter(t => t.status === 'client_delay').length;
+    const eCritical = engTasks.filter(t => t.isCritical === 1).length;
+    const totalPoints = scorableTasks.reduce((sum, t) => sum + calcTaskScore(t.status, t.delayDays ?? 0), 0);
+    const executionScore = scorableTasks.length > 0 ? (totalPoints / scorableTasks.length) * 100 : 0;
+    const roundedScore = Math.round(executionScore * 10) / 10;
     return {
-      engineerId: eng.id, engineerName: eng.name,
-      planned: ePlanned, completed: eCompleted, delayed: eDelayed, not_done: eNotDone,
-      executionScore: Math.round(executionScore * 10) / 10,
-      rating: executionScore >= 90 ? 'ممتاز' : executionScore >= 70 ? 'جيد' : executionScore >= 50 ? 'مقبول' : 'ضعيف',
+      engineerId: eng.id, engineerName: eng.name, engineerRole: eng.role,
+      planned: ePlanned, completed: eCompleted, delayed: eDelayed,
+      not_done: eNotDone, client_delay: eClientDelay, critical: eCritical,
+      executionScore: roundedScore,
+      rating: roundedScore >= 90 ? 'ممتاز' : roundedScore >= 70 ? 'جيد' : roundedScore >= 50 ? 'مقبول' : 'ضعيف',
     };
   }).filter(e => e.planned > 0);
 
-  return { planned, completed, delayed, not_done, byEngineer };
+  // Ranking
+  const sorted = [...byEngineer].sort((a, b) => b.executionScore - a.executionScore);
+  const topEngineers = sorted.slice(0, 3);
+  const bottomEngineers = sorted.slice(-3).reverse();
+
+  // Alerts
+  const alerts: { type: string; message: string; severity: 'high' | 'medium' | 'low' }[] = [];
+  if (critical > 0) alerts.push({ type: 'critical_tasks', message: `يوجد ${critical} مهمة حرجة تحتاج تدخلاً فورياً`, severity: 'high' });
+  if (not_done > 0) alerts.push({ type: 'not_done', message: `${not_done} مهمة لم تُنفذ اليوم`, severity: 'high' });
+  byEngineer.forEach(eng => {
+    if (eng.executionScore < 70 && eng.planned > 0) {
+      alerts.push({ type: 'low_performance', message: `أداء ${eng.engineerName} أقل من 70% (${eng.executionScore}%)`, severity: 'medium' });
+    }
+    if (eng.delayed >= 3) {
+      alerts.push({ type: 'repeated_delay', message: `${eng.engineerName} لديه تأخيرات متكررة (${eng.delayed} مهام)`, severity: 'medium' });
+    }
+  });
+
+  return { planned: total, completed, delayed, not_done, client_delay, critical, total, byEngineer, topEngineers, bottomEngineers, alerts };
 }
 
 export async function getTasksList(dateStr: string, engineerId?: number) {
@@ -99,26 +142,98 @@ export async function getTasksList(dateStr: string, engineerId?: number) {
   return db.select().from(dailyTasks).where(and(...conditions)).orderBy(dailyTasks.priority);
 }
 
+export async function getCriticalTasks() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(dailyTasks).where(eq(dailyTasks.isCritical, 1)).orderBy(desc(dailyTasks.createdAt)).limit(50);
+}
+
 export async function createTask(data: {
   engineerId: number; taskDate: string; title: string; description?: string;
   plannedHours?: number; priority?: string;
 }) {
   const db = await getDb();
   if (!db) return;
-    await db.insert(dailyTasks).values({
-      engineerId: data.engineerId, taskDate: new Date(data.taskDate + 'T00:00:00'), title: data.title,
-      description: data.description, plannedHours: data.plannedHours ?? 1,
-      priority: (data.priority as any) ?? 'medium', status: 'planned',
-    });
+  await db.insert(dailyTasks).values({
+    engineerId: data.engineerId, taskDate: new Date(data.taskDate + 'T00:00:00'), title: data.title,
+    description: data.description, plannedHours: data.plannedHours ?? 1,
+    priority: (data.priority as any) ?? 'medium', status: 'planned',
+    delayDays: 0, isClientDelay: 0, isRescheduled: 0, isCritical: 0,
+  });
 }
 
-export async function updateTaskStatus(id: number, status: string, notes?: string) {
+export async function updateTaskStatus(id: number, status: string, delayDays?: number, notes?: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const updateData: any = { status };
+  if (notes !== undefined) updateData.notes = notes;
+  if (status === 'completed') { updateData.completedAt = new Date(); updateData.delayDays = 0; updateData.isCritical = 0; }
+  if (status === 'delayed') {
+    const days = delayDays ?? 1;
+    updateData.delayDays = days;
+    updateData.isCritical = days > 2 ? 1 : 0;
+  }
+  if (status === 'not_done') { updateData.isCritical = 0; }
+  if (status === 'client_delay') { updateData.isClientDelay = 1; updateData.isCritical = 0; }
+  await db.update(dailyTasks).set(updateData).where(eq(dailyTasks.id, id));
+  // إذا client_delay: أنشئ مهمة جديدة بتاريخ جديد
+  if (status === 'client_delay') {
+    const [original] = await db.select().from(dailyTasks).where(eq(dailyTasks.id, id)).limit(1);
+    if (original) {
+      const nextDate = new Date(original.taskDate);
+      nextDate.setDate(nextDate.getDate() + 1);
+      await db.insert(dailyTasks).values({
+        engineerId: original.engineerId,
+        taskDate: nextDate,
+        title: original.title,
+        description: original.description,
+        plannedHours: original.plannedHours ?? 1,
+        priority: original.priority,
+        status: 'planned',
+        delayDays: 0, isClientDelay: 0, isRescheduled: 1,
+        rescheduledFromId: id, isCritical: 0,
+      });
+    }
+  }
+  return { success: true };
+}
+
+export async function deleteTask(id: number) {
   const db = await getDb();
   if (!db) return;
-  const updateData: any = { status };
-  if (notes) updateData.notes = notes;
-  if (status === 'completed') updateData.completedAt = new Date();
-  await db.update(dailyTasks).set(updateData).where(eq(dailyTasks.id, id));
+  await db.delete(dailyTasks).where(eq(dailyTasks.id, id));
+}
+
+export async function rescheduleTask(id: number, newDate: string) {
+  const db = await getDb();
+  if (!db) return;
+  const [original] = await db.select().from(dailyTasks).where(eq(dailyTasks.id, id)).limit(1);
+  if (!original) return;
+  await db.insert(dailyTasks).values({
+    engineerId: original.engineerId, taskDate: new Date(newDate + 'T00:00:00'),
+    title: original.title, description: original.description,
+    plannedHours: original.plannedHours ?? 1, priority: original.priority,
+    status: 'planned', delayDays: 0, isClientDelay: 0, isRescheduled: 1,
+    rescheduledFromId: id, isCritical: 0,
+  });
+}
+
+export async function getEngineersWithRole() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(engineers).where(eq(engineers.status, 'active')).orderBy(engineers.name);
+}
+
+export async function createEngineerWithRole(data: { name: string; email?: string; phone?: string; department?: string; role?: string }) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(engineers).values({ ...data, role: (data.role as any) ?? 'engineer', status: 'active' });
+}
+
+export async function deleteEngineer(id: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(engineers).set({ status: 'inactive' }).where(eq(engineers.id, id));
 }
 
 // ─── Leads ────────────────────────────────────────────────────────────────────
