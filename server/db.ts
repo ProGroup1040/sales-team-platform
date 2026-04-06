@@ -419,6 +419,32 @@ export async function updateVisitStatus(id: number, status: string, quality?: st
   await db.update(visits).set(updateData).where(eq(visits.id, id));
 }
 
+export async function updateVisitFull(id: number, data: {
+  status?: string; quality?: string; delayMinutes?: number; notes?: string;
+  confirmationStatus?: string; confirmationDelayHours?: number;
+  uploadStatus?: string; deliveredToAdmin?: boolean; deliveryDelayHours?: number;
+  groupStatus?: string; assignedToDesigner?: boolean;
+  feeAmount?: number; feeCollected?: boolean;
+}) {
+  const db = await getDb();
+  if (!db) return;
+  const updateData: any = {};
+  if (data.status) { updateData.status = data.status; if (data.status === 'completed' || data.status === 'delayed') updateData.actualAt = new Date(); }
+  if (data.quality) updateData.quality = data.quality;
+  if (data.delayMinutes !== undefined) updateData.delayMinutes = data.delayMinutes;
+  if (data.notes) updateData.notes = data.notes;
+  if (data.confirmationStatus) { updateData.confirmationStatus = data.confirmationStatus; updateData.confirmedAt = new Date(); }
+  if (data.confirmationDelayHours !== undefined) updateData.confirmationDelayHours = data.confirmationDelayHours;
+  if (data.uploadStatus) { updateData.uploadStatus = data.uploadStatus; updateData.uploadedAt = new Date(); }
+  if (data.deliveredToAdmin !== undefined) updateData.deliveredToAdmin = data.deliveredToAdmin ? 1 : 0;
+  if (data.deliveryDelayHours !== undefined) updateData.deliveryDelayHours = data.deliveryDelayHours;
+  if (data.groupStatus) updateData.groupStatus = data.groupStatus;
+  if (data.assignedToDesigner !== undefined) updateData.assignedToDesigner = data.assignedToDesigner ? 1 : 0;
+  if (data.feeAmount !== undefined) updateData.feeAmount = String(data.feeAmount);
+  if (data.feeCollected !== undefined) updateData.feeCollected = data.feeCollected ? 1 : 0;
+  if (Object.keys(updateData).length > 0) await db.update(visits).set(updateData).where(eq(visits.id, id));
+}
+
 // ─── Deals (Closing) ──────────────────────────────────────────────────────────
 export async function getDealsStats(year: number, month: number) {
   const db = await getDb();

@@ -76,16 +76,16 @@
 - [x] كتابة اختبارات للـ Scoring Logic
 
 ## إعادة بناء موديول المعاينات الكامل
-- [ ] تحديث schema: إضافة حقول Booking (assignedDelay)
-- [ ] تحديث schema: إضافة حقول Confirmation (confirmedSameDay, confirmationDelay, notConfirmed)
-- [ ] تحديث schema: إضافة حقول Execution (cancelled, rescheduled)
-- [ ] تحديث schema: إضافة حقول Upload (uploadedSameDay, uploadDelayed, notUploaded, deliveredToAdmin, deliveryDelay)
-- [ ] تحديث schema: إضافة حقول Quality (withIssues, repeated, designRejected)
-- [ ] تحديث schema: إضافة حقول Admin (groupCreatedOnTime, groupDelayed, notAssignedToDesigner)
-- [ ] تحديث schema: إضافة حقول Financial (feeCollected, feeAmount)
-- [ ] تطبيق migration SQL الجديد
-- [ ] تحديث Backend: getVisitsStats مع KPI calculations كاملة
-- [ ] تحديث Backend: إضافة/تعديل معاينة مع الحقول الجديدة
-- [ ] إعادة بناء VisitsModule: 7 أقسام (Booking/Confirmation/Execution/Upload/Quality/Admin/Financial)
-- [ ] إضافة KPI cards: Confirmation Rate, Delay Rate, Upload Same Day Rate, Cancellation Rate, Revisit Rate, Collection Rate
-- [ ] كتابة اختبارات للـ KPI calculations
+- [x] تحديث schema: إضافة حقول Booking (assignedDelay)
+- [x] تحديث schema: إضافة حقول Confirmation (confirmedSameDay, confirmationDelay, notConfirmed)
+- [x] تحديث schema: إضافة حقول Execution (cancelled, rescheduled)
+- [x] تحديث schema: إضافة حقول Upload (uploadedSameDay, uploadDelayed, notUploaded, deliveredToAdmin, deliveryDelay)
+- [x] تحديث schema: إضافة حقول Quality (withIssues, repeated, designRejected)
+- [x] تحديث schema: إضافة حقول Admin (groupCreatedOnTime, groupDelayed, notAssignedToDesigner)
+- [x] تحديث schema: إضافة حقول Financial (feeCollected, feeAmount)
+- [x] تطبيق migration SQL الجديد
+- [x] تحديث Backend: getVisitsStats مع KPI calculations كاملة
+- [x] تحديث Backend: إضافة/تعديل معاينة مع الحقول الجديدة
+- [x] إعادة بناء VisitsModule: 7 أقسام (Booking/Confirmation/Execution/Upload/Quality/Admin/Financial)
+- [x] إضافة KPI cards: Confirmation Rate, Delay Rate, Upload Same Day Rate, Cancellation Rate, Revisit Rate, Collection Rate
+- [x] كتابة اختبارات للـ KPI calculations
