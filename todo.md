@@ -89,3 +89,35 @@
 - [x] إعادة بناء VisitsModule: 7 أقسام (Booking/Confirmation/Execution/Upload/Quality/Admin/Financial)
 - [x] إضافة KPI cards: Confirmation Rate, Delay Rate, Upload Same Day Rate, Cancellation Rate, Revisit Rate, Collection Rate
 - [x] كتابة اختبارات للـ KPI calculations
+
+## KPI & Commission Module المستقل (الطلب الجديد)
+- [ ] تحديث schema: إضافة جدول design_reviews (تقييم التصميم الأسبوعي)
+- [ ] تحديث schema: إضافة جدول incentive_tiers (شرائح الحوافز)
+- [ ] تطبيق migration SQL الجديد
+- [ ] تحديث Backend: حساب KPI بالأوزان الثلاثة (Tasks 55% + Response 20% + CRM 25%)
+- [ ] تحديث Backend: Efficiency Score (عدد الاجتماعات لكل صفقة)
+- [ ] تحديث Backend: Commission Status (Available/Partial/Blocked) بناءً على KPI
+- [ ] تحديث Backend: Incentive System (KPI < 70% → محجوب، KPI ≥ 70% → مصروف)
+- [ ] تحديث Backend: Design KPI Weekly (من design_reviews)
+- [ ] تحديث Backend: KPI Alerts (سبب الانخفاض)
+- [ ] تحديث Backend: Ranking بناءً على KPI فقط
+- [ ] إعادة بناء KPIModule.tsx: 8 أقسام كاملة
+- [ ] قسم 1: KPI System (Breakdown + Alerts)
+- [ ] قسم 2: Efficiency داخل Tasks
+- [ ] قسم 3: Commission System (Available/Partial/Blocked)
+- [ ] قسم 4: Incentive System
+- [ ] قسم 5: Engineer View (KPI + Commission + Incentive + Ranking)
+- [ ] قسم 6: Ranking System (بناءً على KPI)
+- [ ] قسم 7: Real-time Updates indicators
+- [ ] قسم 8: Design KPI Weekly
+- [ ] كتابة اختبارات للـ KPI الجديد
+
+## شرائح الحوافز والكوميشن المحددة (الطلب الجديد)
+- [x] تطبيق Incentive Tiers: <500K=0, 500K=2500, 1M=5000, 1.25M=6500, 1.5M=7500, 1.75M=8750, 2M+=10000
+- [x] تطبيق Commission Tiers: 1% حتى 1M، 1.25% حتى 1.25M، 1.5% حتى 1.5M، 1.75% حتى 1.75M، 2% حتى 2M، +0.25% لكل 250K إضافية
+- [x] تطبيق KPI Rules: KPI<60% → لا KPI + لا حافز + 50% كوميشن فقط
+- [x] تطبيق KPI Rules: KPI 60-75% → KPI متاح + كوميشن كامل + لا حافز
+- [x] تطبيق KPI Rules: KPI 75-90% → KPI + كوميشن + حافز
+- [x] تطبيق KPI Rules: KPI ≥ 90% → كل المستحقات كاملة
+- [x] seed الشرائح الجديدة في قاعدة البيانات
+- [x] تحديث KPIModule.tsx لعرض الشرائح والحالة بوضوح

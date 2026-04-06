@@ -163,6 +163,66 @@ export const collections = mysqlTable("collections", {
 });
 export type Collection = typeof collections.$inferSelect;
 
+// ─── Engineer Monthly Targets (هدف كل مهندس شهرياً) ─────────────────────────────
+export const engineerTargets = mysqlTable("engineer_targets", {
+  id: int("id").autoincrement().primaryKey(),
+  engineerId: int("engineerId").notNull(),
+  year: int("year").notNull(),
+  month: int("month").notNull(),
+  targetAmount: decimal("targetAmount", { precision: 14, scale: 2 }).notNull(),
+  manpower: float("manpower").default(1).notNull(), // عدد الأشخاص أو الوحدات
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type EngineerTarget = typeof engineerTargets.$inferSelect;
+
+// ─── Discount Tiers (شرائح الخصم) ────────────────────────────────────────────
+export const discountTiers = mysqlTable("discount_tiers", {
+  id: int("id").autoincrement().primaryKey(),
+  minSales: decimal("minSales", { precision: 14, scale: 2 }).notNull(),
+  maxSales: decimal("maxSales", { precision: 14, scale: 2 }),  // null = no upper limit
+  maxDiscountPct: float("maxDiscountPct").notNull(),
+  label: varchar("label", { length: 120 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type DiscountTier = typeof discountTiers.$inferSelect;
+
+// ─── Commission Tiers (شرائح الكوميشن) ──────────────────────────────────────
+export const commissionTiers = mysqlTable("commission_tiers", {
+  id: int("id").autoincrement().primaryKey(),
+  minAchievementPct: float("minAchievementPct").notNull(),  // نسبة تحقيق الهدف الدنيا
+  maxAchievementPct: float("maxAchievementPct"),             // null = no upper limit
+  commissionPct: float("commissionPct").notNull(),           // نسبة الكوميشن
+  label: varchar("label", { length: 120 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type CommissionTier = typeof commissionTiers.$inferSelect;
+
+// ─── Design Reviews (تقييم التصميم الأسبوعي) ────────────────────────────────
+export const designReviews = mysqlTable("design_reviews", {
+  id: int("id").autoincrement().primaryKey(),
+  engineerId: int("engineerId").notNull(),
+  weekStart: date("weekStart").notNull(),          // بداية الأسبوع
+  designQuality: float("designQuality").default(0).notNull(),   // 0-100
+  revisionCount: int("revisionCount").default(0).notNull(),     // عدد التعديلات
+  executionSpeed: float("executionSpeed").default(0).notNull(), // 0-100
+  meetingNotes: text("meetingNotes"),
+  reviewedBy: varchar("reviewedBy", { length: 120 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type DesignReview = typeof designReviews.$inferSelect;
+
+// ─── Incentive Tiers (شرائح الحوافز) ─────────────────────────────────────────
+export const incentiveTiers = mysqlTable("incentive_tiers", {
+  id: int("id").autoincrement().primaryKey(),
+  minKpiPct: float("minKpiPct").notNull(),          // الحد الأدنى لـ KPI
+  maxKpiPct: float("maxKpiPct"),                    // null = no upper limit
+  incentiveAmount: decimal("incentiveAmount", { precision: 14, scale: 2 }).notNull(),
+  label: varchar("label", { length: 120 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type IncentiveTier = typeof incentiveTiers.$inferSelect;
+
 // ─── Legacy tables (kept for backward compat) ─────────────────────────────────
 export const customers = mysqlTable("customers", {
   id: int("id").autoincrement().primaryKey(),

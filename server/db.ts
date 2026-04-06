@@ -4,6 +4,8 @@ import {
   InsertUser, users,
   engineers, dailyTasks, leads, visits, deals,
   monthlyTargets, collections,
+  engineerTargets, discountTiers, commissionTiers,
+  designReviews, incentiveTiers,
   customers, products, sales, saleItems
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
@@ -550,6 +552,8 @@ export async function getMonthlySalesTrend(months: number = 6) {
 }
 
 // ─── KPI (Engineers Performance) ─────────────────────────────────────────────
+// KPI Weights: Tasks & Execution = 55%, Response Speed = 20%, CRM Update = 25%
+// Efficiency penalty: if avg visits per closed deal > 3, reduce tasks score
 export async function getEngineersKPI(year: number, month: number) {
   const db = await getDb();
   if (!db) return [];
@@ -557,34 +561,168 @@ export async function getEngineersKPI(year: number, month: number) {
   const startDate = new Date(year, month - 1, 1);
   const endDate = new Date(year, month, 0, 23, 59, 59);
 
-    const allTasks = await db.select().from(dailyTasks)
+  const allTasks = await db.select().from(dailyTasks)
     .where(and(gte(dailyTasks.taskDate, startDate), lte(dailyTasks.taskDate, endDate)));
   const allVisits = await db.select().from(visits).where(between(visits.scheduledAt, startDate, endDate));
   const allDeals = await db.select().from(deals).where(between(deals.createdAt, startDate, endDate));
   const allLeads = await db.select().from(leads).where(between(leads.createdAt, startDate, endDate));
+  const commTiers = await getCommissionTiers();
+  const engTargetsList = await db.select().from(engineerTargets)
+    .where(and(eq(engineerTargets.year, year), eq(engineerTargets.month, month)));
 
-  return engList.map(eng => {
+  const results = engList.map(eng => {
+    // ── 1) Tasks & Execution Score (55%) ──────────────────────────────────────
     const engTasks = allTasks.filter(t => t.engineerId === eng.id);
     const planned = engTasks.length;
     const completed = engTasks.filter(t => t.status === 'completed').length;
     const delayed = engTasks.filter(t => t.status === 'delayed').length;
-    const executionScore = planned > 0 ? ((completed + 0.5 * delayed) / planned) * 100 : 0;
+    const notDone = engTasks.filter(t => t.status === 'not_done').length;
+    // Raw execution: completed=1pt, delayed=0.5pt, not_done=0pt
+    const rawExecution = planned > 0 ? ((completed + 0.5 * delayed) / planned) * 100 : 0;
 
+    // Efficiency: visits per closed deal (ideal ≤ 3, penalty if > 3)
     const engVisits = allVisits.filter(v => v.engineerId === eng.id);
     const engDeals = allDeals.filter(d => d.engineerId === eng.id);
     const closedWon = engDeals.filter(d => d.stage === 'closed_won').length;
-    const totalDealValue = engDeals.filter(d => d.stage === 'closed_won').reduce((s, d) => s + parseFloat(d.value), 0);
+    const visitsPerDeal = closedWon > 0 ? engVisits.length / closedWon : (engVisits.length > 0 ? 10 : 1);
+    // Efficiency score: 100 if ≤3 visits/deal, decreases by 10 per extra visit above 3
+    const efficiencyScore = Math.max(0, 100 - Math.max(0, visitsPerDeal - 3) * 10);
+    // Combined tasks score: 70% execution + 30% efficiency
+    const tasksScore = rawExecution * 0.7 + efficiencyScore * 0.3;
+
+    // ── 2) Response Speed Score (20%) ─────────────────────────────────────────
     const engLeads = allLeads.filter(l => l.assignedEngineerId === eng.id);
+    const respondedLeads = engLeads.filter(l => l.responseTimeMinutes !== null && l.responseTimeMinutes !== undefined);
+    // Score: response ≤ 30min = 100, ≤ 60min = 80, ≤ 120min = 60, ≤ 240min = 40, > 240min = 20
+    const responseScore = respondedLeads.length > 0
+      ? respondedLeads.reduce((sum, l) => {
+          const mins = l.responseTimeMinutes ?? 999;
+          const s = mins <= 30 ? 100 : mins <= 60 ? 80 : mins <= 120 ? 60 : mins <= 240 ? 40 : 20;
+          return sum + s;
+        }, 0) / respondedLeads.length
+      : (engLeads.length > 0 ? 0 : 100); // 0 if has leads but no response, 100 if no leads
+
+    // ── 3) CRM Update Score (25%) ─────────────────────────────────────────────
+    // CRM compliance: visits with notes/quality filled, deals with nextAction set
+    const completedVisits = engVisits.filter(v => v.status === 'completed' || v.status === 'delayed');
+    const visitsWithNotes = completedVisits.filter(v => v.notes || v.quality).length;
+    const visitCRMScore = completedVisits.length > 0 ? (visitsWithNotes / completedVisits.length) * 100 : 100;
+    const openDeals = engDeals.filter(d => !['closed_won', 'closed_lost'].includes(d.stage));
+    const dealsWithAction = openDeals.filter(d => d.nextAction).length;
+    const dealCRMScore = openDeals.length > 0 ? (dealsWithAction / openDeals.length) * 100 : 100;
+    const crmScore = (visitCRMScore * 0.5 + dealCRMScore * 0.5);
+
+    // ── Final KPI (weighted) ──────────────────────────────────────────────────
+    const kpiScore = Math.round((tasksScore * 0.55 + responseScore * 0.20 + crmScore * 0.25) * 10) / 10;
+    const rating = kpiScore >= 90 ? 'ممتاز' : kpiScore >= 75 ? 'جيد جداً' : kpiScore >= 60 ? 'جيد' : kpiScore >= 45 ? 'مقبول' : 'ضعيف';
+
+    // ── Sales figures (from closed_won deals) ────────────────────────────────────
+    const totalDealValue = engDeals.filter(d => d.stage === 'closed_won').reduce((s, d) => s + parseFloat(d.value), 0);
+    const engTarget = engTargetsList.find(t => t.engineerId === eng.id);
+    const targetAmount = engTarget ? parseFloat(engTarget.targetAmount) : 0;
+    const achievementPct = targetAmount > 0 ? (totalDealValue / targetAmount) * 100 : 0;
+
+    // ── Commission Tiers (based on total sales value) ─────────────────────────────
+    // 1% up to 1M, 1.25% up to 1.25M, 1.5% up to 1.5M, 1.75% up to 1.75M,
+    // 2% up to 2M, +0.25% per extra 250K above 2M
+    let baseCommissionPct = 0;
+    if (totalDealValue >= 2_000_000) {
+      const extraSlabs = Math.floor((totalDealValue - 2_000_000) / 250_000);
+      baseCommissionPct = 2 + extraSlabs * 0.25;
+    } else if (totalDealValue >= 1_750_000) {
+      baseCommissionPct = 1.75;
+    } else if (totalDealValue >= 1_500_000) {
+      baseCommissionPct = 1.5;
+    } else if (totalDealValue >= 1_250_000) {
+      baseCommissionPct = 1.25;
+    } else if (totalDealValue >= 1_000_000) {
+      baseCommissionPct = 1.0;
+    } else {
+      baseCommissionPct = 0;
+    }
+
+    // ── Incentive Tiers (fixed amounts based on total sales) ──────────────────────
+    let baseIncentiveAmount = 0;
+    if (totalDealValue >= 2_000_000)      baseIncentiveAmount = 10_000;
+    else if (totalDealValue >= 1_750_000) baseIncentiveAmount = 8_750;
+    else if (totalDealValue >= 1_500_000) baseIncentiveAmount = 7_500;
+    else if (totalDealValue >= 1_250_000) baseIncentiveAmount = 6_500;
+    else if (totalDealValue >= 1_000_000) baseIncentiveAmount = 5_000;
+    else if (totalDealValue >= 500_000)   baseIncentiveAmount = 2_500;
+    else                                   baseIncentiveAmount = 0;
+
+    // ── KPI Rules ─────────────────────────────────────────────────────────────────
+    // KPI < 60%  → لا KPI + لا حافز + 50% كوميشن فقط
+    // KPI 60-75% → KPI متاح + كوميشن كامل + لا حافز
+    // KPI 75-90% → KPI + كوميشن + حافز
+    // KPI ≥ 90%  → كل المستحقات كاملة
+    let kpiStatus: 'available' | 'blocked' = 'blocked';
+    let commissionStatus: 'full' | 'partial' | 'blocked' = 'blocked';
+    let incentiveStatus: 'available' | 'blocked' = 'blocked';
+    let commissionMultiplier = 0;
+    let kpiStatusReason = '';
+
+    if (kpiScore >= 90) {
+      kpiStatus = 'available'; commissionStatus = 'full'; incentiveStatus = 'available';
+      commissionMultiplier = 1.0; kpiStatusReason = 'KPI ≥ 90% → كل المستحقات كاملة';
+    } else if (kpiScore >= 75) {
+      kpiStatus = 'available'; commissionStatus = 'full'; incentiveStatus = 'available';
+      commissionMultiplier = 1.0; kpiStatusReason = 'KPI 75-90% → KPI + كوميشن + حافز';
+    } else if (kpiScore >= 60) {
+      kpiStatus = 'available'; commissionStatus = 'full'; incentiveStatus = 'blocked';
+      commissionMultiplier = 1.0; kpiStatusReason = 'KPI 60-75% → KPI + كوميشن كامل — لا حافز';
+    } else {
+      kpiStatus = 'blocked'; commissionStatus = 'partial'; incentiveStatus = 'blocked';
+      commissionMultiplier = 0.5; kpiStatusReason = 'KPI < 60% → لا KPI + لا حافز + 50% كوميشن فقط';
+    }
+
+    const effectiveCommissionPct = baseCommissionPct * commissionMultiplier;
+    const commissionValue = Math.round(totalDealValue * (effectiveCommissionPct / 100));
+    const incentiveValue = incentiveStatus === 'available' ? baseIncentiveAmount : 0;
+    const totalPayout = commissionValue + incentiveValue;
+
+    // ── KPI Alerts ────────────────────────────────────────────────────────────────
+    const kpiAlerts: string[] = [];
+    if (tasksScore < 60) {
+      if (rawExecution < 60) kpiAlerts.push('تأخير في تنفيذ المهام');
+      if (efficiencyScore < 60) kpiAlerts.push(`عدد الاجتماعات مرتفع (${Math.round(visitsPerDeal * 10) / 10} لكل صفقة)`);
+    }
+    if (responseScore < 60) kpiAlerts.push('تأخير في الرد على العملاء المحتملين');
+    if (crmScore < 60) kpiAlerts.push('عدم تحديث CRM بشكل منتظم');
+    if (delayed > 0) kpiAlerts.push(`${delayed} مهمة متأخرة`);
 
     return {
       engineerId: eng.id, engineerName: eng.name, department: eng.department,
-      tasksPlanned: planned, tasksCompleted: completed, tasksDelayed: delayed,
-      executionScore: Math.round(executionScore * 10) / 10,
-      rating: executionScore >= 90 ? 'ممتاز' : executionScore >= 70 ? 'جيد' : executionScore >= 50 ? 'مقبول' : 'ضعيف',
+      tasksPlanned: planned, tasksCompleted: completed, tasksDelayed: delayed, tasksNotDone: notDone,
+      rawExecutionScore: Math.round(rawExecution * 10) / 10,
+      efficiencyScore: Math.round(efficiencyScore * 10) / 10,
+      visitsPerDeal: Math.round(visitsPerDeal * 10) / 10,
+      tasksScore: Math.round(tasksScore * 10) / 10,
+      leadsCount: engLeads.length, respondedLeads: respondedLeads.length,
+      responseScore: Math.round(responseScore * 10) / 10,
+      visitCRMScore: Math.round(visitCRMScore * 10) / 10,
+      dealCRMScore: Math.round(dealCRMScore * 10) / 10,
+      crmScore: Math.round(crmScore * 10) / 10,
+      kpiScore, executionScore: kpiScore,
+      rating, kpiStatus, kpiStatusReason, kpiAlerts,
       visitsCount: engVisits.length, dealsCount: engDeals.length,
-      closedWon, totalDealValue, leadsCount: engLeads.length,
+      closedWon, totalDealValue, achievementPct: Math.round(achievementPct * 10) / 10,
+      targetAmount,
+      baseCommissionPct, commissionMultiplier, effectiveCommissionPct: Math.round(effectiveCommissionPct * 100) / 100,
+      commissionValue, commissionStatus,
+      baseIncentiveAmount, incentiveValue, incentiveStatus,
+      totalPayout,
     };
+
   });
+
+  // Add ranking
+  const sorted = [...results].sort((a, b) => b.kpiScore - a.kpiScore);
+  return results.map(r => ({
+    ...r,
+    kpiRank: sorted.findIndex(s => s.engineerId === r.engineerId) + 1,
+    kpiRankDelta: 0, // can be computed with historical data
+  }));
 }
 
 // ─── Collections ──────────────────────────────────────────────────────────────
@@ -808,3 +946,253 @@ export async function getDashboardStats() {
 
 export async function getMonthlySalesTrendLegacy() { return []; }
 export async function getSalesByStatus() { return []; }
+
+// ─── Sales Control Tower ──────────────────────────────────────────────────────
+
+/** حساب الكوميشن بناءً على الشرائح */
+export function calcCommission(achievementPct: number, salesAmount: number, tiers: Array<{ minAchievementPct: number; maxAchievementPct: number | null; commissionPct: number }>): number {
+  const sorted = [...tiers].sort((a, b) => a.minAchievementPct - b.minAchievementPct);
+  for (const tier of sorted.reverse()) {
+    if (achievementPct >= tier.minAchievementPct) {
+      if (tier.maxAchievementPct === null || achievementPct <= tier.maxAchievementPct) {
+        return Math.round((salesAmount * tier.commissionPct) / 100);
+      }
+    }
+  }
+  return 0;
+}
+
+/** تحديد شريحة الخصم بناءً على إجمالي المبيعات */
+export function getDiscountTier(salesAmount: number, tiers: Array<{ minSales: string; maxSales: string | null; maxDiscountPct: number; label: string | null }>): { maxDiscountPct: number; label: string } | null {
+  const sorted = [...tiers].sort((a, b) => parseFloat(b.minSales) - parseFloat(a.minSales));
+  for (const tier of sorted) {
+    const min = parseFloat(tier.minSales);
+    const max = tier.maxSales ? parseFloat(tier.maxSales) : Infinity;
+    if (salesAmount >= min && salesAmount < max) {
+      return { maxDiscountPct: tier.maxDiscountPct, label: tier.label ?? '' };
+    }
+  }
+  return null;
+}
+
+/** جلب أهداف المهندسين للشهر مع حساب الأداء الفعلي */
+export async function getEngineersSalesPerformance(year: number, month: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const startDate = new Date(year, month - 1, 1);
+  const endDate = new Date(year, month, 0, 23, 59, 59);
+
+  const engList = await getEngineers();
+  const targets = await db.select().from(engineerTargets)
+    .where(and(eq(engineerTargets.year, year), eq(engineerTargets.month, month)));
+  const wonDeals = await db.select().from(deals)
+    .where(and(eq(deals.stage, 'closed_won'), between(deals.closedAt as any, startDate, endDate)));
+  const allDeals = await db.select().from(deals)
+    .where(between(deals.createdAt, startDate, endDate));
+  const allVisits = await db.select().from(visits)
+    .where(between(visits.scheduledAt, startDate, endDate));
+  const commTiers = await db.select().from(commissionTiers).orderBy(commissionTiers.minAchievementPct);
+
+  return engList.map(eng => {
+    const targetRow = targets.find(t => t.engineerId === eng.id);
+    const targetAmount = targetRow ? parseFloat(targetRow.targetAmount) : 0;
+    const manpower = targetRow?.manpower ?? 1;
+
+    const engWonDeals = wonDeals.filter(d => d.engineerId === eng.id);
+    const actualSales = engWonDeals.reduce((s, d) => s + parseFloat(d.value), 0);
+    const achievementPct = targetAmount > 0 ? Math.round((actualSales / targetAmount) * 100) : 0;
+    const remaining = Math.max(0, targetAmount - actualSales);
+
+    const engAllDeals = allDeals.filter(d => d.engineerId === eng.id);
+    const engVisits = allVisits.filter(v => v.engineerId === eng.id);
+
+    // حالة الأداء مقارنة بالوقت
+    const now = new Date();
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const daysPassed = year === now.getFullYear() && month === now.getMonth() + 1
+      ? Math.min(now.getDate(), daysInMonth) : daysInMonth;
+    const timePct = Math.round((daysPassed / daysInMonth) * 100);
+    const progressStatus = achievementPct >= timePct + 10 ? 'ahead' : achievementPct >= timePct - 10 ? 'on_track' : 'behind';
+
+    // حساب الكوميشن
+    const commission = calcCommission(achievementPct, actualSales, commTiers.map(t => ({
+      minAchievementPct: t.minAchievementPct,
+      maxAchievementPct: t.maxAchievementPct,
+      commissionPct: t.commissionPct,
+    })));
+
+    return {
+      engineerId: eng.id,
+      engineerName: eng.name,
+      targetAmount,
+      manpower,
+      actualSales,
+      achievementPct,
+      remaining,
+      progressStatus,
+      commission,
+      dealsCount: engAllDeals.length,
+      closedWon: engWonDeals.length,
+      visitsCount: engVisits.length,
+    };
+  });
+}
+
+/** إحصاءات Sales Control Tower الشاملة */
+export async function getSalesControlStats(year: number, month: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const startDate = new Date(year, month - 1, 1);
+  const endDate = new Date(year, month, 0, 23, 59, 59);
+
+  // الهدف الشهري الإجمالي
+  const targetRow = await db.select().from(monthlyTargets)
+    .where(and(eq(monthlyTargets.year, year), eq(monthlyTargets.month, month))).limit(1);
+  const totalTarget = targetRow.length > 0 ? parseFloat(targetRow[0].targetAmount) : 0;
+
+  // المبيعات الفعلية
+  const wonDeals = await db.select().from(deals)
+    .where(and(eq(deals.stage, 'closed_won'), between(deals.closedAt as any, startDate, endDate)));
+  const actualSales = wonDeals.reduce((s, d) => s + parseFloat(d.value), 0);
+  const achievementRate = totalTarget > 0 ? Math.round((actualSales / totalTarget) * 100) : 0;
+  const remaining = Math.max(0, totalTarget - actualSales);
+
+  // الوقت
+  const now = new Date();
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const daysPassed = year === now.getFullYear() && month === now.getMonth() + 1
+    ? Math.min(now.getDate(), daysInMonth) : daysInMonth;
+  const daysRemaining = Math.max(0, daysInMonth - daysPassed);
+  const timePct = Math.round((daysPassed / daysInMonth) * 100);
+  const requiredDailyRate = daysRemaining > 0 ? Math.round(remaining / daysRemaining) : 0;
+
+  // Capacity Planning
+  const engTargets = await db.select().from(engineerTargets)
+    .where(and(eq(engineerTargets.year, year), eq(engineerTargets.month, month)));
+  const totalCapacity = engTargets.reduce((s, t) => s + parseFloat(t.targetAmount), 0);
+
+  // Conversion Metrics
+  const allVisits = await db.select({ total: count() }).from(visits)
+    .where(between(visits.scheduledAt, startDate, endDate));
+  const allLeads = await db.select({ total: count() }).from(leads)
+    .where(between(leads.createdAt, startDate, endDate));
+  const totalVisits = allVisits[0]?.total ?? 0;
+  const totalLeads = allLeads[0]?.total ?? 0;
+  const closedWonCount = wonDeals.length;
+  const visitsToClosingRate = totalVisits > 0 ? Math.round((closedWonCount / totalVisits) * 100) : 0;
+  const leadsToVisitsRate = totalLeads > 0 ? Math.round((totalVisits / totalLeads) * 100) : 0;
+
+  // Pipeline (active deals)
+  const pipelineDeals = await db.select().from(deals)
+    .where(and(
+      between(deals.createdAt, startDate, endDate),
+      sql`${deals.stage} NOT IN ('closed_won', 'closed_lost')`
+    )).orderBy(desc(deals.createdAt)).limit(20);
+
+  // Discount tiers
+  const discTiers = await db.select().from(discountTiers).orderBy(discountTiers.minSales);
+  const currentDiscountTier = getDiscountTier(actualSales, discTiers.map(t => ({
+    minSales: t.minSales,
+    maxSales: t.maxSales,
+    maxDiscountPct: t.maxDiscountPct,
+    label: t.label,
+  })));
+
+  return {
+    totalTarget, actualSales, achievementRate, remaining,
+    daysInMonth, daysPassed, daysRemaining, timePct, requiredDailyRate,
+    totalCapacity, visitsToClosingRate, leadsToVisitsRate,
+    pipelineDeals, discountTiers: discTiers, currentDiscountTier,
+    totalVisits, totalLeads, closedWonCount,
+  };
+}
+
+/** جلب شرائح الخصم */
+export async function getDiscountTiers() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(discountTiers).orderBy(discountTiers.minSales);
+}
+
+/** إضافة / تعديل شريحة خصم */
+export async function upsertDiscountTier(data: { id?: number; minSales: number; maxSales?: number; maxDiscountPct: number; label?: string }) {
+  const db = await getDb();
+  if (!db) return;
+  if (data.id) {
+    await db.update(discountTiers).set({
+      minSales: data.minSales.toString(),
+      maxSales: data.maxSales?.toString() ?? null,
+      maxDiscountPct: data.maxDiscountPct,
+      label: data.label,
+    }).where(eq(discountTiers.id, data.id));
+  } else {
+    await db.insert(discountTiers).values({
+      minSales: data.minSales.toString(),
+      maxSales: data.maxSales?.toString() ?? null,
+      maxDiscountPct: data.maxDiscountPct,
+      label: data.label,
+    });
+  }
+}
+
+export async function deleteDiscountTier(id: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(discountTiers).where(eq(discountTiers.id, id));
+}
+
+/** جلب شرائح الكوميشن */
+export async function getCommissionTiers() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(commissionTiers).orderBy(commissionTiers.minAchievementPct);
+}
+
+/** إضافة / تعديل شريحة كوميشن */
+export async function upsertCommissionTier(data: { id?: number; minAchievementPct: number; maxAchievementPct?: number; commissionPct: number; label?: string }) {
+  const db = await getDb();
+  if (!db) return;
+  if (data.id) {
+    await db.update(commissionTiers).set({
+      minAchievementPct: data.minAchievementPct,
+      maxAchievementPct: data.maxAchievementPct ?? null,
+      commissionPct: data.commissionPct,
+      label: data.label,
+    }).where(eq(commissionTiers.id, data.id));
+  } else {
+    await db.insert(commissionTiers).values({
+      minAchievementPct: data.minAchievementPct,
+      maxAchievementPct: data.maxAchievementPct ?? null,
+      commissionPct: data.commissionPct,
+      label: data.label,
+    });
+  }
+}
+
+export async function deleteCommissionTier(id: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(commissionTiers).where(eq(commissionTiers.id, id));
+}
+
+/** إضافة / تعديل هدف مهندس */
+export async function upsertEngineerTarget(data: { engineerId: number; year: number; month: number; targetAmount: number; manpower?: number; notes?: string }) {
+  const db = await getDb();
+  if (!db) return;
+  const existing = await db.select().from(engineerTargets)
+    .where(and(eq(engineerTargets.engineerId, data.engineerId), eq(engineerTargets.year, data.year), eq(engineerTargets.month, data.month))).limit(1);
+  if (existing.length > 0) {
+    await db.update(engineerTargets).set({
+      targetAmount: data.targetAmount.toString(),
+      manpower: data.manpower ?? 1,
+      notes: data.notes,
+    }).where(eq(engineerTargets.id, existing[0].id));
+  } else {
+    await db.insert(engineerTargets).values({
+      engineerId: data.engineerId, year: data.year, month: data.month,
+      targetAmount: data.targetAmount.toString(),
+      manpower: data.manpower ?? 1,
+      notes: data.notes,
+    });
+  }
+}

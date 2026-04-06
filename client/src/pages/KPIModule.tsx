@@ -2,12 +2,94 @@ import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, Radar, Cell, Legend } from "recharts";
-import { Trophy, TrendingDown, Award } from "lucide-react";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  RadarChart, PolarGrid, PolarAngleAxis, Radar, Legend,
+} from "recharts";
+import {
+  Trophy, TrendingDown, Zap, Clock, Database, DollarSign,
+  AlertTriangle, Star, Gift, CheckCircle, XCircle, MinusCircle,
+  ChevronUp, ChevronDown, Minus, Info,
+} from "lucide-react";
 
 const now = new Date();
+const MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+
+const fmt = (n: number) =>
+  n >= 1_000_000 ? `${(n/1_000_000).toFixed(2)}م` : n >= 1_000 ? `${(n/1_000).toFixed(0)}ك` : n.toLocaleString('ar-EG');
+const fmtFull = (n: number) => `${n.toLocaleString('ar-EG')} ج.م`;
+
+function getScoreColor(s: number) {
+  if (s >= 90) return '#10b981';
+  if (s >= 75) return '#6366f1';
+  if (s >= 60) return '#f59e0b';
+  if (s >= 45) return '#f97316';
+  return '#ef4444';
+}
+
+function getRatingBg(rating: string) {
+  if (rating === 'ممتاز')   return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+  if (rating === 'جيد جداً') return 'bg-blue-100 text-blue-700 border-blue-200';
+  if (rating === 'جيد')     return 'bg-indigo-100 text-indigo-700 border-indigo-200';
+  if (rating === 'مقبول')   return 'bg-amber-100 text-amber-700 border-amber-200';
+  return 'bg-red-100 text-red-700 border-red-200';
+}
+
+function StatusBadge({ status, type }: { status: string; type: 'commission' | 'incentive' | 'kpi' }) {
+  if (status === 'available' || status === 'full')
+    return <span className="flex items-center gap-1 text-emerald-600 text-xs font-bold"><CheckCircle className="w-3.5 h-3.5" /> متاح</span>;
+  if (status === 'partial')
+    return <span className="flex items-center gap-1 text-amber-600 text-xs font-bold"><MinusCircle className="w-3.5 h-3.5" /> جزئي (50%)</span>;
+  return <span className="flex items-center gap-1 text-red-500 text-xs font-bold"><XCircle className="w-3.5 h-3.5" /> محجوب</span>;
+}
+
+function WeightBar({ label, score, weight, color, icon: Icon }: {
+  label: string; score: number; weight: number; color: string; icon: React.ElementType;
+}) {
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between text-xs">
+        <div className="flex items-center gap-1.5">
+          <Icon className="w-3.5 h-3.5" style={{ color }} />
+          <span className="text-muted-foreground">{label}</span>
+          <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded-full font-medium">{weight}%</span>
+        </div>
+        <span className="font-bold" style={{ color: getScoreColor(score) }}>{score}%</span>
+      </div>
+      <div className="h-2 bg-muted rounded-full overflow-hidden">
+        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${score}%`, backgroundColor: color }} />
+      </div>
+    </div>
+  );
+}
+
+// Commission tiers reference table
+const COMMISSION_TIERS = [
+  { label: 'أقل من 1,000,000', pct: 0 },
+  { label: '1,000,000 → 1,250,000', pct: 1 },
+  { label: '1,250,000 → 1,500,000', pct: 1.25 },
+  { label: '1,500,000 → 1,750,000', pct: 1.5 },
+  { label: '1,750,000 → 2,000,000', pct: 1.75 },
+  { label: '2,000,000+', pct: '2% + 0.25% لكل 250K' },
+];
+
+const INCENTIVE_TIERS = [
+  { label: 'أقل من 500,000', amount: 0 },
+  { label: '500,000', amount: 2500 },
+  { label: '1,000,000', amount: 5000 },
+  { label: '1,250,000', amount: 6500 },
+  { label: '1,500,000', amount: 7500 },
+  { label: '1,750,000', amount: 8750 },
+  { label: '2,000,000+', amount: 10000 },
+];
+
+const KPI_RULES = [
+  { range: 'KPI < 60%', kpi: 'محجوب', commission: '50% فقط', incentive: 'محجوب', color: 'bg-red-50 border-red-200 text-red-700' },
+  { range: 'KPI 60% → 75%', kpi: 'متاح', commission: 'كامل', incentive: 'محجوب', color: 'bg-amber-50 border-amber-200 text-amber-700' },
+  { range: 'KPI 75% → 90%', kpi: 'متاح', commission: 'كامل', incentive: 'متاح', color: 'bg-blue-50 border-blue-200 text-blue-700' },
+  { range: 'KPI ≥ 90%', kpi: 'متاح', commission: 'كامل', incentive: 'متاح', color: 'bg-emerald-50 border-emerald-200 text-emerald-700' },
+];
 
 export default function KPIModule() {
   const [year, setYear] = useState(now.getFullYear());
@@ -15,85 +97,163 @@ export default function KPIModule() {
 
   const { data: kpiData, isLoading } = trpc.kpi.engineers.useQuery({ year, month });
 
-  const MONTHS = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
-
-  const sorted = kpiData ? [...kpiData].sort((a, b) => b.executionScore - a.executionScore) : [];
+  const sorted = kpiData ? [...kpiData].sort((a, b) => b.kpiScore - a.kpiScore) : [];
   const topPerformer = sorted[0];
   const lowPerformer = sorted[sorted.length - 1];
 
+  const avgKPI = sorted.length > 0 ? Math.round(sorted.reduce((s, e) => s + e.kpiScore, 0) / sorted.length) : 0;
+  const totalCommission = sorted.reduce((s, e) => s + (e.commissionValue ?? 0), 0);
+  const totalIncentive = sorted.reduce((s, e) => s + (e.incentiveValue ?? 0), 0);
+  const totalPayout = sorted.reduce((s, e) => s + (e.totalPayout ?? 0), 0);
+  const blockedCount = sorted.filter(e => e.kpiStatus === 'blocked').length;
+
   const chartData = sorted.map(eng => ({
     name: eng.engineerName.split(' ')[0],
-    'نسبة التنفيذ': eng.executionScore,
-    'عدد الصفقات': eng.closedWon,
-    'عدد المعاينات': eng.visitsCount,
+    'المهام': eng.tasksScore,
+    'الاستجابة': eng.responseScore,
+    'CRM': eng.crmScore,
+    'KPI': eng.kpiScore,
   }));
 
   const radarData = topPerformer ? [
-    { metric: 'المهام', value: topPerformer.executionScore },
-    { metric: 'المعاينات', value: Math.min(100, topPerformer.visitsCount * 5) },
-    { metric: 'الصفقات', value: Math.min(100, topPerformer.closedWon * 20) },
-    { metric: 'العملاء المحتملون', value: Math.min(100, topPerformer.leadsCount * 10) },
-    { metric: 'القيمة', value: Math.min(100, topPerformer.totalDealValue / 10000) },
+    { metric: 'المهام', value: topPerformer.tasksScore ?? 0 },
+    { metric: 'الكفاءة', value: topPerformer.efficiencyScore ?? 0 },
+    { metric: 'الاستجابة', value: topPerformer.responseScore ?? 0 },
+    { metric: 'CRM', value: topPerformer.crmScore ?? 0 },
+    { metric: 'الإنجاز', value: Math.min(100, topPerformer.achievementPct ?? 0) },
   ] : [];
 
-  const getRatingColor = (rating: string) => {
-    if (rating === 'ممتاز') return 'bg-emerald-100 text-emerald-700 border-emerald-200';
-    if (rating === 'جيد') return 'bg-blue-100 text-blue-700 border-blue-200';
-    if (rating === 'مقبول') return 'bg-amber-100 text-amber-700 border-amber-200';
-    return 'bg-red-100 text-red-700 border-red-200';
-  };
-
-  const getScoreColor = (score: number) => {
-    if (score >= 90) return '#10b981';
-    if (score >= 70) return '#6366f1';
-    if (score >= 50) return '#f59e0b';
-    return '#ef4444';
-  };
-
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6 p-6" dir="rtl">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">موديول مؤشرات الأداء</h1>
-          <p className="text-sm text-muted-foreground">مؤشرات الأداء الرئيسية للمهندسين</p>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Star className="w-6 h-6 text-amber-500" />
+            مؤشرات الأداء والكوميشن (KPI)
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            المهام <span className="font-semibold text-indigo-600">55%</span> •
+            الاستجابة <span className="font-semibold text-blue-600">20%</span> •
+            CRM <span className="font-semibold text-emerald-600">25%</span>
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <Select value={String(month)} onValueChange={v => setMonth(parseInt(v))}>
             <SelectTrigger className="w-32 h-8 text-sm"><SelectValue /></SelectTrigger>
-            <SelectContent>{MONTHS.map((m, i) => <SelectItem key={i + 1} value={String(i + 1)}>{m}</SelectItem>)}</SelectContent>
+            <SelectContent>{MONTHS.map((m, i) => <SelectItem key={i+1} value={String(i+1)}>{m}</SelectItem>)}</SelectContent>
           </Select>
           <Select value={String(year)} onValueChange={v => setYear(parseInt(v))}>
             <SelectTrigger className="w-24 h-8 text-sm"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {[now.getFullYear() - 1, now.getFullYear()].map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
-            </SelectContent>
+            <SelectContent>{[2024,2025,2026].map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}</SelectContent>
           </Select>
         </div>
       </div>
 
-      {/* Top & Low Performers */}
+      {/* ─── SECTION 1: Summary KPIs ─── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-indigo-100"><Star className="w-5 h-5 text-indigo-600" /></div>
+            <div>
+              <p className="text-xs text-muted-foreground">متوسط KPI</p>
+              <p className="text-2xl font-bold" style={{ color: getScoreColor(avgKPI) }}>{avgKPI}%</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-green-100"><DollarSign className="w-5 h-5 text-green-600" /></div>
+            <div>
+              <p className="text-xs text-muted-foreground">إجمالي الكوميشن</p>
+              <p className="text-sm font-bold text-green-600">{fmtFull(totalCommission)}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-purple-100"><Gift className="w-5 h-5 text-purple-600" /></div>
+            <div>
+              <p className="text-xs text-muted-foreground">إجمالي الحوافز</p>
+              <p className="text-sm font-bold text-purple-600">{fmtFull(totalIncentive)}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-red-100"><XCircle className="w-5 h-5 text-red-600" /></div>
+            <div>
+              <p className="text-xs text-muted-foreground">KPI محجوب</p>
+              <p className="text-2xl font-bold text-red-600">{blockedCount}</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ─── SECTION 2: KPI Rules Reference ─── */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2"><Info className="w-4 h-4 text-blue-500" /> قواعد KPI والاستحقاقات</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {KPI_RULES.map((rule, i) => (
+              <div key={i} className={`rounded-lg border p-3 ${rule.color}`}>
+                <div className="font-bold text-sm mb-2">{rule.range}</div>
+                <div className="space-y-1 text-xs">
+                  <div className="flex justify-between"><span>KPI:</span><span className="font-semibold">{rule.kpi}</span></div>
+                  <div className="flex justify-between"><span>كوميشن:</span><span className="font-semibold">{rule.commission}</span></div>
+                  <div className="flex justify-between"><span>حافز:</span><span className="font-semibold">{rule.incentive}</span></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ─── SECTION 3: Top & Low Performers ─── */}
       {sorted.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {topPerformer && (
             <Card className="border-emerald-200 bg-emerald-50/50 dark:bg-emerald-950/10">
-              <CardContent className="p-5 flex items-center gap-4">
-                <div className="p-3 rounded-xl bg-emerald-100"><Trophy className="w-6 h-6 text-emerald-600" /></div>
-                <div>
-                  <p className="text-xs text-emerald-600 font-medium mb-0.5">الأعلى أداءً</p>
-                  <p className="font-bold text-lg">{topPerformer.engineerName}</p>
-                  <p className="text-sm text-muted-foreground">نسبة التنفيذ: <span className="font-semibold text-emerald-600">{topPerformer.executionScore}%</span></p>
+              <CardContent className="p-5">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="p-2.5 rounded-xl bg-emerald-100"><Trophy className="w-5 h-5 text-emerald-600" /></div>
+                  <div>
+                    <p className="text-xs text-emerald-600 font-medium">🥇 الأعلى KPI</p>
+                    <p className="font-bold">{topPerformer.engineerName}</p>
+                  </div>
+                  <div className="mr-auto text-left">
+                    <p className="text-2xl font-bold text-emerald-600">{topPerformer.kpiScore}%</p>
+                    <Badge className={`text-xs border ${getRatingBg(topPerformer.rating)}`}>{topPerformer.rating}</Badge>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                  <div className="bg-white/70 dark:bg-white/10 rounded p-1.5"><div className="font-bold text-indigo-600">{topPerformer.tasksScore}%</div><div className="text-muted-foreground">المهام</div></div>
+                  <div className="bg-white/70 dark:bg-white/10 rounded p-1.5"><div className="font-bold text-blue-600">{topPerformer.responseScore}%</div><div className="text-muted-foreground">الاستجابة</div></div>
+                  <div className="bg-white/70 dark:bg-white/10 rounded p-1.5"><div className="font-bold text-emerald-600">{topPerformer.crmScore}%</div><div className="text-muted-foreground">CRM</div></div>
                 </div>
               </CardContent>
             </Card>
           )}
           {lowPerformer && lowPerformer.engineerId !== topPerformer?.engineerId && (
             <Card className="border-red-200 bg-red-50/50 dark:bg-red-950/10">
-              <CardContent className="p-5 flex items-center gap-4">
-                <div className="p-3 rounded-xl bg-red-100"><TrendingDown className="w-6 h-6 text-red-600" /></div>
-                <div>
-                  <p className="text-xs text-red-600 font-medium mb-0.5">يحتاج دعم</p>
-                  <p className="font-bold text-lg">{lowPerformer.engineerName}</p>
-                  <p className="text-sm text-muted-foreground">نسبة التنفيذ: <span className="font-semibold text-red-600">{lowPerformer.executionScore}%</span></p>
+              <CardContent className="p-5">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="p-2.5 rounded-xl bg-red-100"><TrendingDown className="w-5 h-5 text-red-600" /></div>
+                  <div>
+                    <p className="text-xs text-red-600 font-medium">⚠️ يحتاج دعم</p>
+                    <p className="font-bold">{lowPerformer.engineerName}</p>
+                  </div>
+                  <div className="mr-auto text-left">
+                    <p className="text-2xl font-bold text-red-600">{lowPerformer.kpiScore}%</p>
+                    <Badge className={`text-xs border ${getRatingBg(lowPerformer.rating)}`}>{lowPerformer.rating}</Badge>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                  <div className="bg-white/70 dark:bg-white/10 rounded p-1.5"><div className="font-bold text-indigo-600">{lowPerformer.tasksScore}%</div><div className="text-muted-foreground">المهام</div></div>
+                  <div className="bg-white/70 dark:bg-white/10 rounded p-1.5"><div className="font-bold text-blue-600">{lowPerformer.responseScore}%</div><div className="text-muted-foreground">الاستجابة</div></div>
+                  <div className="bg-white/70 dark:bg-white/10 rounded p-1.5"><div className="font-bold text-emerald-600">{lowPerformer.crmScore}%</div><div className="text-muted-foreground">CRM</div></div>
                 </div>
               </CardContent>
             </Card>
@@ -101,95 +261,232 @@ export default function KPIModule() {
         </div>
       )}
 
-      {/* Comparison Chart */}
-      <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-base">مقارنة أداء المهندسين</CardTitle></CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="text-center py-8 text-muted-foreground">جاري التحميل...</div>
-          ) : chartData.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">لا توجد بيانات لهذا الشهر</div>
-          ) : (
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
-                <Tooltip formatter={(v: number) => [`${v}%`]} />
-                <Legend />
-                <Bar dataKey="نسبة التنفيذ" fill="#6366f1" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="نسبة الإغلاق" fill="#10b981" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="إتمام المعاينات" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Individual Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {sorted.map((eng, rank) => (
-          <Card key={eng.engineerId} className="hover:shadow-md transition-shadow">
-            <CardContent className="p-5">
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${rank === 0 ? 'bg-amber-100 text-amber-700' : rank === 1 ? 'bg-slate-100 text-slate-600' : rank === 2 ? 'bg-orange-100 text-orange-700' : 'bg-muted text-muted-foreground'}`}>
-                    {rank + 1}
-                  </div>
-                  <div>
-                    <p className="font-semibold text-sm">{eng.engineerName}</p>
-                    <p className="text-xs text-muted-foreground">{eng.department ?? 'مبيعات'}</p>
-                  </div>
-                </div>
-                <Badge className={`text-xs border ${getRatingColor(eng.rating)}`}>{eng.rating}</Badge>
-              </div>
-
-              {/* Execution Score */}
-              <div className="mb-4">
-                <div className="flex justify-between text-sm mb-1.5">
-                  <span className="text-muted-foreground">نسبة التنفيذ</span>
-                  <span className="font-bold" style={{ color: getScoreColor(eng.executionScore) }}>{eng.executionScore}%</span>
-                </div>
-                <div className="h-2.5 bg-muted rounded-full overflow-hidden">
-                  <div className="h-full rounded-full transition-all" style={{ width: `${eng.executionScore}%`, background: getScoreColor(eng.executionScore) }} />
-                </div>
-              </div>
-
-              {/* Stats Grid */}
-              <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="bg-muted/50 rounded-lg p-2">
-                  <div className="text-lg font-bold text-emerald-600">{eng.tasksCompleted}</div>
-                  <div className="text-xs text-muted-foreground">مهمة منجزة</div>
-                </div>
-                <div className="bg-muted/50 rounded-lg p-2">
-                  <div className="text-lg font-bold text-indigo-600">{eng.visitsCount}</div>
-                  <div className="text-xs text-muted-foreground">معاينة</div>
-                </div>
-                <div className="bg-muted/50 rounded-lg p-2">
-                  <div className="text-lg font-bold text-amber-600">{eng.closedWon}</div>
-                  <div className="text-xs text-muted-foreground">صفقة</div>
-                </div>
-              </div>
-
-              {/* Additional Rates */}
-              <div className="mt-3 space-y-1.5">
-                <div className="flex justify-between text-xs">
-                  <span className="text-muted-foreground">عدد المعاينات</span>
-                  <span className="font-medium">{eng.visitsCount}</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-muted-foreground">عدد الصفقات</span>
-                  <span className="font-medium">{eng.dealsCount}</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-muted-foreground">قيمة الصفقات المغلقة</span>
-                  <span className="font-medium">{eng.totalDealValue.toLocaleString('ar-EG')} ج.م</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+      {/* ─── SECTION 4: Charts ─── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <Card className="lg:col-span-2">
+          <CardHeader className="pb-2"><CardTitle className="text-base">مقارنة مكونات KPI</CardTitle></CardHeader>
+          <CardContent>
+            {isLoading ? <div className="text-center py-8 text-muted-foreground">جاري التحميل...</div> :
+            chartData.length === 0 ? <div className="text-center py-8 text-muted-foreground">لا توجد بيانات</div> : (
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                  <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
+                  <Tooltip formatter={(v: number) => [`${v}%`]} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Bar dataKey="المهام" fill="#6366f1" radius={[3,3,0,0]} />
+                  <Bar dataKey="الاستجابة" fill="#3b82f6" radius={[3,3,0,0]} />
+                  <Bar dataKey="CRM" fill="#10b981" radius={[3,3,0,0]} />
+                  <Bar dataKey="KPI" fill="#f59e0b" radius={[3,3,0,0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-base">{topPerformer ? `${topPerformer.engineerName.split(' ')[0]} - رادار` : 'رادار الأداء'}</CardTitle></CardHeader>
+          <CardContent>
+            {radarData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={220}>
+                <RadarChart data={radarData}>
+                  <PolarGrid />
+                  <PolarAngleAxis dataKey="metric" tick={{ fontSize: 11 }} />
+                  <Radar name="الأداء" dataKey="value" stroke="#6366f1" fill="#6366f1" fillOpacity={0.3} />
+                </RadarChart>
+              </ResponsiveContainer>
+            ) : <div className="text-center py-8 text-muted-foreground text-sm">لا توجد بيانات</div>}
+          </CardContent>
+        </Card>
       </div>
+
+      {/* ─── SECTION 5: Tiers Reference ─── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><DollarSign className="w-4 h-4 text-green-600" /> شرائح الكوميشن</CardTitle></CardHeader>
+          <CardContent>
+            <div className="space-y-1.5">
+              {COMMISSION_TIERS.map((t, i) => (
+                <div key={i} className="flex justify-between items-center py-1.5 px-2 rounded text-sm hover:bg-muted/50">
+                  <span className="text-muted-foreground">{t.label}</span>
+                  <span className="font-bold text-green-600">{typeof t.pct === 'number' ? (t.pct === 0 ? 'لا كوميشن' : `${t.pct}%`) : t.pct}</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><Gift className="w-4 h-4 text-purple-600" /> شرائح الحوافز</CardTitle></CardHeader>
+          <CardContent>
+            <div className="space-y-1.5">
+              {INCENTIVE_TIERS.map((t, i) => (
+                <div key={i} className="flex justify-between items-center py-1.5 px-2 rounded text-sm hover:bg-muted/50">
+                  <span className="text-muted-foreground">{t.label}</span>
+                  <span className="font-bold text-purple-600">{t.amount === 0 ? 'لا حافز' : fmtFull(t.amount)}</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ─── SECTION 6: Individual Engineer Cards ─── */}
+      <div>
+        <h2 className="text-lg font-bold mb-4">تفاصيل أداء المهندسين</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          {sorted.map((eng, rank) => (
+            <Card key={eng.engineerId} className="hover:shadow-md transition-shadow">
+              <CardContent className="p-5 space-y-3">
+                {/* Header */}
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold ${
+                      rank === 0 ? 'bg-amber-100 text-amber-700' :
+                      rank === 1 ? 'bg-slate-100 text-slate-600' :
+                      rank === 2 ? 'bg-orange-100 text-orange-700' :
+                      'bg-muted text-muted-foreground'
+                    }`}>
+                      {rank === 0 ? '🥇' : rank === 1 ? '🥈' : rank === 2 ? '🥉' : rank + 1}
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm">{eng.engineerName}</p>
+                      <p className="text-xs text-muted-foreground">{eng.department ?? 'مبيعات'}</p>
+                    </div>
+                  </div>
+                  <div className="text-left">
+                    <p className="text-xl font-bold" style={{ color: getScoreColor(eng.kpiScore) }}>{eng.kpiScore}%</p>
+                    <Badge className={`text-xs border ${getRatingBg(eng.rating)}`}>{eng.rating}</Badge>
+                  </div>
+                </div>
+
+                {/* KPI Status */}
+                <div className={`rounded-lg p-2.5 text-xs border ${
+                  eng.kpiStatus === 'available' ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'
+                }`}>
+                  <p className="font-semibold mb-0.5">{eng.kpiStatusReason}</p>
+                </div>
+
+                {/* KPI Bars */}
+                <div className="space-y-2">
+                  <WeightBar label="المهام والتنفيذ" score={eng.tasksScore ?? 0} weight={55} color="#6366f1" icon={Zap} />
+                  <WeightBar label="سرعة الاستجابة" score={eng.responseScore ?? 0} weight={20} color="#3b82f6" icon={Clock} />
+                  <WeightBar label="تحديث CRM" score={eng.crmScore ?? 0} weight={25} color="#10b981" icon={Database} />
+                </div>
+
+                {/* Efficiency */}
+                <div className="bg-muted/40 rounded-lg p-2 text-xs">
+                  <div className="flex justify-between mb-0.5">
+                    <span className="text-muted-foreground">كفاءة الاجتماعات</span>
+                    <span className={`font-bold ${(eng.visitsPerDeal ?? 0) > 3 ? 'text-red-500' : 'text-emerald-600'}`}>
+                      {eng.visitsPerDeal ?? 0} معاينة/صفقة
+                    </span>
+                  </div>
+                  {(eng.visitsPerDeal ?? 0) > 3 && (
+                    <p className="text-red-500 mt-0.5">⚠️ أعلى من الحد الطبيعي (3)</p>
+                  )}
+                </div>
+
+                {/* KPI Alerts */}
+                {eng.kpiAlerts && eng.kpiAlerts.length > 0 && (
+                  <div className="space-y-1">
+                    {eng.kpiAlerts.map((alert, i) => (
+                      <div key={i} className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 rounded px-2 py-1">
+                        <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                        {alert}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Commission & Incentive */}
+                <div className="border-t pt-3 space-y-2">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-muted-foreground flex items-center gap-1"><DollarSign className="w-3 h-3" />المبيعات</span>
+                    <span className="font-bold">{fmtFull(eng.totalDealValue ?? 0)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-muted-foreground">نسبة الكوميشن</span>
+                    <span className="font-medium">{eng.baseCommissionPct ?? 0}% × {eng.commissionMultiplier ?? 0} = {eng.effectiveCommissionPct ?? 0}%</span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-muted-foreground">حالة الكوميشن</span>
+                    <StatusBadge status={eng.commissionStatus ?? 'blocked'} type="commission" />
+                  </div>
+                  <div className="flex justify-between items-center text-xs font-semibold">
+                    <span className="text-green-700 flex items-center gap-1"><DollarSign className="w-3 h-3" />الكوميشن</span>
+                    <span className="text-green-700">{fmtFull(eng.commissionValue ?? 0)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-muted-foreground">حالة الحافز</span>
+                    <StatusBadge status={eng.incentiveStatus ?? 'blocked'} type="incentive" />
+                  </div>
+                  <div className="flex justify-between items-center text-xs font-semibold">
+                    <span className="text-purple-700 flex items-center gap-1"><Gift className="w-3 h-3" />الحافز</span>
+                    <span className="text-purple-700">{fmtFull(eng.incentiveValue ?? 0)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm font-bold border-t pt-2 mt-1">
+                    <span className="text-foreground">الإجمالي المستحق</span>
+                    <span className="text-emerald-700">{fmtFull(eng.totalPayout ?? 0)}</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+
+      {/* ─── SECTION 7: Payout Summary Table ─── */}
+      {sorted.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><DollarSign className="w-4 h-4 text-emerald-600" /> ملخص المستحقات الشهرية</CardTitle></CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-muted-foreground text-xs">
+                    <th className="text-right py-2 px-3">المهندس</th>
+                    <th className="text-right py-2 px-3">KPI</th>
+                    <th className="text-right py-2 px-3">المبيعات</th>
+                    <th className="text-right py-2 px-3">الكوميشن</th>
+                    <th className="text-right py-2 px-3">الحافز</th>
+                    <th className="text-right py-2 px-3 font-bold">الإجمالي</th>
+                    <th className="text-right py-2 px-3">الحالة</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map((eng, i) => (
+                    <tr key={eng.engineerId} className="border-b hover:bg-muted/30 transition-colors">
+                      <td className="py-2.5 px-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground text-xs">#{i+1}</span>
+                          <span className="font-semibold">{eng.engineerName}</span>
+                        </div>
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <span className="font-bold" style={{ color: getScoreColor(eng.kpiScore) }}>{eng.kpiScore}%</span>
+                      </td>
+                      <td className="py-2.5 px-3 text-muted-foreground">{fmt(eng.totalDealValue ?? 0)}</td>
+                      <td className="py-2.5 px-3 font-semibold text-green-600">{fmtFull(eng.commissionValue ?? 0)}</td>
+                      <td className="py-2.5 px-3 font-semibold text-purple-600">{fmtFull(eng.incentiveValue ?? 0)}</td>
+                      <td className="py-2.5 px-3 font-bold text-emerald-700">{fmtFull(eng.totalPayout ?? 0)}</td>
+                      <td className="py-2.5 px-3">
+                        <StatusBadge status={eng.kpiStatus ?? 'blocked'} type="kpi" />
+                      </td>
+                    </tr>
+                  ))}
+                  <tr className="bg-muted/30 font-bold">
+                    <td className="py-2.5 px-3" colSpan={3}>الإجمالي</td>
+                    <td className="py-2.5 px-3 text-green-700">{fmtFull(totalCommission)}</td>
+                    <td className="py-2.5 px-3 text-purple-700">{fmtFull(totalIncentive)}</td>
+                    <td className="py-2.5 px-3 text-emerald-700">{fmtFull(totalPayout)}</td>
+                    <td></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {sorted.length === 0 && !isLoading && (
         <div className="text-center py-12 text-muted-foreground">لا توجد بيانات لهذا الشهر</div>

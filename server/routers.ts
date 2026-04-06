@@ -14,6 +14,10 @@ import {
   getEngineersKPI,
   getCollectionsStats, getCollectionsList, createCollection, updateCollection,
   getMonthlyTarget, upsertMonthlyTarget,
+  getSalesControlStats, getEngineersSalesPerformance,
+  getDiscountTiers, upsertDiscountTier, deleteDiscountTier,
+  getCommissionTiers, upsertCommissionTier, deleteCommissionTier,
+  upsertEngineerTarget,
   isSeeded,
   getCustomers, getCustomerById, createCustomer, updateCustomer, deleteCustomer,
   getProducts, getProductById, createProduct, updateProduct, deleteProduct, getProductCategories,
@@ -26,7 +30,7 @@ async function seedData() {
   const db = await getDb();
   if (!db) return;
 
-  const { engineers, dailyTasks, leads, visits, deals, monthlyTargets, collections, customers, products, sales, saleItems } = await import("../drizzle/schema");
+  const { engineers, dailyTasks, leads, visits, deals, monthlyTargets, collections, customers, products, sales, saleItems, engineerTargets, discountTiers, commissionTiers } = await import("../drizzle/schema");
   const { sql } = await import("drizzle-orm");
 
   // Seed engineers
@@ -138,6 +142,39 @@ async function seedData() {
       targetAmount: (500000 + Math.floor(Math.random() * 200000)).toString(),
       avgDealValue: '85000', closingRate: 0.35, visitToClosingRate: 0.45,
     }).onDuplicateKeyUpdate({ set: { targetAmount: sql`VALUES(targetAmount)` } }).catch(() => {});
+  }
+
+  // Seed engineer targets for current month
+  const curYear = now.getFullYear();
+  const curMonth = now.getMonth() + 1;
+  const targetAmounts = [600000, 500000, 400000, 550000];
+  for (let i = 0; i < engList.length; i++) {
+    await db.insert(engineerTargets).values({
+      engineerId: engList[i].id, year: curYear, month: curMonth,
+      targetAmount: targetAmounts[i % targetAmounts.length].toString(),
+      manpower: targetAmounts[i % targetAmounts.length],
+    }).onDuplicateKeyUpdate({ set: { targetAmount: sql`VALUES(targetAmount)` } }).catch(() => {});
+  }
+
+  // Seed discount tiers
+  const discountData = [
+    { minSales: '0', maxSales: '2000000', maxDiscountPct: 5, label: 'شريحة البداية (0 - 2م)' },
+    { minSales: '2000000', maxSales: '3000000', maxDiscountPct: 8, label: 'شريحة المتوسط (2م - 3م)' },
+    { minSales: '3000000', maxSales: null, maxDiscountPct: 12, label: 'شريحة المتميز (أكثر من 3م)' },
+  ];
+  for (const tier of discountData) {
+    await db.insert(discountTiers).values(tier as any).onDuplicateKeyUpdate({ set: { label: sql`VALUES(label)` } }).catch(() => {});
+  }
+
+  // Seed commission tiers
+  const commissionData = [
+    { minAchievementPct: 0, maxAchievementPct: 50, commissionPct: 0, label: 'أقل من 50% - بدون كوميشن' },
+    { minAchievementPct: 50, maxAchievementPct: 80, commissionPct: 1, label: '50% - 80% كوميشن 1%' },
+    { minAchievementPct: 80, maxAchievementPct: 100, commissionPct: 2, label: '80% - 100% كوميشن 2%' },
+    { minAchievementPct: 100, maxAchievementPct: null, commissionPct: 3, label: 'أكثر من 100% كوميشن 3%' },
+  ];
+  for (const tier of commissionData) {
+    await db.insert(commissionTiers).values(tier as any).onDuplicateKeyUpdate({ set: { label: sql`VALUES(label)` } }).catch(() => {});
   }
 
   // Seed collections
@@ -281,15 +318,43 @@ export const appRouter = router({
     })).mutation(async ({ input }) => { await updateDealStage(input.id, input.stage, input.nextAction, input.nextActionDate, input.notes); return { success: true }; }),
   }),
 
-  // ── Monthly Sales ─────────────────────────────────────────────────────────
+  // ── Sales Control Tower ───────────────────────────────────────────────────────────────────────────────────────
   sales: router({
+    // الإحصاءات الشاملة للشهر
+    controlStats: publicProcedure.input(z.object({ year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getSalesControlStats(input.year, input.month)),
+    // أداء كل مهندس مع الكوميشن
+    engineersPerformance: publicProcedure.input(z.object({ year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getEngineersSalesPerformance(input.year, input.month)),
+    // الإحصاءات الشهرية (للتوافق مع الكود القديم)
     monthlyStats: publicProcedure.input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getMonthlySalesStats(input.year, input.month)),
     trend: publicProcedure.input(z.object({ months: z.number().optional() }))
       .query(async ({ input }) => getMonthlySalesTrend(input.months ?? 6)),
+    // إدارة أهداف المهندسين
+    setEngineerTarget: publicProcedure.input(z.object({
+      engineerId: z.number(), year: z.number(), month: z.number(),
+      targetAmount: z.number().positive(), manpower: z.number().optional(), notes: z.string().optional(),
+    })).mutation(async ({ input }) => { await upsertEngineerTarget(input); return { success: true }; }),
+    // شرائح الخصم
+    discountTiers: publicProcedure.query(async () => getDiscountTiers()),
+    upsertDiscountTier: publicProcedure.input(z.object({
+      id: z.number().optional(), minSales: z.number(), maxSales: z.number().optional(),
+      maxDiscountPct: z.number(), label: z.string().optional(),
+    })).mutation(async ({ input }) => { await upsertDiscountTier(input); return { success: true }; }),
+    deleteDiscountTier: publicProcedure.input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => { await deleteDiscountTier(input.id); return { success: true }; }),
+    // شرائح الكوميشن
+    commissionTiers: publicProcedure.query(async () => getCommissionTiers()),
+    upsertCommissionTier: publicProcedure.input(z.object({
+      id: z.number().optional(), minAchievementPct: z.number(), maxAchievementPct: z.number().optional(),
+      commissionPct: z.number(), label: z.string().optional(),
+    })).mutation(async ({ input }) => { await upsertCommissionTier(input); return { success: true }; }),
+    deleteCommissionTier: publicProcedure.input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => { await deleteCommissionTier(input.id); return { success: true }; }),
   }),
 
-  // ── KPI ───────────────────────────────────────────────────────────────────
+  // ── KPI ───────────────────────────────────────────────────────────────────────────────────────
   kpi: router({
     engineers: publicProcedure.input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getEngineersKPI(input.year, input.month)),
