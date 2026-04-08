@@ -121,3 +121,39 @@
 - [x] تطبيق KPI Rules: KPI ≥ 90% → كل المستحقات كاملة
 - [x] seed الشرائح الجديدة في قاعدة البيانات
 - [x] تحديث KPIModule.tsx لعرض الشرائح والحالة بوضوح
+
+## Financial Module (التحصيل + الكوميشن)
+- [ ] جدول payments: client_id, contract_id, amount, payment_date, payment_type, added_by
+- [ ] جدول payment_promises: client_id, promise_amount, promise_date, status (pending/paid/overdue)
+- [ ] جدول commission_payments: engineer_id, contract_id, stage (1/2), amount, status (paid/pending)
+- [ ] تحديث جدول contracts: إضافة حقول total_paid, collection_status, delivery_date
+- [ ] Backend: payment.create + payment.list + payment.byClient
+- [ ] Backend: promise.create + promise.list + promise.updateStatus
+- [ ] Backend: financial.clientProfile (contract value + paid + remaining + %)
+- [ ] Backend: financial.followUpToday (دفعات مستحقة اليوم + متأخرة)
+- [ ] Backend: financial.commissionByEngineer (Progressive + Split Stage 1/2)
+- [ ] Backend: financial.collectionVsCommission (overview)
+- [ ] Backend: visit payment tracking (1000/2000 ج.م خصم من التعاقد)
+- [ ] FinancialModule.tsx: Client Financial Profile (contract + paid + remaining + %)
+- [ ] FinancialModule.tsx: Payment Tracking (تسجيل دفعة جديدة)
+- [ ] FinancialModule.tsx: Payment Promise Tracking (وعد بالدفع)
+- [ ] FinancialModule.tsx: Daily Follow-up List (اليوم + متأخرة + تنبيهات)
+- [ ] FinancialModule.tsx: Responsibility Tracking (مهندس + admin)
+- [ ] FinancialModule.tsx: Visit Collection Tracking (1000/2000)
+- [ ] FinancialModule.tsx: Commission System (Progressive Tiers على التحصيل)
+- [ ] FinancialModule.tsx: Commission Split (Stage 1: 50% عند 75% تحصيل | Stage 2: 50% عند الاستلام)
+- [ ] FinancialModule.tsx: Commission Tracking (Earned + Paid + Pending لكل مهندس)
+- [ ] FinancialModule.tsx: Collection vs Commission Dashboard
+- [ ] تسجيل route /financial في App.tsx وإضافة للـ sidebar
+- [ ] Seed data للـ Financial Module
+- [ ] اختبارات Vitest للـ Commission Progressive + Split Logic
+
+## Financial Module - الحالة الفعلية (مكتمل)
+- [x] جداول payments + payment_promises + commission_payments في قاعدة البيانات
+- [x] Backend API: addContract + addPayment + addPromise + updatePromise + dailyFollowUp + engineersCommission + markCommissionPaid
+- [x] CollectionsModule.tsx: 4 تابات (العقود + المتابعة اليومية + الكوميشن + التحليلات)
+- [x] نظام الكوميشن التصاعدي (Progressive) على التحصيل الفعلي
+- [x] نظام الصرف بالمرحلتين (Stage 1: 75% تحصيل | Stage 2: 100% تحصيل)
+- [x] Payment Promise Tracking مع تحديث الحالة
+- [x] Daily Follow-up List (مستحق اليوم + متأخر + وعود اليوم + وعود متأخرة)
+- [x] اختبارات Vitest: 100 اختبار ناجح (17 جديد للـ Financial Module)

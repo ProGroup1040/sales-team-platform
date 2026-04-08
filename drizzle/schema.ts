@@ -267,6 +267,55 @@ export const sales = mysqlTable("sales", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+// ─── Payments (تسجيل الدفعات الفعلية) ─────────────────────────────────────────
+export const payments = mysqlTable("payments", {
+  id: int("id").autoincrement().primaryKey(),
+  collectionId: int("collectionId").notNull(),   // ربط بالعقد
+  engineerId: int("engineerId"),                  // المهندس المسؤول
+  clientName: varchar("clientName", { length: 120 }).notNull(),
+  amount: decimal("amount", { precision: 14, scale: 2 }).notNull(),
+  paymentDate: date("paymentDate").notNull(),
+  paymentType: mysqlEnum("paymentType", ["initial", "installment", "final", "visit_fee"]).default("installment").notNull(),
+  addedBy: mysqlEnum("addedBy", ["engineer", "admin"]).default("admin").notNull(),
+  receiptNumber: varchar("receiptNumber", { length: 80 }),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type Payment = typeof payments.$inferSelect;
+export type InsertPayment = typeof payments.$inferInsert;
+
+// ─── Payment Promises (وعود الدفع) ────────────────────────────────────────────
+export const paymentPromises = mysqlTable("payment_promises", {
+  id: int("id").autoincrement().primaryKey(),
+  collectionId: int("collectionId").notNull(),
+  engineerId: int("engineerId"),
+  clientName: varchar("clientName", { length: 120 }).notNull(),
+  promiseAmount: decimal("promiseAmount", { precision: 14, scale: 2 }).notNull(),
+  promiseDate: date("promiseDate").notNull(),
+  status: mysqlEnum("status", ["pending", "paid", "overdue"]).default("pending").notNull(),
+  paidAt: timestamp("paidAt"),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type PaymentPromise = typeof paymentPromises.$inferSelect;
+export type InsertPaymentPromise = typeof paymentPromises.$inferInsert;
+
+// ─── Commission Payments (صرف الكوميشن بالمراحل) ────────────────────────────
+export const commissionPayments = mysqlTable("commission_payments", {
+  id: int("id").autoincrement().primaryKey(),
+  collectionId: int("collectionId").notNull(),
+  engineerId: int("engineerId").notNull(),
+  stage: mysqlEnum("stage", ["stage1", "stage2"]).notNull(),  // stage1=50% عند 75% تحصيل, stage2=50% عند الاستلام
+  commissionAmount: decimal("commissionAmount", { precision: 14, scale: 2 }).notNull(),
+  status: mysqlEnum("status", ["pending", "paid"]).default("pending").notNull(),
+  paidAt: timestamp("paidAt"),
+  triggerCondition: text("triggerCondition"),  // وصف الشرط الذي أطلق الصرف
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type CommissionPayment = typeof commissionPayments.$inferSelect;
+
 export const saleItems = mysqlTable("sale_items", {
   id: int("id").autoincrement().primaryKey(),
   saleId: int("saleId").notNull(),

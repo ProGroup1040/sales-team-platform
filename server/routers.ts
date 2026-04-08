@@ -22,6 +22,10 @@ import {
   getCustomers, getCustomerById, createCustomer, updateCustomer, deleteCustomer,
   getProducts, getProductById, createProduct, updateProduct, deleteProduct, getProductCategories,
   getSales, getSaleById, createSale, updateSaleStatus, deleteSale,
+  getAllCollectionsWithSummary, addPayment, addPaymentPromise, updatePromiseStatus,
+  getDailyFollowUpList, getEngineersCollectionCommission, markCommissionPaid,
+  addCollection, updateCollectionStatus, calcProgressiveCommission,
+  getClientFinancialProfile,
 } from "./db";
 
 // ─── Seed Data ────────────────────────────────────────────────────────────────
@@ -395,7 +399,74 @@ export const appRouter = router({
     }),
   }),
 
-  // ── Legacy: Customers / Products ─────────────────────────────────────────
+  // ── Financial Module ───────────────────────────────────────────────────────────────────────────────
+  financial: router({
+    // جلب كل العقود مع ملخص التحصيل
+    allContracts: publicProcedure.input(z.object({ engineerId: z.number().optional() }))
+      .query(async ({ input }) => getAllCollectionsWithSummary(input.engineerId)),
+    // ملف عميل مالي كامل
+    clientProfile: publicProcedure.input(z.object({ collectionId: z.number() }))
+      .query(async ({ input }) => getClientFinancialProfile(input.collectionId)),
+    // إضافة عقد جديد
+    addContract: publicProcedure.input(z.object({
+      clientName: z.string().min(1),
+      contractAmount: z.number().positive(),
+      dueDate: z.string().optional(),
+      dealId: z.number().optional(),
+      notes: z.string().optional(),
+    })).mutation(async ({ input }) => { const result = await addCollection(input); return { success: true, id: (result as { insertId?: number })?.insertId }; }),
+    // تسجيل دفعة
+    addPayment: publicProcedure.input(z.object({
+      collectionId: z.number(),
+      engineerId: z.number().optional(),
+      clientName: z.string().min(1),
+      amount: z.number().positive(),
+      paymentDate: z.string(),
+      paymentType: z.enum(["initial", "installment", "final", "visit_fee"]).default("installment"),
+      addedBy: z.enum(["engineer", "admin"]).default("admin"),
+      receiptNumber: z.string().optional(),
+      notes: z.string().optional(),
+    })).mutation(async ({ input }) => {
+      const result = await addPayment({ ...input, amount: String(input.amount), paymentDate: input.paymentDate as unknown as Date });
+      return { success: true };
+    }),
+    // إضافة وعد دفع
+    addPromise: publicProcedure.input(z.object({
+      collectionId: z.number(),
+      engineerId: z.number().optional(),
+      clientName: z.string().min(1),
+      promiseAmount: z.number().positive(),
+      promiseDate: z.string(),
+      notes: z.string().optional(),
+    })).mutation(async ({ input }) => {
+      await addPaymentPromise({ ...input, promiseAmount: String(input.promiseAmount), promiseDate: input.promiseDate as unknown as Date });
+      return { success: true };
+    }),
+    // تحديث حالة وعد الدفع
+    updatePromise: publicProcedure.input(z.object({
+      id: z.number(),
+      status: z.enum(["pending", "paid", "overdue"]),
+    })).mutation(async ({ input }) => { await updatePromiseStatus(input.id, input.status); return { success: true }; }),
+    // قائمة المتابعة اليومية
+    dailyFollowUp: publicProcedure.query(async () => getDailyFollowUpList()),
+    // كوميشن المهندسين من التحصيل
+    engineersCommission: publicProcedure.query(async () => getEngineersCollectionCommission()),
+    // صرف كوميشن
+    markCommissionPaid: publicProcedure.input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => { await markCommissionPaid(input.id); return { success: true }; }),
+    // تحديث حالة العقد
+    updateContractStatus: publicProcedure.input(z.object({
+      id: z.number(),
+      status: z.enum(["on_track", "due_soon", "overdue", "completed"]),
+    })).mutation(async ({ input }) => { await updateCollectionStatus(input.id, input.status); return { success: true }; }),
+    // حساب الكوميشن التصاعدي
+    calcCommission: publicProcedure.input(z.object({ amount: z.number() }))
+      .query(async ({ input }) => ({
+        commission: calcProgressiveCommission(input.amount),
+        amount: input.amount,
+      })),
+  }),
+  // ── Legacy: Customers / Products ───────────────────────────────────────────────────────────────────────────────
   customers: router({
     list: publicProcedure.input(z.object({ search: z.string().optional(), status: z.string().optional(), limit: z.number().optional(), offset: z.number().optional() }))
       .query(async ({ input }) => getCustomers(input)),

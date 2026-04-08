@@ -6,7 +6,9 @@ import {
   monthlyTargets, collections,
   engineerTargets, discountTiers, commissionTiers,
   designReviews, incentiveTiers,
-  customers, products, sales, saleItems
+  customers, products, sales, saleItems,
+  payments, paymentPromises, commissionPayments,
+  InsertPayment, InsertPaymentPromise
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -1195,4 +1197,213 @@ export async function upsertEngineerTarget(data: { engineerId: number; year: num
       notes: data.notes,
     });
   }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// FINANCIAL MODULE — Payment Tracking + Promises + Commission Split
+// ════════════════════════════════════════════════════════════════════════════
+
+/** حساب الكوميشن التصاعدي على المبلغ المحصّل */
+export function calcProgressiveCommission(collected: number): number {
+  if (collected < 1_000_000) return 0;
+  let commission = 0;
+  const tiers = [
+    { from: 1_000_000, to: 1_250_000, rate: 0.01 },
+    { from: 1_250_000, to: 1_500_000, rate: 0.0125 },
+    { from: 1_500_000, to: 1_750_000, rate: 0.015 },
+    { from: 1_750_000, to: 2_000_000, rate: 0.0175 },
+    { from: 2_000_000, to: Infinity,  rate: 0.02 },
+  ];
+  for (const tier of tiers) {
+    if (collected <= tier.from) break;
+    const taxable = Math.min(collected, tier.to) - tier.from;
+    commission += taxable * tier.rate;
+  }
+  // +0.25% لكل 250K فوق 2M
+  if (collected > 2_000_000) {
+    const extra = Math.floor((collected - 2_000_000) / 250_000);
+    const extraRate = extra * 0.0025;
+    commission += (collected - 2_000_000) * extraRate;
+  }
+  return Math.round(commission * 100) / 100;
+}
+
+/** جلب ملف العميل المالي الكامل (Client Financial Profile) */
+export async function getClientFinancialProfile(collectionId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [col] = await db.select().from(collections).where(eq(collections.id, collectionId)).limit(1);
+  if (!col) return null;
+  const paymentsList = await db.select().from(payments).where(eq(payments.collectionId, collectionId));
+  const promisesList = await db.select().from(paymentPromises).where(eq(paymentPromises.collectionId, collectionId));
+  const commList = await db.select().from(commissionPayments).where(eq(commissionPayments.collectionId, collectionId));
+  const totalPaid = paymentsList.reduce((s, p) => s + parseFloat(p.amount as string), 0);
+  const contractAmt = parseFloat(col.contractAmount as string);
+  const remaining = contractAmt - totalPaid;
+  const pct = contractAmt > 0 ? Math.round((totalPaid / contractAmt) * 100) : 0;
+  let status: "paid" | "partial" | "overdue" = "partial";
+  if (pct >= 100) status = "paid";
+  else if (col.status === "overdue") status = "overdue";
+  return { collection: col, payments: paymentsList, promises: promisesList, commissions: commList, totalPaid, remaining, pct, status };
+}
+
+/** جلب كل العقود مع ملخص التحصيل */
+export async function getAllCollectionsWithSummary(engineerId?: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const cols = await db.select().from(collections);
+  const results = await Promise.all(cols.map(async (col) => {
+    const paymentsList = await db.select().from(payments).where(eq(payments.collectionId, col.id));
+    const promisesList = await db.select().from(paymentPromises).where(eq(paymentPromises.collectionId, col.id));
+    const totalPaid = paymentsList.reduce((s, p) => s + parseFloat(p.amount as string), 0);
+    const contractAmt = parseFloat(col.contractAmount as string);
+    const remaining = contractAmt - totalPaid;
+    const pct = contractAmt > 0 ? Math.round((totalPaid / contractAmt) * 100) : 0;
+    // حالة الكوميشن
+    const commList = await db.select().from(commissionPayments).where(eq(commissionPayments.collectionId, col.id));
+    const stage1 = commList.find(c => c.stage === "stage1");
+    const stage2 = commList.find(c => c.stage === "stage2");
+    return { ...col, totalPaid, remaining, pct, payments: paymentsList, promises: promisesList, stage1Commission: stage1 ?? null, stage2Commission: stage2 ?? null };
+  }));
+  return results;
+}
+
+/** إضافة دفعة جديدة وتحديث collectedAmount */
+export async function addPayment(data: InsertPayment) {
+  const db = await getDb();
+  if (!db) return null;
+  const [result] = await db.insert(payments).values(data);
+  // تحديث collectedAmount في collections
+  const allPayments = await db.select().from(payments).where(eq(payments.collectionId, data.collectionId));
+  const total = allPayments.reduce((s, p) => s + parseFloat(p.amount as string), 0);
+  const [col] = await db.select().from(collections).where(eq(collections.id, data.collectionId)).limit(1);
+  if (col) {
+    const contractAmt = parseFloat(col.contractAmount as string);
+    const pct = contractAmt > 0 ? total / contractAmt : 0;
+    let newStatus: "on_track" | "due_soon" | "overdue" | "completed" = col.status;
+    if (pct >= 1) newStatus = "completed";
+    await db.update(collections).set({ collectedAmount: total.toString(), status: newStatus, lastPaymentAt: new Date() }).where(eq(collections.id, data.collectionId));
+    // تحقق من شرط Stage 1: 75% تحصيل → صرف 50% من الكوميشن
+    await checkAndCreateCommissionStage(data.collectionId, total, contractAmt, pct);
+  }
+  return result;
+}
+
+/** تحقق وإنشاء كوميشن Stage 1 أو Stage 2 تلقائياً */
+async function checkAndCreateCommissionStage(collectionId: number, totalPaid: number, contractAmt: number, pct: number) {
+  const db = await getDb();
+  if (!db) return;
+  const [col] = await db.select().from(collections).where(eq(collections.id, collectionId)).limit(1);
+  if (!col) return;
+  // جلب المهندس المسؤول من أول دفعة
+  const [firstPayment] = await db.select().from(payments).where(eq(payments.collectionId, collectionId)).limit(1);
+  const engineerId = firstPayment?.engineerId;
+  if (!engineerId) return;
+  const totalCommission = calcProgressiveCommission(totalPaid);
+  const halfCommission = totalCommission / 2;
+  const existingComm = await db.select().from(commissionPayments).where(eq(commissionPayments.collectionId, collectionId));
+  // Stage 1: عند 75% تحصيل
+  if (pct >= 0.75 && !existingComm.find(c => c.stage === "stage1")) {
+    await db.insert(commissionPayments).values({
+      collectionId, engineerId, stage: "stage1",
+      commissionAmount: halfCommission.toString(),
+      status: "pending",
+      triggerCondition: `تم تحصيل ${Math.round(pct * 100)}% من قيمة العقد (≥75%) — يستحق صرف 50% من الكوميشن`,
+    });
+  }
+  // Stage 2: عند 100% تحصيل (أو استلام العميل)
+  if (pct >= 1 && !existingComm.find(c => c.stage === "stage2")) {
+    await db.insert(commissionPayments).values({
+      collectionId, engineerId, stage: "stage2",
+      commissionAmount: halfCommission.toString(),
+      status: "pending",
+      triggerCondition: `اكتمل التحصيل 100% — يستحق صرف 50% المتبقية من الكوميشن`,
+    });
+  }
+}
+
+/** إضافة وعد دفع */
+export async function addPaymentPromise(data: InsertPaymentPromise) {
+  const db = await getDb();
+  if (!db) return null;
+  const [result] = await db.insert(paymentPromises).values(data);
+  return result;
+}
+
+/** تحديث حالة وعد الدفع */
+export async function updatePromiseStatus(id: number, status: "pending" | "paid" | "overdue") {
+  const db = await getDb();
+  if (!db) return;
+  const updateData: Record<string, unknown> = { status };
+  if (status === "paid") updateData.paidAt = new Date();
+  await db.update(paymentPromises).set(updateData).where(eq(paymentPromises.id, id));
+}
+
+/** قائمة المتابعة اليومية */
+export async function getDailyFollowUpList() {
+  const db = await getDb();
+  if (!db) return { dueToday: [], overdue: [], promisesDueToday: [], promisesOverdue: [] };
+  const today = new Date();
+  const todayStr = today.toISOString().split("T")[0];
+  const in3Days = new Date(today);
+  in3Days.setDate(in3Days.getDate() + 3);
+  const in3DaysStr = in3Days.toISOString().split("T")[0];
+  // عقود مستحقة اليوم
+  const dueToday = await db.select().from(collections).where(eq(collections.dueDate, todayStr as unknown as Date));
+  // عقود متأخرة
+  const overdue = await db.select().from(collections).where(eq(collections.status, "overdue"));
+  // وعود دفع مستحقة اليوم
+  const promisesDueToday = await db.select().from(paymentPromises).where(and(eq(paymentPromises.promiseDate, todayStr as unknown as Date), eq(paymentPromises.status, "pending")));
+  // وعود دفع متأخرة
+  const promisesOverdue = await db.select().from(paymentPromises).where(eq(paymentPromises.status, "overdue"));
+  return { dueToday, overdue, promisesDueToday, promisesOverdue };
+}
+
+/** ملخص كوميشن المهندسين من التحصيل */
+export async function getEngineersCollectionCommission() {
+  const db = await getDb();
+  if (!db) return [];
+  const engs = await db.select().from(engineers).where(eq(engineers.status, "active"));
+  const results = await Promise.all(engs.map(async (eng) => {
+    const engPayments = await db.select().from(payments).where(eq(payments.engineerId, eng.id));
+    const totalCollected = engPayments.reduce((s, p) => s + parseFloat(p.amount as string), 0);
+    const totalCommission = calcProgressiveCommission(totalCollected);
+    const commList = await db.select().from(commissionPayments).where(eq(commissionPayments.engineerId, eng.id));
+    const commPaid = commList.filter(c => c.status === "paid").reduce((s, c) => s + parseFloat(c.commissionAmount as string), 0);
+    const commPending = commList.filter(c => c.status === "pending").reduce((s, c) => s + parseFloat(c.commissionAmount as string), 0);
+    const stage1 = commList.filter(c => c.stage === "stage1");
+    const stage2 = commList.filter(c => c.stage === "stage2");
+    return { engineer: eng, totalCollected, totalCommission, commPaid, commPending, stage1Count: stage1.length, stage2Count: stage2.length, stage1Pending: stage1.filter(c => c.status === "pending").length, stage2Pending: stage2.filter(c => c.status === "pending").length };
+  }));
+  return results;
+}
+
+/** تحديث حالة كوميشن (صرف) */
+export async function markCommissionPaid(id: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(commissionPayments).set({ status: "paid", paidAt: new Date() }).where(eq(commissionPayments.id, id));
+}
+
+/** إضافة عقد جديد */
+export async function addCollection(data: { clientName: string; contractAmount: number; dueDate?: string; dealId?: number; notes?: string }) {
+  const db = await getDb();
+  if (!db) return null;
+  const [result] = await db.insert(collections).values({
+    clientName: data.clientName,
+    contractAmount: data.contractAmount.toString(),
+    collectedAmount: "0",
+    dueDate: data.dueDate as unknown as Date | undefined,
+    dealId: data.dealId,
+    notes: data.notes,
+    status: "on_track",
+  });
+  return result;
+}
+
+/** تحديث حالة العقد */
+export async function updateCollectionStatus(id: number, status: "on_track" | "due_soon" | "overdue" | "completed") {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(collections).set({ status }).where(eq(collections.id, id));
 }
