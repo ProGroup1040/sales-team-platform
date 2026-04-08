@@ -653,37 +653,57 @@ export async function getEngineersKPI(year: number, month: number) {
     else if (totalDealValue >= 500_000)   baseIncentiveAmount = 2_500;
     else                                   baseIncentiveAmount = 0;
 
-    // ── KPI Rules ─────────────────────────────────────────────────────────────────
-    // KPI < 60%  → لا KPI + لا حافز + 50% كوميشن فقط
-    // KPI 60-75% → KPI متاح + كوميشن كامل + لا حافز
-    // KPI 75-90% → KPI + كوميشن + حافز
-    // KPI ≥ 90%  → كل المستحقات كاملة
-    let kpiStatus: 'available' | 'blocked' = 'blocked';
-    let commissionStatus: 'full' | 'partial' | 'blocked' = 'blocked';
-    let incentiveStatus: 'available' | 'blocked' = 'blocked';
-    let commissionMultiplier = 0;
-    let kpiStatusReason = '';
+    // ── KPI Rules (Final Version) ─────────────────────────────────
+    // Commission: ثابت دائماً بغض النظر عن KPI
+    // KPI Bonus:  يُصرف عند KPI ≥ 60%
+    // Incentive:  يُصرف عند KPI ≥ 75%
+    // High Perf:  KPI ≥ 90% → أعلى مستوى
+     let kpiStatus: 'available' | 'blocked' = 'blocked';
+     let kpiBonusStatus: 'available' | 'blocked' = 'blocked';
+     let incentiveStatus: 'available' | 'blocked' = 'blocked';
+     let performanceLevel: 'high' | 'good' | 'average' | 'low' = 'low';
+     let kpiStatusReason = '';
+     let incentiveStatusReason = '';
+     let kpiBonusStatusReason = '';
 
-    if (kpiScore >= 90) {
-      kpiStatus = 'available'; commissionStatus = 'full'; incentiveStatus = 'available';
-      commissionMultiplier = 1.0; kpiStatusReason = 'KPI ≥ 90% → كل المستحقات كاملة';
-    } else if (kpiScore >= 75) {
-      kpiStatus = 'available'; commissionStatus = 'full'; incentiveStatus = 'available';
-      commissionMultiplier = 1.0; kpiStatusReason = 'KPI 75-90% → KPI + كوميشن + حافز';
-    } else if (kpiScore >= 60) {
-      kpiStatus = 'available'; commissionStatus = 'full'; incentiveStatus = 'blocked';
-      commissionMultiplier = 1.0; kpiStatusReason = 'KPI 60-75% → KPI + كوميشن كامل — لا حافز';
-    } else {
-      kpiStatus = 'blocked'; commissionStatus = 'partial'; incentiveStatus = 'blocked';
-      commissionMultiplier = 0.5; kpiStatusReason = 'KPI < 60% → لا KPI + لا حافز + 50% كوميشن فقط';
-    }
+     // Commission ثابت دائماً (100% في جميع الحالات)
+     const commissionStatus: 'full' = 'full';
+     const commissionMultiplier = 1.0;
 
-    const effectiveCommissionPct = baseCommissionPct * commissionMultiplier;
-    const commissionValue = Math.round(totalDealValue * (effectiveCommissionPct / 100));
-    const incentiveValue = incentiveStatus === 'available' ? baseIncentiveAmount : 0;
-    const totalPayout = commissionValue + incentiveValue;
+     if (kpiScore >= 90) {
+       kpiStatus = 'available'; kpiBonusStatus = 'available'; incentiveStatus = 'available';
+       performanceLevel = 'high';
+       kpiStatusReason = 'KPI ≥ 90% — مستوى أداء عالي جداً';
+       kpiBonusStatusReason = 'KPI ≥ 60% — KPI Bonus متاح';
+       incentiveStatusReason = 'KPI ≥ 75% — الحافز متاح';
+     } else if (kpiScore >= 75) {
+       kpiStatus = 'available'; kpiBonusStatus = 'available'; incentiveStatus = 'available';
+       performanceLevel = 'good';
+       kpiStatusReason = 'KPI 75-90% — أداء جيد جداً';
+       kpiBonusStatusReason = 'KPI ≥ 60% — KPI Bonus متاح';
+       incentiveStatusReason = 'KPI ≥ 75% — الحافز متاح';
+     } else if (kpiScore >= 60) {
+       kpiStatus = 'available'; kpiBonusStatus = 'available'; incentiveStatus = 'blocked';
+       performanceLevel = 'average';
+       kpiStatusReason = 'KPI 60-75% — أداء متوسط';
+       kpiBonusStatusReason = 'KPI ≥ 60% — KPI Bonus متاح';
+       incentiveStatusReason = 'الحافز متوقف — ارفع KPI إلى 75% للحصول على الحافز';
+     } else {
+       kpiStatus = 'blocked'; kpiBonusStatus = 'blocked'; incentiveStatus = 'blocked';
+       performanceLevel = 'low';
+       kpiStatusReason = 'KPI أقل من 60% — أداء منخفض';
+       kpiBonusStatusReason = 'KPI أقل من 60% — لا يوجد KPI Bonus';
+       incentiveStatusReason = 'الحافز متوقف — KPI أقل من 75%';
+     }
 
-    // ── KPI Alerts ────────────────────────────────────────────────────────────────
+     const effectiveCommissionPct = baseCommissionPct * commissionMultiplier;
+     const commissionValue = Math.round(totalDealValue * (effectiveCommissionPct / 100));
+     const incentiveValue = incentiveStatus === 'available' ? baseIncentiveAmount : 0;
+     // KPI Bonus = 5% من قيمة الكوميشن الأساسي عند الاستحقاق
+     const kpiBonusValue = kpiBonusStatus === 'available' ? Math.round(commissionValue * 0.05) : 0;
+     const totalPayout = commissionValue + incentiveValue + kpiBonusValue;
+
+    // ── KPI Alerts ────────────────────────────────────────────────
     const kpiAlerts: string[] = [];
     if (tasksScore < 60) {
       if (rawExecution < 60) kpiAlerts.push('تأخير في تنفيذ المهام');
@@ -707,6 +727,9 @@ export async function getEngineersKPI(year: number, month: number) {
       crmScore: Math.round(crmScore * 10) / 10,
       kpiScore, executionScore: kpiScore,
       rating, kpiStatus, kpiStatusReason, kpiAlerts,
+      performanceLevel,
+      kpiBonusStatus, kpiBonusValue, kpiBonusStatusReason,
+      incentiveStatusReason,
       visitsCount: engVisits.length, dealsCount: engDeals.length,
       closedWon, totalDealValue, achievementPct: Math.round(achievementPct * 10) / 10,
       targetAmount,

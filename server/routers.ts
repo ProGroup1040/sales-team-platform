@@ -37,12 +37,14 @@ async function seedData() {
   const { engineers, dailyTasks, leads, visits, deals, monthlyTargets, collections, customers, products, sales, saleItems, engineerTargets, discountTiers, commissionTiers } = await import("../drizzle/schema");
   const { sql } = await import("drizzle-orm");
 
-  // Seed engineers
+  // Seed engineers (6 engineers with varied performance levels)
   const engData = [
     { name: 'أحمد محمد علي', email: 'ahmed@company.com', phone: '0501234567', department: 'المبيعات', status: 'active' as const },
     { name: 'سارة عبدالله', email: 'sara@company.com', phone: '0502345678', department: 'المبيعات', status: 'active' as const },
     { name: 'محمد الشمري', email: 'mohammed@company.com', phone: '0503456789', department: 'التشغيل', status: 'active' as const },
     { name: 'فاطمة الزهراني', email: 'fatima@company.com', phone: '0504567890', department: 'المبيعات', status: 'active' as const },
+    { name: 'خالد العتيبي', email: 'khalid@company.com', phone: '0505678901', department: 'المبيعات', status: 'active' as const },
+    { name: 'نورة القحطاني', email: 'noura@company.com', phone: '0506789012', department: 'التشغيل', status: 'active' as const },
   ];
   await db.insert(engineers).values(engData).onDuplicateKeyUpdate({ set: { name: sql`VALUES(name)` } });
   const engList = await db.select().from(engineers);
@@ -149,14 +151,22 @@ async function seedData() {
   }
 
   // Seed engineer targets for current month
+  // Targets designed to produce varied KPI levels for testing:
+  // أحمد: target 1,800,000 → KPI ≥ 90% (High Performance)
+  // سارة: target 1,600,000 → KPI 75-90% (Incentive eligible)
+  // محمد: target 1,500,000 → KPI 60-75% (Bonus eligible)
+  // فاطمة: target 1,200,000 → KPI 60-75% (Bonus eligible)
+  // خالد: target 1,000,000 → KPI 45-60% (Commission only)
+  // نورة: target 800,000 → KPI < 45% (No bonus, no incentive)
   const curYear = now.getFullYear();
   const curMonth = now.getMonth() + 1;
-  const targetAmounts = [600000, 500000, 400000, 550000];
+  const targetAmounts = [1800000, 1600000, 1500000, 1200000, 1000000, 800000];
   for (let i = 0; i < engList.length; i++) {
+    const target = targetAmounts[i] ?? 1000000;
     await db.insert(engineerTargets).values({
       engineerId: engList[i].id, year: curYear, month: curMonth,
-      targetAmount: targetAmounts[i % targetAmounts.length].toString(),
-      manpower: targetAmounts[i % targetAmounts.length],
+      targetAmount: target.toString(),
+      manpower: target,
     }).onDuplicateKeyUpdate({ set: { targetAmount: sql`VALUES(targetAmount)` } }).catch(() => {});
   }
 
@@ -210,17 +220,43 @@ export const appRouter = router({
       return { success: true } as const;
     }),
   }),
-
-  // ── Seed ──────────────────────────────────────────────────────────────────
+  // ── Seed ──────────────────────────────────────────────────────────────────────────────
   seed: router({
     isSeeded: publicProcedure.query(async () => isSeeded()),
     run: publicProcedure.mutation(async () => {
       await seedData();
       return { success: true };
     }),
+    reset: publicProcedure.mutation(async () => {
+      const { getDb } = await import('./db');
+      const db = await getDb();
+      if (!db) return { success: false };
+      const { engineers, dailyTasks, leads, visits, deals, monthlyTargets, collections, customers, products, sales, saleItems, engineerTargets, discountTiers, commissionTiers, payments, paymentPromises, commissionPayments } = await import('../drizzle/schema');
+      // Delete in dependency order (leaf tables first)
+      await db.delete(saleItems).execute().catch(() => {});
+      await db.delete(sales).execute().catch(() => {});
+      await db.delete(commissionPayments).execute().catch(() => {});
+      await db.delete(paymentPromises).execute().catch(() => {});
+      await db.delete(payments).execute().catch(() => {});
+      await db.delete(collections).execute().catch(() => {});
+      await db.delete(deals).execute().catch(() => {});
+      await db.delete(visits).execute().catch(() => {});
+      await db.delete(leads).execute().catch(() => {});
+      await db.delete(dailyTasks).execute().catch(() => {});
+      await db.delete(engineerTargets).execute().catch(() => {});
+      await db.delete(discountTiers).execute().catch(() => {});
+      await db.delete(commissionTiers).execute().catch(() => {});
+      await db.delete(monthlyTargets).execute().catch(() => {});
+      await db.delete(engineers).execute().catch(() => {});
+      await db.delete(customers).execute().catch(() => {});
+      await db.delete(products).execute().catch(() => {});
+      // Re-seed with fresh data
+      await seedData();
+      return { success: true, message: 'تم إعادة تهيئة بيانات الاختبار بنجاح' };
+    }),
   }),
 
-  // ── Engineers ─────────────────────────────────────────────────────────────
+  // ── Engineers ──────────────────────────────────────────────────────────────────────────────
   engineers: router({
     list: publicProcedure.query(async () => getEngineers()),
     create: publicProcedure.input(z.object({

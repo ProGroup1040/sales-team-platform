@@ -157,3 +157,31 @@
 - [x] Payment Promise Tracking مع تحديث الحالة
 - [x] Daily Follow-up List (مستحق اليوم + متأخر + وعود اليوم + وعود متأخرة)
 - [x] اختبارات Vitest: 100 اختبار ناجح (17 جديد للـ Financial Module)
+
+## تحديث KPI + Commission + Incentive Rules (Final Version)
+- [ ] تحديث db.ts: Commission ثابت دائماً (لا يتأثر بـ KPI)
+- [ ] تحديث db.ts: KPI Bonus يُصرف عند KPI ≥ 60% فقط
+- [ ] تحديث db.ts: Incentive يُصرف عند KPI ≥ 75% فقط
+- [ ] تحديث db.ts: High Performance Level عند KPI ≥ 90%
+- [ ] تحديث KPIModule.tsx: عرض Commission دائماً بدون حجب
+- [ ] تحديث KPIModule.tsx: KPI Bonus (Available/Blocked) مع رسالة واضحة
+- [ ] تحديث KPIModule.tsx: Incentive (Available/Blocked) مع رسالة واضحة
+- [ ] تحديث KPIModule.tsx: Status Messages ("الحافز متوقف بسبب KPI أقل من 75%"...)
+- [ ] تحديث الاختبارات لتعكس القواعد الجديدة
+
+## Test Data Setup (Dummy Engineers)
+- [ ] إصلاح خطأ db.ts (totalPayout مكسور)
+- [x] تحديث KPI Rules: Commission ثابت دائماً
+- [x] إضافة 6 مهندسين افتراضيين بمبيعات مختلفة (300K → 2M)
+- [ ] إضافة KPI مختلف لكل مهندس (45% → 92%)
+- [ ] إضافة مهام يومية (Completed + Delayed + Not Done) لكل مهندس
+- [ ] إضافة بيانات تحصيل مالي لكل مهندس
+- [x] إضافة زر "Reset Test Data" في الواجهة
+- [ ] تحديث KPIModule.tsx بالقواعد الجديدة + Status Messages
+- [ ] اختبار Commission ثابت + KPI Bonus ≥60% + Incentive ≥75%
+
+## Dark Theme System
+- [x] تحديث index.css بـ Dark Theme CSS Variables الكاملة
+- [x] تحديث DashboardLayout لتفعيل Dark Mode ثابت
+- [x] تحديث App.tsx لـ defaultTheme="dark"
+- [x] تطبيق Dark Theme على كل الـ Modules
