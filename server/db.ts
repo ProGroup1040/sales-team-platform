@@ -8,9 +8,14 @@ import {
   designReviews, incentiveTiers,
   customers, products, sales, saleItems,
   payments, paymentPromises, commissionPayments,
-  InsertPayment, InsertPaymentPromise
+  InsertPayment, InsertPaymentPromise,
+  adminSalesTasks, adminSalesMeetings,
+  InsertAdminSalesTask, InsertAdminSalesMeeting,
+  meetingReviews, MeetingReview, InsertMeetingReview,
+  leadFollowupLogs, LeadFollowupLog, InsertLeadFollowupLog
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
+import { notifyOwner } from './_core/notification';
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -155,6 +160,7 @@ export async function getCriticalTasks() {
 export async function createTask(data: {
   engineerId: number; taskDate: string; title: string; description?: string;
   plannedHours?: number; priority?: string;
+  category?: string; meetingRecordingLink?: string;
 }) {
   const db = await getDb();
   if (!db) return;
@@ -163,12 +169,21 @@ export async function createTask(data: {
     description: data.description, plannedHours: data.plannedHours ?? 1,
     priority: (data.priority as any) ?? 'medium', status: 'planned',
     delayDays: 0, isClientDelay: 0, isRescheduled: 0, isCritical: 0,
+    category: data.category ?? null,
+    meetingRecordingLink: data.meetingRecordingLink ?? null,
   });
 }
 
 export async function updateTaskStatus(id: number, status: string, delayDays?: number, notes?: string) {
   const db = await getDb();
   if (!db) return null;
+  // ─── شرط إغلاق Closing/Meeting ────────────────────────────────────────────────────────────────────────────────
+  if (status === 'completed') {
+    const [task] = await db.select().from(dailyTasks).where(eq(dailyTasks.id, id)).limit(1);
+    if (task && (task.category === 'closing' || task.category === 'meeting') && !task.meetingRecordingLink) {
+      return { success: false, error: 'RECORDING_REQUIRED', message: 'يجب إدخال رابط تسجيل الميتينج قبل إغلاق المهمة' };
+    }
+  }
   const updateData: any = { status };
   if (notes !== undefined) updateData.notes = notes;
   if (status === 'completed') { updateData.completedAt = new Date(); updateData.delayDays = 0; updateData.isCritical = 0; }
@@ -572,6 +587,15 @@ export async function getEngineersKPI(year: number, month: number) {
   const engTargetsList = await db.select().from(engineerTargets)
     .where(and(eq(engineerTargets.year, year), eq(engineerTargets.month, month)));
 
+  // ─── Closing Quality Reviews ────────────────────────────────────────────────
+  const allReviews = await db.select().from(meetingReviews)
+    .where(and(gte(meetingReviews.createdAt, startDate), lte(meetingReviews.createdAt, endDate)));
+  const allClosingTasks = await db.select().from(dailyTasks)
+    .where(and(
+      gte(dailyTasks.taskDate, startDate), lte(dailyTasks.taskDate, endDate),
+      or(eq(dailyTasks.category, 'closing'), eq(dailyTasks.category, 'meeting'))
+    ));
+
   const results = engList.map(eng => {
     // ── 1) Tasks & Execution Score (55%) ──────────────────────────────────────
     const engTasks = allTasks.filter(t => t.engineerId === eng.id);
@@ -614,7 +638,7 @@ export async function getEngineersKPI(year: number, month: number) {
     const dealCRMScore = openDeals.length > 0 ? (dealsWithAction / openDeals.length) * 100 : 100;
     const crmScore = (visitCRMScore * 0.5 + dealCRMScore * 0.5);
 
-    // ── Final KPI (weighted) ──────────────────────────────────────────────────
+    // ── Final KPI (weighted) ────────────────────────────────────────────────────────────────────────────────
     const kpiScore = Math.round((tasksScore * 0.55 + responseScore * 0.20 + crmScore * 0.25) * 10) / 10;
     const rating = kpiScore >= 90 ? 'ممتاز' : kpiScore >= 75 ? 'جيد جداً' : kpiScore >= 60 ? 'جيد' : kpiScore >= 45 ? 'مقبول' : 'ضعيف';
 
@@ -1429,4 +1453,598 @@ export async function updateCollectionStatus(id: number, status: "on_track" | "d
   const db = await getDb();
   if (!db) return;
   await db.update(collections).set({ status }).where(eq(collections.id, id));
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Admin Sales Tasks
+// ═══════════════════════════════════════════════════════════════════════
+
+/** تعريف قوالب المهام اليومية لـ Admin Sales */
+export const DAILY_TASK_TEMPLATES = [
+  { key: 'crm_update',         title: 'متابعة تحديث CRM' },
+  { key: 'task_distribution',  title: 'توزيع المهام اليومية على المهندسين' },
+  { key: 'task_review',        title: 'مراجعة تنفيذ المهام' },
+  { key: 'visit_data',         title: 'إدخال ومتابعة بيانات المعاينات' },
+  { key: 'visit_collection',   title: 'متابعة تحصيلات المعاينات' },
+  { key: 'lead_activity',      title: 'متابعة نشاط Lead Module' },
+  { key: 'daily_target',       title: 'متابعة تحقيق Target المبيعات اليومي' },
+];
+
+/** قوالب المهام الأسبوعية حسب اليوم */
+export const WEEKLY_TASK_TEMPLATES: { key: string; title: string; days: number[] }[] = [
+  { key: 'lead_quality',         title: 'Testing جودة الـ Leads',                    days: [1, 4] }, // Mon, Thu
+  { key: 'visit_collection_wed', title: 'متابعة تحصيلات المعاينات',                  days: [3] },    // Wed
+  { key: 'contract_collection',  title: 'متابعة تحصيلات التعاقدات',                  days: [4] },    // Thu
+  { key: 'delay_review',         title: 'مراجعة التأخيرات مع المهندسين',             days: [4] },    // Thu
+  { key: 'accounting_coord',     title: 'التنسيق مع المحاسبة',                       days: [4] },    // Thu
+  { key: 'timeline_update',      title: 'تحديث Timeline المشاريع',                   days: [6, 2] }, // Sat, Tue
+  { key: 'delivery_review',      title: 'مراجعة مواعيد التسليم مع الإنتاج',         days: [6, 2] }, // Sat, Tue
+];
+
+/** قوالب المهام الشهرية حسب اليوم من الشهر */
+export const MONTHLY_TASK_TEMPLATES: { key: string; title: string; dayOfMonth: number }[] = [
+  { key: 'contract_review',   title: 'مراجعة العقود الورقية ورفعها على السيرفر', dayOfMonth: 15 },
+  { key: 'market_share',      title: 'تحليل Market Share ومتابعة أسعار المنافسين', dayOfMonth: 22 },
+  { key: 'kpi_export',        title: 'Export KPI Report من النظام',              dayOfMonth: 28 },
+  { key: 'kpi_send',          title: 'إرسال التقرير للحسابات',                   dayOfMonth: 28 },
+  { key: 'commission_review', title: 'مراجعة الكوميشن والحوافز',                dayOfMonth: 28 },
+  { key: 'performance_notes', title: 'إضافة ملاحظات الأداء',                    dayOfMonth: 28 },
+];
+
+/** توليد مهام اليوم لـ Admin Sales */
+export async function generateAdminSalesDailyTasks(engineerId: number, date: string) {
+  const db = await getDb();
+  if (!db) return [];
+  // التحقق من وجود مهام لهذا اليوم
+  const existing = await db.select().from(adminSalesTasks)
+    .where(and(eq(adminSalesTasks.engineerId, engineerId), eq(adminSalesTasks.taskDate, new Date(date + 'T00:00:00')), eq(adminSalesTasks.taskType, 'daily')));
+  if (existing.length > 0) return existing;
+  // إنشاء المهام اليومية
+  const toInsert: InsertAdminSalesTask[] = DAILY_TASK_TEMPLATES.map(t => ({
+    engineerId, taskType: 'daily' as const, taskKey: t.key,
+    taskTitle: t.title, taskDate: new Date(date + 'T00:00:00'), status: 'pending' as const,
+  }));
+  await db.insert(adminSalesTasks).values(toInsert);
+  return db.select().from(adminSalesTasks)
+    .where(and(eq(adminSalesTasks.engineerId, engineerId), eq(adminSalesTasks.taskDate, new Date(date + 'T00:00:00')), eq(adminSalesTasks.taskType, 'daily')));
+}
+
+/** توليد المهام الأسبوعية لـ Admin Sales بناءً على يوم الأسبوع */
+export async function generateAdminSalesWeeklyTasks(engineerId: number, date: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const dayOfWeek = new Date(date).getDay(); // 0=Sun, 1=Mon, ...
+  const templates = WEEKLY_TASK_TEMPLATES.filter(t => t.days.includes(dayOfWeek));
+  if (templates.length === 0) return [];
+  const existing = await db.select().from(adminSalesTasks)
+    .where(and(eq(adminSalesTasks.engineerId, engineerId), eq(adminSalesTasks.taskDate, new Date(date + 'T00:00:00')), eq(adminSalesTasks.taskType, 'weekly')));
+  if (existing.length > 0) return existing;
+  const toInsert: InsertAdminSalesTask[] = templates.map(t => ({
+    engineerId, taskType: 'weekly' as const, taskKey: t.key,
+    taskTitle: t.title, taskDate: new Date(date + 'T00:00:00'), dayOfWeek, status: 'pending' as const,
+  }));
+  await db.insert(adminSalesTasks).values(toInsert);
+  return db.select().from(adminSalesTasks)
+    .where(and(eq(adminSalesTasks.engineerId, engineerId), eq(adminSalesTasks.taskDate, new Date(date + 'T00:00:00')), eq(adminSalesTasks.taskType, 'weekly')));
+}
+
+/** توليد المهام الشهرية لـ Admin Sales بناءً على يوم الشهر */
+export async function generateAdminSalesMonthlyTasks(engineerId: number, date: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const dayOfMonth = new Date(date).getDate();
+  const templates = MONTHLY_TASK_TEMPLATES.filter(t => t.dayOfMonth === dayOfMonth);
+  if (templates.length === 0) return [];
+  const existing = await db.select().from(adminSalesTasks)
+    .where(and(eq(adminSalesTasks.engineerId, engineerId), eq(adminSalesTasks.taskDate, new Date(date + 'T00:00:00')), eq(adminSalesTasks.taskType, 'monthly')));
+  if (existing.length > 0) return existing;
+  const toInsert: InsertAdminSalesTask[] = templates.map(t => ({
+    engineerId, taskType: 'monthly' as const, taskKey: t.key,
+    taskTitle: t.title, taskDate: new Date(date + 'T00:00:00'), dayOfMonth, status: 'pending' as const,
+  }));
+  await db.insert(adminSalesTasks).values(toInsert);
+  return db.select().from(adminSalesTasks)
+    .where(and(eq(adminSalesTasks.engineerId, engineerId), eq(adminSalesTasks.taskDate, new Date(date + 'T00:00:00')), eq(adminSalesTasks.taskType, 'monthly')));
+}
+
+/** جلب مهام Admin Sales ليوم معين */
+export async function getAdminSalesTasks(engineerId: number, date: string) {
+  const db = await getDb();
+  if (!db) return { daily: [], weekly: [], monthly: [] };
+  // توليد المهام تلقائياً إذا لم تكن موجودة
+  await generateAdminSalesDailyTasks(engineerId, date);
+  await generateAdminSalesWeeklyTasks(engineerId, date);
+  await generateAdminSalesMonthlyTasks(engineerId, date);
+  const all = await db.select().from(adminSalesTasks)
+    .where(and(eq(adminSalesTasks.engineerId, engineerId), eq(adminSalesTasks.taskDate, new Date(date + 'T00:00:00'))))
+    .orderBy(adminSalesTasks.taskType);
+  return {
+    daily:   all.filter(t => t.taskType === 'daily'),
+    weekly:  all.filter(t => t.taskType === 'weekly'),
+    monthly: all.filter(t => t.taskType === 'monthly'),
+  };
+}
+
+/** تحديث حالة مهمة Admin Sales */
+export async function updateAdminSalesTaskStatus(
+  taskId: number,
+  status: 'pending' | 'done' | 'delayed' | 'not_done',
+  notes?: string
+) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(adminSalesTasks).set({
+    status,
+    completedAt: status === 'done' ? new Date() : null,
+    notes: notes ?? null,
+  }).where(eq(adminSalesTasks.id, taskId));
+}
+
+/** جلب أو إنشاء سجل الاجتماعات الأسبوعية */
+export async function getOrCreateWeekMeeting(engineerId: number, weekStart: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const existing = await db.select().from(adminSalesMeetings)
+    .where(and(eq(adminSalesMeetings.engineerId, engineerId), eq(adminSalesMeetings.weekStartDate, new Date(weekStart + 'T00:00:00'))));
+  if (existing.length > 0) return existing[0];
+  await db.insert(adminSalesMeetings).values({ engineerId, weekStartDate: new Date(weekStart + 'T00:00:00') });
+  const created = await db.select().from(adminSalesMeetings)
+    .where(and(eq(adminSalesMeetings.engineerId, engineerId), eq(adminSalesMeetings.weekStartDate, new Date(weekStart + 'T00:00:00'))));
+  return created[0] ?? null;
+}
+
+/** تحديث سجل الاجتماعات الأسبوعية */
+export async function updateWeekMeeting(
+  id: number,
+  data: Partial<{ weeklyTeamMeeting: 'done'|'not_done'|'pending'; managementMeeting: 'done'|'not_done'|'pending'; reportSubmitted: 'yes'|'no'|'pending'; meetingNotes: string }>
+) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(adminSalesMeetings).set(data).where(eq(adminSalesMeetings.id, id));
+}
+
+/** إحصائيات Admin Sales للمدير */
+export async function getAdminSalesStats(engineerId: number, month: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const [year, m] = month.split('-').map(Number);
+  const startDate = `${year}-${String(m).padStart(2,'0')}-01`;
+  const endDate = `${year}-${String(m).padStart(2,'0')}-31`;
+  const tasks = await db.select().from(adminSalesTasks)
+    .where(and(
+      eq(adminSalesTasks.engineerId, engineerId),
+      gte(adminSalesTasks.taskDate, new Date(startDate + 'T00:00:00')),
+      lte(adminSalesTasks.taskDate, new Date(endDate + 'T00:00:00'))
+    ));
+  const total = tasks.length;
+  const done = tasks.filter(t => t.status === 'done').length;
+  const delayed = tasks.filter(t => t.status === 'delayed').length;
+  const notDone = tasks.filter(t => t.status === 'not_done').length;
+  const pending = tasks.filter(t => t.status === 'pending').length;
+  const completionRate = total > 0 ? Math.round((done / total) * 100) : 0;
+  const byType = {
+    daily:   { total: 0, done: 0, delayed: 0 },
+    weekly:  { total: 0, done: 0, delayed: 0 },
+    monthly: { total: 0, done: 0, delayed: 0 },
+  };
+  tasks.forEach(t => {
+    if (t.taskType === 'daily' || t.taskType === 'weekly' || t.taskType === 'monthly') {
+      byType[t.taskType].total++;
+      if (t.status === 'done') byType[t.taskType].done++;
+      if (t.status === 'delayed') byType[t.taskType].delayed++;
+    }
+  });
+  return { total, done, delayed, notDone, pending, completionRate, byType };
+}
+
+// ─── Management Focus ─────────────────────────────────────────────────────────
+export async function getManagementFocus(year: number, month: number) {
+  const db = await getDb();
+  const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+  const monthStr = `${year}-${String(month).padStart(2, '0')}`;
+
+  // ── 1. Admin Sales Performance ────────────────────────────────────────────
+  // جلب كل المهندسين من نوع admin_sales
+  const adminSalesEngineers = db
+    ? await db.select().from(engineers).where(eq(engineers.role, 'admin_sales' as any))
+    : [];
+
+  let adminSalesKPI = 0;
+  let adminSalesErrors = 0;
+  let adminSalesDelays = 0;
+  let adminSalesTotal = 0;
+  let adminSalesDone = 0;
+
+  for (const eng of adminSalesEngineers) {
+    const stats = await getAdminSalesStats(eng.id, monthStr);
+    if (stats) {
+      adminSalesTotal += stats.total;
+      adminSalesDone += stats.done;
+      adminSalesErrors += stats.notDone;
+      adminSalesDelays += stats.delayed;
+    }
+  }
+  adminSalesKPI = adminSalesTotal > 0 ? Math.round((adminSalesDone / adminSalesTotal) * 100) : 0;
+
+  // Status تلقائي
+  let adminSalesStatus: 'good' | 'needs_attention' | 'critical' = 'good';
+  if (adminSalesKPI < 50 || adminSalesErrors > 5) adminSalesStatus = 'critical';
+  else if (adminSalesKPI < 75 || adminSalesDelays > 3) adminSalesStatus = 'needs_attention';
+
+  // ── 2. Campaign Performance (Leads) ──────────────────────────────────────
+  const leadsStats = await getLeadsStats(year, month);
+  const leadsTotal = leadsStats?.total ?? 0;
+  const leadsQualified = leadsStats?.qualified ?? 0;
+  const leadsConverted = leadsStats?.converted ?? 0;
+  const leadsDelayedRate = leadsStats?.delayedRate ?? 0;
+  const leadsQualityRate = leadsTotal > 0 ? Math.round((leadsQualified / leadsTotal) * 100) : 0;
+  const leadsConversionRate = leadsTotal > 0 ? Math.round((leadsConverted / leadsTotal) * 100) : 0;
+
+  let campaignStatus: 'strong' | 'medium' | 'weak' = 'strong';
+  if (leadsTotal < 5 || leadsQualityRate < 20) campaignStatus = 'weak';
+  else if (leadsQualityRate < 40 || leadsDelayedRate > 40) campaignStatus = 'medium';
+
+  // ── 3. Smart Alerts ───────────────────────────────────────────────────────
+  const alerts: { severity: 'critical' | 'warning' | 'info'; category: string; message: string }[] = [];
+
+  // تأخير التحصيل
+  const collectionsStats = await getCollectionsStats();
+  if (collectionsStats && collectionsStats.overdue > 0) {
+    alerts.push({
+      severity: 'critical',
+      category: 'تحصيل',
+      message: `مبالغ متأخرة: ${collectionsStats.overdue.toLocaleString('ar-EG')} ج.م تحتاج متابعة فورية`,
+    });
+  }
+  if (collectionsStats && collectionsStats.collectionRate < 60) {
+    alerts.push({
+      severity: 'warning',
+      category: 'تحصيل',
+      message: `معدل التحصيل منخفض: ${collectionsStats.collectionRate}% فقط`,
+    });
+  }
+
+  // انخفاض KPI المهندسين
+  const kpiData = await getEngineersKPI(year, month);
+  if (kpiData) {
+    const lowKPI = kpiData.filter((e: any) => e.kpiScore < 60);
+    const medKPI = kpiData.filter((e: any) => e.kpiScore >= 60 && e.kpiScore < 75);
+    if (lowKPI.length > 0) {
+      alerts.push({
+        severity: 'critical',
+        category: 'KPI',
+        message: `${lowKPI.length} مهندس KPI أقل من 60% — الكوميشن والحافز محجوب`,
+      });
+    }
+    if (medKPI.length > 0) {
+      alerts.push({
+        severity: 'warning',
+        category: 'KPI',
+        message: `${medKPI.length} مهندس KPI بين 60-75% — الحافز غير متاح`,
+      });
+    }
+  }
+
+  // ضعف الـ Leads
+  if (leadsTotal < 10) {
+    alerts.push({
+      severity: 'warning',
+      category: 'Leads',
+      message: `عدد الـ Leads هذا الشهر منخفض: ${leadsTotal} فقط`,
+    });
+  }
+  if (leadsDelayedRate > 40) {
+    alerts.push({
+      severity: 'critical',
+      category: 'Leads',
+      message: `نسبة التأخير في الرد على العملاء المحتملين: ${leadsDelayedRate}% — يتجاوز الحد المقبول`,
+    });
+  }
+  if (leadsQualityRate < 25 && leadsTotal > 0) {
+    alerts.push({
+      severity: 'warning',
+      category: 'Leads',
+      message: `جودة الـ Leads ضعيفة: ${leadsQualityRate}% فقط مؤهلة`,
+    });
+  }
+
+  // مشاكل تنفيذ المهام
+  const taskStats = await getDailyTasksStats(todayStr);
+  if (taskStats && (taskStats as any).critical > 0) {
+    alerts.push({
+      severity: 'critical',
+      category: 'مهام',
+      message: `${(taskStats as any).critical} مهمة حرجة — تأخير أكثر من يومين`,
+    });
+  }
+  if (taskStats && taskStats.not_done > 3) {
+    alerts.push({
+      severity: 'warning',
+      category: 'مهام',
+      message: `${taskStats.not_done} مهمة لم تُنفذ اليوم`,
+    });
+  }
+
+  // Admin Sales أداء ضعيف
+  if (adminSalesStatus === 'critical') {
+    alerts.push({
+      severity: 'critical',
+      category: 'Admin Sales',
+      message: `أداء Admin Sales ضعيف: KPI ${adminSalesKPI}% — ${adminSalesErrors} أخطاء هذا الشهر`,
+    });
+  } else if (adminSalesStatus === 'needs_attention') {
+    alerts.push({
+      severity: 'warning',
+      category: 'Admin Sales',
+      message: `Admin Sales يحتاج متابعة: ${adminSalesDelays} تأخيرات هذا الشهر`,
+    });
+  }
+
+  return {
+    adminSales: {
+      kpi: adminSalesKPI,
+      errors: adminSalesErrors,
+      delays: adminSalesDelays,
+      total: adminSalesTotal,
+      done: adminSalesDone,
+      status: adminSalesStatus,
+      engineerCount: adminSalesEngineers.length,
+    },
+    campaign: {
+      total: leadsTotal,
+      qualified: leadsQualified,
+      converted: leadsConverted,
+      qualityRate: leadsQualityRate,
+      conversionRate: leadsConversionRate,
+      delayedRate: leadsDelayedRate,
+      status: campaignStatus,
+    },
+    alerts: alerts.sort((a, b) => {
+      const order = { critical: 0, warning: 1, info: 2 };
+      return order[a.severity] - order[b.severity];
+    }),
+  };
+}
+
+// ─── Meeting Recording & Review ───────────────────────────────────────────────
+
+/**
+ * تقديم رابط تسجيل الميتينج لمهمة Closing/Meeting
+ * يُحدّث الـ task بالرابط ووقت الإرسال
+ */
+export async function submitMeetingRecordingLink(taskId: number, link: string) {
+  const db = await getDb();
+  if (!db) return null;
+  await db.update(dailyTasks)
+    .set({ meetingRecordingLink: link, recordingSubmittedAt: new Date() })
+    .where(eq(dailyTasks.id, taskId));
+  const [task] = await db.select().from(dailyTasks).where(eq(dailyTasks.id, taskId));
+  // ─── Notification لـ Admin Sales ────────────────────────────────────────────────────────────────────────────────
+  if (task) {
+    await notifyOwner({
+      title: 'تسجيل ميتينج جديد بحاجة مراجعة',
+      content: `تم رفع رابط تسجيل لمهمة: "${task.title}"\nالرابط: ${link}\nيرجى مراجعة الميتينج وتقييمه.`,
+    }).catch(() => {}); // لا يوقف التنفيذ عند فشل الإشعار
+  }
+  return task ?? null;
+}
+
+/**
+ * إنشاء أو تحديث تقييم الميتينج (Admin Sales يقيّم)
+ */
+export async function upsertMeetingReview(data: {
+  taskId: number;
+  engineerId: number;
+  reviewedBy?: number;
+  openingScore: number;      // max 10
+  understandingScore: number; // max 20
+  presentationScore: number;  // max 20
+  objectionScore: number;     // max 25
+  closingScore: number;       // max 25
+  comments?: string;
+}) {
+  const db = await getDb();
+  if (!db) return null;
+  const total = data.openingScore + data.understandingScore + data.presentationScore
+    + data.objectionScore + data.closingScore;
+  // Check if review already exists
+  const [existing] = await db.select().from(meetingReviews).where(eq(meetingReviews.taskId, data.taskId));
+  if (existing) {
+    await db.update(meetingReviews).set({
+      openingScore: data.openingScore,
+      understandingScore: data.understandingScore,
+      presentationScore: data.presentationScore,
+      objectionScore: data.objectionScore,
+      closingScore: data.closingScore,
+      totalScore: total,
+      comments: data.comments ?? null,
+      reviewedBy: data.reviewedBy ?? null,
+    }).where(eq(meetingReviews.taskId, data.taskId));
+    const [updated] = await db.select().from(meetingReviews).where(eq(meetingReviews.taskId, data.taskId));
+    return updated ?? null;
+  } else {
+    await db.insert(meetingReviews).values({
+      taskId: data.taskId,
+      engineerId: data.engineerId,
+      reviewedBy: data.reviewedBy ?? null,
+      openingScore: data.openingScore,
+      understandingScore: data.understandingScore,
+      presentationScore: data.presentationScore,
+      objectionScore: data.objectionScore,
+      closingScore: data.closingScore,
+      totalScore: total,
+      comments: data.comments ?? null,
+    });
+    const [created] = await db.select().from(meetingReviews).where(eq(meetingReviews.taskId, data.taskId));
+    return created ?? null;
+  }
+}
+
+/**
+ * جلب تقييم الميتينج لمهمة معينة
+ */
+export async function getMeetingReview(taskId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [review] = await db.select().from(meetingReviews).where(eq(meetingReviews.taskId, taskId));
+  return review ?? null;
+}
+
+/**
+ * جلب متوسط Closing Quality Score لمهندس في شهر معين
+ * يُستخدم في حساب KPI
+ */
+export async function getEngineerClosingQualityScore(engineerId: number, year: number, month: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const startDate = new Date(year, month - 1, 1);
+  const endDate = new Date(year, month, 0, 23, 59, 59);
+  // جلب المهام من نوع closing/meeting في هذا الشهر
+  const tasks = await db.select().from(dailyTasks)
+    .where(and(
+      eq(dailyTasks.engineerId, engineerId),
+      gte(dailyTasks.taskDate, startDate),
+      lte(dailyTasks.taskDate, endDate),
+      or(eq(dailyTasks.category, 'closing'), eq(dailyTasks.category, 'meeting'))
+    ));
+  if (tasks.length === 0) return null;
+  const taskIds = tasks.map(t => t.id);
+  // جلب التقييمات لهذه المهام
+  const reviews = await db.select().from(meetingReviews)
+    .where(and(
+      eq(meetingReviews.engineerId, engineerId),
+      sql`${meetingReviews.taskId} IN (${sql.join(taskIds.map(id => sql`${id}`), sql`, `)})`
+    ));
+  if (reviews.length === 0) return null;
+  const avgScore = reviews.reduce((s, r) => s + r.totalScore, 0) / reviews.length;
+  const missingRecordings = tasks.filter(t => !t.meetingRecordingLink).length;
+  return {
+    avgScore: Math.round(avgScore * 10) / 10,
+    reviewCount: reviews.length,
+    taskCount: tasks.length,
+    missingRecordings,
+    commissionBlocked: missingRecordings > 0,
+  };
+}
+
+// ─── Lead Followup Tracking ────────────────────────────────────────────────────
+// يسجل Admin Sales نتيجة مراجعة WhatsApp ومتابعة الـ Leads يومياً
+
+/** تسجيل نتيجة متابعة Lead يومية */
+export async function logLeadFollowup(data: {
+  logDate: string;
+  adminSalesId: number;
+  telesalesId: number;
+  followupStatus: 'followed_up' | 'delayed' | 'no_response';
+  responseDelayHours?: number;
+  followupQuality?: 'excellent' | 'good' | 'poor';
+  notes?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error('DB not available');
+  const dateObj = new Date(data.logDate);
+  await db.insert(leadFollowupLogs).values({
+    logDate: dateObj,
+    adminSalesId: data.adminSalesId,
+    telesalesId: data.telesalesId,
+    followupStatus: data.followupStatus,
+    responseDelayHours: data.responseDelayHours ?? null,
+    followupQuality: data.followupQuality ?? null,
+    notes: data.notes ?? null,
+  });
+  return { success: true };
+}
+
+/** جلب سجلات المتابعة لتاريخ محدد أو نطاق */
+export async function getLeadFollowupLogs(filters: {
+  startDate?: string;
+  endDate?: string;
+  adminSalesId?: number;
+  telesalesId?: number;
+}) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [];
+  if (filters.startDate) conditions.push(gte(leadFollowupLogs.logDate, new Date(filters.startDate)));
+  if (filters.endDate) conditions.push(lte(leadFollowupLogs.logDate, new Date(filters.endDate)));
+  if (filters.adminSalesId) conditions.push(eq(leadFollowupLogs.adminSalesId, filters.adminSalesId));
+  if (filters.telesalesId) conditions.push(eq(leadFollowupLogs.telesalesId, filters.telesalesId));
+  return db.select().from(leadFollowupLogs)
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(desc(leadFollowupLogs.logDate));
+}
+
+/** إحصائيات KPI لـ Admin Sales (دقة المتابعة + اكتشاف التأخيرات) */
+export async function getAdminSalesFollowupKPI(adminSalesId: number, startDate: string, endDate: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const logs = await db.select().from(leadFollowupLogs)
+    .where(and(
+      eq(leadFollowupLogs.adminSalesId, adminSalesId),
+      gte(leadFollowupLogs.logDate, new Date(startDate)),
+      lte(leadFollowupLogs.logDate, new Date(endDate))
+    ));
+  if (logs.length === 0) return { totalLogs: 0, followedUp: 0, delayed: 0, noResponse: 0, accuracyScore: 100, detectionScore: 100 };
+  const followedUp = logs.filter(l => l.followupStatus === 'followed_up').length;
+  const delayed = logs.filter(l => l.followupStatus === 'delayed').length;
+  const noResponse = logs.filter(l => l.followupStatus === 'no_response').length;
+  // دقة المتابعة: نسبة الـ logs المسجلة يومياً
+  const accuracyScore = Math.round((followedUp / logs.length) * 100);
+  // اكتشاف التأخيرات: نسبة الـ delayed التي تم اكتشافها (كلما زادت = أفضل)
+  const detectionScore = logs.length > 0 ? Math.round(((followedUp + delayed) / logs.length) * 100) : 100;
+  return { totalLogs: logs.length, followedUp, delayed, noResponse, accuracyScore, detectionScore };
+}
+
+/** إحصائيات KPI لـ Tele-sales (سرعة الرد + جودة المتابعة) */
+export async function getTelesalesFollowupKPI(telesalesId: number, startDate: string, endDate: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const logs = await db.select().from(leadFollowupLogs)
+    .where(and(
+      eq(leadFollowupLogs.telesalesId, telesalesId),
+      gte(leadFollowupLogs.logDate, new Date(startDate)),
+      lte(leadFollowupLogs.logDate, new Date(endDate))
+    ));
+  if (logs.length === 0) return { totalLogs: 0, followedUp: 0, delayed: 0, noResponse: 0, responseScore: 100, qualityScore: 100, overallScore: 100 };
+  const followedUp = logs.filter(l => l.followupStatus === 'followed_up').length;
+  const delayed = logs.filter(l => l.followupStatus === 'delayed').length;
+  const noResponse = logs.filter(l => l.followupStatus === 'no_response').length;
+  // سرعة الرد: no_response = 0, delayed = 50, followed_up = 100
+  const responseScore = Math.round(((followedUp * 100 + delayed * 50) / (logs.length * 100)) * 100);
+  // جودة المتابعة: excellent=100, good=75, poor=25
+  const qualityLogs = logs.filter(l => l.followupQuality !== null);
+  const qualityScore = qualityLogs.length > 0
+    ? Math.round(qualityLogs.reduce((s, l) => s + (l.followupQuality === 'excellent' ? 100 : l.followupQuality === 'good' ? 75 : 25), 0) / qualityLogs.length)
+    : 100;
+  const overallScore = Math.round(responseScore * 0.6 + qualityScore * 0.4);
+  return { totalLogs: logs.length, followedUp, delayed, noResponse, responseScore, qualityScore, overallScore };
+}
+
+/** إحصائيات شاملة لجميع Tele-sales في فترة محددة */
+export async function getAllTelesalesFollowupStats(startDate: string, endDate: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const engList = await getEngineers();
+  const logs = await db.select().from(leadFollowupLogs)
+    .where(and(
+      gte(leadFollowupLogs.logDate, new Date(startDate)),
+      lte(leadFollowupLogs.logDate, new Date(endDate))
+    ));
+  // تجميع حسب telesalesId
+  const grouped = engList.map(eng => {
+    const engLogs = logs.filter(l => l.telesalesId === eng.id);
+    if (engLogs.length === 0) return { engineerId: eng.id, engineerName: eng.name, totalLogs: 0, followedUp: 0, delayed: 0, noResponse: 0, responseScore: 100, qualityScore: 100, overallScore: 100 };
+    const followedUp = engLogs.filter(l => l.followupStatus === 'followed_up').length;
+    const delayed = engLogs.filter(l => l.followupStatus === 'delayed').length;
+    const noResponse = engLogs.filter(l => l.followupStatus === 'no_response').length;
+    const responseScore = Math.round(((followedUp * 100 + delayed * 50) / (engLogs.length * 100)) * 100);
+    const qualityLogs = engLogs.filter(l => l.followupQuality !== null);
+    const qualityScore = qualityLogs.length > 0
+      ? Math.round(qualityLogs.reduce((s, l) => s + (l.followupQuality === 'excellent' ? 100 : l.followupQuality === 'good' ? 75 : 25), 0) / qualityLogs.length)
+      : 100;
+    const overallScore = Math.round(responseScore * 0.6 + qualityScore * 0.4);
+    return { engineerId: eng.id, engineerName: eng.name, totalLogs: engLogs.length, followedUp, delayed, noResponse, responseScore, qualityScore, overallScore };
+  });
+  return grouped.filter(g => g.totalLogs > 0);
 }

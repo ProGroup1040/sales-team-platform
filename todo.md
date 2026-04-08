@@ -185,3 +185,58 @@
 - [x] تحديث DashboardLayout لتفعيل Dark Mode ثابت
 - [x] تحديث App.tsx لـ defaultTheme="dark"
 - [x] تطبيق Dark Theme على كل الـ Modules
+
+## Admin Sales Tasks Module (تطوير موديول المهام)
+- [ ] إضافة جدول admin_sales_tasks في schema.ts (daily/weekly/monthly + meetings)
+- [ ] تحديث engineers role ليشمل admin_sales
+- [ ] تطبيق migration SQL
+- [ ] Backend API: CRUD للـ Admin Sales Tasks
+- [ ] Backend API: Weekly Templates (الاثنين+الخميس / الأربعاء / الخميس / السبت+الثلاثاء)
+- [ ] Backend API: Monthly Templates (يوم 15 / 22 / 28)
+- [ ] Backend API: Meetings Tracking (Weekly Team / Management / Report)
+- [ ] Backend API: إحصائيات للمدير (نسبة تنفيذ + متأخرات)
+- [ ] TasksModule.tsx: إضافة Tab خاص بـ Admin Sales
+- [ ] TasksModule.tsx: Daily Tasks Section بالـ 7 مهام
+- [ ] TasksModule.tsx: Weekly Tasks Section بالتقسيم حسب الأيام
+- [ ] TasksModule.tsx: Monthly Tasks Section (15/22/28)
+- [ ] TasksModule.tsx: Meetings Tracking Section
+- [ ] TasksModule.tsx: Manager View (نسبة تنفيذ + متأخرات)
+- [ ] Visibility Control: Admin Sales يرى مهامه فقط، Manager يرى الكل
+
+## Management Focus Section (للإدارة فقط)
+- [ ] إضافة getManagementFocus endpoint في routers.ts يجمع بيانات Admin Sales + Leads + Alerts
+- [ ] بناء ManagementFocusSection component في Overview.tsx
+- [ ] عرض Admin Sales Performance (KPI + أخطاء + تأخيرات + Status)
+- [ ] عرض Campaign Performance (Leads count + quality + Status)
+- [ ] عرض Alerts الذكية (تأخير تحصيل + انخفاض KPI + ضعف Leads + مشاكل مهام)
+- [ ] تقييد الـ section للإدارة فقط (admin role)
+
+## Meeting Recording + Review System (داخل موديول المهام)
+- [ ] تحديث schema: إضافة meetingRecordingLink + recordingSubmittedAt لجدول daily_tasks
+- [ ] تحديث schema: إضافة جدول meeting_reviews (تقييم الميتينج)
+- [ ] تطبيق migration SQL
+- [ ] Backend: submitRecordingLink (task_id + link) + Notification لـ Admin Sales
+- [ ] Backend: createMeetingReview (5 أبعاد + totalScore + comments)
+- [ ] Backend: getMeetingReview (by taskId)
+- [ ] Backend: شرط إغلاق Closing task: لا يمكن done بدون recordingLink
+- [ ] Backend: تعليق الكوميشن عند غياب recordingLink في حساب KPI
+- [ ] Backend: إضافة closingQualityScore لـ KPI المهندس
+- [ ] TasksModule: حقل Recording Link إجباري عند إنشاء Closing/Meeting task
+- [ ] TasksModule: شرط إغلاق المهمة (تنبيه عند محاولة done بدون لينك)
+- [ ] TasksModule: Review Panel للـ Admin (تقييم 5 أبعاد + تعليق)
+- [ ] TasksModule: عرض Total Score + حالة الكوميشن على بطاقة المهمة
+- [ ] كتابة اختبارات Vitest للـ Review Scoring Logic
+
+## Lead Followup Tracking System (Admin Sales + Tele-sales KPI)
+- [x] تحديث schema: إضافة جدول lead_followup_logs (date, adminSalesId, telesalesId, followupStatus, responseDelay, notes)
+- [x] تطبيق migration SQL
+- [x] Backend: logLeadFollowup (تسجيل نتيجة المتابعة اليومية)
+- [x] Backend: getLeadFollowupStats (إحصائيات Admin Sales + Tele-sales)
+- [x] Backend: getAdminSalesFollowupKPI (تقييم Admin Sales: دقة + اكتشاف تأخيرات)
+- [x] Backend: getTelesalesFollowupKPI (تقييم Tele-sales: سرعة رد + جودة متابعة)
+- [x] واجهة: LeadFollowupTab داخل TasksModule (متابعة Leads جديد)
+- [x] واجهة: نموذج تسجيل المتابعة اليومية (تم/تأخير/لم يتم)
+- [x] واجهة: عرض إحصائيات Tele-sales (KPI cards: سرعة الرد + جودة المتابعة + Overall Score)
+- [x] واجهة: سجل المتابعة مع فلتر الفترة (اليوم / 7 أيام / الشهر)
+- [x] ربط نتائج المتابعة بـ KPI الشامل لكلا الدورين
+- [x] كتابة اختبارات Vitest لـ Lead Followup scoring logic (13 اختبار ناجح)

@@ -13,6 +13,8 @@ import {
   getMonthlySalesStats, getMonthlySalesTrend,
   getEngineersKPI,
   getCollectionsStats, getCollectionsList, createCollection, updateCollection,
+  getAdminSalesTasks, updateAdminSalesTaskStatus, getOrCreateWeekMeeting, updateWeekMeeting, getAdminSalesStats,
+  logLeadFollowup, getLeadFollowupLogs, getAdminSalesFollowupKPI, getTelesalesFollowupKPI, getAllTelesalesFollowupStats,
   getMonthlyTarget, upsertMonthlyTarget,
   getSalesControlStats, getEngineersSalesPerformance,
   getDiscountTiers, upsertDiscountTier, deleteDiscountTier,
@@ -26,6 +28,8 @@ import {
   getDailyFollowUpList, getEngineersCollectionCommission, markCommissionPaid,
   addCollection, updateCollectionStatus, calcProgressiveCommission,
   getClientFinancialProfile,
+  getManagementFocus,
+  submitMeetingRecordingLink, upsertMeetingReview, getMeetingReview, getEngineerClosingQualityScore,
 } from "./db";
 
 // ─── Seed Data ────────────────────────────────────────────────────────────────
@@ -275,6 +279,8 @@ export const appRouter = router({
       engineerId: z.number(), taskDate: z.string(), title: z.string().min(1),
       description: z.string().optional(), plannedHours: z.number().optional(),
       priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
+      category: z.string().optional(), // 'closing' | 'meeting' | 'general'
+      meetingRecordingLink: z.string().optional(),
     })).mutation(async ({ input }) => { await createTask(input); return { success: true }; }),
     updateStatus: publicProcedure.input(z.object({
       id: z.number(), status: z.enum(['planned', 'completed', 'delayed', 'not_done', 'client_delay']),
@@ -524,6 +530,129 @@ export const appRouter = router({
     delete: publicProcedure.input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => { await deleteProduct(input.id); return { success: true }; }),
   }),
-});
 
+  // ─── Admin Sales Tasks ────────────────────────────────────────────────────
+  // ── Management Focus ─────────────────────────────────────────────────────
+  management: router({
+    focus: publicProcedure
+      .input(z.object({ year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getManagementFocus(input.year, input.month)),
+  }),
+  // ─── Meeting Recording & Review ────────────────────────────────────────────────────────────────────────────────
+  meetingReview: router({
+    // تقديم رابط تسجيل الميتينج
+    submitLink: publicProcedure
+      .input(z.object({ taskId: z.number(), link: z.string().url('رابط غير صحيح') }))
+      .mutation(async ({ input }) => {
+        const task = await submitMeetingRecordingLink(input.taskId, input.link);
+        if (!task) throw new Error('المهمة غير موجودة');
+        return { success: true, task };
+      }),
+    // جلب تقييم مهمة معينة
+    getReview: publicProcedure
+      .input(z.object({ taskId: z.number() }))
+      .query(async ({ input }) => getMeetingReview(input.taskId)),
+    // إنشاء أو تحديث تقييم الميتينج
+    upsertReview: publicProcedure
+      .input(z.object({
+        taskId: z.number(),
+        engineerId: z.number(),
+        reviewedBy: z.number().optional(),
+        openingScore: z.number().min(0).max(10),
+        understandingScore: z.number().min(0).max(20),
+        presentationScore: z.number().min(0).max(20),
+        objectionScore: z.number().min(0).max(25),
+        closingScore: z.number().min(0).max(25),
+        comments: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const review = await upsertMeetingReview(input);
+        return { success: true, review };
+      }),
+    // جلب Closing Quality Score لمهندس
+    getClosingQuality: publicProcedure
+      .input(z.object({ engineerId: z.number(), year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getEngineerClosingQualityScore(input.engineerId, input.year, input.month)),
+  }),
+  adminSalesTasks: router({
+    // جلب مهام يوم معين لـ Admin Sales
+    getByDate: publicProcedure
+      .input(z.object({ engineerId: z.number(), date: z.string() }))
+      .query(async ({ input }) => getAdminSalesTasks(input.engineerId, input.date)),
+    // تحديث حالة مهمة
+    updateStatus: publicProcedure
+      .input(z.object({
+        taskId: z.number(),
+        status: z.enum(['pending', 'done', 'delayed', 'not_done']),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        await updateAdminSalesTaskStatus(input.taskId, input.status, input.notes);
+        return { success: true };
+      }),
+    // جلب أو إنشاء سجل الاجتماعات الأسبوعية
+    getWeekMeeting: publicProcedure
+      .input(z.object({ engineerId: z.number(), weekStart: z.string() }))
+      .query(async ({ input }) => getOrCreateWeekMeeting(input.engineerId, input.weekStart)),
+    // تحديث سجل الاجتماعات
+    updateWeekMeeting: publicProcedure
+      .input(z.object({
+        id: z.number(),
+        weeklyTeamMeeting: z.enum(['done', 'not_done', 'pending']).optional(),
+        managementMeeting: z.enum(['done', 'not_done', 'pending']).optional(),
+        reportSubmitted: z.enum(['yes', 'no', 'pending']).optional(),
+        meetingNotes: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        await updateWeekMeeting(id, data);
+        return { success: true };
+      }),
+     // إحصائيات للمدير
+    getStats: publicProcedure
+      .input(z.object({ engineerId: z.number(), month: z.string() }))
+      .query(async ({ input }) => getAdminSalesStats(input.engineerId, input.month)),
+  }),
+
+  // ─── Lead Followup Tracking ────────────────────────────────────────────────────────────────────────────────
+  leadFollowup: router({
+    // تسجيل نتيجة متابعة Lead يومية
+    log: publicProcedure
+      .input(z.object({
+        logDate: z.string(),
+        adminSalesId: z.number(),
+        telesalesId: z.number(),
+        followupStatus: z.enum(['followed_up', 'delayed', 'no_response']),
+        responseDelayHours: z.number().optional(),
+        followupQuality: z.enum(['excellent', 'good', 'poor']).optional(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => logLeadFollowup(input)),
+
+    // جلب سجلات المتابعة
+    getLogs: publicProcedure
+      .input(z.object({
+        startDate: z.string().optional(),
+        endDate: z.string().optional(),
+        adminSalesId: z.number().optional(),
+        telesalesId: z.number().optional(),
+      }))
+      .query(async ({ input }) => getLeadFollowupLogs(input)),
+
+    // KPI لـ Admin Sales
+    adminSalesKPI: publicProcedure
+      .input(z.object({ adminSalesId: z.number(), startDate: z.string(), endDate: z.string() }))
+      .query(async ({ input }) => getAdminSalesFollowupKPI(input.adminSalesId, input.startDate, input.endDate)),
+
+    // KPI لـ Tele-sales
+    telesalesKPI: publicProcedure
+      .input(z.object({ telesalesId: z.number(), startDate: z.string(), endDate: z.string() }))
+      .query(async ({ input }) => getTelesalesFollowupKPI(input.telesalesId, input.startDate, input.endDate)),
+
+    // إحصائيات جميع Tele-sales
+    allTelesalesStats: publicProcedure
+      .input(z.object({ startDate: z.string(), endDate: z.string() }))
+      .query(async ({ input }) => getAllTelesalesFollowupStats(input.startDate, input.endDate)),
+  }),
+});
 export type AppRouter = typeof appRouter;

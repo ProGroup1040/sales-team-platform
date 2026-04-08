@@ -11,7 +11,8 @@ import {
 import {
   TrendingUp, TrendingDown, Users, Target, Calendar,
   AlertTriangle, CheckCircle, Clock, DollarSign, Activity,
-  ArrowUpRight, ArrowDownRight, Zap, RefreshCw
+  ArrowUpRight, ArrowDownRight, Zap, RefreshCw,
+  ShieldAlert, Megaphone, Eye
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -68,6 +69,194 @@ function AlertBadge({ type, text }: { type: 'critical' | 'warning' | 'info'; tex
   );
 }
 
+// ─── Management Focus Component ─────────────────────────────────────────────
+function ManagementFocusSection({ data }: { data: any }) {
+  if (!data) return null;
+  const { adminSales, campaign, alerts } = data;
+
+  const adminStatusConfig = {
+    good:             { label: 'جيد',           color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/30', dot: 'bg-emerald-400' },
+    needs_attention:  { label: 'يحتاج متابعة',  color: 'text-amber-400',   bg: 'bg-amber-500/10 border-amber-500/30',   dot: 'bg-amber-400' },
+    critical:         { label: 'خطر',           color: 'text-red-400',     bg: 'bg-red-500/10 border-red-500/30',       dot: 'bg-red-400' },
+  };
+  const campaignStatusConfig = {
+    strong: { label: 'قوي',    color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/30', dot: 'bg-emerald-400' },
+    medium: { label: 'متوسط', color: 'text-amber-400',   bg: 'bg-amber-500/10 border-amber-500/30',   dot: 'bg-amber-400' },
+    weak:   { label: 'ضعيف',  color: 'text-red-400',     bg: 'bg-red-500/10 border-red-500/30',       dot: 'bg-red-400' },
+  };
+  const alertSeverityConfig = {
+    critical: { icon: '🔴', bg: 'bg-red-500/10 border-red-500/30 text-red-300', badge: 'bg-red-500/20 text-red-400 border-red-500/30' },
+    warning:  { icon: '🟡', bg: 'bg-amber-500/10 border-amber-500/30 text-amber-300', badge: 'bg-amber-500/20 text-amber-400 border-amber-500/30' },
+    info:     { icon: '🔵', bg: 'bg-blue-500/10 border-blue-500/30 text-blue-300', badge: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
+  };
+
+  const adminCfg = adminStatusConfig[adminSales.status as keyof typeof adminStatusConfig];
+  const campaignCfg = campaignStatusConfig[campaign.status as keyof typeof campaignStatusConfig];
+  const criticalAlerts = alerts.filter((a: any) => a.severity === 'critical');
+  const warningAlerts = alerts.filter((a: any) => a.severity === 'warning');
+
+  return (
+    <div className="space-y-4" dir="rtl">
+      {/* Section Header */}
+      <div className="flex items-center gap-3">
+        <div className="p-2 rounded-lg bg-indigo-500/10 border border-indigo-500/20">
+          <Eye className="w-4 h-4 text-indigo-400" />
+        </div>
+        <div>
+          <h2 className="text-base font-bold text-white">Management Focus</h2>
+          <p className="text-xs text-white/40">النقاط التي تحتاج تدخل الإدارة فقط — بدون تكرار البيانات الموجودة</p>
+        </div>
+        {alerts.length > 0 && (
+          <div className="mr-auto flex items-center gap-1.5">
+            {criticalAlerts.length > 0 && (
+              <span className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-red-500/20 text-red-400 border border-red-500/30">
+                🔴 {criticalAlerts.length} حرجة
+              </span>
+            )}
+            {warningAlerts.length > 0 && (
+              <span className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                🟡 {warningAlerts.length} تحذير
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* 3-Column Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+        {/* 1. Admin Sales Performance */}
+        <Card className="border-white/10 bg-white/3 hover:bg-white/5 transition-all">
+          <CardHeader className="pb-2 pt-4 px-4">
+            <CardTitle className="text-sm font-semibold text-white flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-indigo-400" />
+              Admin Sales Performance
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-4 space-y-3">
+            {adminSales.engineerCount === 0 ? (
+              <p className="text-white/30 text-xs text-center py-3">لا يوجد Admin Sales مسجل بعد</p>
+            ) : (
+              <>
+                {/* KPI Score */}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-white/50">KPI الحالي</span>
+                  <span className={`text-lg font-bold ${
+                    adminSales.kpi >= 75 ? 'text-emerald-400' : adminSales.kpi >= 50 ? 'text-amber-400' : 'text-red-400'
+                  }`}>{adminSales.kpi}%</span>
+                </div>
+                <div className="w-full bg-white/10 rounded-full h-1.5">
+                  <div className={`h-1.5 rounded-full transition-all ${
+                    adminSales.kpi >= 75 ? 'bg-emerald-500' : adminSales.kpi >= 50 ? 'bg-amber-500' : 'bg-red-500'
+                  }`} style={{ width: `${adminSales.kpi}%` }} />
+                </div>
+                {/* Metrics */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="p-2 rounded-lg bg-red-500/10 border border-red-500/20 text-center">
+                    <p className="text-lg font-bold text-red-400">{adminSales.errors}</p>
+                    <p className="text-xs text-white/40">أخطاء</p>
+                  </div>
+                  <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-center">
+                    <p className="text-lg font-bold text-amber-400">{adminSales.delays}</p>
+                    <p className="text-xs text-white/40">تأخيرات</p>
+                  </div>
+                </div>
+                {/* Status Badge */}
+                <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-semibold ${adminCfg.bg}`}>
+                  <div className={`w-2 h-2 rounded-full ${adminCfg.dot} animate-pulse`} />
+                  <span className={adminCfg.color}>{adminCfg.label}</span>
+                  <span className="text-white/30 mr-auto">{adminSales.done}/{adminSales.total} مهمة</span>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* 2. Campaign Performance */}
+        <Card className="border-white/10 bg-white/3 hover:bg-white/5 transition-all">
+          <CardHeader className="pb-2 pt-4 px-4">
+            <CardTitle className="text-sm font-semibold text-white flex items-center gap-2">
+              <Megaphone className="w-4 h-4 text-purple-400" />
+              Campaign Performance
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-4 space-y-3">
+            {/* Lead Count */}
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-white/50">إجمالي الـ Leads</span>
+              <span className="text-lg font-bold text-purple-400">{campaign.total}</span>
+            </div>
+            {/* Quality Rate */}
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-white/50">جودة الـ Leads</span>
+              <span className={`text-sm font-bold ${
+                campaign.qualityRate >= 40 ? 'text-emerald-400' : campaign.qualityRate >= 25 ? 'text-amber-400' : 'text-red-400'
+              }`}>{campaign.qualityRate}% مؤهلة</span>
+            </div>
+            <div className="w-full bg-white/10 rounded-full h-1.5">
+              <div className={`h-1.5 rounded-full transition-all ${
+                campaign.qualityRate >= 40 ? 'bg-emerald-500' : campaign.qualityRate >= 25 ? 'bg-amber-500' : 'bg-red-500'
+              }`} style={{ width: `${Math.min(100, campaign.qualityRate)}%` }} />
+            </div>
+            {/* Conversion */}
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-white/40">تحول لصفقة</span>
+              <span className="text-emerald-400 font-semibold">{campaign.converted} ({campaign.conversionRate}%)</span>
+            </div>
+            {/* Status Badge */}
+            <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-semibold ${campaignCfg.bg}`}>
+              <div className={`w-2 h-2 rounded-full ${campaignCfg.dot} animate-pulse`} />
+              <span className={campaignCfg.color}>{campaignCfg.label}</span>
+              {campaign.delayedRate > 0 && (
+                <span className="text-white/30 mr-auto">{campaign.delayedRate}% تأخير رد</span>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 3. Alerts */}
+        <Card className={`border transition-all ${
+          criticalAlerts.length > 0 ? 'border-red-500/40 bg-red-500/5' :
+          warningAlerts.length > 0 ? 'border-amber-500/30 bg-amber-500/5' :
+          'border-emerald-500/30 bg-emerald-500/5'
+        }`}>
+          <CardHeader className="pb-2 pt-4 px-4">
+            <CardTitle className="text-sm font-semibold text-white flex items-center gap-2">
+              <AlertTriangle className={`w-4 h-4 ${
+                criticalAlerts.length > 0 ? 'text-red-400' : warningAlerts.length > 0 ? 'text-amber-400' : 'text-emerald-400'
+              }`} />
+              Alerts — تحتاج تدخل
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-4">
+            {alerts.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-4 gap-2">
+                <CheckCircle className="w-8 h-8 text-emerald-400 opacity-70" />
+                <p className="text-xs text-emerald-400 font-medium">لا توجد مشاكل تحتاج تدخل</p>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {alerts.map((alert: any, i: number) => {
+                  const cfg = alertSeverityConfig[alert.severity as keyof typeof alertSeverityConfig];
+                  return (
+                    <div key={i} className={`flex items-start gap-2 px-2.5 py-2 rounded-lg border text-xs ${cfg.bg}`}>
+                      <span className="shrink-0 mt-0.5">{cfg.icon}</span>
+                      <div className="flex-1 min-w-0">
+                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold border mr-1 ${cfg.badge}`}>{alert.category}</span>
+                        <span>{alert.message}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 export default function Overview() {
   const [seedLoading, setSeedLoading] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
@@ -82,6 +271,7 @@ export default function Overview() {
     onError: () => toast.error('فشل إعادة التهيئة'),
   });
 
+  const { data: managementFocus } = trpc.management.focus.useQuery({ year: YEAR, month: MONTH });
   const { data: taskStats } = trpc.tasks.stats.useQuery({ date: TODAY });
   const { data: criticalTasks } = trpc.tasks.critical.useQuery();
   const { data: leadsStats } = trpc.leads.stats.useQuery({ year: YEAR, month: MONTH });
@@ -183,6 +373,9 @@ export default function Overview() {
           </CardContent>
         </Card>
       )}
+
+      {/* ─── Management Focus Section ─── */}
+      <ManagementFocusSection data={managementFocus} />
 
       {/* KPI Row 1: Tasks & Leads */}
       <div>

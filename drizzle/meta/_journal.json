@@ -36,6 +36,41 @@
       "when": 1775660003136,
       "tag": "0004_complex_thena",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1775669673269,
+      "tag": "0005_sticky_kid_colt",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1775669727349,
+      "tag": "0006_peaceful_wildside",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1775670365036,
+      "tag": "0007_thick_ikaris",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1775672923104,
+      "tag": "0008_even_bruce_banner",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1775673925592,
+      "tag": "0009_premium_swordsman",
+      "breakpoints": true
     }
   ]
 }

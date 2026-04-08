@@ -25,7 +25,7 @@ export const engineers = mysqlTable("engineers", {
   email: varchar("email", { length: 320 }),
   phone: varchar("phone", { length: 30 }),
   department: varchar("department", { length: 80 }),
-  role: mysqlEnum("role", ["admin", "engineer"]).default("engineer").notNull(),
+  role: mysqlEnum("role", ["admin", "engineer", "admin_sales"]).default("engineer").notNull(),
   status: mysqlEnum("status", ["active", "inactive"]).default("active").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
@@ -48,6 +48,10 @@ export const dailyTasks = mysqlTable("daily_tasks", {
   isCritical: int("isCritical").default(0).notNull(),
   completedAt: timestamp("completedAt"),
   notes: text("notes"),
+  // ─── Meeting Recording ─────────────────────────────────────────────────────
+  category: varchar("category", { length: 80 }), // e.g. 'closing', 'meeting', 'general'
+  meetingRecordingLink: varchar("meetingRecordingLink", { length: 500 }),
+  recordingSubmittedAt: timestamp("recordingSubmittedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 export type DailyTask = typeof dailyTasks.$inferSelect;
@@ -315,6 +319,81 @@ export const commissionPayments = mysqlTable("commission_payments", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 export type CommissionPayment = typeof commissionPayments.$inferSelect;
+
+// ─── Admin Sales Tasks ──────────────────────────────────────────────────────────────────────────
+export const adminSalesTasks = mysqlTable("admin_sales_tasks", {
+  id: int("id").autoincrement().primaryKey(),
+  engineerId: int("engineerId").notNull(),
+  taskType: mysqlEnum("taskType", ["daily", "weekly", "monthly", "meeting"]).notNull(),
+  taskKey: varchar("taskKey", { length: 80 }).notNull(),  // unique key like 'crm_update', 'lead_quality_mon_thu'
+  taskTitle: varchar("taskTitle", { length: 255 }).notNull(),
+  taskDate: date("taskDate").notNull(),
+  dayOfWeek: int("dayOfWeek"),  // 0=Sun, 1=Mon, ... 6=Sat (for weekly)
+  dayOfMonth: int("dayOfMonth"),  // 15, 22, 28 (for monthly)
+  status: mysqlEnum("status", ["pending", "done", "delayed", "not_done"]).default("pending").notNull(),
+  completedAt: timestamp("completedAt"),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type AdminSalesTask = typeof adminSalesTasks.$inferSelect;
+export type InsertAdminSalesTask = typeof adminSalesTasks.$inferInsert;
+
+// ─── Admin Sales Meetings ─────────────────────────────────────────────────────────────────────────
+export const adminSalesMeetings = mysqlTable("admin_sales_meetings", {
+  id: int("id").autoincrement().primaryKey(),
+  engineerId: int("engineerId").notNull(),
+  weekStartDate: date("weekStartDate").notNull(),
+  weeklyTeamMeeting: mysqlEnum("weeklyTeamMeeting", ["done", "not_done", "pending"]).default("pending").notNull(),
+  managementMeeting: mysqlEnum("managementMeeting", ["done", "not_done", "pending"]).default("pending").notNull(),
+  reportSubmitted: mysqlEnum("reportSubmitted", ["yes", "no", "pending"]).default("pending").notNull(),
+  meetingNotes: text("meetingNotes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type AdminSalesMeeting = typeof adminSalesMeetings.$inferSelect;
+export type InsertAdminSalesMeeting = typeof adminSalesMeetings.$inferInsert;
+
+// ─── Meeting Reviews ────────────────────────────────────────────────────────────────────────────────
+// تقييم جودة الميتينج بواسطة Admin Sales
+export const meetingReviews = mysqlTable("meeting_reviews", {
+  id: int("id").autoincrement().primaryKey(),
+  taskId: int("taskId").notNull(),          // FK → daily_tasks.id
+  engineerId: int("engineerId").notNull(),  // المهندس صاحب المهمة
+  reviewedBy: int("reviewedBy"),             // Admin Sales user id
+  // ─── أبعاد التقييم ────────────────────────────────────────────────────────────────────────────────
+  openingScore: int("openingScore").default(0).notNull(),          // من 10
+  understandingScore: int("understandingScore").default(0).notNull(), // من 20
+  presentationScore: int("presentationScore").default(0).notNull(),  // من 20
+  objectionScore: int("objectionScore").default(0).notNull(),        // من 25
+  closingScore: int("closingScore").default(0).notNull(),            // من 25
+  totalScore: int("totalScore").default(0).notNull(),               // مجموع من 100
+  comments: text("comments"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type MeetingReview = typeof meetingReviews.$inferSelect;
+export type InsertMeetingReview = typeof meetingReviews.$inferInsert;
+
+// ─── Lead Followup Logs ────────────────────────────────────────────────────────────────────────────────
+// يسجل Admin Sales نتيجة مراجعة WhatsApp ومتابعة الـ Leads يومياً
+export const leadFollowupLogs = mysqlTable("lead_followup_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  logDate: date("logDate").notNull(),                    // تاريخ المتابعة
+  adminSalesId: int("adminSalesId").notNull(),           // FK → engineers.id (الذي سجّل)
+  telesalesId: int("telesalesId").notNull(),             // FK → engineers.id (الذي يتابع الـ Lead)
+  // ─── حالة المتابعة ────────────────────────────────────────────────────────────────────────────────
+  followupStatus: mysqlEnum("followupStatus", ["followed_up", "delayed", "no_response"]).notNull(),
+  // ─── تفاصيل التأخير ────────────────────────────────────────────────────────────────────────────────
+  responseDelayHours: int("responseDelayHours"),         // عدد ساعات التأخير (إن وجد)
+  followupQuality: mysqlEnum("followupQuality", ["excellent", "good", "poor"]),  // جودة المتابعة
+  // ─── ملاحظات ────────────────────────────────────────────────────────────────────────────────
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type LeadFollowupLog = typeof leadFollowupLogs.$inferSelect;
+export type InsertLeadFollowupLog = typeof leadFollowupLogs.$inferInsert;
 
 export const saleItems = mysqlTable("sale_items", {
   id: int("id").autoincrement().primaryKey(),
