@@ -9,7 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Users, Clock, TrendingUp, AlertTriangle, Plus } from "lucide-react";
+import { Users, Clock, TrendingUp, AlertTriangle, Plus, Trash2 } from "lucide-react";
+import { DeleteConfirmDialog, type DeleteReason } from "@/components/DeleteConfirmDialog";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
 const now = new Date();
@@ -25,6 +26,7 @@ export default function LeadsModule() {
   const [showAdd, setShowAdd] = useState(false);
   const [filterStatus, setFilterStatus] = useState("all");
   const [newLead, setNewLead] = useState({ name: '', phone: '', email: '', source: 'other', assignedEngineerId: '', notes: '' });
+  const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
 
   const utils = trpc.useUtils();
   const { data: stats } = trpc.leads.stats.useQuery({ year: YEAR, month: MONTH });
@@ -38,6 +40,10 @@ export default function LeadsModule() {
   const updateMutation = trpc.leads.updateStatus.useMutation({
     onSuccess: () => { toast.success('تم تحديث الحالة'); utils.leads.list.invalidate(); utils.leads.stats.invalidate(); },
     onError: () => toast.error('حدث خطأ'),
+  });
+  const softDeleteMut = trpc.softDelete.lead.useMutation({
+    onSuccess: () => { toast.success('تم حذف العميل المحتمل'); setDeleteTarget(null); utils.leads.list.invalidate(); utils.leads.stats.invalidate(); },
+    onError: () => toast.error('حدث خطأ في الحذف'),
   });
 
   const sourceChartData = stats?.bySource?.map((s, i) => ({
@@ -170,6 +176,9 @@ export default function LeadsModule() {
                 {lead.status === 'qualified' && (
                   <Button size="sm" variant="outline" className="text-xs h-7 text-purple-600" onClick={() => updateMutation.mutate({ id: lead.id, status: 'converted' })}>تحويل لصفقة</Button>
                 )}
+                <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-600 hover:bg-red-50 h-7 w-7 p-0 shrink-0" onClick={() => setDeleteTarget(lead.id)}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
               </div>
             )) ?? <div className="text-center py-8 text-muted-foreground">لا توجد بيانات</div>}
           </div>
@@ -208,6 +217,17 @@ export default function LeadsModule() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <DeleteConfirmDialog
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={(reason: DeleteReason, reasonCustom?: string) => {
+          if (deleteTarget !== null) softDeleteMut.mutate({ id: deleteTarget, reason, reasonCustom });
+        }}
+        title="حذف العميل المحتمل"
+        description="هل أنت متأكد من حذف هذا العميل المحتمل؟ سيتم إخفاؤه مع الاحتفاظ ببياناته."
+        isLoading={softDeleteMut.isPending}
+      />
     </div>
   );
 }

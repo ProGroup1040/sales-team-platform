@@ -30,6 +30,10 @@ import {
   getClientFinancialProfile,
   getManagementFocus,
   submitMeetingRecordingLink, upsertMeetingReview, getMeetingReview, getEngineerClosingQualityScore,
+  softDeleteVisit, getVisitsDebt, getVisitsAlerts, getVisitsDailyTracking,
+  updateVisitWithAdminTracking, getAdminSalesVisitsKPI, getEngineerVisitsKPI,
+  softDeleteEngineer, softDeleteTask, softDeleteLead, softDeleteVisitFull, softDeleteDeal,
+  getAuditLogs,
 } from "./db";
 
 // ─── Seed Data ────────────────────────────────────────────────────────────────
@@ -345,6 +349,39 @@ export const appRouter = router({
       feeAmount: z.number().optional(),
       feeCollected: z.boolean().optional(),
     })).mutation(async ({ input }) => { await updateVisitFull(input.id, input); return { success: true }; }),
+    // Extended endpoints
+    updateFull: publicProcedure.input(z.object({
+      id: z.number(),
+      status: z.enum(['scheduled', 'completed', 'delayed', 'cancelled', 'rescheduled']).optional(),
+      quality: z.enum(['successful', 'with_issues', 'design_rejected', 'repeated', 'pending']).optional(),
+      delayMinutes: z.number().optional(), notes: z.string().optional(),
+      confirmationStatus: z.enum(['confirmed_same_day', 'confirmed_late', 'not_confirmed']).optional(),
+      confirmationDelayHours: z.number().optional(),
+      uploadStatus: z.enum(['uploaded_same_day', 'uploaded_late', 'not_uploaded']).optional(),
+      deliveredToAdmin: z.boolean().optional(),
+      deliveryDelayHours: z.number().optional(),
+      groupStatus: z.enum(['created_on_time', 'created_late', 'not_created']).optional(),
+      assignedToDesigner: z.boolean().optional(),
+      feeAmount: z.number().optional(),
+      feeCollected: z.boolean().optional(),
+      paymentScreenshotUrl: z.string().optional(),
+      paymentDate: z.date().optional(),
+      bookingStatus: z.enum(['booked', 'distributed', 'distribution_delayed']).optional(),
+      adminSalesId: z.number().optional(),
+      debtFollowedUp: z.boolean().optional(),
+    })).mutation(async ({ input }) => { const { id, ...data } = input; await updateVisitWithAdminTracking(id, data); return { success: true }; }),
+    softDelete: publicProcedure.input(z.object({
+      id: z.number(),
+      reason: z.enum(['client_cancelled', 'postponed', 'data_entry_error']),
+    })).mutation(async ({ input }) => { await softDeleteVisit(input.id, input.reason); return { success: true }; }),
+    debt: publicProcedure.query(async () => getVisitsDebt()),
+    alerts: publicProcedure.query(async () => getVisitsAlerts()),
+    dailyTracking: publicProcedure.input(z.object({ date: z.string() }))
+      .query(async ({ input }) => getVisitsDailyTracking(input.date)),
+    adminSalesKPI: publicProcedure.input(z.object({ year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getAdminSalesVisitsKPI(input.year, input.month)),
+    engineerKPI: publicProcedure.input(z.object({ engineerId: z.number(), year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getEngineerVisitsKPI(input.engineerId, input.year, input.month)),
   }),
 
   // ── Closing / Deals ───────────────────────────────────────────────────────
@@ -653,6 +690,47 @@ export const appRouter = router({
     allTelesalesStats: publicProcedure
       .input(z.object({ startDate: z.string(), endDate: z.string() }))
       .query(async ({ input }) => getAllTelesalesFollowupStats(input.startDate, input.endDate)),
+  }),
+  // Soft Delete + Audit Log
+  softDelete: router({
+    engineer: protectedProcedure
+      .input(z.object({ id: z.number(), reason: z.enum(['data_entry_error','duplicate','client_cancelled','other']), reasonCustom: z.string().optional() }))
+      .mutation(async ({ input, ctx }) => {
+        if (ctx.user.role !== 'admin') throw new Error('FORBIDDEN');
+        await softDeleteEngineer(input.id, input.reason, input.reasonCustom, ctx.user.name ?? 'admin');
+        return { success: true };
+      }),
+    task: protectedProcedure
+      .input(z.object({ id: z.number(), reason: z.enum(['data_entry_error','duplicate','client_cancelled','other']), reasonCustom: z.string().optional() }))
+      .mutation(async ({ input, ctx }) => {
+        if (!['admin','admin_sales'].includes(ctx.user.role ?? '')) throw new Error('FORBIDDEN');
+        await softDeleteTask(input.id, input.reason, input.reasonCustom, ctx.user.name ?? 'user');
+        return { success: true };
+      }),
+    lead: protectedProcedure
+      .input(z.object({ id: z.number(), reason: z.enum(['data_entry_error','duplicate','client_cancelled','other']), reasonCustom: z.string().optional() }))
+      .mutation(async ({ input, ctx }) => {
+        if (!['admin','admin_sales'].includes(ctx.user.role ?? '')) throw new Error('FORBIDDEN');
+        await softDeleteLead(input.id, input.reason, input.reasonCustom, ctx.user.name ?? 'user');
+        return { success: true };
+      }),
+    visit: protectedProcedure
+      .input(z.object({ id: z.number(), reason: z.enum(['data_entry_error','duplicate','client_cancelled','other']), reasonCustom: z.string().optional() }))
+      .mutation(async ({ input, ctx }) => {
+        if (!['admin','admin_sales'].includes(ctx.user.role ?? '')) throw new Error('FORBIDDEN');
+        await softDeleteVisitFull(input.id, input.reason, input.reasonCustom, ctx.user.name ?? 'user');
+        return { success: true };
+      }),
+    deal: protectedProcedure
+      .input(z.object({ id: z.number(), reason: z.enum(['data_entry_error','duplicate','client_cancelled','other']), reasonCustom: z.string().optional() }))
+      .mutation(async ({ input, ctx }) => {
+        if (ctx.user.role !== 'admin') throw new Error('FORBIDDEN');
+        await softDeleteDeal(input.id, input.reason, input.reasonCustom, ctx.user.name ?? 'admin');
+        return { success: true };
+      }),
+    getAuditLogs: publicProcedure
+      .input(z.object({ entityType: z.enum(['engineer','task','lead','visit','deal']).optional(), limit: z.number().optional() }))
+      .query(async ({ input }) => getAuditLogs(input)),
   }),
 });
 export type AppRouter = typeof appRouter;

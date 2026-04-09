@@ -240,3 +240,45 @@
 - [x] واجهة: سجل المتابعة مع فلتر الفترة (اليوم / 7 أيام / الشهر)
 - [x] ربط نتائج المتابعة بـ KPI الشامل لكلا الدورين
 - [x] كتابة اختبارات Vitest لـ Lead Followup scoring logic (13 اختبار ناجح)
+
+## Visits Module - نظام تشغيل يومي إلزامي (الطلب الجديد)
+- [ ] تحديث schema: إضافة paymentScreenshotUrl, paymentDate, bookingStatus, distributionStatus لجدول visits
+- [ ] تحديث schema: إضافة deleteReason, deletedAt, isDeleted (Soft Delete) لجدول visits
+- [ ] تحديث schema: إضافة adminSalesId (من يتابع) لجدول visits
+- [ ] تطبيق migration SQL
+- [ ] Backend: softDeleteVisit (حذف ناعم مع سبب)
+- [ ] Backend: getVisitsDebt (المديونية = تمت ولم يتم التحصيل)
+- [ ] Backend: getVisitsDailyTracking (تتبع يومي إلزامي)
+- [ ] Backend: getVisitsAlerts (تنبيهات: لم يتأكد / لم يُرفع / مديونية)
+- [ ] Backend: تحديث createVisit لإضافة adminSalesId + bookingStatus + distributionStatus
+- [ ] Backend: تحديث updateVisitFull لإضافة paymentScreenshotUrl + paymentDate
+- [ ] Backend: getAdminSalesVisitsKPI (خصم KPI لعدم التحديث اليومي + عدم متابعة التحصيل + مديونية بدون متابعة + تأخير التوزيع)
+- [ ] Backend: تحديث getEngineersKPI لإضافة خصم KPI المعاينات (عدم التأكيد + تأخير + عدم الرفع)
+- [ ] VisitsModule.tsx: إعادة بناء كاملة مع 7 أقسام
+- [ ] VisitsModule.tsx: قسم Daily Tracking (تتبع يومي إلزامي مع تحذير عند غياب التحديث)
+- [ ] VisitsModule.tsx: قسم الحجز والتوزيع (محجوزة/موزعة/تأخير توزيع)
+- [ ] VisitsModule.tsx: قسم التأكيد (نفس اليوم/متأخر/لم يتم)
+- [ ] VisitsModule.tsx: قسم التنفيذ (تمت/متأخرة/ملغية/مؤجلة)
+- [ ] VisitsModule.tsx: قسم الرفع والتسليم (نفس اليوم/متأخر/لم يتم)
+- [ ] VisitsModule.tsx: قسم الجودة (ناجحة/بها مشاكل/مكررة/مرفوضة)
+- [ ] VisitsModule.tsx: قسم المالية (تم الدفع/لم يتم + Screenshot إجباري + تاريخ الدفع)
+- [ ] VisitsModule.tsx: قسم المديونية (حساب تلقائي للمعاينات التي تمت ولم يُحصَّل)
+- [ ] VisitsModule.tsx: زر حذف ناعم مع سبب (العميل ألغى/تأجيل/خطأ إدخال)
+- [ ] VisitsModule.tsx: قسم Alerts (لم يتأكد/لم يُرفع/مديونية)
+- [ ] VisitsModule.tsx: KPI Impact panel (تأثير على KPI المهندس وAdmin Sales)
+- [ ] كتابة اختبارات Vitest لـ Debt Calculation وKPI Deduction Logic
+
+## Delete System + Fake Data Cleanup
+- [x] حذف جميع البيانات الافتراضية من DB (leads, visits, deals, engineers, daily_tasks, sales, customers, collections)
+- [x] منع seed scripts من التشغيل التلقائي مستقبلاً (حذف زر تحميل بيانات تجريبية من Overview)
+- [x] تحديث schema: إضافة isDeleted + deletedAt + deleteReason + deletedBy لجداول: engineers, daily_tasks, leads, visits, deals
+- [x] إنشاء جدول audit_logs (entityType, entityId, action, reason, customReason, performedBy, performedAt)
+- [x] تطبيق migration SQL
+- [x] Backend: softDelete endpoints لكل موديول (engineers, tasks, leads, visits, deals)
+- [x] Backend: صلاحيات الحذف (admin يحذف engineers+deals, admin_sales يحذف visits+leads, engineer لا يحذف)
+- [x] واجهة: DeleteConfirmDialog مشترك (Confirmation + سبب الحذف + سبب آخر يدوي)
+- [x] واجهة: إضافة زر Delete في TasksModule (مهندسين + مهام يومية)
+- [x] واجهة: إضافة زر Delete في LeadsModule
+- [x] واجهة: إضافة زر Delete في VisitsModule (استبدال DeleteDialog القديم)
+- [x] واجهة: إضافة زر Delete في ClosingModule (صفقات)
+- [x] كتابة اختبارات Vitest لـ Soft Delete (15 اختبار ناجح)

@@ -9,7 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { TrendingUp, DollarSign, Zap, CheckCircle, Plus, ChevronRight } from "lucide-react";
+import { TrendingUp, DollarSign, Zap, CheckCircle, Plus, ChevronRight, Trash2 } from "lucide-react";
+import { DeleteConfirmDialog, type DeleteReason } from "@/components/DeleteConfirmDialog";
 import { FunnelChart, Funnel, LabelList, Tooltip, ResponsiveContainer } from "recharts";
 
 const now = new Date();
@@ -34,6 +35,7 @@ export default function ClosingModule() {
   const [filterStage, setFilterStage] = useState("all");
   const [updateDeal, setUpdateDeal] = useState<{ id: number; stage: string; nextAction: string; nextActionDate: string; notes: string } | null>(null);
   const [newDeal, setNewDeal] = useState({ engineerId: '', clientName: '', value: '', nextAction: '', nextActionDate: '', notes: '' });
+  const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
 
   const utils = trpc.useUtils();
   const { data: stats } = trpc.closing.stats.useQuery({ year: YEAR, month: MONTH });
@@ -47,6 +49,10 @@ export default function ClosingModule() {
   const updateMutation = trpc.closing.updateStage.useMutation({
     onSuccess: () => { toast.success('تم تحديث الصفقة'); setUpdateDeal(null); utils.closing.list.invalidate(); utils.closing.stats.invalidate(); },
     onError: () => toast.error('حدث خطأ'),
+  });
+  const softDeleteMut = trpc.softDelete.deal.useMutation({
+    onSuccess: () => { toast.success('تم حذف الصفقة'); setDeleteTarget(null); utils.closing.list.invalidate(); utils.closing.stats.invalidate(); },
+    onError: () => toast.error('حدث خطأ في الحذف'),
   });
 
   const pipelineData = stats?.byStage?.map(s => ({
@@ -145,11 +151,16 @@ export default function ClosingModule() {
                     </div>
                   )}
                 </div>
-                {deal.stage !== 'closed_won' && deal.stage !== 'closed_lost' && (
-                  <Button size="sm" variant="outline" className="text-xs h-7 flex-shrink-0" onClick={() => setUpdateDeal({ id: deal.id, stage: deal.stage, nextAction: deal.nextAction ?? '', nextActionDate: '', notes: deal.notes ?? '' })}>
-                    تحديث
+                <div className="flex gap-1 shrink-0">
+                  {deal.stage !== 'closed_won' && deal.stage !== 'closed_lost' && (
+                    <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => setUpdateDeal({ id: deal.id, stage: deal.stage, nextAction: deal.nextAction ?? '', nextActionDate: '', notes: deal.notes ?? '' })}>
+                      تحديث
+                    </Button>
+                  )}
+                  <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-600 hover:bg-red-50 h-7 w-7 p-0" onClick={() => setDeleteTarget(deal.id)}>
+                    <Trash2 className="h-3.5 w-3.5" />
                   </Button>
-                )}
+                </div>
               </div>
             )) ?? <div className="text-center py-8 text-muted-foreground">لا توجد صفقات</div>}
           </div>
@@ -203,6 +214,17 @@ export default function ClosingModule() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <DeleteConfirmDialog
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={(reason: DeleteReason, reasonCustom?: string) => {
+          if (deleteTarget !== null) softDeleteMut.mutate({ id: deleteTarget, reason, reasonCustom });
+        }}
+        title="حذف الصفقة"
+        description="هل أنت متأكد من حذف هذه الصفقة؟ سيتم إخفاؤها مع الاحتفاظ بالبيانات."
+        isLoading={softDeleteMut.isPending}
+      />
     </div>
   );
 }

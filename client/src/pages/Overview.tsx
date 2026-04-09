@@ -258,19 +258,6 @@ function ManagementFocusSection({ data }: { data: any }) {
 }
 
 export default function Overview() {
-  const [seedLoading, setSeedLoading] = useState(false);
-  const [resetLoading, setResetLoading] = useState(false);
-  const { data: isSeeded, refetch: refetchSeed } = trpc.seed.isSeeded.useQuery();
-  const utils = trpc.useUtils();
-  const seedMutation = trpc.seed.run.useMutation({
-    onSuccess: () => { toast.success('تم تحميل البيانات التجريبية بنجاح!'); refetchSeed(); utils.invalidate(); },
-    onError: () => toast.error('حدث خطأ أثناء تحميل البيانات'),
-  });
-  const resetMutation = trpc.seed.reset.useMutation({
-    onSuccess: () => { toast.success('تم إعادة تهيئة البيانات التجريبية بنجاح!'); refetchSeed(); utils.invalidate(); },
-    onError: () => toast.error('فشل إعادة التهيئة'),
-  });
-
   const { data: managementFocus } = trpc.management.focus.useQuery({ year: YEAR, month: MONTH });
   const { data: taskStats } = trpc.tasks.stats.useQuery({ date: TODAY });
   const { data: criticalTasks } = trpc.tasks.critical.useQuery();
@@ -300,18 +287,6 @@ export default function Overview() {
     return list;
   }, [taskStats, leadsStats, visitsStats, closingStats, salesStats, collectionsStats, kpiData]);
 
-  const handleSeed = async () => {
-    setSeedLoading(true);
-    try { await seedMutation.mutateAsync(); }
-    finally { setSeedLoading(false); }
-  };
-
-  const handleReset = async () => {
-    setResetLoading(true);
-    try { await resetMutation.mutateAsync(); }
-    finally { setResetLoading(false); }
-  };
-
   const trendChartData = salesTrend?.map(t => ({
     name: t.label,
     الهدف: t.target,
@@ -340,21 +315,6 @@ export default function Overview() {
           <p className="text-sm text-muted-foreground mt-0.5">
             {new Date().toLocaleDateString('ar-EG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
           </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {!isSeeded && (
-            <Button onClick={handleSeed} disabled={seedLoading} variant="outline" size="sm" className="gap-2">
-              <RefreshCw className={`w-4 h-4 ${seedLoading ? 'animate-spin' : ''}`} />
-              {seedLoading ? 'جاري التحميل...' : 'تحميل البيانات التجريبية'}
-            </Button>
-          )}
-          {isSeeded && (
-            <Button onClick={handleReset} disabled={resetLoading} variant="outline" size="sm"
-              className="gap-2 border-orange-500/40 text-orange-400 hover:bg-orange-500/10">
-              <RefreshCw className={`w-4 h-4 ${resetLoading ? 'animate-spin' : ''}`} />
-              {resetLoading ? 'جاري الإعادة...' : 'إعادة تهيئة البيانات'}
-            </Button>
-          )}
         </div>
       </div>
 

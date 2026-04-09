@@ -12,7 +12,8 @@ import {
   adminSalesTasks, adminSalesMeetings,
   InsertAdminSalesTask, InsertAdminSalesMeeting,
   meetingReviews, MeetingReview, InsertMeetingReview,
-  leadFollowupLogs, LeadFollowupLog, InsertLeadFollowupLog
+  leadFollowupLogs, LeadFollowupLog, InsertLeadFollowupLog,
+  auditLogs, AuditLog, InsertAuditLog
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { notifyOwner } from './_core/notification';
@@ -2047,4 +2048,277 @@ export async function getAllTelesalesFollowupStats(startDate: string, endDate: s
     return { engineerId: eng.id, engineerName: eng.name, totalLogs: engLogs.length, followedUp, delayed, noResponse, responseScore, qualityScore, overallScore };
   });
   return grouped.filter(g => g.totalLogs > 0);
+}
+
+// ─── Visits Extended Functions ────────────────────────────────────────────────
+
+/** Soft-delete a visit with reason */
+export async function softDeleteVisit(id: number, reason: 'client_cancelled' | 'postponed' | 'data_entry_error') {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(visits).set({
+    isDeleted: 1,
+    deleteReason: reason,
+    deletedAt: new Date(),
+  }).where(eq(visits.id, id));
+}
+
+/** Get visits debt: completed visits with fee > 0 and not collected */
+export async function getVisitsDebt() {
+  const db = await getDb();
+  if (!db) return [];
+  const debtVisits = await db.select().from(visits).where(
+    and(
+      eq(visits.isDeleted, 0),
+      eq(visits.status, 'completed'),
+      eq(visits.feeCollected, 0),
+      sql`${visits.feeAmount} > 0`
+    )
+  ).orderBy(desc(visits.scheduledAt));
+  return debtVisits;
+}
+
+/** Get visits alerts: not confirmed, not uploaded, debt */
+export async function getVisitsAlerts() {
+  const db = await getDb();
+  if (!db) return { notConfirmed: [], notUploaded: [], debt: [] };
+  const activeVisits = await db.select().from(visits).where(
+    and(eq(visits.isDeleted, 0), ne(visits.status, 'cancelled'))
+  );
+  const notConfirmed = activeVisits.filter(v =>
+    v.status === 'completed' && v.confirmationStatus === 'not_confirmed'
+  );
+  const notUploaded = activeVisits.filter(v =>
+    v.status === 'completed' && v.uploadStatus === 'not_uploaded'
+  );
+  const debt = activeVisits.filter(v =>
+    v.status === 'completed' && v.feeCollected === 0 && parseFloat(v.feeAmount) > 0
+  );
+  return { notConfirmed, notUploaded, debt };
+}
+
+/** Get daily tracking status: visits updated today vs total active */
+export async function getVisitsDailyTracking(date: string) {
+  const db = await getDb();
+  if (!db) return { totalActive: 0, updatedToday: 0, pendingUpdate: 0, missingUpdate: false };
+  const dayStart = new Date(date + 'T00:00:00');
+  const dayEnd = new Date(date + 'T23:59:59');
+  const allActive = await db.select().from(visits).where(
+    and(eq(visits.isDeleted, 0), ne(visits.status, 'cancelled'))
+  );
+  const updatedToday = allActive.filter(v =>
+    v.lastUpdatedByAdminAt && v.lastUpdatedByAdminAt >= dayStart && v.lastUpdatedByAdminAt <= dayEnd
+  ).length;
+  const totalActive = allActive.length;
+  const pendingUpdate = totalActive - updatedToday;
+  return { totalActive, updatedToday, pendingUpdate, missingUpdate: pendingUpdate > 0 };
+}
+
+/** Update visit with admin tracking timestamp */
+export async function updateVisitWithAdminTracking(id: number, data: {
+  status?: string; quality?: string; delayMinutes?: number; notes?: string;
+  confirmationStatus?: string; confirmationDelayHours?: number;
+  uploadStatus?: string; deliveredToAdmin?: boolean; deliveryDelayHours?: number;
+  groupStatus?: string; assignedToDesigner?: boolean;
+  feeAmount?: number; feeCollected?: boolean;
+  paymentScreenshotUrl?: string; paymentDate?: Date;
+  bookingStatus?: string; adminSalesId?: number;
+  debtFollowedUp?: boolean;
+}) {
+  const db = await getDb();
+  if (!db) return;
+  const updateData: any = { lastUpdatedByAdminAt: new Date() };
+  if (data.status) { updateData.status = data.status; if (['completed', 'delayed'].includes(data.status)) updateData.actualAt = new Date(); }
+  if (data.quality) updateData.quality = data.quality;
+  if (data.delayMinutes !== undefined) updateData.delayMinutes = data.delayMinutes;
+  if (data.notes !== undefined) updateData.notes = data.notes;
+  if (data.confirmationStatus) { updateData.confirmationStatus = data.confirmationStatus; updateData.confirmedAt = new Date(); }
+  if (data.confirmationDelayHours !== undefined) updateData.confirmationDelayHours = data.confirmationDelayHours;
+  if (data.uploadStatus) { updateData.uploadStatus = data.uploadStatus; updateData.uploadedAt = new Date(); }
+  if (data.deliveredToAdmin !== undefined) updateData.deliveredToAdmin = data.deliveredToAdmin ? 1 : 0;
+  if (data.deliveryDelayHours !== undefined) updateData.deliveryDelayHours = data.deliveryDelayHours;
+  if (data.groupStatus) updateData.groupStatus = data.groupStatus;
+  if (data.assignedToDesigner !== undefined) updateData.assignedToDesigner = data.assignedToDesigner ? 1 : 0;
+  if (data.feeAmount !== undefined) updateData.feeAmount = String(data.feeAmount);
+  if (data.feeCollected !== undefined) updateData.feeCollected = data.feeCollected ? 1 : 0;
+  if (data.paymentScreenshotUrl) updateData.paymentScreenshotUrl = data.paymentScreenshotUrl;
+  if (data.paymentDate) updateData.paymentDate = data.paymentDate;
+  if (data.bookingStatus) updateData.bookingStatus = data.bookingStatus;
+  if (data.adminSalesId !== undefined) updateData.adminSalesId = data.adminSalesId;
+  if (data.debtFollowedUp !== undefined) updateData.debtFollowedUp = data.debtFollowedUp ? 1 : 0;
+  await db.update(visits).set(updateData).where(eq(visits.id, id));
+}
+
+/** Get Admin Sales KPI for visits: daily update compliance, debt follow-up, distribution delay */
+export async function getAdminSalesVisitsKPI(year: number, month: number) {
+  const db = await getDb();
+  if (!db) return { dailyUpdateScore: 100, debtFollowupScore: 100, distributionScore: 100, overallScore: 100 };
+  const startDate = new Date(year, month - 1, 1);
+  const endDate = new Date(year, month, 0, 23, 59, 59);
+  const monthVisits = await db.select().from(visits).where(
+    and(eq(visits.isDeleted, 0), between(visits.scheduledAt, startDate, endDate))
+  );
+  // Distribution delay score: visits with no delay = good
+  const totalVisits = monthVisits.length;
+  if (totalVisits === 0) return { dailyUpdateScore: 100, debtFollowupScore: 100, distributionScore: 100, overallScore: 100 };
+  const delayedDistribution = monthVisits.filter(v => v.bookingStatus === 'distribution_delayed').length;
+  const distributionScore = Math.round(((totalVisits - delayedDistribution) / totalVisits) * 100);
+  // Debt follow-up score: completed visits with debt - how many were followed up
+  const debtVisits = monthVisits.filter(v => v.status === 'completed' && v.feeCollected === 0 && parseFloat(v.feeAmount) > 0);
+  const followedUpDebt = debtVisits.filter(v => v.debtFollowedUp === 1).length;
+  const debtFollowupScore = debtVisits.length > 0 ? Math.round((followedUpDebt / debtVisits.length) * 100) : 100;
+  // Daily update score: visits updated by admin (lastUpdatedByAdminAt set)
+  const updatedVisits = monthVisits.filter(v => v.lastUpdatedByAdminAt !== null).length;
+  const dailyUpdateScore = Math.round((updatedVisits / totalVisits) * 100);
+  const overallScore = Math.round(dailyUpdateScore * 0.4 + debtFollowupScore * 0.35 + distributionScore * 0.25);
+  return { dailyUpdateScore, debtFollowupScore, distributionScore, overallScore, totalVisits, debtVisits: debtVisits.length, followedUpDebt };
+}
+
+/** Get engineer visits KPI: confirmation, upload, execution scores */
+export async function getEngineerVisitsKPI(engineerId: number, year: number, month: number) {
+  const db = await getDb();
+  if (!db) return { confirmationScore: 100, uploadScore: 100, executionScore: 100, overallScore: 100 };
+  const startDate = new Date(year, month - 1, 1);
+  const endDate = new Date(year, month, 0, 23, 59, 59);
+  const engVisits = await db.select().from(visits).where(
+    and(
+      eq(visits.engineerId, engineerId),
+      eq(visits.isDeleted, 0),
+      between(visits.scheduledAt, startDate, endDate)
+    )
+  );
+  const completed = engVisits.filter(v => v.status === 'completed');
+  if (completed.length === 0) return { confirmationScore: 100, uploadScore: 100, executionScore: 100, overallScore: 100 };
+  // Confirmation score
+  const confirmedSameDay = completed.filter(v => v.confirmationStatus === 'confirmed_same_day').length;
+  const confirmedLate = completed.filter(v => v.confirmationStatus === 'confirmed_late').length;
+  const confirmationScore = Math.round(((confirmedSameDay * 100 + confirmedLate * 60) / (completed.length * 100)) * 100);
+  // Upload score
+  const uploadedSameDay = completed.filter(v => v.uploadStatus === 'uploaded_same_day').length;
+  const uploadedLate = completed.filter(v => v.uploadStatus === 'uploaded_late').length;
+  const uploadScore = Math.round(((uploadedSameDay * 100 + uploadedLate * 60) / (completed.length * 100)) * 100);
+  // Execution score: delayed visits = penalty
+  const delayed = engVisits.filter(v => v.status === 'delayed').length;
+  const total = engVisits.filter(v => !['cancelled', 'rescheduled'].includes(v.status)).length;
+  const executionScore = total > 0 ? Math.round(((total - delayed) / total) * 100) : 100;
+  const overallScore = Math.round(confirmationScore * 0.35 + uploadScore * 0.35 + executionScore * 0.30);
+  return { confirmationScore, uploadScore, executionScore, overallScore, totalVisits: engVisits.length, completedVisits: completed.length };
+}
+
+// ─── Soft Delete + Audit Log Functions ───────────────────────────────────────
+
+/** تسجيل عملية حذف في Audit Log */
+export async function logAuditAction(data: {
+  entityType: 'engineer' | 'task' | 'lead' | 'visit' | 'deal';
+  entityId: number;
+  entityName?: string;
+  action: 'soft_delete' | 'restore';
+  reason: 'data_entry_error' | 'duplicate' | 'client_cancelled' | 'other';
+  reasonCustom?: string;
+  performedBy?: string;
+  notes?: string;
+}) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(auditLogs).values({
+    entityType: data.entityType,
+    entityId: data.entityId,
+    entityName: data.entityName,
+    action: data.action,
+    reason: data.reason,
+    reasonCustom: data.reasonCustom,
+    performedBy: data.performedBy,
+    notes: data.notes,
+  });
+}
+
+/** جلب سجل الحذف مع فلترة */
+export async function getAuditLogs(filters?: {
+  entityType?: 'engineer' | 'task' | 'lead' | 'visit' | 'deal';
+  limit?: number;
+}) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [];
+  if (filters?.entityType) conditions.push(eq(auditLogs.entityType, filters.entityType));
+  const query = db.select().from(auditLogs).orderBy(desc(auditLogs.performedAt));
+  if (conditions.length > 0) {
+    return await query.where(and(...conditions)).limit(filters?.limit ?? 100);
+  }
+  return await query.limit(filters?.limit ?? 100);
+}
+
+/** Soft Delete مهندس (للمدير فقط) */
+export async function softDeleteEngineer(id: number, reason: string, reasonCustom: string | undefined, performedBy: string) {
+  const db = await getDb();
+  if (!db) return;
+  const [eng] = await db.select({ name: engineers.name }).from(engineers).where(eq(engineers.id, id));
+  await db.update(engineers).set({
+    isDeleted: 1,
+    deletedAt: new Date(),
+    deleteReason: reason as any,
+    deleteReasonCustom: reasonCustom,
+    deletedBy: performedBy,
+  }).where(eq(engineers.id, id));
+  await logAuditAction({ entityType: 'engineer', entityId: id, entityName: eng?.name, action: 'soft_delete', reason: reason as any, reasonCustom, performedBy });
+}
+
+/** Soft Delete مهمة يومية (للمدير وAdmin Sales) */
+export async function softDeleteTask(id: number, reason: string, reasonCustom: string | undefined, performedBy: string) {
+  const db = await getDb();
+  if (!db) return;
+  const [task] = await db.select({ title: dailyTasks.title }).from(dailyTasks).where(eq(dailyTasks.id, id));
+  await db.update(dailyTasks).set({
+    isDeleted: 1,
+    deletedAt: new Date(),
+    deleteReason: reason as any,
+    deleteReasonCustom: reasonCustom,
+    deletedBy: performedBy,
+  }).where(eq(dailyTasks.id, id));
+  await logAuditAction({ entityType: 'task', entityId: id, entityName: task?.title, action: 'soft_delete', reason: reason as any, reasonCustom, performedBy });
+}
+
+/** Soft Delete Lead (للمدير وAdmin Sales) */
+export async function softDeleteLead(id: number, reason: string, reasonCustom: string | undefined, performedBy: string) {
+  const db = await getDb();
+  if (!db) return;
+  const [lead] = await db.select({ name: leads.name }).from(leads).where(eq(leads.id, id));
+  await db.update(leads).set({
+    isDeleted: 1,
+    deletedAt: new Date(),
+    deleteReason: reason as any,
+    deleteReasonCustom: reasonCustom,
+    deletedBy: performedBy,
+  }).where(eq(leads.id, id));
+  await logAuditAction({ entityType: 'lead', entityId: id, entityName: lead?.name, action: 'soft_delete', reason: reason as any, reasonCustom, performedBy });
+}
+
+/** Soft Delete معاينة (للمدير وAdmin Sales) */
+export async function softDeleteVisitFull(id: number, reason: string, reasonCustom: string | undefined, performedBy: string) {
+  const db = await getDb();
+  if (!db) return;
+  const [visit] = await db.select({ clientName: visits.clientName }).from(visits).where(eq(visits.id, id));
+  await db.update(visits).set({
+    isDeleted: 1,
+    deletedAt: new Date(),
+    deleteReason: reason as any,
+    deleteReasonCustom: reasonCustom,
+    deletedBy: performedBy,
+  }).where(eq(visits.id, id));
+  await logAuditAction({ entityType: 'visit', entityId: id, entityName: visit?.clientName, action: 'soft_delete', reason: reason as any, reasonCustom, performedBy });
+}
+
+/** Soft Delete صفقة (للمدير فقط) */
+export async function softDeleteDeal(id: number, reason: string, reasonCustom: string | undefined, performedBy: string) {
+  const db = await getDb();
+  if (!db) return;
+  const [deal] = await db.select({ clientName: deals.clientName }).from(deals).where(eq(deals.id, id));
+  await db.update(deals).set({
+    isDeleted: 1,
+    deletedAt: new Date(),
+    deleteReason: reason as any,
+    deleteReasonCustom: reasonCustom,
+    deletedBy: performedBy,
+  }).where(eq(deals.id, id));
+  await logAuditAction({ entityType: 'deal', entityId: id, entityName: deal?.clientName, action: 'soft_delete', reason: reason as any, reasonCustom, performedBy });
 }

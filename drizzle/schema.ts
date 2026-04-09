@@ -28,6 +28,12 @@ export const engineers = mysqlTable("engineers", {
   role: mysqlEnum("role", ["admin", "engineer", "admin_sales"]).default("engineer").notNull(),
   status: mysqlEnum("status", ["active", "inactive"]).default("active").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
+  // ─── Soft Delete ──────────────────────────────────────────────────────────
+  isDeleted: int("isDeleted").default(0).notNull(),
+  deletedAt: timestamp("deletedAt"),
+  deleteReason: mysqlEnum("deleteReason", ["data_entry_error", "duplicate", "client_cancelled", "other"]),
+  deleteReasonCustom: varchar("deleteReasonCustom", { length: 255 }),
+  deletedBy: varchar("deletedBy", { length: 120 }),
 });
 export type Engineer = typeof engineers.$inferSelect;
 
@@ -48,6 +54,12 @@ export const dailyTasks = mysqlTable("daily_tasks", {
   isCritical: int("isCritical").default(0).notNull(),
   completedAt: timestamp("completedAt"),
   notes: text("notes"),
+  // ─── Soft Delete ──────────────────────────────────────────────────────────
+  isDeleted: int("isDeleted").default(0).notNull(),
+  deletedAt: timestamp("deletedAt"),
+  deleteReason: mysqlEnum("deleteReason", ["data_entry_error", "duplicate", "client_cancelled", "other"]),
+  deleteReasonCustom: varchar("deleteReasonCustom", { length: 255 }),
+  deletedBy: varchar("deletedBy", { length: 120 }),
   // ─── Meeting Recording ─────────────────────────────────────────────────────
   category: varchar("category", { length: 80 }), // e.g. 'closing', 'meeting', 'general'
   meetingRecordingLink: varchar("meetingRecordingLink", { length: 500 }),
@@ -70,6 +82,12 @@ export const leads = mysqlTable("leads", {
   notes: text("notes"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  // ─── Soft Delete ──────────────────────────────────────────────────────────
+  isDeleted: int("isDeleted").default(0).notNull(),
+  deletedAt: timestamp("deletedAt"),
+  deleteReason: mysqlEnum("deleteReason", ["data_entry_error", "duplicate", "client_cancelled", "other"]),
+  deleteReasonCustom: varchar("deleteReasonCustom", { length: 255 }),
+  deletedBy: varchar("deletedBy", { length: 120 }),
 });
 export type Lead = typeof leads.$inferSelect;
 
@@ -84,10 +102,15 @@ export const visits = mysqlTable("visits", {
   scheduledAt: timestamp("scheduledAt").notNull(),
   actualAt: timestamp("actualAt"),
 
-  // ── 1. Booking & Assignment ──────────────────────────────────────────────────
-  assignedDelay: int("assignedDelay").default(0).notNull(),        // تأخير التوزيع بالدقائق
+  // ── Admin Sales Tracking ────────────────────────────────────────────────────────────────────────────────
+  adminSalesId: int("adminSalesId"),
+  lastUpdatedByAdminAt: timestamp("lastUpdatedByAdminAt"),
 
-  // ── 2. Confirmation ──────────────────────────────────────────────────────────
+  // ── 1. Booking & Assignment ────────────────────────────────────────────────────────────────────────────────
+  bookingStatus: mysqlEnum("bookingStatus", ["booked", "distributed", "distribution_delayed"]).default("booked").notNull(),
+  assignedDelay: int("assignedDelay").default(0).notNull(),
+
+  // ── 2. Confirmation ────────────────────────────────────────────────────────────────────────────────
   confirmationStatus: mysqlEnum("confirmationStatus", ["confirmed_same_day", "confirmed_late", "not_confirmed"]).default("not_confirmed").notNull(),
   confirmedAt: timestamp("confirmedAt"),
   confirmationDelayHours: int("confirmationDelayHours").default(0).notNull(),
@@ -108,11 +131,21 @@ export const visits = mysqlTable("visits", {
 
   // ── 6. Admin Handling ────────────────────────────────────────────────────────
   groupStatus: mysqlEnum("groupStatus", ["created_on_time", "created_late", "not_created"]).default("not_created").notNull(),
-  assignedToDesigner: int("assignedToDesigner").default(0).notNull(), // 1 = نعم
+  assignedToDesigner: int("assignedToDesigner").default(0).notNull(),
 
-  // ── 7. Financial ─────────────────────────────────────────────────────────────
+  // ── 7. Financial ────────────────────────────────────────────────────────────────────────────────
   feeAmount: decimal("feeAmount", { precision: 10, scale: 2 }).default("0").notNull(),
-  feeCollected: int("feeCollected").default(0).notNull(),           // 1 = محصّل
+  feeCollected: int("feeCollected").default(0).notNull(),
+  paymentScreenshotUrl: varchar("paymentScreenshotUrl", { length: 500 }),
+  paymentDate: timestamp("paymentDate"),
+  debtFollowedUp: int("debtFollowedUp").default(0).notNull(),       // 1 = تمت متابعة المديونية
+
+  // ── 8. Soft Delete ────────────────────────────────────────────────────────────────────────────────
+  isDeleted: int("isDeleted").default(0).notNull(),                 // 1 = محذوف
+  deleteReason: mysqlEnum("deleteReason", ["client_cancelled", "postponed", "data_entry_error", "other"]),
+  deleteReasonCustom: varchar("deleteReasonCustom", { length: 255 }),
+  deletedBy: varchar("deletedBy", { length: 120 }),
+  deletedAt: timestamp("deletedAt"),
 
   notes: text("notes"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -134,6 +167,12 @@ export const deals = mysqlTable("deals", {
   notes: text("notes"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  // ─── Soft Delete ──────────────────────────────────────────────────────────
+  isDeleted: int("isDeleted").default(0).notNull(),
+  deletedAt: timestamp("deletedAt"),
+  deleteReason: mysqlEnum("deleteReason", ["data_entry_error", "duplicate", "client_cancelled", "other"]),
+  deleteReasonCustom: varchar("deleteReasonCustom", { length: 255 }),
+  deletedBy: varchar("deletedBy", { length: 120 }),
 });
 export type Deal = typeof deals.$inferSelect;
 
@@ -403,3 +442,20 @@ export const saleItems = mysqlTable("sale_items", {
   unitPrice: decimal("unitPrice", { precision: 12, scale: 2 }).notNull(),
   totalPrice: decimal("totalPrice", { precision: 12, scale: 2 }).notNull(),
 });
+
+// ─── Audit Logs ───────────────────────────────────────────────────────────────
+// سجل تدقيق لجميع عمليات الحذف في النظام
+export const auditLogs = mysqlTable("audit_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  entityType: mysqlEnum("entityType", ["engineer", "task", "lead", "visit", "deal"]).notNull(),
+  entityId: int("entityId").notNull(),
+  entityName: varchar("entityName", { length: 255 }),         // اسم العنصر المحذوف
+  action: mysqlEnum("action", ["soft_delete", "restore"]).notNull(),
+  reason: mysqlEnum("reason", ["data_entry_error", "duplicate", "client_cancelled", "other"]).notNull(),
+  reasonCustom: varchar("reasonCustom", { length: 255 }),     // سبب مخصص عند اختيار "other"
+  performedBy: varchar("performedBy", { length: 120 }),       // اسم المستخدم الذي نفّذ العملية
+  performedAt: timestamp("performedAt").defaultNow().notNull(),
+  notes: text("notes"),
+});
+export type AuditLog = typeof auditLogs.$inferSelect;
+export type InsertAuditLog = typeof auditLogs.$inferInsert;

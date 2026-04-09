@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import { DeleteConfirmDialog, type DeleteReason } from "@/components/DeleteConfirmDialog";
 import {
   CheckCircle2, Clock, XCircle, AlertTriangle, Users, Plus, ChevronLeft, ChevronRight,
   Flame, Trophy, TrendingDown, UserCog, Trash2, Calendar, Star,
@@ -330,6 +331,7 @@ function AddTaskDialog({ engineers, dateStr, onDone }: { engineers: any[]; dateS
 function ManageEngineersDialog({ engineers, onDone }: { engineers: any[]; onDone: () => void }) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: "", phone: "", department: "", role: "engineer" });
+  const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
   const utils = trpc.useUtils();
   const createMut = trpc.tasks.createEngineer.useMutation({
     onSuccess: () => {
@@ -338,9 +340,9 @@ function ManageEngineersDialog({ engineers, onDone }: { engineers: any[]; onDone
     },
     onError: () => toast.error("حدث خطأ"),
   });
-  const deleteMut = trpc.tasks.deleteEngineer.useMutation({
-    onSuccess: () => { utils.tasks.engineers.invalidate(); toast.success("تم حذف المهندس"); onDone(); },
-    onError: () => toast.error("حدث خطأ"),
+  const softDeleteMut = trpc.softDelete.engineer.useMutation({
+    onSuccess: () => { utils.tasks.engineers.invalidate(); toast.success("تم حذف المهندس"); setDeleteTarget(null); onDone(); },
+    onError: () => toast.error("حدث خطأ في الحذف"),
   });
   return (
     <>
@@ -387,7 +389,7 @@ function ManageEngineersDialog({ engineers, onDone }: { engineers: any[]; onDone
                     </div>
                   </div>
                   <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-300 hover:bg-red-500/10 h-8 w-8 p-0"
-                    onClick={() => deleteMut.mutate({ id: eng.id })}>
+                    onClick={() => setDeleteTarget(eng.id)}>
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
                 </div>
@@ -396,6 +398,16 @@ function ManageEngineersDialog({ engineers, onDone }: { engineers: any[]; onDone
           </div>
         </DialogContent>
       </Dialog>
+      <DeleteConfirmDialog
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={(reason: DeleteReason, reasonCustom?: string) => {
+          if (deleteTarget !== null) softDeleteMut.mutate({ id: deleteTarget, reason, reasonCustom });
+        }}
+        title="حذف المهندس"
+        description="هل أنت متأكد من حذف هذا المهندس؟ سيتم إخفاؤه من القوائم مع الاحتفاظ ببياناته."
+        isLoading={softDeleteMut.isPending}
+      />
     </>
   );
 }
@@ -1199,10 +1211,11 @@ export default function TasksModule() {
   const tasks = listQ.data ?? [];
   const engineers = engineersQ.data ?? [];
   const criticalTasks = criticalQ.data ?? [];
-  const deleteMut = trpc.tasks.delete.useMutation({
-    onSuccess: () => { utils.tasks.stats.invalidate(); utils.tasks.list.invalidate(); toast.success("تم حذف المهمة"); },
+  const deleteMut = trpc.softDelete.task.useMutation({
+    onSuccess: () => { utils.tasks.stats.invalidate(); utils.tasks.list.invalidate(); toast.success("تم حذف المهمة"); setDeleteTaskTarget(null); },
     onError: () => toast.error("حدث خطأ"),
   });
+  const [deleteTaskTarget, setDeleteTaskTarget] = useState<number | null>(null);
   const filteredTasks = useMemo(() => {
     if (viewMode === "engineer" && selectedEngineer) return tasks.filter(t => t.engineerId === Number(selectedEngineer));
     return tasks;
@@ -1373,7 +1386,7 @@ export default function TasksModule() {
                       <>
                         <UpdateStatusDialog task={task} onDone={() => { statsQ.refetch(); listQ.refetch(); criticalQ.refetch(); }} />
                         <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-300 hover:bg-red-500/10 h-7 w-7 p-0"
-                          onClick={() => deleteMut.mutate({ id: task.id })}>
+                          onClick={() => setDeleteTaskTarget(task.id)}>
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </>
@@ -1525,6 +1538,18 @@ export default function TasksModule() {
       {activeTab === "lead_followup" && (
         <LeadFollowupTab engineers={engineers} />
       )}
+
+      {/* Delete Task Confirm */}
+      <DeleteConfirmDialog
+        open={deleteTaskTarget !== null}
+        onClose={() => setDeleteTaskTarget(null)}
+        onConfirm={(reason: DeleteReason, reasonCustom?: string) => {
+          if (deleteTaskTarget !== null) deleteMut.mutate({ id: deleteTaskTarget, reason, reasonCustom });
+        }}
+        title="حذف المهمة"
+        description="هل أنت متأكد من حذف هذه المهمة؟ سيتم إخفاؤها مع الاحتفاظ بالبيانات."
+        isLoading={deleteMut.isPending}
+      />
     </div>
   );
 }
