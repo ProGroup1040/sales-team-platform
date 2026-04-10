@@ -305,3 +305,7 @@
 - [x] إنشاء حساب Admin (username: admin)
 - [x] إنشاء حساب Admin Sales (username: admin_sales)
 - [x] تسليم اليوزرنيم والباسورد للمستخدم
+
+## إصلاح مشكلة الأمان
+- [x] إصلاح flash of content: الداشبورد يظهر لثانية قبل الـ redirect لـ /login
+- [x] إصلاح مشكلة cookie: إضافة trust proxy للـ Express لتفعيل HTTPS detection

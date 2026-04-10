@@ -100,12 +100,8 @@ function DashboardLayoutContent({
     },
   });
 
-  // Redirect to login if not authenticated
-  useEffect(() => {
-    if (!isLoading && !session) {
-      setLocation("/login");
-    }
-  }, [session, isLoading, setLocation]);
+  // Redirect to login if not authenticated (synchronous during render, not in useEffect)
+  // This prevents flash of content - we show spinner while loading, then redirect if no session
 
   const { state, toggleSidebar } = useSidebar();
   const isCollapsed = state === "collapsed";
@@ -158,7 +154,10 @@ function DashboardLayoutContent({
     );
   }
 
-  if (!session) return null;
+  if (!session) {
+    setLocation("/login");
+    return null;
+  }
 
   return (
     <>
