@@ -34,6 +34,7 @@ import {
   updateVisitWithAdminTracking, getAdminSalesVisitsKPI, getEngineerVisitsKPI,
   softDeleteEngineer, softDeleteTask, softDeleteLead, softDeleteVisitFull, softDeleteDeal,
   getAuditLogs,
+  upsertLeadDailyStats, getLeadDailyStatsList, getLeadSummaryStats,
 } from "./db";
 
 // ─── Seed Data ────────────────────────────────────────────────────────────────
@@ -731,6 +732,39 @@ export const appRouter = router({
     getAuditLogs: publicProcedure
       .input(z.object({ entityType: z.enum(['engineer','task','lead','visit','deal']).optional(), limit: z.number().optional() }))
       .query(async ({ input }) => getAuditLogs(input)),
+  }),
+  // ─── Lead Daily Stats ─────────────────────────────────────────────────────────
+  leadDailyStats: router({
+    // إدخال أو تحديث أرقام يوم معين
+    upsert: publicProcedure
+      .input(z.object({
+        date: z.string(),
+        totalLeads: z.number().min(0),
+        contacted: z.number().min(0),
+        delayed: z.number().min(0),
+        notContacted: z.number().min(0),
+        qualified: z.number().min(0).optional(),
+        converted: z.number().min(0).optional(),
+        source: z.string().optional(),
+        notes: z.string().optional(),
+        enteredBy: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => upsertLeadDailyStats(input)),
+    // جلب سجلات الأيام
+    list: publicProcedure
+      .input(z.object({
+        from: z.string().optional(),
+        to: z.string().optional(),
+        limit: z.number().optional(),
+      }))
+      .query(async ({ input }) => getLeadDailyStatsList(input)),
+    // إحصائيات إجمالية للفترة
+    summary: publicProcedure
+      .input(z.object({
+        from: z.string(),
+        to: z.string(),
+      }))
+      .query(async ({ input }) => getLeadSummaryStats(input)),
   }),
 });
 export type AppRouter = typeof appRouter;

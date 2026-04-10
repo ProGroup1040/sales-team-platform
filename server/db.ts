@@ -13,7 +13,8 @@ import {
   InsertAdminSalesTask, InsertAdminSalesMeeting,
   meetingReviews, MeetingReview, InsertMeetingReview,
   leadFollowupLogs, LeadFollowupLog, InsertLeadFollowupLog,
-  auditLogs, AuditLog, InsertAuditLog
+  auditLogs, AuditLog, InsertAuditLog,
+  leadDailyStats, LeadDailyStat, InsertLeadDailyStat
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { notifyOwner } from './_core/notification';
@@ -2321,4 +2322,135 @@ export async function softDeleteDeal(id: number, reason: string, reasonCustom: s
     deletedBy: performedBy,
   }).where(eq(deals.id, id));
   await logAuditAction({ entityType: 'deal', entityId: id, entityName: deal?.clientName, action: 'soft_delete', reason: reason as any, reasonCustom, performedBy });
+}
+
+
+// ─── Lead Daily Stats ─────────────────────────────────────────────────────────
+
+/** إدخال أو تحديث أرقام الـ Leads اليومية */
+export async function upsertLeadDailyStats(input: {
+  date: string; // YYYY-MM-DD
+  totalLeads: number;
+  contacted: number;
+  delayed: number;
+  notContacted: number;
+  qualified?: number;
+  converted?: number;
+  source?: string;
+  notes?: string;
+  enteredBy?: string;
+}): Promise<LeadDailyStat> {
+  const db = (await getDb())!;
+  // تحقق إذا كان هناك سجل لهذا اليوم
+  const [existing] = await db
+    .select()
+    .from(leadDailyStats)
+    .where(eq(leadDailyStats.date, input.date as any));
+
+  if (existing) {
+    await db.update(leadDailyStats).set({
+      totalLeads: input.totalLeads,
+      contacted: input.contacted,
+      delayed: input.delayed,
+      notContacted: input.notContacted,
+      qualified: input.qualified ?? 0,
+      converted: input.converted ?? 0,
+      source: input.source ?? null,
+      notes: input.notes ?? null,
+      enteredBy: input.enteredBy ?? null,
+    }).where(eq(leadDailyStats.id, existing.id));
+    const [updated] = await db.select().from(leadDailyStats).where(eq(leadDailyStats.id, existing.id));
+    return updated;
+  } else {
+    await db.insert(leadDailyStats).values({
+      date: input.date as any,
+      totalLeads: input.totalLeads,
+      contacted: input.contacted,
+      delayed: input.delayed,
+      notContacted: input.notContacted,
+      qualified: input.qualified ?? 0,
+      converted: input.converted ?? 0,
+      source: input.source ?? null,
+      notes: input.notes ?? null,
+      enteredBy: input.enteredBy ?? null,
+    });
+    const [inserted] = await db
+      .select()
+      .from(leadDailyStats)
+      .where(eq(leadDailyStats.date, input.date as any));
+    return inserted;
+  }
+}
+
+/** جلب سجلات الأيام مع فلترة بالفترة */
+export async function getLeadDailyStatsList(input: {
+  from?: string; // YYYY-MM-DD
+  to?: string;   // YYYY-MM-DD
+  limit?: number;
+}): Promise<LeadDailyStat[]> {
+  const db = (await getDb())!;
+  let query = db.select().from(leadDailyStats).$dynamic();
+
+  if (input.from && input.to) {
+    query = query.where(
+      and(
+        gte(leadDailyStats.date, input.from as any),
+        lte(leadDailyStats.date, input.to as any)
+      )
+    );
+  } else if (input.from) {
+    query = query.where(gte(leadDailyStats.date, input.from as any));
+  } else if (input.to) {
+    query = query.where(lte(leadDailyStats.date, input.to as any));
+  }
+
+  return query.orderBy(desc(leadDailyStats.date)).limit(input.limit ?? 30);
+}
+
+/** إحصائيات إجمالية للفترة */
+export async function getLeadSummaryStats(input: {
+  from: string;
+  to: string;
+}): Promise<{
+  totalLeads: number;
+  contacted: number;
+  delayed: number;
+  notContacted: number;
+  qualified: number;
+  converted: number;
+  contactRate: number;
+  delayRate: number;
+  conversionRate: number;
+  daysCount: number;
+}> {
+  const db = (await getDb())!;
+  const rows = await db
+    .select()
+    .from(leadDailyStats)
+    .where(
+      and(
+        gte(leadDailyStats.date, input.from as any),
+        lte(leadDailyStats.date, input.to as any)
+      )
+    );
+
+  const totalLeads = rows.reduce((s, r) => s + r.totalLeads, 0);
+  const contacted = rows.reduce((s, r) => s + r.contacted, 0);
+  const delayed = rows.reduce((s, r) => s + r.delayed, 0);
+  const notContacted = rows.reduce((s, r) => s + r.notContacted, 0);
+  const qualified = rows.reduce((s, r) => s + r.qualified, 0);
+  const converted = rows.reduce((s, r) => s + r.converted, 0);
+
+  return {
+    totalLeads,
+    contacted,
+    delayed,
+    notContacted,
+    qualified,
+    converted,
+    contactRate: totalLeads > 0 ? Math.round((contacted / totalLeads) * 100) : 0,
+    delayRate: totalLeads > 0 ? Math.round((delayed / totalLeads) * 100) : 0,
+    conversionRate: totalLeads > 0 ? Math.round((converted / totalLeads) * 100) : 0,
+    daysCount: rows.length,
+  };
 }

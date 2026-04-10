@@ -459,3 +459,23 @@ export const auditLogs = mysqlTable("audit_logs", {
 });
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type InsertAuditLog = typeof auditLogs.$inferInsert;
+
+// ─── Lead Daily Stats ─────────────────────────────────────────────────────────
+// إدخال أرقام الـ Leads اليومية (بدلاً من إدخال كل Lead بالتفاصيل)
+export const leadDailyStats = mysqlTable("lead_daily_stats", {
+  id: int("id").autoincrement().primaryKey(),
+  date: date("date").notNull(),                                // تاريخ اليوم
+  totalLeads: int("totalLeads").notNull().default(0),          // إجمالي الـ Leads الواردة
+  contacted: int("contacted").notNull().default(0),            // تم التواصل
+  delayed: int("delayed").notNull().default(0),                // تأخير في الرد
+  notContacted: int("notContacted").notNull().default(0),      // لم يتم التواصل
+  qualified: int("qualified").notNull().default(0),            // مؤهلة (Qualified)
+  converted: int("converted").notNull().default(0),            // تحولت لصفقة
+  source: varchar("source", { length: 100 }),                  // مصدر الـ Leads (Facebook / Instagram / إلخ)
+  notes: text("notes"),                                        // ملاحظات
+  enteredBy: varchar("enteredBy", { length: 120 }),            // من أدخل البيانات
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type LeadDailyStat = typeof leadDailyStats.$inferSelect;
+export type InsertLeadDailyStat = typeof leadDailyStats.$inferInsert;

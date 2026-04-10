@@ -282,3 +282,14 @@
 - [x] واجهة: إضافة زر Delete في VisitsModule (استبدال DeleteDialog القديم)
 - [x] واجهة: إضافة زر Delete في ClosingModule (صفقات)
 - [x] كتابة اختبارات Vitest لـ Soft Delete (15 اختبار ناجح)
+
+## Leads Module Redesign - إدخال أرقام يومية فقط (بدلاً من Lead بالتفاصيل)
+- [x] إنشاء جدول lead_daily_stats (date, totalLeads, contacted, delayed, notContacted, source, notes)
+- [x] تطبيق migration SQL لجدول lead_daily_stats
+- [x] Backend: upsertLeadDailyStats (إدخال أو تحديث أرقام يوم معين)
+- [x] Backend: getLeadDailyStats (جلب سجلات الأيام مع فلترة بالفترة)
+- [x] Backend: getLeadSummaryStats (إجمالي الأسبوع/الشهر + نسب)
+- [x] إعادة بناء LeadsModule: نموذج إدخال يومي بسيط (إجمالي + تم + تأخير + لم يتم)
+- [x] عرض جدول السجلات اليومية مع إمكانية التعديل
+- [x] عرض بطاقات إحصائية (إجمالي الأسبوع + نسبة التواصل + نسبة التأخير)
+- [x] كتابة اختبارات Vitest للـ daily stats logic (27 اختبار جديد)

@@ -1,233 +1,285 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import {
+  Users, TrendingUp, Clock, CheckCircle2, XCircle,
+  AlertTriangle, BarChart3, CalendarDays, Plus, Save,
+  Phone, Star, ArrowUpRight
+} from "lucide-react";
+import { useAuth } from "@/_core/hooks/useAuth";
 import { toast } from "sonner";
-import { Users, Clock, TrendingUp, AlertTriangle, Plus, Trash2 } from "lucide-react";
-import { DeleteConfirmDialog, type DeleteReason } from "@/components/DeleteConfirmDialog";
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
-const now = new Date();
-const YEAR = now.getFullYear();
-const MONTH = now.getMonth() + 1;
+function DailyInputForm({ onSuccess }: { onSuccess: () => void }) {
+  const today = new Date().toISOString().split("T")[0];
+  const [date, setDate] = useState(today);
+  const [totalLeads, setTotalLeads] = useState("");
+  const [contacted, setContacted] = useState("");
+  const [delayed, setDelayed] = useState("");
+  const [notContacted, setNotContacted] = useState("");
+  const [qualified, setQualified] = useState("");
+  const [converted, setConverted] = useState("");
+  const [source, setSource] = useState("");
+  const [notes, setNotes] = useState("");
+  const { user } = useAuth();
 
-const STATUS_LABELS: Record<string, string> = { new: 'جديد', contacted: 'تم التواصل', qualified: 'مؤهل', unqualified: 'غير مؤهل', converted: 'تحول لصفقة' };
-const STATUS_COLORS: Record<string, string> = { new: 'bg-blue-100 text-blue-700', contacted: 'bg-indigo-100 text-indigo-700', qualified: 'bg-emerald-100 text-emerald-700', unqualified: 'bg-slate-100 text-slate-600', converted: 'bg-purple-100 text-purple-700' };
-const SOURCE_LABELS: Record<string, string> = { website: 'الموقع', referral: 'إحالة', social_media: 'سوشيال ميديا', call: 'اتصال', walk_in: 'زيارة مباشرة', other: 'أخرى' };
-const PIE_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
-
-export default function LeadsModule() {
-  const [showAdd, setShowAdd] = useState(false);
-  const [filterStatus, setFilterStatus] = useState("all");
-  const [newLead, setNewLead] = useState({ name: '', phone: '', email: '', source: 'other', assignedEngineerId: '', notes: '' });
-  const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
-
-  const utils = trpc.useUtils();
-  const { data: stats } = trpc.leads.stats.useQuery({ year: YEAR, month: MONTH });
-  const { data: leadsData } = trpc.leads.list.useQuery({ limit: 20, status: filterStatus !== 'all' ? filterStatus : undefined });
-  const { data: engineers } = trpc.engineers.list.useQuery();
-
-  const createMutation = trpc.leads.create.useMutation({
-    onSuccess: () => { toast.success('تم إضافة العميل المحتمل'); setShowAdd(false); utils.leads.list.invalidate(); utils.leads.stats.invalidate(); },
-    onError: () => toast.error('حدث خطأ'),
-  });
-  const updateMutation = trpc.leads.updateStatus.useMutation({
-    onSuccess: () => { toast.success('تم تحديث الحالة'); utils.leads.list.invalidate(); utils.leads.stats.invalidate(); },
-    onError: () => toast.error('حدث خطأ'),
-  });
-  const softDeleteMut = trpc.softDelete.lead.useMutation({
-    onSuccess: () => { toast.success('تم حذف العميل المحتمل'); setDeleteTarget(null); utils.leads.list.invalidate(); utils.leads.stats.invalidate(); },
-    onError: () => toast.error('حدث خطأ في الحذف'),
+  const upsertMut = trpc.leadDailyStats.upsert.useMutation({
+    onSuccess: () => { toast.success("تم حفظ بيانات اليوم بنجاح"); onSuccess(); },
+    onError: (e) => toast.error(e.message),
   });
 
-  const sourceChartData = stats?.bySource?.map((s, i) => ({
-    name: SOURCE_LABELS[s.source] ?? s.source,
-    value: s.count,
-    fill: PIE_COLORS[i % PIE_COLORS.length],
-  })) ?? [];
-
-  const funnelData = stats ? [
-    { name: 'إجمالي العملاء المحتملين', value: stats.total, fill: '#6366f1' },
-    { name: 'تم التواصل', value: stats.contacted, fill: '#8b5cf6' },
-    { name: 'مؤهل', value: stats.qualified, fill: '#10b981' },
-    { name: 'تحول لصفقة', value: stats.converted, fill: '#f59e0b' },
-  ] : [];
-
-  const handleCreate = () => {
-    if (!newLead.name) return toast.error('الاسم مطلوب');
-    createMutation.mutate({ ...newLead, assignedEngineerId: newLead.assignedEngineerId ? parseInt(newLead.assignedEngineerId) : undefined });
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const total = parseInt(totalLeads) || 0;
+    if (total < 0) { toast.error("الأرقام يجب أن تكون موجبة"); return; }
+    upsertMut.mutate({
+      date, totalLeads: total,
+      contacted: parseInt(contacted) || 0,
+      delayed: parseInt(delayed) || 0,
+      notContacted: parseInt(notContacted) || 0,
+      qualified: parseInt(qualified) || 0,
+      converted: parseInt(converted) || 0,
+      source: source || undefined,
+      notes: notes || undefined,
+      enteredBy: user?.name || undefined,
+    });
   };
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">موديول العملاء المحتملين</h1>
-          <p className="text-sm text-muted-foreground">متابعة العملاء المحتملين وسرعة الاستجابة</p>
-        </div>
-        <Button size="sm" onClick={() => setShowAdd(true)} className="gap-1.5"><Plus className="w-4 h-4" />إضافة عميل محتمل</Button>
-      </div>
+    <Card className="border-primary/30 bg-card">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Plus className="h-4 w-4 text-primary" />
+          إدخال أرقام اليوم
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">التاريخ</Label>
+              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-9 text-sm" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">مصدر الـ Leads</Label>
+              <Input placeholder="Facebook / Instagram / إلخ" value={source} onChange={(e) => setSource(e.target.value)} className="h-9 text-sm" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">إجمالي الـ Leads</Label>
+              <Input type="number" min="0" placeholder="0" value={totalLeads} onChange={(e) => setTotalLeads(e.target.value)} className="h-9 text-sm" required />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">تم التواصل</Label>
+              <Input type="number" min="0" placeholder="0" value={contacted} onChange={(e) => setContacted(e.target.value)} className="h-9 text-sm" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">تأخير في الرد</Label>
+              <Input type="number" min="0" placeholder="0" value={delayed} onChange={(e) => setDelayed(e.target.value)} className="h-9 text-sm" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">لم يتم التواصل</Label>
+              <Input type="number" min="0" placeholder="0" value={notContacted} onChange={(e) => setNotContacted(e.target.value)} className="h-9 text-sm" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">مؤهلة (Qualified)</Label>
+              <Input type="number" min="0" placeholder="0" value={qualified} onChange={(e) => setQualified(e.target.value)} className="h-9 text-sm" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">تحولت لصفقة</Label>
+              <Input type="number" min="0" placeholder="0" value={converted} onChange={(e) => setConverted(e.target.value)} className="h-9 text-sm" />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">ملاحظات</Label>
+            <Textarea placeholder="أي ملاحظات إضافية..." value={notes} onChange={(e) => setNotes(e.target.value)} className="text-sm resize-none" rows={2} />
+          </div>
+          <Button type="submit" className="w-full" disabled={upsertMut.isPending}>
+            <Save className="h-4 w-4 ml-2" />
+            {upsertMut.isPending ? "جاري الحفظ..." : "حفظ بيانات اليوم"}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="kpi-blue border"><CardContent className="p-5">
-          <div className="flex items-center gap-3"><div className="p-2.5 rounded-xl bg-indigo-100"><Users className="w-5 h-5 text-indigo-600" /></div>
-          <div><p className="text-2xl font-bold">{stats?.total ?? 0}</p><p className="text-xs text-muted-foreground">إجمالي العملاء المحتملين</p></div></div>
-        </CardContent></Card>
-        <Card className="kpi-green border"><CardContent className="p-5">
-          <div className="flex items-center gap-3"><div className="p-2.5 rounded-xl bg-emerald-100"><TrendingUp className="w-5 h-5 text-emerald-600" /></div>
-          <div><p className="text-2xl font-bold">{stats?.contacted ?? 0}</p><p className="text-xs text-muted-foreground">تم التواصل</p></div></div>
-        </CardContent></Card>
-        <Card className="kpi-amber border"><CardContent className="p-5">
-          <div className="flex items-center gap-3"><div className="p-2.5 rounded-xl bg-amber-100"><Clock className="w-5 h-5 text-amber-600" /></div>
-          <div><p className="text-2xl font-bold">{stats?.avgResponseMinutes ?? 0} د</p><p className="text-xs text-muted-foreground">متوسط وقت الرد</p></div></div>
-        </CardContent></Card>
-        <Card className={`border ${(stats?.delayedRate ?? 0) > 30 ? 'kpi-red' : 'kpi-green'}`}><CardContent className="p-5">
-          <div className="flex items-center gap-3"><div className={`p-2.5 rounded-xl ${(stats?.delayedRate ?? 0) > 30 ? 'bg-red-100' : 'bg-emerald-100'}`}>
-            <AlertTriangle className={`w-5 h-5 ${(stats?.delayedRate ?? 0) > 30 ? 'text-red-600' : 'text-emerald-600'}`} /></div>
-          <div><p className="text-2xl font-bold">{stats?.delayedRate ?? 0}%</p><p className="text-xs text-muted-foreground">نسبة التأخير في الرد</p></div></div>
-        </CardContent></Card>
-      </div>
-
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-base">مصادر العملاء المحتملين</CardTitle></CardHeader>
-          <CardContent>
-            {sourceChartData.length > 0 ? (
-              <>
-                <ResponsiveContainer width="100%" height={180}>
-                  <PieChart>
-                    <Pie data={sourceChartData} cx="50%" cy="50%" outerRadius={70} dataKey="value" label={({ name, value }) => `${name}: ${value}`} labelLine={false}>
-                      {sourceChartData.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              </>
-            ) : <div className="flex items-center justify-center h-40 text-muted-foreground text-sm">لا توجد بيانات</div>}
+function SummaryCards({ from, to }: { from: string; to: string }) {
+  const { data: summary } = trpc.leadDailyStats.summary.useQuery({ from, to });
+  const cards = [
+    { label: "إجمالي الـ Leads", value: summary?.totalLeads ?? 0, icon: <Users className="h-5 w-5" />, color: "text-blue-400", bg: "bg-blue-500/10" },
+    { label: "تم التواصل", value: summary?.contacted ?? 0, sub: summary ? summary.contactRate + "%" : undefined, icon: <CheckCircle2 className="h-5 w-5" />, color: "text-green-400", bg: "bg-green-500/10" },
+    { label: "تأخير في الرد", value: summary?.delayed ?? 0, sub: summary ? summary.delayRate + "%" : undefined, icon: <Clock className="h-5 w-5" />, color: "text-yellow-400", bg: "bg-yellow-500/10" },
+    { label: "لم يتم التواصل", value: summary?.notContacted ?? 0, icon: <XCircle className="h-5 w-5" />, color: "text-red-400", bg: "bg-red-500/10" },
+    { label: "مؤهلة", value: summary?.qualified ?? 0, icon: <Star className="h-5 w-5" />, color: "text-blue-300", bg: "bg-blue-500/10" },
+    { label: "تحولت لصفقة", value: summary?.converted ?? 0, sub: summary ? summary.conversionRate + "%" : undefined, icon: <ArrowUpRight className="h-5 w-5" />, color: "text-purple-400", bg: "bg-purple-500/10" },
+  ];
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+      {cards.map((c) => (
+        <Card key={c.label} className="border-border/50">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className={`p-2 rounded-lg ${c.bg}`}><div className={c.color}>{c.icon}</div></div>
+              {c.sub && <Badge variant="outline" className="text-xs">{c.sub}</Badge>}
+            </div>
+            <div className="text-2xl font-bold">{c.value}</div>
+            <div className="text-xs text-muted-foreground mt-1">{c.label}</div>
           </CardContent>
         </Card>
+      ))}
+    </div>
+  );
+}
 
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-base">مسار التحويل</CardTitle></CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={funnelData} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" tick={{ fontSize: 11 }} />
-                <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={90} />
-                <Tooltip />
-                <Bar dataKey="value" name="العدد" radius={[0, 4, 4, 0]}>
-                  {funnelData.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
+function PerformanceAlerts({ summary }: { summary?: { delayRate: number; contactRate: number; conversionRate: number } | null }) {
+  if (!summary) return null;
+  const alerts: Array<{ type: string; msg: string }> = [];
+  if (summary.delayRate > 30) alerts.push({ type: "error", msg: `نسبة التأخير مرتفعة: ${summary.delayRate}% — يجب مراجعة سرعة الاستجابة` });
+  if (summary.contactRate < 70 && summary.contactRate > 0) alerts.push({ type: "warning", msg: `نسبة التواصل منخفضة: ${summary.contactRate}% — المستهدف 70%+` });
+  if (alerts.length === 0) return null;
+  return (
+    <Card className="border-yellow-500/30 bg-yellow-500/5">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2 text-yellow-500">
+          <AlertTriangle className="h-4 w-4" />تنبيهات الأداء
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {alerts.map((a, i) => (
+          <div key={i} className={`text-xs p-2 rounded-lg ${a.type === "error" ? "bg-red-500/10 text-red-400" : "bg-yellow-500/10 text-yellow-400"}`}>{a.msg}</div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
 
-      {/* Leads List */}
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base">قائمة العملاء المحتملين</CardTitle>
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="w-40 h-8 text-sm"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">الكل</SelectItem>
-                {Object.entries(STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            {leadsData?.data?.map(lead => (
-              <div key={lead.id} className="flex items-center gap-3 p-3 rounded-xl border bg-card hover:bg-muted/30 transition-colors">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-medium text-sm">{lead.name}</span>
-                    <Badge className={`text-xs ${STATUS_COLORS[lead.status]}`}>{STATUS_LABELS[lead.status]}</Badge>
-                    <Badge variant="outline" className="text-xs">{SOURCE_LABELS[lead.source] ?? lead.source}</Badge>
-                  </div>
-                  <div className="flex gap-3 text-xs text-muted-foreground mt-0.5">
-                    {lead.phone && <span>📞 {lead.phone}</span>}
-                    {lead.responseTimeMinutes && <span>⏱ رد بعد {lead.responseTimeMinutes} دقيقة {lead.responseTimeMinutes > 60 ? '⚠️' : '✓'}</span>}
-                  </div>
-                </div>
-                {lead.status === 'new' && (
-                  <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => updateMutation.mutate({ id: lead.id, status: 'contacted', responseTimeMinutes: Math.floor(Math.random() * 30) + 5 })}>
-                    تم التواصل
-                  </Button>
-                )}
-                {lead.status === 'contacted' && (
-                  <div className="flex gap-1">
-                    <Button size="sm" variant="outline" className="text-xs h-7 text-emerald-600" onClick={() => updateMutation.mutate({ id: lead.id, status: 'qualified' })}>مؤهل</Button>
-                    <Button size="sm" variant="outline" className="text-xs h-7 text-slate-500" onClick={() => updateMutation.mutate({ id: lead.id, status: 'unqualified' })}>غير مؤهل</Button>
-                  </div>
-                )}
-                {lead.status === 'qualified' && (
-                  <Button size="sm" variant="outline" className="text-xs h-7 text-purple-600" onClick={() => updateMutation.mutate({ id: lead.id, status: 'converted' })}>تحويل لصفقة</Button>
-                )}
-                <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-600 hover:bg-red-50 h-7 w-7 p-0 shrink-0" onClick={() => setDeleteTarget(lead.id)}>
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            )) ?? <div className="text-center py-8 text-muted-foreground">لا توجد بيانات</div>}
-          </div>
+function DailyLogTable({ from, to }: { from: string; to: string }) {
+  const { data: rows = [] } = trpc.leadDailyStats.list.useQuery({ from, to, limit: 30 });
+  if (rows.length === 0) {
+    return (
+      <Card className="border-border/50">
+        <CardContent className="py-10 text-center text-muted-foreground text-sm">
+          <BarChart3 className="h-8 w-8 mx-auto mb-2 opacity-30" />
+          لا توجد بيانات مسجّلة في هذه الفترة
+          <p className="text-xs mt-1">استخدم زر إدخال أرقام اليوم لإضافة بيانات</p>
         </CardContent>
       </Card>
+    );
+  }
+  return (
+    <Card className="border-border/50">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <CalendarDays className="h-4 w-4 text-primary" />
+          سجل الأيام ({rows.length} يوم)
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border/50 text-muted-foreground text-xs">
+                <th className="text-right p-3 font-medium">التاريخ</th>
+                <th className="text-center p-3 font-medium">الإجمالي</th>
+                <th className="text-center p-3 font-medium">تم التواصل</th>
+                <th className="text-center p-3 font-medium">تأخير</th>
+                <th className="text-center p-3 font-medium">لم يتم</th>
+                <th className="text-center p-3 font-medium">مؤهلة</th>
+                <th className="text-center p-3 font-medium">صفقة</th>
+                <th className="text-right p-3 font-medium">المصدر</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => {
+                const contactRate = row.totalLeads > 0 ? Math.round((row.contacted / row.totalLeads) * 100) : 0;
+                return (
+                  <tr key={row.id} className="border-b border-border/30 hover:bg-muted/30 transition-colors">
+                    <td className="p-3 font-medium text-right">{new Date(row.date).toLocaleDateString("ar-EG", { weekday: "short", year: "numeric", month: "short", day: "numeric" })}</td>
+                    <td className="p-3 text-center"><span className="font-bold text-blue-400">{row.totalLeads}</span></td>
+                    <td className="p-3 text-center">
+                      <span className="text-green-400 font-medium">{row.contacted}</span>
+                      {row.totalLeads > 0 && <span className="text-xs text-muted-foreground mr-1">({contactRate}%)</span>}
+                    </td>
+                    <td className="p-3 text-center"><span className={row.delayed > 0 ? "text-yellow-400 font-medium" : "text-muted-foreground"}>{row.delayed}</span></td>
+                    <td className="p-3 text-center"><span className={row.notContacted > 0 ? "text-red-400 font-medium" : "text-muted-foreground"}>{row.notContacted}</span></td>
+                    <td className="p-3 text-center text-blue-300">{row.qualified}</td>
+                    <td className="p-3 text-center text-purple-400">{row.converted}</td>
+                    <td className="p-3 text-right text-xs text-muted-foreground">{row.source || "-"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
-      {/* Add Lead Dialog */}
-      <Dialog open={showAdd} onOpenChange={setShowAdd}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>إضافة عميل محتمل جديد</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div><Label>الاسم *</Label><Input value={newLead.name} onChange={e => setNewLead(p => ({ ...p, name: e.target.value }))} /></div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label>الهاتف</Label><Input value={newLead.phone} onChange={e => setNewLead(p => ({ ...p, phone: e.target.value }))} /></div>
-              <div><Label>البريد</Label><Input value={newLead.email} onChange={e => setNewLead(p => ({ ...p, email: e.target.value }))} /></div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label>المصدر</Label>
-                <Select value={newLead.source} onValueChange={v => setNewLead(p => ({ ...p, source: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>{Object.entries(SOURCE_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              <div><Label>المهندس المسؤول</Label>
-                <Select value={newLead.assignedEngineerId} onValueChange={v => setNewLead(p => ({ ...p, assignedEngineerId: v }))}>
-                  <SelectTrigger><SelectValue placeholder="اختر" /></SelectTrigger>
-                  <SelectContent>{engineers?.map(e => <SelectItem key={e.id} value={String(e.id)}>{e.name}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div><Label>ملاحظات</Label><Textarea value={newLead.notes} onChange={e => setNewLead(p => ({ ...p, notes: e.target.value }))} rows={2} /></div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAdd(false)}>إلغاء</Button>
-            <Button onClick={handleCreate} disabled={createMutation.isPending}>إضافة</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+export default function LeadsModule() {
+  const [period, setPeriod] = useState<"today" | "week" | "month">("week");
+  const [showForm, setShowForm] = useState(false);
+  const utils = trpc.useUtils();
 
-      <DeleteConfirmDialog
-        open={deleteTarget !== null}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={(reason: DeleteReason, reasonCustom?: string) => {
-          if (deleteTarget !== null) softDeleteMut.mutate({ id: deleteTarget, reason, reasonCustom });
-        }}
-        title="حذف العميل المحتمل"
-        description="هل أنت متأكد من حذف هذا العميل المحتمل؟ سيتم إخفاؤه مع الاحتفاظ ببياناته."
-        isLoading={softDeleteMut.isPending}
-      />
+  const { from, to } = useMemo(() => {
+    const now = new Date();
+    const toStr = now.toISOString().split("T")[0];
+    if (period === "today") return { from: toStr, to: toStr };
+    if (period === "week") {
+      const d = new Date(now); d.setDate(d.getDate() - 6);
+      return { from: d.toISOString().split("T")[0], to: toStr };
+    }
+    const d = new Date(now.getFullYear(), now.getMonth(), 1);
+    return { from: d.toISOString().split("T")[0], to: toStr };
+  }, [period]);
+
+  const { data: summary } = trpc.leadDailyStats.summary.useQuery({ from, to });
+
+  const handleSuccess = () => {
+    utils.leadDailyStats.list.invalidate();
+    utils.leadDailyStats.summary.invalidate();
+    setShowForm(false);
+  };
+
+  return (
+    <div className="p-4 sm:p-6 space-y-5 max-w-5xl mx-auto">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-xl font-bold flex items-center gap-2">
+            <Phone className="h-5 w-5 text-primary" />متابعة الـ Leads
+          </h1>
+          <p className="text-sm text-muted-foreground mt-0.5">إدخال الأرقام اليومية — التفاصيل في CRM</p>
+        </div>
+        <Button onClick={() => setShowForm(!showForm)} size="sm" className="gap-2">
+          <Plus className="h-4 w-4" />
+          {showForm ? "إخفاء النموذج" : "إدخال أرقام اليوم"}
+        </Button>
+      </div>
+
+      {showForm && <DailyInputForm onSuccess={handleSuccess} />}
+
+      <div className="flex gap-2">
+        {([{ key: "today", label: "اليوم" }, { key: "week", label: "7 أيام" }, { key: "month", label: "الشهر" }] as const).map(({ key, label }) => (
+          <Button key={key} variant={period === key ? "default" : "outline"} size="sm" onClick={() => setPeriod(key)} className="text-xs">{label}</Button>
+        ))}
+      </div>
+
+      <PerformanceAlerts summary={summary} />
+      <SummaryCards from={from} to={to} />
+      <DailyLogTable from={from} to={to} />
+
+      <div className="text-xs text-muted-foreground text-center py-2">
+        <TrendingUp className="h-3 w-3 inline ml-1" />
+        التفاصيل الكاملة لكل Lead متاحة في نظام CRM الخارجي (Sharetech)
+      </div>
     </div>
   );
 }
