@@ -27,6 +27,8 @@ export const engineers = mysqlTable("engineers", {
   department: varchar("department", { length: 80 }),
   role: mysqlEnum("role", ["admin", "engineer", "admin_sales"]).default("engineer").notNull(),
   status: mysqlEnum("status", ["active", "inactive"]).default("active").notNull(),
+  username: varchar("username", { length: 64 }).unique(),
+  passwordHash: varchar("passwordHash", { length: 255 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   // ─── Soft Delete ──────────────────────────────────────────────────────────
   isDeleted: int("isDeleted").default(0).notNull(),

@@ -17,6 +17,7 @@ import SalesModule from "./pages/SalesModule";
 import KPIModule from "./pages/KPIModule";
 import CollectionsModule from "./pages/CollectionsModule";
 import PlanningModule from "./pages/PlanningModule";
+import LoginPage from "./pages/LoginPage";
 
 function withLayout(Component: React.ComponentType) {
   return (
@@ -30,6 +31,7 @@ function Router() {
   return (
     <Switch>
       <Route path={"/"} component={Home} />
+      <Route path={"/login"} component={LoginPage} />
 
       {/* Control Panel Routes */}
       <Route path={"/overview"}>{withLayout(Overview)}</Route>

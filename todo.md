@@ -293,3 +293,15 @@
 - [x] عرض جدول السجلات اليومية مع إمكانية التعديل
 - [x] عرض بطاقات إحصائية (إجمالي الأسبوع + نسبة التواصل + نسبة التأخير)
 - [x] كتابة اختبارات Vitest للـ daily stats logic (27 اختبار جديد)
+
+## نظام تسجيل الدخول بيوزرنيم وباسورد
+- [x] إضافة حقول username وpasswordHash لجدول engineers في schema.ts
+- [x] تطبيق migration SQL
+- [x] Backend: localAuth.login (يوزرنيم + باسورد → JWT cookie)
+- [x] Backend: localAuth.me (جلب بيانات المستخدم الحالي من الجلسة)
+- [x] Backend: localAuth.logout (مسح الجلسة)
+- [x] إنشاء صفحة LoginPage.tsx (نموذج يوزرنيم + باسورد)
+- [x] حماية الداشبورد: redirect لـ /login إذا لم يكن هناك جلسة
+- [x] إنشاء حساب Admin (username: admin)
+- [x] إنشاء حساب Admin Sales (username: admin_sales)
+- [x] تسليم اليوزرنيم والباسورد للمستخدم

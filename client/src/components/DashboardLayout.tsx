@@ -13,9 +13,11 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, PanelLeft, BarChart2, CheckSquare, UserPlus, MapPin, Handshake, TrendingUp, Award, DollarSign, Target } from "lucide-react";
+import { useLocalAuth } from "@/hooks/useLocalAuth";
+import { LayoutDashboard, PanelLeft, BarChart2, CheckSquare, UserPlus, MapPin, Handshake, TrendingUp, Award, DollarSign, Target, LogOut } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
+import { trpc } from "@/lib/trpc";
 
 const menuGroups = [
   {
@@ -88,14 +90,39 @@ function DashboardLayoutContent({
   children,
   setSidebarWidth,
 }: DashboardLayoutContentProps) {
-  // No auth required - open access dashboard
   const [location, setLocation] = useLocation();
+  const { session, isLoading } = useLocalAuth();
+  const utils = trpc.useUtils();
+  const logoutMut = trpc.localAuth.logout.useMutation({
+    onSuccess: () => {
+      utils.localAuth.me.invalidate();
+      setLocation("/login");
+    },
+  });
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!isLoading && !session) {
+      setLocation("/login");
+    }
+  }, [session, isLoading, setLocation]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="h-8 w-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   const { state, toggleSidebar } = useSidebar();
   const isCollapsed = state === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const activeMenuItem = menuItems.find(item => item.path === location);
   const isMobile = useIsMobile();
+
+  if (!session) return null;
 
   useEffect(() => {
     if (isCollapsed) {
@@ -192,20 +219,27 @@ function DashboardLayoutContent({
           </SidebarContent>
 
           <SidebarFooter className="p-3">
-            <div className="flex items-center gap-3 rounded-lg px-1 py-1 w-full">
+              <div className="flex items-center gap-3 rounded-lg px-1 py-1 w-full">
               <Avatar className="h-9 w-9 border shrink-0">
                 <AvatarFallback className="text-xs font-medium bg-primary/10 text-primary">
-                  P
+                  {session?.name?.charAt(0)?.toUpperCase() ?? "P"}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
                 <p className="text-sm font-medium truncate leading-none">
-                  Pro Group
+                  {session?.name ?? "Pro Group"}
                 </p>
                 <p className="text-xs text-muted-foreground truncate mt-1.5">
-                  منظومات مبيعات
+                  {session?.role === "admin" ? "مدير النظام" : session?.role === "admin_sales" ? "Admin Sales" : "مستخدم"}
                 </p>
               </div>
+              <button
+                onClick={() => logoutMut.mutate()}
+                className="group-data-[collapsible=icon]:hidden h-7 w-7 flex items-center justify-center hover:bg-destructive/10 hover:text-destructive rounded-md transition-colors shrink-0"
+                title="تسجيل الخروج"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+              </button>
             </div>
           </SidebarFooter>
         </Sidebar>

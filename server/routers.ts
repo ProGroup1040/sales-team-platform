@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { COOKIE_NAME } from "@shared/const";
+import { COOKIE_NAME, LOCAL_AUTH_COOKIE } from "@shared/const";
+import { localLogin, getLocalSessionFromRequest } from "./localAuth";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
@@ -734,6 +735,39 @@ export const appRouter = router({
       .query(async ({ input }) => getAuditLogs(input)),
   }),
   // ─── Lead Daily Stats ─────────────────────────────────────────────────────────
+  localAuth: router({
+    // تسجيل الدخول بيوزرنيم وباسورد
+    login: publicProcedure
+      .input(z.object({
+        username: z.string().min(1),
+        password: z.string().min(1),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const result = await localLogin(input.username, input.password);
+        if (!result) throw new Error("يوزرنيم أو باسورد غلط");
+        const cookieOptions = getSessionCookieOptions(ctx.req);
+        ctx.res.cookie(LOCAL_AUTH_COOKIE, result.token, {
+          ...cookieOptions,
+          maxAge: 1000 * 60 * 60 * 24 * 365,
+        });
+        return { ok: true, role: result.session.role, name: result.session.name, engineerId: result.session.engineerId };
+      }),
+    // جلب بيانات الجلسة الحالية
+    me: publicProcedure
+      .query(async ({ ctx }) => {
+        const session = await getLocalSessionFromRequest(ctx.req);
+        if (!session) return null;
+        return { engineerId: session.engineerId, username: session.username, role: session.role, name: session.name };
+      }),
+    // تسجيل الخروج
+    logout: publicProcedure
+      .mutation(async ({ ctx }) => {
+        const cookieOptions = getSessionCookieOptions(ctx.req);
+        ctx.res.clearCookie(LOCAL_AUTH_COOKIE, cookieOptions);
+        return { ok: true };
+      }),
+  }),
+
   leadDailyStats: router({
     // إدخال أو تحديث أرقام يوم معين
     upsert: publicProcedure
