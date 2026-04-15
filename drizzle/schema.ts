@@ -167,6 +167,10 @@ export const deals = mysqlTable("deals", {
   nextActionDate: date("nextActionDate"),
   closedAt: timestamp("closedAt"),
   notes: text("notes"),
+  // ─── Discount Fields ──────────────────────────────────────────────────────
+  discountPercent: decimal("discountPercent", { precision: 5, scale: 2 }).default("0").notNull(),
+  discountValue: decimal("discountValue", { precision: 14, scale: 2 }).default("0").notNull(),
+  discountNote: text("discountNote"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   // ─── Soft Delete ──────────────────────────────────────────────────────────

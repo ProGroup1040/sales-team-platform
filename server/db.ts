@@ -2454,3 +2454,161 @@ export async function getLeadSummaryStats(input: {
     daysCount: rows.length,
   };
 }
+
+// ─── Discount System ──────────────────────────────────────────────────────────
+
+/** شرائح الخصم بناءً على Total Volume */
+export function getDiscountTierInfo(totalVolume: number): { tierLabel: string; discountPct: number } {
+  if (totalVolume < 1_000_000)  return { tierLabel: 'أقل من 1M',        discountPct: 1  };
+  if (totalVolume < 2_000_000)  return { tierLabel: '1M - 2M',           discountPct: 3  };
+  if (totalVolume < 3_000_000)  return { tierLabel: '2M - 3M',           discountPct: 5  };
+  if (totalVolume < 5_000_000)  return { tierLabel: '3M - 5M',           discountPct: 7  };
+  return                               { tierLabel: 'أكثر من 5M',        discountPct: 10 };
+}
+
+/** ملخص الخصومات الكامل (Total Volume + Tier + Allowed + Used + Remaining) */
+export async function getDiscountSummary() {
+  const db = await getDb();
+  if (!db) return null;
+
+  const allDeals = await db.select().from(deals).where(eq(deals.isDeleted, 0));
+
+  // Actual Sales = closed_won deals
+  const actualSales = allDeals
+    .filter(d => d.stage === 'closed_won')
+    .reduce((s, d) => s + parseFloat(d.value as string), 0);
+
+  // Pipeline = deals not closed (proposal, negotiation, contract_sent)
+  const pipeline = allDeals
+    .filter(d => !['closed_won', 'closed_lost'].includes(d.stage))
+    .reduce((s, d) => s + parseFloat(d.value as string), 0);
+
+  const totalVolume = actualSales + pipeline;
+  const { tierLabel, discountPct } = getDiscountTierInfo(totalVolume);
+  const allowedDiscount = totalVolume * (discountPct / 100);
+
+  // Used Discount = مجموع الخصومات على الصفقات المغلقة (closed_won)
+  const usedDiscount = allDeals
+    .filter(d => d.stage === 'closed_won')
+    .reduce((s, d) => s + parseFloat(d.discountValue as string || '0'), 0);
+
+  const remainingDiscount = Math.max(0, allowedDiscount - usedDiscount);
+
+  return {
+    actualSales,
+    pipeline,
+    totalVolume,
+    tierLabel,
+    discountPct,
+    allowedDiscount,
+    usedDiscount,
+    remainingDiscount,
+  };
+}
+
+/** التحقق من أن خصم صفقة جديدة لا يتجاوز الحد المتبقي */
+export async function validateDealDiscount(dealId: number | undefined, discountValue: number): Promise<{ valid: boolean; remaining: number; message?: string }> {
+  const summary = await getDiscountSummary();
+  if (!summary) return { valid: false, remaining: 0, message: 'خطأ في جلب بيانات الخصم' };
+
+  // إذا كنا نعدّل صفقة موجودة، نستثني خصمها القديم من الحساب
+  let currentDealDiscount = 0;
+  if (dealId) {
+    const db = await getDb();
+    if (db) {
+      const [existing] = await db.select().from(deals).where(eq(deals.id, dealId));
+      if (existing) currentDealDiscount = parseFloat(existing.discountValue as string || '0');
+    }
+  }
+
+  const effectiveRemaining = summary.remainingDiscount + currentDealDiscount;
+  if (discountValue > effectiveRemaining) {
+    return {
+      valid: false,
+      remaining: effectiveRemaining,
+      message: `الخصم المطلوب (${discountValue.toLocaleString('ar-EG')} ج.م) يتجاوز الحد المتبقي (${effectiveRemaining.toLocaleString('ar-EG')} ج.م)`,
+    };
+  }
+  return { valid: true, remaining: effectiveRemaining };
+}
+
+/** إنشاء صفقة مع حقول الخصم */
+export async function createDealWithDiscount(data: {
+  engineerId: number; clientName: string; value: number;
+  visitId?: number; leadId?: number; nextAction?: string; nextActionDate?: string; notes?: string;
+  discountPercent?: number; discountValue?: number; discountNote?: string;
+}) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(deals).values({
+    engineerId: data.engineerId,
+    clientName: data.clientName,
+    value: data.value.toString(),
+    stage: 'proposal',
+    visitId: data.visitId,
+    leadId: data.leadId,
+    nextAction: data.nextAction,
+    nextActionDate: data.nextActionDate ? new Date(data.nextActionDate + 'T00:00:00') : undefined,
+    notes: data.notes,
+    discountPercent: (data.discountPercent ?? 0).toString(),
+    discountValue: (data.discountValue ?? 0).toString(),
+    discountNote: data.discountNote,
+  });
+}
+
+/** تحديث صفقة (stage + discount) */
+export async function updateDealFull(id: number, data: {
+  stage?: string; nextAction?: string; nextActionDate?: string; notes?: string;
+  discountPercent?: number; discountValue?: number; discountNote?: string; value?: number;
+}) {
+  const db = await getDb();
+  if (!db) return;
+  const updateData: any = {};
+  if (data.stage !== undefined) updateData.stage = data.stage;
+  if (data.nextAction !== undefined) updateData.nextAction = data.nextAction;
+  if (data.nextActionDate !== undefined) updateData.nextActionDate = data.nextActionDate ? new Date(data.nextActionDate + 'T00:00:00') : null;
+  if (data.notes !== undefined) updateData.notes = data.notes;
+  if (data.value !== undefined) updateData.value = data.value.toString();
+  if (data.discountPercent !== undefined) updateData.discountPercent = data.discountPercent.toString();
+  if (data.discountValue !== undefined) updateData.discountValue = data.discountValue.toString();
+  if (data.discountNote !== undefined) updateData.discountNote = data.discountNote;
+  if (data.stage === 'closed_won' || data.stage === 'closed_lost') updateData.closedAt = new Date();
+  await db.update(deals).set(updateData).where(eq(deals.id, id));
+}
+
+/** ملخص الخصم لكل مهندس (Pipeline + خصم مستخدم + خصم متاح) */
+export async function getEngineerDiscountSummary() {
+  const db = await getDb();
+  if (!db) return [];
+
+  const summary = await getDiscountSummary();
+  if (!summary) return [];
+
+  const allDeals = await db.select().from(deals).where(eq(deals.isDeleted, 0));
+  const engList = await db.select().from(engineers).where(eq(engineers.isDeleted, 0));
+
+  return engList.map(eng => {
+    const engDeals = allDeals.filter(d => d.engineerId === eng.id);
+    const engPipeline = engDeals
+      .filter(d => !['closed_won', 'closed_lost'].includes(d.stage))
+      .reduce((s, d) => s + parseFloat(d.value as string), 0);
+    const engActual = engDeals
+      .filter(d => d.stage === 'closed_won')
+      .reduce((s, d) => s + parseFloat(d.value as string), 0);
+    const engUsedDiscount = engDeals
+      .filter(d => d.stage === 'closed_won')
+      .reduce((s, d) => s + parseFloat(d.discountValue as string || '0'), 0);
+    // نسبة المهندس من الـ Pipeline الكلي
+    const pipelineShare = summary.totalVolume > 0 ? engPipeline / summary.totalVolume : 0;
+    const allocatedDiscount = summary.remainingDiscount * pipelineShare;
+
+    return {
+      engineerId: eng.id,
+      engineerName: eng.name,
+      pipeline: engPipeline,
+      actualSales: engActual,
+      usedDiscount: engUsedDiscount,
+      allocatedDiscount,
+    };
+  });
+}

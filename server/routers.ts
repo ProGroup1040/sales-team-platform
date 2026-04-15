@@ -36,6 +36,7 @@ import {
   softDeleteEngineer, softDeleteTask, softDeleteLead, softDeleteVisitFull, softDeleteDeal,
   getAuditLogs,
   upsertLeadDailyStats, getLeadDailyStatsList, getLeadSummaryStats,
+  getDiscountSummary, validateDealDiscount, createDealWithDiscount, updateDealFull, getEngineerDiscountSummary,
 } from "./db";
 
 // ─── Seed Data ────────────────────────────────────────────────────────────────
@@ -396,11 +397,25 @@ export const appRouter = router({
       engineerId: z.number(), clientName: z.string().min(1), value: z.number().positive(),
       visitId: z.number().optional(), leadId: z.number().optional(),
       nextAction: z.string().optional(), nextActionDate: z.string().optional(), notes: z.string().optional(),
-    })).mutation(async ({ input }) => { await createDeal(input); return { success: true }; }),
+      discountPercent: z.number().min(0).max(100).optional(),
+      discountValue: z.number().min(0).optional(),
+      discountNote: z.string().optional(),
+    })).mutation(async ({ input }) => { await createDealWithDiscount(input); return { success: true }; }),
     updateStage: publicProcedure.input(z.object({
-      id: z.number(), stage: z.enum(['proposal', 'negotiation', 'contract_sent', 'closed_won', 'closed_lost']),
+      id: z.number(), stage: z.enum(['proposal', 'negotiation', 'contract_sent', 'closed_won', 'closed_lost']).optional(),
       nextAction: z.string().optional(), nextActionDate: z.string().optional(), notes: z.string().optional(),
-    })).mutation(async ({ input }) => { await updateDealStage(input.id, input.stage, input.nextAction, input.nextActionDate, input.notes); return { success: true }; }),
+      value: z.number().positive().optional(),
+      discountPercent: z.number().min(0).max(100).optional(),
+      discountValue: z.number().min(0).optional(),
+      discountNote: z.string().optional(),
+    })).mutation(async ({ input }) => { await updateDealFull(input.id, input); return { success: true }; }),
+    // ─── Discount System ────────────────────────────────────────────────────────────────────────────────────────
+    discountSummary: publicProcedure.query(async () => getDiscountSummary()),
+    validateDiscount: publicProcedure.input(z.object({
+      dealId: z.number().optional(),
+      discountValue: z.number().min(0),
+    })).query(async ({ input }) => validateDealDiscount(input.dealId, input.discountValue)),
+    engineerDiscountSummary: publicProcedure.query(async () => getEngineerDiscountSummary()),
   }),
 
   // ── Sales Control Tower ───────────────────────────────────────────────────────────────────────────────────────

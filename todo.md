@@ -309,3 +309,16 @@
 ## إصلاح مشكلة الأمان
 - [x] إصلاح flash of content: الداشبورد يظهر لثانية قبل الـ redirect لـ /login
 - [x] إصلاح مشكلة cookie: إضافة trust proxy للـ Express لتفعيل HTTPS detection
+
+## نظام الخصومات المتكامل (Discount System)
+- [x] إضافة حقول discountPercent, discountValue, discountNote لجدول closingDeals في schema.ts
+- [x] تطبيق migration SQL لحقول الخصم
+- [x] Backend: getDiscountSummary (Total Volume, Tier, Allowed, Used, Remaining)
+- [x] Backend: validateDealDiscount (التحقق من عدم تجاوز الحد المتبقي)
+- [x] Backend: تحديث upsertDeal لحفظ discountPercent وdiscountValue
+- [x] Backend: getEngineerDiscountSummary (Pipeline وخصم كل مهندس)
+- [x] واجهة: بطاقات ملخص الخصومات (Total Volume, Tier, Allowed, Used, Remaining)
+- [x] واجهة: جدول الصفقات مع عمود الخصم لكل صفقة
+- [x] واجهة: نموذج إضافة/تعديل صفقة مع حقل الخصم والتحقق من الحد
+- [x] واجهة: قسم مهندسين مع Pipeline والخصم المتاح لكل مهندس
+- [x] كتابة 20 اختبار Vitest لمنطق حساب الشرائح والخصومات (192 اختبار ناجح إجمالاً)
