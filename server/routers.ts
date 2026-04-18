@@ -36,7 +36,7 @@ import {
   softDeleteEngineer, softDeleteTask, softDeleteLead, softDeleteVisitFull, softDeleteDeal,
   getAuditLogs,
   upsertLeadDailyStats, getLeadDailyStatsList, getLeadSummaryStats,
-  getDiscountSummary, validateDealDiscount, createDealWithDiscount, updateDealFull, getEngineerDiscountSummary,
+  getDiscountSummary, validateDealDiscount, createDealWithDiscount, updateDealFull, getEngineerDiscountSummary, getPerformanceComparison,
 } from "./db";
 
 // ─── Seed Data ────────────────────────────────────────────────────────────────
@@ -416,6 +416,7 @@ export const appRouter = router({
       discountValue: z.number().min(0),
     })).query(async ({ input }) => validateDealDiscount(input.dealId, input.discountValue)),
     engineerDiscountSummary: publicProcedure.query(async () => getEngineerDiscountSummary()),
+    performanceComparison: publicProcedure.query(async () => getPerformanceComparison()),
   }),
 
   // ── Sales Control Tower ───────────────────────────────────────────────────────────────────────────────────────

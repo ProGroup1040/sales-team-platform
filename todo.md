@@ -322,3 +322,25 @@
 - [x] واجهة: نموذج إضافة/تعديل صفقة مع حقل الخصم والتحقق من الحد
 - [x] واجهة: قسم مهندسين مع Pipeline والخصم المتاح لكل مهندس
 - [x] كتابة 20 اختبار Vitest لمنطق حساب الشرائح والخصومات (192 اختبار ناجح إجمالاً)
+
+## صلاحيات Admin Sales - المعاينات والتفاوض
+- [x] VisitsModule: منح Admin Sales صلاحية إضافة وتعديل المعاينات (مثل Admin)
+- [x] ClosingModule: منح Admin Sales صلاحية إضافة وتعديل الصفقات (مثل Admin)
+
+## تطوير موديول التفاوض - توزيع الخصومات على المهندسين
+- [ ] Backend: تحديث getDiscountSummary لحساب Total Opportunity = Quotations + Negotiation
+- [ ] Backend: تحديث getEngineerDiscountSummary لحساب Engineer Total = Sales + Quotations + Negotiation
+- [ ] Backend: حساب Engineer Share % = Engineer Total / Total Opportunity
+- [ ] Backend: حساب Engineer Discount = Share % × Allowed Discount
+- [ ] واجهة: عرض Total Opportunity وDiscount Tier وAllowed Discount في بطاقات
+- [ ] واجهة: جدول المهندسين مع (إجمالي شغله، نسبته، نصيبه من الخصم)
+- [ ] اختبارات Vitest لمنطق التوزيع الجديد
+
+## نظام احتساب الأداء - آخر 60 يوم
+- [x] Backend: تحديث getDiscountSummary لفلترة الصفقات بآخر 60 يوم
+- [x] Backend: تحديث getEngineerDiscountSummary لفلترة بآخر 60 يوم
+- [x] Backend: إضافة getPerformanceComparison (60 يوم vs الشهر السابق)
+- [x] Backend: تحديث closing.stats لاحتساب Closing Rate بآخر 60 يوم
+- [x] واجهة: عرض مقارنة 60 يوم vs الشهر السابق في ClosingModule
+- [x] واجهة: إظهار نافذة الـ 60 يوم في بطاقات الخصومات
+- [x] اختبارات Vitest لمنطق الـ time window (214 اختبار ناجح)

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { useLocalAuth } from "@/hooks/useLocalAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -60,18 +61,22 @@ export default function ClosingModule() {
   });
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
   const utils = trpc.useUtils();
+  const { session } = useLocalAuth();
+  const canEdit = session?.role === 'admin' || session?.role === 'admin_sales';
 
   const { data: stats } = trpc.closing.stats.useQuery({ year: YEAR, month: MONTH });
   const { data: dealsData } = trpc.closing.list.useQuery({ limit: 50, stage: filterStage !== 'all' ? filterStage : undefined });
   const { data: engineers } = trpc.engineers.list.useQuery();
   const { data: discountSummary } = trpc.closing.discountSummary.useQuery();
   const { data: engDiscounts } = trpc.closing.engineerDiscountSummary.useQuery();
+  const { data: perfComparison } = trpc.closing.performanceComparison.useQuery();
 
   const invalidateAll = () => {
     utils.closing.list.invalidate();
     utils.closing.stats.invalidate();
     utils.closing.discountSummary.invalidate();
     utils.closing.engineerDiscountSummary.invalidate();
+    utils.closing.performanceComparison.invalidate();
   };
 
   const createMutation = trpc.closing.create.useMutation({
@@ -162,9 +167,11 @@ export default function ClosingModule() {
           <h1 className="text-2xl font-bold">موديول التفاوض والإغلاق</h1>
           <p className="text-sm text-muted-foreground">متابعة الصفقات من التفاوض حتى الإغلاق + نظام الخصومات</p>
         </div>
-        <Button size="sm" onClick={() => setShowAdd(true)} className="gap-1.5">
-          <Plus className="w-4 h-4" />إضافة صفقة
-        </Button>
+        {canEdit && (
+          <Button size="sm" onClick={() => setShowAdd(true)} className="gap-1.5">
+            <Plus className="w-4 h-4" />إضافة صفقة
+          </Button>
+        )}
       </div>
 
       {/* KPI Cards */}
@@ -271,21 +278,23 @@ export default function ClosingModule() {
                         <div className="text-xs text-amber-400/70 mt-0.5 italic">سبب الخصم: {deal.discountNote}</div>
                       )}
                     </div>
-                    <div className="flex gap-1 shrink-0">
-                      {deal.stage !== 'closed_won' && deal.stage !== 'closed_lost' && (
-                        <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => setUpdateDeal({
-                          id: deal.id, stage: deal.stage,
-                          nextAction: deal.nextAction ?? '', nextActionDate: '',
-                          notes: deal.notes ?? '', value: deal.value as string,
-                          discountPercent: deal.discountPercent as string || '0',
-                          discountValue: deal.discountValue as string || '0',
-                          discountNote: deal.discountNote ?? '',
-                        })}>تحديث</Button>
-                      )}
-                      <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-600 hover:bg-red-50 h-7 w-7 p-0" onClick={() => setDeleteTarget(deal.id)}>
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
+                    {canEdit && (
+                      <div className="flex gap-1 shrink-0">
+                        {deal.stage !== 'closed_won' && deal.stage !== 'closed_lost' && (
+                          <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => setUpdateDeal({
+                            id: deal.id, stage: deal.stage,
+                            nextAction: deal.nextAction ?? '', nextActionDate: '',
+                            notes: deal.notes ?? '', value: deal.value as string,
+                            discountPercent: deal.discountPercent as string || '0',
+                            discountValue: deal.discountValue as string || '0',
+                            discountNote: deal.discountNote ?? '',
+                          })}>تحديث</Button>
+                        )}
+                        <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-600 hover:bg-red-50 h-7 w-7 p-0" onClick={() => setDeleteTarget(deal.id)}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 )) ?? <div className="text-center py-8 text-muted-foreground">لا توجد صفقات</div>}
               </div>
@@ -297,22 +306,22 @@ export default function ClosingModule() {
       {/* ─── Tab: نظام الخصومات ─── */}
       {activeTab === 'discount' && (
         <div className="space-y-4">
-          {/* Volume Summary */}
+          {/* Opportunity Summary */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Card><CardContent className="pt-4">
-              <div className="flex items-center gap-2 mb-1"><CheckCircle className="h-4 w-4 text-emerald-500" /><span className="text-xs text-muted-foreground">المبيعات الفعلية</span></div>
-              <div className="text-xl font-bold text-emerald-500">{fmt(discountSummary?.actualSales ?? 0)} ج.م</div>
-              <div className="text-xs text-muted-foreground">صفقات مغلقة (closed_won)</div>
+              <div className="flex items-center gap-2 mb-1"><TrendingUp className="h-4 w-4 text-blue-500" /><span className="text-xs text-muted-foreground">عروض الأسعار (Quotations)</span></div>
+              <div className="text-xl font-bold text-blue-500">{fmt(discountSummary?.quotations ?? 0)} ج.م</div>
+              <div className="text-xs text-muted-foreground">مقترح + عقد مرسل</div>
             </CardContent></Card>
             <Card><CardContent className="pt-4">
-              <div className="flex items-center gap-2 mb-1"><TrendingUp className="h-4 w-4 text-blue-500" /><span className="text-xs text-muted-foreground">Pipeline</span></div>
-              <div className="text-xl font-bold text-blue-500">{fmt(discountSummary?.pipeline ?? 0)} ج.م</div>
-              <div className="text-xs text-muted-foreground">صفقات في التفاوض</div>
+              <div className="flex items-center gap-2 mb-1"><Zap className="h-4 w-4 text-indigo-500" /><span className="text-xs text-muted-foreground">تفاوض (Negotiation)</span></div>
+              <div className="text-xl font-bold text-indigo-500">{fmt(discountSummary?.negotiation ?? 0)} ج.م</div>
+              <div className="text-xs text-muted-foreground">صفقات في مرحلة التفاوض</div>
             </CardContent></Card>
             <Card className="border-2 border-primary/30"><CardContent className="pt-4">
-              <div className="flex items-center gap-2 mb-1"><BarChart3 className="h-4 w-4 text-primary" /><span className="text-xs text-muted-foreground">إجمالي الحجم</span></div>
-              <div className="text-xl font-bold text-primary">{fmt(discountSummary?.totalVolume ?? 0)} ج.م</div>
-              <div className="text-xs text-muted-foreground">المبيعات + Pipeline</div>
+              <div className="flex items-center gap-2 mb-1"><BarChart3 className="h-4 w-4 text-primary" /><span className="text-xs text-muted-foreground">Total Opportunity</span></div>
+              <div className="text-xl font-bold text-primary">{fmt(discountSummary?.totalOpportunity ?? 0)} ج.م</div>
+              <div className="text-xs text-muted-foreground">عروض + تفاوض (أساس الخصم)</div>
             </CardContent></Card>
           </div>
 
@@ -363,6 +372,75 @@ export default function ClosingModule() {
             </CardContent>
           </Card>
 
+          {/* Performance Comparison */}
+          {perfComparison && (
+            <Card className="border-primary/20">
+              <CardHeader>
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4 text-primary" />
+                  مقارنة الأداء
+                  <Badge variant="outline" className="text-xs text-primary border-primary/40">آخر 60 يوم فقط</Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border text-muted-foreground text-xs">
+                        <th className="text-right py-2 px-3">المؤشر</th>
+                        <th className="text-right py-2 px-3 text-primary">آخر 60 يوم</th>
+                        <th className="text-right py-2 px-3 text-muted-foreground">الفترة السابقة</th>
+                        <th className="text-right py-2 px-3">التغيير</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="border-b border-border/30">
+                        <td className="py-2 px-3 text-muted-foreground">مبيعات فعلية</td>
+                        <td className="py-2 px-3 font-bold text-emerald-400">{fmt(perfComparison.current.actualSales)} ج.م</td>
+                        <td className="py-2 px-3 text-muted-foreground">{fmt(perfComparison.previous.actualSales)} ج.م</td>
+                        <td className="py-2 px-3">
+                          <span className={`text-xs font-bold ${perfComparison.changes.actualSalesChange >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {perfComparison.changes.actualSalesChange >= 0 ? '+' : ''}{perfComparison.changes.actualSalesChange}%
+                          </span>
+                        </td>
+                      </tr>
+                      <tr className="border-b border-border/30">
+                        <td className="py-2 px-3 text-muted-foreground">Total Opportunity</td>
+                        <td className="py-2 px-3 font-bold text-blue-400">{fmt(perfComparison.current.totalOpportunity)} ج.م</td>
+                        <td className="py-2 px-3 text-muted-foreground">{fmt(perfComparison.previous.totalOpportunity)} ج.م</td>
+                        <td className="py-2 px-3">
+                          <span className={`text-xs font-bold ${perfComparison.changes.opportunityChange >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {perfComparison.changes.opportunityChange >= 0 ? '+' : ''}{perfComparison.changes.opportunityChange}%
+                          </span>
+                        </td>
+                      </tr>
+                      <tr className="border-b border-border/30">
+                        <td className="py-2 px-3 text-muted-foreground">Closing Rate</td>
+                        <td className="py-2 px-3 font-bold text-indigo-400">{perfComparison.current.closingRate}%</td>
+                        <td className="py-2 px-3 text-muted-foreground">{perfComparison.previous.closingRate}%</td>
+                        <td className="py-2 px-3">
+                          <span className={`text-xs font-bold ${perfComparison.changes.closingRateChange >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {perfComparison.changes.closingRateChange >= 0 ? '+' : ''}{perfComparison.changes.closingRateChange}نقطة
+                          </span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="py-2 px-3 text-muted-foreground">شريحة الخصم</td>
+                        <td className="py-2 px-3 font-bold text-amber-400">{perfComparison.current.discountPct}% ({perfComparison.current.tierLabel})</td>
+                        <td className="py-2 px-3 text-muted-foreground">{perfComparison.previous.discountPct}%</td>
+                        <td className="py-2 px-3">
+                          <span className={`text-xs font-bold ${perfComparison.changes.discountPctChange >= 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                            {perfComparison.changes.discountPctChange >= 0 ? '+' : ''}{perfComparison.changes.discountPctChange}نقطة
+                          </span>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Tiers Table */}
           <Card>
             <CardHeader><CardTitle className="text-sm">جدول شرائح الخصم</CardTitle></CardHeader>
@@ -385,7 +463,7 @@ export default function ClosingModule() {
                       { label: 'شريحة 4', range: '3M - 5M', pct: 7, min: 3_000_000, max: 5_000_000 },
                       { label: 'شريحة 5', range: 'أكثر من 5M', pct: 10, min: 5_000_000, max: Infinity },
                     ].map(tier => {
-                      const tv = discountSummary?.totalVolume ?? 0;
+                      const tv = discountSummary?.totalOpportunity ?? 0;
                       const isActive = tv >= tier.min && tv < tier.max;
                       return (
                         <tr key={tier.label} className={`border-b border-border/30 ${isActive ? 'bg-primary/10' : ''}`}>
@@ -413,7 +491,7 @@ export default function ClosingModule() {
       {activeTab === 'engineers' && (
         <div className="space-y-4">
           <Card>
-            <CardHeader><CardTitle className="text-sm">Pipeline والخصم لكل مهندس</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-sm">توزيع الخصومات على المهندسين</CardTitle></CardHeader>
             <CardContent>
               {engDiscounts && engDiscounts.length > 0 ? (
                 <div className="space-y-3">
@@ -421,27 +499,34 @@ export default function ClosingModule() {
                     <div key={eng.engineerId} className="border border-border/40 rounded-lg p-3">
                       <div className="flex items-center justify-between mb-2">
                         <span className="font-medium text-sm">{eng.engineerName}</span>
-                        <Badge variant="outline" className="text-xs">{fmt(eng.pipeline)} ج.م Pipeline</Badge>
+                        <Badge variant="outline" className="text-xs text-amber-400 border-amber-400/50">حصته: {eng.sharePercent}%</Badge>
                       </div>
-                      <div className="grid grid-cols-3 gap-2 text-xs">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                         <div className="text-center p-2 bg-emerald-950/30 rounded">
                           <div className="text-emerald-400 font-bold">{fmt(eng.actualSales)}</div>
                           <div className="text-muted-foreground">مبيعات فعلية</div>
                         </div>
-                        <div className="text-center p-2 bg-red-950/30 rounded">
-                          <div className="text-red-400 font-bold">{fmt(eng.usedDiscount)}</div>
-                          <div className="text-muted-foreground">خصم مستخدم</div>
-                        </div>
                         <div className="text-center p-2 bg-blue-950/30 rounded">
-                          <div className="text-blue-400 font-bold">{fmt(eng.allocatedDiscount)}</div>
-                          <div className="text-muted-foreground">خصم متاح</div>
+                          <div className="text-blue-400 font-bold">{fmt(eng.quotations + eng.negotiation)}</div>
+                          <div className="text-muted-foreground">فرص مفتوحة</div>
+                        </div>
+                        <div className="text-center p-2 bg-purple-950/30 rounded">
+                          <div className="text-purple-400 font-bold">{fmt(eng.engineerTotal)}</div>
+                          <div className="text-muted-foreground">إجمالي شغله</div>
+                        </div>
+                        <div className="text-center p-2 bg-amber-950/30 rounded">
+                          <div className="text-amber-400 font-bold">{fmt(eng.engineerDiscount)}</div>
+                          <div className="text-muted-foreground">نصيبه من الخصم</div>
                         </div>
                       </div>
+                      {eng.usedDiscount > 0 && (
+                        <div className="mt-2 text-xs text-red-400/80">خصم مستخدم: {fmt(eng.usedDiscount)} ج.م</div>
+                      )}
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-8 text-muted-foreground">لا توجد بيانات</div>
+                <div className="text-center py-8 text-muted-foreground">لا توجد بيانات - أضف صفقات أولاً</div>
               )}
             </CardContent>
           </Card>
