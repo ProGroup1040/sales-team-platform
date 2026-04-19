@@ -171,6 +171,9 @@ export const deals = mysqlTable("deals", {
   discountPercent: decimal("discountPercent", { precision: 5, scale: 2 }).default("0").notNull(),
   discountValue: decimal("discountValue", { precision: 14, scale: 2 }).default("0").notNull(),
   discountNote: text("discountNote"),
+  // ─── Lost Deal Analysis ─────────────────────────────────────────────────────
+  lostReason: mysqlEnum("lostReason", ["price_high", "competitor", "slow_response", "wrong_product", "not_serious", "budget_cut", "other"]),
+  lostReasonNote: varchar("lostReasonNote", { length: 255 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   // ─── Soft Delete ──────────────────────────────────────────────────────────

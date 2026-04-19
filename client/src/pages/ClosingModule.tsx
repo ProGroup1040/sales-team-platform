@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
-import { useLocalAuth } from "@/hooks/useLocalAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,9 +12,10 @@ import { toast } from "sonner";
 import {
   TrendingUp, DollarSign, Zap, CheckCircle, Plus, Trash2,
   Percent, ShieldCheck, AlertTriangle, Users, BarChart3, ChevronRight,
+  XCircle, AlertCircle, TrendingDown,
 } from "lucide-react";
 import { DeleteConfirmDialog, type DeleteReason } from "@/components/DeleteConfirmDialog";
-import { FunnelChart, Funnel, LabelList, Tooltip, ResponsiveContainer } from "recharts";
+import { useLocalAuth } from "@/hooks/useLocalAuth";
 
 const now = new Date();
 const YEAR = now.getFullYear();
@@ -37,6 +37,16 @@ const STAGE_COLORS: Record<string, string> = {
 };
 const STAGE_ORDER = ['proposal', 'negotiation', 'contract_sent', 'closed_won', 'closed_lost'];
 
+const LOST_REASON_OPTIONS = [
+  { value: 'price_high', label: 'سعر أعلى من المنافس' },
+  { value: 'competitor', label: 'ذهب للمنافس' },
+  { value: 'slow_response', label: 'تأخير في الاستجابة' },
+  { value: 'wrong_product', label: 'منتج غير مناسب' },
+  { value: 'not_serious', label: 'عميل غير جاد' },
+  { value: 'budget_cut', label: 'تخفيض الميزانية' },
+  { value: 'other', label: 'أسباب أخرى' },
+];
+
 const fmt = (n: number) => n.toLocaleString('ar-EG', { maximumFractionDigits: 0 });
 
 type NewDealState = {
@@ -48,12 +58,22 @@ type UpdateDealState = {
   id: number; stage: string; nextAction: string; nextActionDate: string; notes: string;
   value: string; discountPercent: string; discountValue: string; discountNote: string;
 };
+type LostReasonState = {
+  dealId: number;
+  pendingStage: string;
+  lostReason: string;
+  lostReasonNote: string;
+};
 
 export default function ClosingModule() {
-  const [activeTab, setActiveTab] = useState<'deals' | 'discount' | 'engineers'>('deals');
+  const { session } = useLocalAuth();
+  const canEdit = session?.role === 'admin' || session?.role === 'admin_sales';
+
+  const [activeTab, setActiveTab] = useState<'deals' | 'discount' | 'engineers' | 'lost'>('deals');
   const [showAdd, setShowAdd] = useState(false);
   const [filterStage, setFilterStage] = useState("all");
   const [updateDeal, setUpdateDeal] = useState<UpdateDealState | null>(null);
+  const [lostReasonDialog, setLostReasonDialog] = useState<LostReasonState | null>(null);
   const [newDeal, setNewDeal] = useState<NewDealState>({
     engineerId: '', clientName: '', value: '',
     nextAction: '', nextActionDate: '', notes: '',
@@ -61,22 +81,20 @@ export default function ClosingModule() {
   });
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
   const utils = trpc.useUtils();
-  const { session } = useLocalAuth();
-  const canEdit = session?.role === 'admin' || session?.role === 'admin_sales';
 
   const { data: stats } = trpc.closing.stats.useQuery({ year: YEAR, month: MONTH });
   const { data: dealsData } = trpc.closing.list.useQuery({ limit: 50, stage: filterStage !== 'all' ? filterStage : undefined });
   const { data: engineers } = trpc.engineers.list.useQuery();
   const { data: discountSummary } = trpc.closing.discountSummary.useQuery();
   const { data: engDiscounts } = trpc.closing.engineerDiscountSummary.useQuery();
-  const { data: perfComparison } = trpc.closing.performanceComparison.useQuery();
+  const { data: lostAnalysis } = trpc.closing.lostDealsAnalysis.useQuery();
 
   const invalidateAll = () => {
     utils.closing.list.invalidate();
     utils.closing.stats.invalidate();
     utils.closing.discountSummary.invalidate();
     utils.closing.engineerDiscountSummary.invalidate();
-    utils.closing.performanceComparison.invalidate();
+    utils.closing.lostDealsAnalysis.invalidate();
   };
 
   const createMutation = trpc.closing.create.useMutation({
@@ -85,6 +103,15 @@ export default function ClosingModule() {
   });
   const updateMutation = trpc.closing.updateStage.useMutation({
     onSuccess: () => { toast.success('تم تحديث الصفقة'); setUpdateDeal(null); invalidateAll(); },
+    onError: (e) => toast.error(e.message || 'حدث خطأ'),
+  });
+  const updateDealStageMutation = trpc.closing.updateDealStage.useMutation({
+    onSuccess: () => {
+      toast.success('تم تحديث مرحلة الصفقة');
+      setLostReasonDialog(null);
+      setUpdateDeal(null);
+      invalidateAll();
+    },
     onError: (e) => toast.error(e.message || 'حدث خطأ'),
   });
   const softDeleteMut = trpc.softDelete.deal.useMutation({
@@ -134,8 +161,34 @@ export default function ClosingModule() {
     });
   };
 
+  // عند تغيير المرحلة في نموذج التحديث
+  const handleStageChange = (newStage: string) => {
+    if (!updateDeal) return;
+    if (newStage === 'closed_lost') {
+      // فتح نموذج سبب الخسارة
+      setLostReasonDialog({
+        dealId: updateDeal.id,
+        pendingStage: newStage,
+        lostReason: 'price_high',
+        lostReasonNote: '',
+      });
+    } else {
+      setUpdateDeal(d => d ? { ...d, stage: newStage } : null);
+    }
+  };
+
   const handleUpdate = () => {
     if (!updateDeal) return;
+    // إذا كانت المرحلة closed_lost، يجب أن يمر عبر نموذج السبب
+    if (updateDeal.stage === 'closed_lost') {
+      setLostReasonDialog({
+        dealId: updateDeal.id,
+        pendingStage: 'closed_lost',
+        lostReason: 'price_high',
+        lostReasonNote: '',
+      });
+      return;
+    }
     updateMutation.mutate({
       id: updateDeal.id,
       stage: updateDeal.stage as any,
@@ -149,11 +202,15 @@ export default function ClosingModule() {
     });
   };
 
-  const pipelineData = stats?.byStage?.map(s => ({
-    name: STAGE_LABELS[s.stage] ?? s.stage,
-    value: s.count,
-    fill: s.stage === 'proposal' ? '#6366f1' : s.stage === 'negotiation' ? '#8b5cf6' : s.stage === 'contract_sent' ? '#f59e0b' : s.stage === 'closed_won' ? '#10b981' : '#ef4444',
-  })) ?? [];
+  const handleConfirmLostReason = () => {
+    if (!lostReasonDialog) return;
+    updateDealStageMutation.mutate({
+      id: lostReasonDialog.dealId,
+      stage: 'closed_lost',
+      lostReason: lostReasonDialog.lostReason as any,
+      lostReasonNote: lostReasonDialog.lostReasonNote || undefined,
+    });
+  };
 
   const remainingPct = discountSummary
     ? (discountSummary.remainingDiscount / (discountSummary.allowedDiscount || 1)) * 100
@@ -165,7 +222,7 @@ export default function ClosingModule() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">موديول التفاوض والإغلاق</h1>
-          <p className="text-sm text-muted-foreground">متابعة الصفقات من التفاوض حتى الإغلاق + نظام الخصومات</p>
+          <p className="text-sm text-muted-foreground">متابعة الصفقات من التفاوض حتى الإغلاق + نظام الخصومات + تحليل الخسائر</p>
         </div>
         {canEdit && (
           <Button size="sm" onClick={() => setShowAdd(true)} className="gap-1.5">
@@ -189,25 +246,29 @@ export default function ClosingModule() {
           <div><p className="text-2xl font-bold">{stats?.conversionRate ?? 0}%</p><p className="text-xs text-muted-foreground">نسبة الإغلاق</p></div>
         </CardContent></Card>
         <Card><CardContent className="p-5 flex items-center gap-4">
-          <div className="p-2.5 rounded-xl bg-purple-100"><DollarSign className="w-5 h-5 text-purple-600" /></div>
-          <div><p className="text-xl font-bold">{fmt(stats?.closedValue ?? 0)}</p><p className="text-xs text-muted-foreground">قيمة المغلق (ج.م)</p></div>
+          <div className="p-2.5 rounded-xl bg-red-100"><XCircle className="w-5 h-5 text-red-600" /></div>
+          <div><p className="text-2xl font-bold">{lostAnalysis?.totalLost ?? 0}</p><p className="text-xs text-muted-foreground">صفقات خاسرة</p></div>
         </CardContent></Card>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-0 border-b border-border">
+      <div className="flex gap-0 border-b border-border overflow-x-auto">
         {[
           { key: 'deals', label: 'الصفقات', icon: BarChart3 },
           { key: 'discount', label: 'نظام الخصومات', icon: Percent },
           { key: 'engineers', label: 'المهندسون', icon: Users },
+          { key: 'lost', label: 'الصفقات الخاسرة', icon: TrendingDown },
         ].map(tab => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key as any)}
-            className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === tab.key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+            className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === tab.key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
           >
             <tab.icon className="h-4 w-4" />
             {tab.label}
+            {tab.key === 'lost' && (lostAnalysis?.totalLost ?? 0) > 0 && (
+              <Badge className="mr-1 text-xs bg-red-500/20 text-red-400 border-red-500/30">{lostAnalysis?.totalLost}</Badge>
+            )}
           </button>
         ))}
       </div>
@@ -267,6 +328,11 @@ export default function ClosingModule() {
                             خصم {fmt(parseFloat(deal.discountValue as string))} ج.م ({parseFloat(deal.discountPercent as string || '0').toFixed(1)}%)
                           </Badge>
                         )}
+                        {deal.stage === 'closed_lost' && (deal as any).lostReason && (
+                          <Badge variant="outline" className="text-xs text-red-400 border-red-500/40">
+                            {LOST_REASON_OPTIONS.find(r => r.value === (deal as any).lostReason)?.label ?? (deal as any).lostReason}
+                          </Badge>
+                        )}
                       </div>
                       {deal.nextAction && (
                         <div className="text-xs text-muted-foreground mt-1">
@@ -306,22 +372,22 @@ export default function ClosingModule() {
       {/* ─── Tab: نظام الخصومات ─── */}
       {activeTab === 'discount' && (
         <div className="space-y-4">
-          {/* Opportunity Summary */}
+          {/* Volume Summary */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Card><CardContent className="pt-4">
-              <div className="flex items-center gap-2 mb-1"><TrendingUp className="h-4 w-4 text-blue-500" /><span className="text-xs text-muted-foreground">عروض الأسعار (Quotations)</span></div>
-              <div className="text-xl font-bold text-blue-500">{fmt(discountSummary?.quotations ?? 0)} ج.م</div>
-              <div className="text-xs text-muted-foreground">مقترح + عقد مرسل</div>
+              <div className="flex items-center gap-2 mb-1"><CheckCircle className="h-4 w-4 text-emerald-500" /><span className="text-xs text-muted-foreground">المبيعات الفعلية</span></div>
+              <div className="text-xl font-bold text-emerald-500">{fmt(discountSummary?.actualSales ?? 0)} ج.م</div>
+              <div className="text-xs text-muted-foreground">صفقات مغلقة (closed_won)</div>
             </CardContent></Card>
             <Card><CardContent className="pt-4">
-              <div className="flex items-center gap-2 mb-1"><Zap className="h-4 w-4 text-indigo-500" /><span className="text-xs text-muted-foreground">تفاوض (Negotiation)</span></div>
-              <div className="text-xl font-bold text-indigo-500">{fmt(discountSummary?.negotiation ?? 0)} ج.م</div>
-              <div className="text-xs text-muted-foreground">صفقات في مرحلة التفاوض</div>
+              <div className="flex items-center gap-2 mb-1"><TrendingUp className="h-4 w-4 text-blue-500" /><span className="text-xs text-muted-foreground">Pipeline</span></div>
+              <div className="text-xl font-bold text-blue-500">{fmt(discountSummary?.pipeline ?? 0)} ج.م</div>
+              <div className="text-xs text-muted-foreground">صفقات في التفاوض</div>
             </CardContent></Card>
             <Card className="border-2 border-primary/30"><CardContent className="pt-4">
-              <div className="flex items-center gap-2 mb-1"><BarChart3 className="h-4 w-4 text-primary" /><span className="text-xs text-muted-foreground">Total Opportunity</span></div>
-              <div className="text-xl font-bold text-primary">{fmt(discountSummary?.totalOpportunity ?? 0)} ج.م</div>
-              <div className="text-xs text-muted-foreground">عروض + تفاوض (أساس الخصم)</div>
+              <div className="flex items-center gap-2 mb-1"><BarChart3 className="h-4 w-4 text-primary" /><span className="text-xs text-muted-foreground">إجمالي الحجم</span></div>
+              <div className="text-xl font-bold text-primary">{fmt(discountSummary?.totalVolume ?? 0)} ج.م</div>
+              <div className="text-xs text-muted-foreground">المبيعات + Pipeline</div>
             </CardContent></Card>
           </div>
 
@@ -372,75 +438,6 @@ export default function ClosingModule() {
             </CardContent>
           </Card>
 
-          {/* Performance Comparison */}
-          {perfComparison && (
-            <Card className="border-primary/20">
-              <CardHeader>
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-primary" />
-                  مقارنة الأداء
-                  <Badge variant="outline" className="text-xs text-primary border-primary/40">آخر 60 يوم فقط</Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border text-muted-foreground text-xs">
-                        <th className="text-right py-2 px-3">المؤشر</th>
-                        <th className="text-right py-2 px-3 text-primary">آخر 60 يوم</th>
-                        <th className="text-right py-2 px-3 text-muted-foreground">الفترة السابقة</th>
-                        <th className="text-right py-2 px-3">التغيير</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr className="border-b border-border/30">
-                        <td className="py-2 px-3 text-muted-foreground">مبيعات فعلية</td>
-                        <td className="py-2 px-3 font-bold text-emerald-400">{fmt(perfComparison.current.actualSales)} ج.م</td>
-                        <td className="py-2 px-3 text-muted-foreground">{fmt(perfComparison.previous.actualSales)} ج.م</td>
-                        <td className="py-2 px-3">
-                          <span className={`text-xs font-bold ${perfComparison.changes.actualSalesChange >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {perfComparison.changes.actualSalesChange >= 0 ? '+' : ''}{perfComparison.changes.actualSalesChange}%
-                          </span>
-                        </td>
-                      </tr>
-                      <tr className="border-b border-border/30">
-                        <td className="py-2 px-3 text-muted-foreground">Total Opportunity</td>
-                        <td className="py-2 px-3 font-bold text-blue-400">{fmt(perfComparison.current.totalOpportunity)} ج.م</td>
-                        <td className="py-2 px-3 text-muted-foreground">{fmt(perfComparison.previous.totalOpportunity)} ج.م</td>
-                        <td className="py-2 px-3">
-                          <span className={`text-xs font-bold ${perfComparison.changes.opportunityChange >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {perfComparison.changes.opportunityChange >= 0 ? '+' : ''}{perfComparison.changes.opportunityChange}%
-                          </span>
-                        </td>
-                      </tr>
-                      <tr className="border-b border-border/30">
-                        <td className="py-2 px-3 text-muted-foreground">Closing Rate</td>
-                        <td className="py-2 px-3 font-bold text-indigo-400">{perfComparison.current.closingRate}%</td>
-                        <td className="py-2 px-3 text-muted-foreground">{perfComparison.previous.closingRate}%</td>
-                        <td className="py-2 px-3">
-                          <span className={`text-xs font-bold ${perfComparison.changes.closingRateChange >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {perfComparison.changes.closingRateChange >= 0 ? '+' : ''}{perfComparison.changes.closingRateChange}نقطة
-                          </span>
-                        </td>
-                      </tr>
-                      <tr>
-                        <td className="py-2 px-3 text-muted-foreground">شريحة الخصم</td>
-                        <td className="py-2 px-3 font-bold text-amber-400">{perfComparison.current.discountPct}% ({perfComparison.current.tierLabel})</td>
-                        <td className="py-2 px-3 text-muted-foreground">{perfComparison.previous.discountPct}%</td>
-                        <td className="py-2 px-3">
-                          <span className={`text-xs font-bold ${perfComparison.changes.discountPctChange >= 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
-                            {perfComparison.changes.discountPctChange >= 0 ? '+' : ''}{perfComparison.changes.discountPctChange}نقطة
-                          </span>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
           {/* Tiers Table */}
           <Card>
             <CardHeader><CardTitle className="text-sm">جدول شرائح الخصم</CardTitle></CardHeader>
@@ -463,7 +460,7 @@ export default function ClosingModule() {
                       { label: 'شريحة 4', range: '3M - 5M', pct: 7, min: 3_000_000, max: 5_000_000 },
                       { label: 'شريحة 5', range: 'أكثر من 5M', pct: 10, min: 5_000_000, max: Infinity },
                     ].map(tier => {
-                      const tv = discountSummary?.totalOpportunity ?? 0;
+                      const tv = discountSummary?.totalVolume ?? 0;
                       const isActive = tv >= tier.min && tv < tier.max;
                       return (
                         <tr key={tier.label} className={`border-b border-border/30 ${isActive ? 'bg-primary/10' : ''}`}>
@@ -491,7 +488,7 @@ export default function ClosingModule() {
       {activeTab === 'engineers' && (
         <div className="space-y-4">
           <Card>
-            <CardHeader><CardTitle className="text-sm">توزيع الخصومات على المهندسين</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-sm">Pipeline والخصم لكل مهندس</CardTitle></CardHeader>
             <CardContent>
               {engDiscounts && engDiscounts.length > 0 ? (
                 <div className="space-y-3">
@@ -499,37 +496,193 @@ export default function ClosingModule() {
                     <div key={eng.engineerId} className="border border-border/40 rounded-lg p-3">
                       <div className="flex items-center justify-between mb-2">
                         <span className="font-medium text-sm">{eng.engineerName}</span>
-                        <Badge variant="outline" className="text-xs text-amber-400 border-amber-400/50">حصته: {eng.sharePercent}%</Badge>
+                        <Badge variant="outline" className="text-xs">{fmt(eng.pipeline)} ج.م Pipeline</Badge>
                       </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                      <div className="grid grid-cols-3 gap-2 text-xs">
                         <div className="text-center p-2 bg-emerald-950/30 rounded">
                           <div className="text-emerald-400 font-bold">{fmt(eng.actualSales)}</div>
                           <div className="text-muted-foreground">مبيعات فعلية</div>
                         </div>
+                        <div className="text-center p-2 bg-red-950/30 rounded">
+                          <div className="text-red-400 font-bold">{fmt(eng.usedDiscount)}</div>
+                          <div className="text-muted-foreground">خصم مستخدم</div>
+                        </div>
                         <div className="text-center p-2 bg-blue-950/30 rounded">
-                          <div className="text-blue-400 font-bold">{fmt(eng.quotations + eng.negotiation)}</div>
-                          <div className="text-muted-foreground">فرص مفتوحة</div>
-                        </div>
-                        <div className="text-center p-2 bg-purple-950/30 rounded">
-                          <div className="text-purple-400 font-bold">{fmt(eng.engineerTotal)}</div>
-                          <div className="text-muted-foreground">إجمالي شغله</div>
-                        </div>
-                        <div className="text-center p-2 bg-amber-950/30 rounded">
-                          <div className="text-amber-400 font-bold">{fmt(eng.engineerDiscount)}</div>
-                          <div className="text-muted-foreground">نصيبه من الخصم</div>
+                          <div className="text-blue-400 font-bold">{fmt(eng.allocatedDiscount)}</div>
+                          <div className="text-muted-foreground">خصم متاح</div>
                         </div>
                       </div>
-                      {eng.usedDiscount > 0 && (
-                        <div className="mt-2 text-xs text-red-400/80">خصم مستخدم: {fmt(eng.usedDiscount)} ج.م</div>
-                      )}
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-8 text-muted-foreground">لا توجد بيانات - أضف صفقات أولاً</div>
+                <div className="text-center py-8 text-muted-foreground">لا توجد بيانات</div>
               )}
             </CardContent>
           </Card>
+        </div>
+      )}
+
+      {/* ─── Tab: الصفقات الخاسرة ─── */}
+      {activeTab === 'lost' && (
+        <div className="space-y-4">
+          {/* Summary Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card className="bg-red-950/20 border-red-800/40">
+              <CardContent className="pt-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <XCircle className="h-4 w-4 text-red-400" />
+                  <span className="text-xs text-muted-foreground">إجمالي الصفقات الخاسرة</span>
+                </div>
+                <div className="text-3xl font-bold text-red-400">{lostAnalysis?.totalLost ?? 0}</div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  قيمة: {fmt(lostAnalysis?.totalLostValue ?? 0)} ج.م
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="bg-amber-950/20 border-amber-800/40">
+              <CardContent className="pt-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <AlertCircle className="h-4 w-4 text-amber-400" />
+                  <span className="text-xs text-muted-foreground">أكثر سبب تكراراً</span>
+                </div>
+                <div className="text-lg font-bold text-amber-400">
+                  {lostAnalysis?.topReason?.label ?? 'لا توجد بيانات'}
+                </div>
+                {lostAnalysis?.topReason && (
+                  <div className="text-xs text-muted-foreground mt-1">
+                    {lostAnalysis.topReason.count} صفقة ({lostAnalysis.topReason.percent}%)
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+            <Card className="bg-orange-950/20 border-orange-800/40">
+              <CardContent className="pt-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <Users className="h-4 w-4 text-orange-400" />
+                  <span className="text-xs text-muted-foreground">المهندس الأكثر خسارة</span>
+                </div>
+                <div className="text-lg font-bold text-orange-400">
+                  {lostAnalysis?.worstEngineer?.engineerName ?? 'لا توجد بيانات'}
+                </div>
+                {lostAnalysis?.worstEngineer && (
+                  <div className="text-xs text-muted-foreground mt-1">
+                    {lostAnalysis.worstEngineer.totalLost} صفقة خاسرة
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Reason Breakdown Table */}
+          {lostAnalysis && lostAnalysis.reasonBreakdown.length > 0 && (
+            <Card>
+              <CardHeader><CardTitle className="text-sm">توزيع أسباب الخسارة</CardTitle></CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {lostAnalysis.reasonBreakdown.map(item => (
+                    <div key={item.reason}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-medium">{item.label}</span>
+                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                          <span>{item.count} صفقة</span>
+                          <span className="font-bold text-red-400">{item.percent}%</span>
+                          <span>{fmt(item.value)} ج.م</span>
+                        </div>
+                      </div>
+                      <div className="w-full bg-muted rounded-full h-2">
+                        <div
+                          className="h-2 rounded-full bg-red-500/70 transition-all"
+                          style={{ width: `${item.percent}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Engineer Breakdown */}
+          {lostAnalysis && lostAnalysis.engineerBreakdown.length > 0 && (
+            <Card>
+              <CardHeader><CardTitle className="text-sm">الصفقات الخاسرة لكل مهندس</CardTitle></CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border text-muted-foreground text-xs">
+                        <th className="text-right py-2 px-3">المهندس</th>
+                        <th className="text-right py-2 px-3">عدد الخسائر</th>
+                        <th className="text-right py-2 px-3">القيمة الإجمالية</th>
+                        <th className="text-right py-2 px-3">أكثر سبب</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lostAnalysis.engineerBreakdown.map(eng => (
+                        <tr key={eng.engineerId} className="border-b border-border/30 hover:bg-muted/20">
+                          <td className="py-2 px-3 font-medium">{eng.engineerName}</td>
+                          <td className="py-2 px-3">
+                            <Badge className="bg-red-500/20 text-red-400 border-red-500/30">{eng.totalLost}</Badge>
+                          </td>
+                          <td className="py-2 px-3 text-muted-foreground">{fmt(eng.totalLostValue)} ج.م</td>
+                          <td className="py-2 px-3">
+                            {eng.topReasonLabel ? (
+                              <Badge variant="outline" className="text-xs text-amber-400 border-amber-500/40">
+                                {eng.topReasonLabel}
+                              </Badge>
+                            ) : <span className="text-muted-foreground text-xs">-</span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Lost Deals List */}
+          {lostAnalysis && lostAnalysis.deals.length > 0 && (
+            <Card>
+              <CardHeader><CardTitle className="text-sm">قائمة الصفقات الخاسرة</CardTitle></CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {lostAnalysis.deals.map(deal => (
+                    <div key={deal.id} className="flex items-start gap-3 p-3 rounded-xl border border-red-800/20 bg-red-950/10 hover:bg-red-950/20 transition-colors">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-sm">{deal.clientName}</span>
+                          <span className="text-sm font-bold text-red-400">{fmt(deal.value)} ج.م</span>
+                          <Badge variant="outline" className="text-xs text-red-400 border-red-500/40">
+                            {deal.lostReasonLabel}
+                          </Badge>
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          <span>المهندس: {deal.engineerName}</span>
+                          {deal.closedAt && (
+                            <span className="mr-3">📅 {new Date(deal.closedAt).toLocaleDateString('ar-EG')}</span>
+                          )}
+                        </div>
+                        {deal.lostReasonNote && (
+                          <div className="text-xs text-muted-foreground/70 mt-0.5 italic">ملاحظة: {deal.lostReasonNote}</div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {(!lostAnalysis || lostAnalysis.totalLost === 0) && (
+            <Card>
+              <CardContent className="py-12 text-center text-muted-foreground">
+                <XCircle className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                <p>لا توجد صفقات خاسرة حتى الآن</p>
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
 
@@ -589,10 +742,15 @@ export default function ClosingModule() {
           {updateDeal && (
             <div className="space-y-3">
               <div><Label>المرحلة</Label>
-                <Select value={updateDeal.stage} onValueChange={v => setUpdateDeal(d => d ? { ...d, stage: v } : null)}>
+                <Select value={updateDeal.stage} onValueChange={handleStageChange}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>{Object.entries(STAGE_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
                 </Select>
+                {updateDeal.stage === 'closed_lost' && (
+                  <p className="text-xs text-amber-400 mt-1 flex items-center gap-1">
+                    <AlertCircle className="h-3 w-3" />سيُطلب منك تحديد سبب الخسارة عند الحفظ
+                  </p>
+                )}
               </div>
               <div><Label>قيمة الصفقة (ج.م)</Label><Input type="number" value={updateDeal.value} onChange={e => setUpdateDeal(d => d ? { ...d, value: e.target.value } : null)} /></div>
               <div><Label>الخطوة التالية</Label><Input value={updateDeal.nextAction} onChange={e => setUpdateDeal(d => d ? { ...d, nextAction: e.target.value } : null)} /></div>
@@ -622,7 +780,64 @@ export default function ClosingModule() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setUpdateDeal(null)}>إلغاء</Button>
-            <Button onClick={handleUpdate} disabled={updateMutation.isPending}>حفظ</Button>
+            <Button onClick={handleUpdate} disabled={updateMutation.isPending || updateDealStageMutation.isPending}>حفظ</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Lost Reason Dialog ─── */}
+      <Dialog open={!!lostReasonDialog} onOpenChange={() => setLostReasonDialog(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-400">
+              <XCircle className="h-5 w-5" />
+              سبب خسارة الصفقة
+            </DialogTitle>
+          </DialogHeader>
+          {lostReasonDialog && (
+            <div className="space-y-4">
+              <div className="p-3 bg-red-950/20 border border-red-800/30 rounded-lg">
+                <p className="text-sm text-muted-foreground">
+                  يرجى تحديد سبب خسارة هذه الصفقة لمساعدتنا في تحسين الأداء وتحليل نقاط الضعف.
+                </p>
+              </div>
+              <div>
+                <Label>سبب الخسارة *</Label>
+                <Select
+                  value={lostReasonDialog.lostReason}
+                  onValueChange={v => setLostReasonDialog(d => d ? { ...d, lostReason: v } : null)}
+                >
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="اختر السبب" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {LOST_REASON_OPTIONS.map(opt => (
+                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>ملاحظات إضافية (اختياري)</Label>
+                <Textarea
+                  className="mt-1"
+                  rows={3}
+                  placeholder="أضف تفاصيل أو ملاحظات إضافية..."
+                  value={lostReasonDialog.lostReasonNote}
+                  onChange={e => setLostReasonDialog(d => d ? { ...d, lostReasonNote: e.target.value } : null)}
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLostReasonDialog(null)}>إلغاء</Button>
+            <Button
+              variant="destructive"
+              onClick={handleConfirmLostReason}
+              disabled={updateDealStageMutation.isPending}
+            >
+              تأكيد الخسارة
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

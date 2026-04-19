@@ -36,7 +36,8 @@ import {
   softDeleteEngineer, softDeleteTask, softDeleteLead, softDeleteVisitFull, softDeleteDeal,
   getAuditLogs,
   upsertLeadDailyStats, getLeadDailyStatsList, getLeadSummaryStats,
-  getDiscountSummary, validateDealDiscount, createDealWithDiscount, updateDealFull, getEngineerDiscountSummary, getPerformanceComparison,
+  getDiscountSummary, validateDealDiscount, createDealWithDiscount, updateDealFull, getEngineerDiscountSummary,
+  getLostDealsAnalysis, LOST_REASON_LABELS,
 } from "./db";
 
 // ─── Seed Data ────────────────────────────────────────────────────────────────
@@ -416,7 +417,24 @@ export const appRouter = router({
       discountValue: z.number().min(0),
     })).query(async ({ input }) => validateDealDiscount(input.dealId, input.discountValue)),
     engineerDiscountSummary: publicProcedure.query(async () => getEngineerDiscountSummary()),
-    performanceComparison: publicProcedure.query(async () => getPerformanceComparison()),
+    // ─── Lost Deal Analysis ─────────────────────────────────────────────────────
+    lostDealsAnalysis: publicProcedure.query(async () => getLostDealsAnalysis()),
+    lostReasonLabels: publicProcedure.query(async () => LOST_REASON_LABELS),
+    // ─── Update deal with lostReason ────────────────────────────────────────────
+    updateDealStage: publicProcedure.input(z.object({
+      id: z.number(),
+      stage: z.enum(["proposal", "negotiation", "contract_sent", "closed_won", "closed_lost"]),
+      lostReason: z.enum(["price_high", "competitor", "slow_response", "wrong_product", "not_serious", "budget_cut", "other"]).optional(),
+      lostReasonNote: z.string().optional(),
+    })).mutation(async ({ input }) => {
+      await updateDealFull(input.id, {
+        stage: input.stage,
+        lostReason: input.lostReason,
+        lostReasonNote: input.lostReasonNote,
+        closedAt: (input.stage === 'closed_won' || input.stage === 'closed_lost') ? new Date() : undefined,
+      });
+      return { success: true };
+    }),
   }),
 
   // ── Sales Control Tower ───────────────────────────────────────────────────────────────────────────────────────

@@ -1,6 +1,5 @@
 import { useState, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
-import { useLocalAuth } from "@/hooks/useLocalAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -324,9 +323,6 @@ export default function VisitsModule() {
     engineerId: '', clientName: '', clientPhone: '', address: '', scheduledAt: '', feeAmount: ''
   });
 
-  const { session } = useLocalAuth();
-  const canEdit = session?.role === 'admin' || session?.role === 'admin_sales';
-
   const utils = trpc.useUtils();
   const { data: stats } = trpc.visits.stats.useQuery({ year: YEAR, month: MONTH });
   const { data: visitsData } = trpc.visits.list.useQuery({
@@ -398,11 +394,9 @@ export default function VisitsModule() {
               <Bell className="w-3 h-3" />{alertsCount} تنبيه
             </Badge>
           )}
-          {canEdit && (
-            <Button size="sm" onClick={() => setShowAdd(true)} className="gap-1.5">
-              <Plus className="w-4 h-4" />إضافة معاينة
-            </Button>
-          )}
+          <Button size="sm" onClick={() => setShowAdd(true)} className="gap-1.5">
+            <Plus className="w-4 h-4" />إضافة معاينة
+          </Button>
         </div>
       </div>
 
@@ -823,18 +817,16 @@ export default function VisitsModule() {
                     )}
                   </div>
                 </div>
-                {canEdit && (
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <Button size="sm" variant="outline" className="text-xs h-7 gap-1"
-                      onClick={() => setUpdateVisit(visit)}>
-                      <Eye className="w-3 h-3" />تحديث
-                    </Button>
-                    <Button size="sm" variant="outline" className="text-xs h-7 text-red-600 hover:text-red-700 hover:bg-red-50"
-                      onClick={() => setDeleteVisit({ id: visit.id, clientName: visit.clientName })}>
-                      <Trash2 className="w-3 h-3" />
-                    </Button>
-                  </div>
-                )}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <Button size="sm" variant="outline" className="text-xs h-7 gap-1"
+                    onClick={() => setUpdateVisit(visit)}>
+                    <Eye className="w-3 h-3" />تحديث
+                  </Button>
+                  <Button size="sm" variant="outline" className="text-xs h-7 text-red-600 hover:text-red-700 hover:bg-red-50"
+                    onClick={() => setDeleteVisit({ id: visit.id, clientName: visit.clientName })}>
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                </div>
               </div>
             )) : (
               <div className="text-center py-10 text-muted-foreground">

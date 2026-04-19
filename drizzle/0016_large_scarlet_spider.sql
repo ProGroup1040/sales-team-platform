@@ -1,0 +1,2 @@
+ALTER TABLE `deals` ADD `lostReason` enum('price_high','competitor','slow_response','wrong_product','not_serious','budget_cut','other');--> statement-breakpoint
+ALTER TABLE `deals` ADD `lostReasonNote` varchar(255);

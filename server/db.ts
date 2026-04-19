@@ -2466,48 +2466,37 @@ export function getDiscountTierInfo(totalVolume: number): { tierLabel: string; d
   return                               { tierLabel: 'أكثر من 5M',        discountPct: 10 };
 }
 
-/** ملخص الخصومات الكامل (Total Opportunity + Tier + Allowed + Used + Remaining) - آخر 60 يوم */
+/** ملخص الخصومات الكامل (Total Volume + Tier + Allowed + Used + Remaining) */
 export async function getDiscountSummary() {
   const db = await getDb();
   if (!db) return null;
-  // Time window: آخر 60 يوم فقط
-  const now = new Date();
-  const cutoff60 = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
-  const allDeals = await db.select().from(deals)
-    .where(and(eq(deals.isDeleted, 0), gte(deals.createdAt, cutoff60)));
+
+  const allDeals = await db.select().from(deals).where(eq(deals.isDeleted, 0));
+
   // Actual Sales = closed_won deals
   const actualSales = allDeals
     .filter(d => d.stage === 'closed_won')
     .reduce((s, d) => s + parseFloat(d.value as string), 0);
-  // Quotations = proposal + contract_sent
-  const quotations = allDeals
-    .filter(d => d.stage === 'proposal' || d.stage === 'contract_sent')
-    .reduce((s, d) => s + parseFloat(d.value as string), 0);
-  // Negotiation = negotiation stage
-  const negotiation = allDeals
-    .filter(d => d.stage === 'negotiation')
-    .reduce((s, d) => s + parseFloat(d.value as string), 0);
-  // Pipeline = all open deals (for backward compat)
+
+  // Pipeline = deals not closed (proposal, negotiation, contract_sent)
   const pipeline = allDeals
     .filter(d => !['closed_won', 'closed_lost'].includes(d.stage))
     .reduce((s, d) => s + parseFloat(d.value as string), 0);
-  // Total Opportunity = Quotations + Negotiation (basis for discount tier)
-  const totalOpportunity = quotations + negotiation;
-  // Total Volume = Actual Sales + Pipeline (kept for reference)
+
   const totalVolume = actualSales + pipeline;
-  const { tierLabel, discountPct } = getDiscountTierInfo(totalOpportunity);
-  const allowedDiscount = totalOpportunity * (discountPct / 100);
+  const { tierLabel, discountPct } = getDiscountTierInfo(totalVolume);
+  const allowedDiscount = totalVolume * (discountPct / 100);
+
   // Used Discount = مجموع الخصومات على الصفقات المغلقة (closed_won)
   const usedDiscount = allDeals
     .filter(d => d.stage === 'closed_won')
     .reduce((s, d) => s + parseFloat(d.discountValue as string || '0'), 0);
+
   const remainingDiscount = Math.max(0, allowedDiscount - usedDiscount);
+
   return {
     actualSales,
-    quotations,
-    negotiation,
     pipeline,
-    totalOpportunity,
     totalVolume,
     tierLabel,
     discountPct,
@@ -2571,6 +2560,7 @@ export async function createDealWithDiscount(data: {
 export async function updateDealFull(id: number, data: {
   stage?: string; nextAction?: string; nextActionDate?: string; notes?: string;
   discountPercent?: number; discountValue?: number; discountNote?: string; value?: number;
+  lostReason?: string; lostReasonNote?: string; closedAt?: Date;
 }) {
   const db = await getDb();
   if (!db) return;
@@ -2583,107 +2573,142 @@ export async function updateDealFull(id: number, data: {
   if (data.discountPercent !== undefined) updateData.discountPercent = data.discountPercent.toString();
   if (data.discountValue !== undefined) updateData.discountValue = data.discountValue.toString();
   if (data.discountNote !== undefined) updateData.discountNote = data.discountNote;
-  if (data.stage === 'closed_won' || data.stage === 'closed_lost') updateData.closedAt = new Date();
+  if (data.lostReason !== undefined) updateData.lostReason = data.lostReason;
+  if (data.lostReasonNote !== undefined) updateData.lostReasonNote = data.lostReasonNote;
+  if (data.closedAt !== undefined) updateData.closedAt = data.closedAt;
+  else if (data.stage === 'closed_won' || data.stage === 'closed_lost') updateData.closedAt = new Date();
   await db.update(deals).set(updateData).where(eq(deals.id, id));
 }
 
-/** ملخص الخصم لكل مهندس بناءًا على حصته من Total Opportunity - آخر 60 يوم */
+/** ملخص الخصم لكل مهندس (Pipeline + خصم مستخدم + خصم متاح) */
 export async function getEngineerDiscountSummary() {
   const db = await getDb();
   if (!db) return [];
+
   const summary = await getDiscountSummary();
   if (!summary) return [];
-  // Time window: آخر 60 يوم فقط
-  const now = new Date();
-  const cutoff60 = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
-  const allDeals = await db.select().from(deals)
-    .where(and(eq(deals.isDeleted, 0), gte(deals.createdAt, cutoff60)));
+
+  const allDeals = await db.select().from(deals).where(eq(deals.isDeleted, 0));
   const engList = await db.select().from(engineers).where(eq(engineers.isDeleted, 0));
+
   return engList.map(eng => {
     const engDeals = allDeals.filter(d => d.engineerId === eng.id);
-    // Actual Sales = closed_won
+    const engPipeline = engDeals
+      .filter(d => !['closed_won', 'closed_lost'].includes(d.stage))
+      .reduce((s, d) => s + parseFloat(d.value as string), 0);
     const engActual = engDeals
       .filter(d => d.stage === 'closed_won')
       .reduce((s, d) => s + parseFloat(d.value as string), 0);
-    // Quotations = proposal + contract_sent
-    const engQuotations = engDeals
-      .filter(d => d.stage === 'proposal' || d.stage === 'contract_sent')
-      .reduce((s, d) => s + parseFloat(d.value as string), 0);
-    // Negotiation
-    const engNegotiation = engDeals
-      .filter(d => d.stage === 'negotiation')
-      .reduce((s, d) => s + parseFloat(d.value as string), 0);
-    // Engineer Total = Sales + Quotations + Negotiation
-    const engineerTotal = engActual + engQuotations + engNegotiation;
-    // Engineer Opportunity (Quotations + Negotiation) for share calculation
-    const engOpportunity = engQuotations + engNegotiation;
-    // Share % = Engineer Opportunity / Total Opportunity
-    const sharePercent = summary.totalOpportunity > 0 ? (engOpportunity / summary.totalOpportunity) * 100 : 0;
-    // Engineer Discount = Share % × Allowed Discount
-    const engineerDiscount = (sharePercent / 100) * summary.allowedDiscount;
-    // Used Discount = خصومات الصفقات المغلقة
     const engUsedDiscount = engDeals
       .filter(d => d.stage === 'closed_won')
       .reduce((s, d) => s + parseFloat(d.discountValue as string || '0'), 0);
+    // نسبة المهندس من الـ Pipeline الكلي
+    const pipelineShare = summary.totalVolume > 0 ? engPipeline / summary.totalVolume : 0;
+    const allocatedDiscount = summary.remainingDiscount * pipelineShare;
+
     return {
       engineerId: eng.id,
       engineerName: eng.name,
+      pipeline: engPipeline,
       actualSales: engActual,
-      quotations: engQuotations,
-      negotiation: engNegotiation,
-      engineerTotal,
-      sharePercent: Math.round(sharePercent * 10) / 10,
-      engineerDiscount: Math.round(engineerDiscount),
       usedDiscount: engUsedDiscount,
+      allocatedDiscount,
     };
-  }).filter(e => e.engineerTotal > 0); // عرض المهندسين النشيطين فقط
+  });
 }
 
-/** مقارنة الأداء: آخر 60 يوم vs الشهر السابق (60-120 يوم) */
-export async function getPerformanceComparison() {
+// ─── Lost Deal Analysis ───────────────────────────────────────────────────────
+
+export const LOST_REASON_LABELS: Record<string, string> = {
+  price_high: "سعر أعلى من المنافس",
+  competitor: "ذهب للمنافس",
+  slow_response: "تأخير في الاستجابة",
+  wrong_product: "منتج غير مناسب",
+  not_serious: "عميل غير جاد",
+  budget_cut: "تخفيض الميزانية",
+  other: "أسباب أخرى",
+};
+
+export async function getLostDealsAnalysis() {
   const db = await getDb();
   if (!db) return null;
-  const now = new Date();
-  const cutoff60  = new Date(now.getTime() -  60 * 24 * 60 * 60 * 1000);
-  const cutoff120 = new Date(now.getTime() - 120 * 24 * 60 * 60 * 1000);
 
-  const allDeals = await db.select().from(deals).where(
-    and(eq(deals.isDeleted, 0), gte(deals.createdAt, cutoff120))
-  );
+  const allEngineers = await db
+    .select({ id: engineers.id, name: engineers.name })
+    .from(engineers)
+    .where(eq(engineers.isDeleted, 0));
 
-  const current = allDeals.filter(d => d.createdAt >= cutoff60);
-  const previous = allDeals.filter(d => d.createdAt < cutoff60);
+  const lostDeals = await db
+    .select()
+    .from(deals)
+    .where(
+      and(
+        eq(deals.stage, "closed_lost"),
+        eq(deals.isDeleted, 0)
+      )
+    );
 
-  const calcPeriod = (rows: typeof allDeals) => {
-    const actualSales = rows.filter(d => d.stage === 'closed_won')
-      .reduce((s, d) => s + parseFloat(d.value as string), 0);
-    const quotations = rows.filter(d => d.stage === 'proposal' || d.stage === 'contract_sent')
-      .reduce((s, d) => s + parseFloat(d.value as string), 0);
-    const negotiation = rows.filter(d => d.stage === 'negotiation')
-      .reduce((s, d) => s + parseFloat(d.value as string), 0);
-    const totalOpportunity = quotations + negotiation;
-    const closedWonCount = rows.filter(d => d.stage === 'closed_won').length;
-    const totalCount = rows.length;
-    const closingRate = totalCount > 0 ? Math.round((closedWonCount / totalCount) * 100) : 0;
-    const { discountPct, tierLabel } = getDiscountTierInfo(totalOpportunity);
-    const allowedDiscount = totalOpportunity * (discountPct / 100);
-    return { actualSales, quotations, negotiation, totalOpportunity, closedWonCount, totalCount, closingRate, discountPct, tierLabel, allowedDiscount };
-  };
+  // إجمالي الصفقات الخاسرة
+  const totalLost = lostDeals.length;
+  const totalLostValue = lostDeals.reduce((s, d) => s + parseFloat(d.value as string), 0);
 
-  const curr = calcPeriod(current);
-  const prev = calcPeriod(previous);
+  // توزيع الأسباب
+  const reasonCounts: Record<string, number> = {};
+  const reasonValues: Record<string, number> = {};
+  for (const deal of lostDeals) {
+    const reason = deal.lostReason || "other";
+    reasonCounts[reason] = (reasonCounts[reason] || 0) + 1;
+    reasonValues[reason] = (reasonValues[reason] || 0) + parseFloat(deal.value as string);
+  }
 
-  const pctChange = (curr: number, prev: number) =>
-    prev > 0 ? Math.round(((curr - prev) / prev) * 100) : (curr > 0 ? 100 : 0);
+  const reasonBreakdown = Object.entries(reasonCounts).map(([reason, count]) => ({
+    reason,
+    label: LOST_REASON_LABELS[reason] || reason,
+    count,
+    value: reasonValues[reason] || 0,
+    percent: totalLost > 0 ? Math.round((count / totalLost) * 100) : 0,
+  })).sort((a, b) => b.count - a.count);
+
+  const topReason = reasonBreakdown[0] || null;
+
+  // خسائر كل مهندس
+  const engineerBreakdown = allEngineers.map(eng => {
+    const engLost = lostDeals.filter(d => d.engineerId === eng.id);
+    const reasonMap: Record<string, number> = {};
+    for (const d of engLost) {
+      const r = d.lostReason || "other";
+      reasonMap[r] = (reasonMap[r] || 0) + 1;
+    }
+    return {
+      engineerId: eng.id,
+      engineerName: eng.name,
+      totalLost: engLost.length,
+      totalLostValue: engLost.reduce((s, d) => s + parseFloat(d.value as string), 0),
+      topReason: Object.entries(reasonMap).sort((a, b) => b[1] - a[1])[0]?.[0] || null,
+      topReasonLabel: LOST_REASON_LABELS[Object.entries(reasonMap).sort((a, b) => b[1] - a[1])[0]?.[0]] || null,
+      reasons: reasonMap,
+    };
+  }).filter(e => e.totalLost > 0).sort((a, b) => b.totalLost - a.totalLost);
+
+  const worstEngineer = engineerBreakdown[0] || null;
 
   return {
-    current: { ...curr, label: 'آخر 60 يوم' },
-    previous: { ...prev, label: 'الشهر السابق (60-120 يوم)' },
-    changes: {
-      actualSalesChange: pctChange(curr.actualSales, prev.actualSales),
-      opportunityChange: pctChange(curr.totalOpportunity, prev.totalOpportunity),
-      closingRateChange: curr.closingRate - prev.closingRate,
-      discountPctChange: curr.discountPct - prev.discountPct,
-    },
+    totalLost,
+    totalLostValue,
+    topReason,
+    worstEngineer,
+    reasonBreakdown,
+    engineerBreakdown,
+    deals: lostDeals.map(d => ({
+      id: d.id,
+      clientName: d.clientName,
+      value: parseFloat(d.value as string),
+      engineerId: d.engineerId,
+      engineerName: allEngineers.find(e => e.id === d.engineerId)?.name || "غير معروف",
+      lostReason: d.lostReason || "other",
+      lostReasonLabel: LOST_REASON_LABELS[d.lostReason || "other"],
+      lostReasonNote: d.lostReasonNote,
+      closedAt: d.closedAt,
+    })),
   };
 }
