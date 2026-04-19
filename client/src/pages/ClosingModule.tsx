@@ -57,6 +57,7 @@ type NewDealState = {
 type UpdateDealState = {
   id: number; stage: string; nextAction: string; nextActionDate: string; notes: string;
   value: string; discountPercent: string; discountValue: string; discountNote: string;
+  lostReason?: string; lostReasonNote?: string;
 };
 type LostReasonState = {
   dealId: number;
@@ -179,13 +180,29 @@ export default function ClosingModule() {
 
   const handleUpdate = () => {
     if (!updateDeal) return;
-    // إذا كانت المرحلة closed_lost، يجب أن يمر عبر نموذج السبب
+    // إذا closed_lost: نحدث الصفقة مباشرة مع lostReason من الـ Dialog
     if (updateDeal.stage === 'closed_lost') {
-      setLostReasonDialog({
-        dealId: updateDeal.id,
-        pendingStage: 'closed_lost',
-        lostReason: 'price_high',
-        lostReasonNote: '',
+      if (!updateDeal.lostReason) {
+        toast.error('يرجى تحديد سبب الخسارة');
+        return;
+      }
+      updateDealStageMutation.mutate({
+        id: updateDeal.id,
+        stage: 'closed_lost',
+        lostReason: updateDeal.lostReason as any,
+        lostReasonNote: updateDeal.lostReasonNote || undefined,
+      });
+      // تحديث باقي الحقول بعد ذلك
+      updateMutation.mutate({
+        id: updateDeal.id,
+        stage: 'closed_lost' as any,
+        nextAction: updateDeal.nextAction || undefined,
+        nextActionDate: updateDeal.nextActionDate || undefined,
+        notes: updateDeal.notes || undefined,
+        value: parseFloat(updateDeal.value) || undefined,
+        discountPercent: parseFloat(updateDeal.discountPercent) || 0,
+        discountValue: parseFloat(updateDeal.discountValue) || 0,
+        discountNote: updateDeal.discountNote || undefined,
       });
       return;
     }
@@ -346,16 +363,16 @@ export default function ClosingModule() {
                     </div>
                     {canEdit && (
                       <div className="flex gap-1 shrink-0">
-                        {deal.stage !== 'closed_won' && deal.stage !== 'closed_lost' && (
-                          <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => setUpdateDeal({
+                        <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => setUpdateDeal({
                             id: deal.id, stage: deal.stage,
                             nextAction: deal.nextAction ?? '', nextActionDate: '',
                             notes: deal.notes ?? '', value: deal.value as string,
                             discountPercent: deal.discountPercent as string || '0',
                             discountValue: deal.discountValue as string || '0',
                             discountNote: deal.discountNote ?? '',
+                            lostReason: (deal as any).lostReason ?? '',
+                            lostReasonNote: (deal as any).lostReasonNote ?? '',
                           })}>تحديث</Button>
-                        )}
                         <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-600 hover:bg-red-50 h-7 w-7 p-0" onClick={() => setDeleteTarget(deal.id)}>
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
@@ -668,6 +685,16 @@ export default function ClosingModule() {
                           <div className="text-xs text-muted-foreground/70 mt-0.5 italic">ملاحظة: {deal.lostReasonNote}</div>
                         )}
                       </div>
+                      {canEdit && (
+                        <Button size="sm" variant="outline" className="text-xs h-7 shrink-0 border-red-800/40 text-red-400 hover:bg-red-950/30" onClick={() => setUpdateDeal({
+                          id: deal.id, stage: 'closed_lost',
+                          nextAction: '', nextActionDate: '',
+                          notes: '', value: String(deal.value),
+                          discountPercent: '0', discountValue: '0', discountNote: '',
+                          lostReason: deal.lostReason ?? '',
+                          lostReasonNote: deal.lostReasonNote ?? '',
+                        })}>تحديث</Button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -747,9 +774,22 @@ export default function ClosingModule() {
                   <SelectContent>{Object.entries(STAGE_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
                 </Select>
                 {updateDeal.stage === 'closed_lost' && (
-                  <p className="text-xs text-amber-400 mt-1 flex items-center gap-1">
-                    <AlertCircle className="h-3 w-3" />سيُطلب منك تحديد سبب الخسارة عند الحفظ
-                  </p>
+                  <div className="mt-2 space-y-2 p-3 rounded-lg border border-red-800/30 bg-red-950/10">
+                    <p className="text-xs text-red-400 font-medium flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />حقول الصفقة الخاسرة
+                    </p>
+                    <div>
+                      <Label className="text-xs">سبب الخسارة</Label>
+                      <Select value={updateDeal.lostReason ?? ''} onValueChange={v => setUpdateDeal(d => d ? { ...d, lostReason: v } : null)}>
+                        <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="اختر السبب" /></SelectTrigger>
+                        <SelectContent>{LOST_REASON_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-xs">ملاحظة إضافية</Label>
+                      <Input className="mt-1 h-8 text-xs" value={updateDeal.lostReasonNote ?? ''} onChange={e => setUpdateDeal(d => d ? { ...d, lostReasonNote: e.target.value } : null)} placeholder="تفاصيل إضافية..." />
+                    </div>
+                  </div>
                 )}
               </div>
               <div><Label>قيمة الصفقة (ج.م)</Label><Input type="number" value={updateDeal.value} onChange={e => setUpdateDeal(d => d ? { ...d, value: e.target.value } : null)} /></div>

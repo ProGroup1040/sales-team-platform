@@ -366,3 +366,11 @@
 - [x] Frontend: Manager View يرى كل المهندسين مع فلترة
 - [x] Auto-scroll لليوم الحالي عند فتح التقويم
 - [x] تحديث تلقائي كل دقيقة
+
+## Edit Deal - تحديث بيانات الصفقات
+- [x] Backend: التحقق من وجود updateDealFull endpoint يقبل تعديل كل حقول الصفقة
+- [x] Frontend: تحديث UpdateDealState ليشمل lostReason و lostReasonNote
+- [x] Frontend: زر "تحديث" يظهر لكل الصفقات (بما فيها closed_lost) في قائمة الصفقات وفي Tab الخسائر
+- [x] Frontend: الصلاحية محدودة لـ admin_sales و admin فقط (canEdit)
+- [x] Frontend: حقول سبب الخسارة تظهر داخل Dialog عند stage === closed_lost
+- [x] Frontend: handleUpdate يحدث lostReason مباشرة بدون فتح dialog منفصل
