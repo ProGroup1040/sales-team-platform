@@ -2712,3 +2712,99 @@ export async function getLostDealsAnalysis() {
     })),
   };
 }
+
+// ─── Calendar View: MTD Tasks grouped by day ─────────────────────────────────
+export async function getTasksCalendarView(engineerId?: number) {
+  const db = await getDb();
+  if (!db) return { days: [], summary: { total: 0, completed: 0, delayed: 0, not_done: 0, planned: 0, client_delay: 0 } };
+
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+
+  const conditions: any[] = [
+    gte(dailyTasks.taskDate, monthStart),
+    lte(dailyTasks.taskDate, todayEnd),
+    eq(dailyTasks.isDeleted, 0),
+  ];
+  if (engineerId) conditions.push(eq(dailyTasks.engineerId, engineerId));
+
+  const tasks = await db
+    .select({
+      id: dailyTasks.id,
+      title: dailyTasks.title,
+      status: dailyTasks.status,
+      priority: dailyTasks.priority,
+      taskDate: dailyTasks.taskDate,
+      engineerId: dailyTasks.engineerId,
+      description: dailyTasks.description,
+      plannedHours: dailyTasks.plannedHours,
+      delayDays: dailyTasks.delayDays,
+      notes: dailyTasks.notes,
+      category: dailyTasks.category,
+      isCritical: dailyTasks.isCritical,
+      completedAt: dailyTasks.completedAt,
+      meetingRecordingLink: dailyTasks.meetingRecordingLink,
+    })
+    .from(dailyTasks)
+    .where(and(...conditions))
+    .orderBy(dailyTasks.taskDate, dailyTasks.priority);
+
+  // جلب أسماء المهندسين
+  const allEngineers = await db.select({ id: engineers.id, name: engineers.name }).from(engineers).where(eq(engineers.isDeleted, 0));
+  const engMap = new Map(allEngineers.map(e => [e.id, e.name]));
+
+  // تجميع المهام حسب اليوم
+  const dayMap = new Map<string, any[]>();
+
+  // إنشاء أعمدة لكل يوم من بداية الشهر حتى اليوم
+  const totalDays = now.getDate();
+  for (let d = 1; d <= totalDays; d++) {
+    const dayDate = new Date(now.getFullYear(), now.getMonth(), d);
+    const key = dayDate.toISOString().split('T')[0];
+    dayMap.set(key, []);
+  }
+
+  // توزيع المهام على الأيام
+  const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 };
+  for (const task of tasks) {
+    const key = new Date(task.taskDate).toISOString().split('T')[0];
+    if (dayMap.has(key)) {
+      dayMap.get(key)!.push({
+        ...task,
+        engineerName: engMap.get(task.engineerId) || 'غير معروف',
+        priorityOrder: PRIORITY_ORDER[task.priority ?? 'medium'] ?? 2,
+      });
+    }
+  }
+
+  // ترتيب المهام داخل كل يوم حسب Priority ثم completedAt
+  const days = Array.from(dayMap.entries()).map(([date, dayTasks]) => ({
+    date,
+    dayNum: new Date(date).getDate(),
+    dayName: new Date(date).toLocaleDateString('ar-EG', { weekday: 'short' }),
+    isToday: date === now.toISOString().split('T')[0],
+    tasks: dayTasks.sort((a, b) => a.priorityOrder - b.priorityOrder),
+    summary: {
+      total: dayTasks.length,
+      completed: dayTasks.filter(t => t.status === 'completed').length,
+      delayed: dayTasks.filter(t => t.status === 'delayed').length,
+      not_done: dayTasks.filter(t => t.status === 'not_done').length,
+      planned: dayTasks.filter(t => t.status === 'planned').length,
+      client_delay: dayTasks.filter(t => t.status === 'client_delay').length,
+    },
+  }));
+
+  // ملخص إجمالي MTD
+  const summary = {
+    total: tasks.length,
+    completed: tasks.filter(t => t.status === 'completed').length,
+    delayed: tasks.filter(t => t.status === 'delayed').length,
+    not_done: tasks.filter(t => t.status === 'not_done').length,
+    planned: tasks.filter(t => t.status === 'planned').length,
+    client_delay: tasks.filter(t => t.status === 'client_delay').length,
+    completionRate: tasks.length > 0 ? Math.round((tasks.filter(t => t.status === 'completed').length / tasks.length) * 100) : 0,
+  };
+
+  return { days, summary };
+}

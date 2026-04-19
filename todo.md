@@ -337,3 +337,32 @@
 - [x] واجهة: قائمة الصفقات الخاسرة مع التفاصيل
 - [x] واجهة: صلاحيات canEdit (admin + admin_sales فقط)
 - [x] اختبارات Vitest لمنطق تحليل الخسائر (28 اختبار جديد - 215 إجمالي)
+
+## TasksModule - Engineer View + MTD Scope (الطلب الجديد)
+- [ ] Backend: تحديث getEngineerTasks ليقبل engineerId + MTD (من بداية الشهر حتى اليوم)
+- [ ] Backend: تحديث getTasksStats ليدعم MTD وفلترة بالمهندس
+- [ ] Backend: إضافة getEngineerRanking (ترتيب المهندس بدون تفاصيل الآخرين)
+- [ ] Backend: إضافة getEngineerCriticalTasks (مهام متأخرة >48h أو Priority=High ولم تنفذ)
+- [ ] Frontend: Engineer View يرى 4 أقسام فقط (Task List + Overview + Ranking + Critical)
+- [ ] Frontend: Task List يعرض مهام المهندس الحالي فقط (حسب session)
+- [ ] Frontend: Overview يعرض إحصائيات المهندس الحالي فقط (MTD)
+- [ ] Frontend: Ranking يعرض ترتيب المهندس فقط (#X من Y) بدون تفاصيل الآخرين
+- [ ] Frontend: Critical Tasks يعرض مهام المهندس الحرجة فقط
+- [ ] Frontend: Admin يرى كل الأقسام كما هي
+- [ ] اختبارات Vitest للـ MTD وEngineer Ranking logic
+
+## Calendar View - تقويم زمني للمهام (الطلب الجديد)
+- [x] Backend: إضافة tasks.calendarView endpoint يجلب مهام MTD مجمعة حسب اليوم
+- [x] Frontend: بناء TaskCalendarView component (عرض أفقي Timeline)
+- [x] Frontend: كل يوم عمود (Day Column) من بداية الشهر حتى اليوم
+- [x] Frontend: كل مهمة Block ملون حسب الحالة (أخضر/أصفر/أحمر/أزرق)
+- [x] Frontend: ترتيب المهام داخل اليوم حسب Priority ثم الوقت
+- [x] Frontend: Summary bar أعلى التقويم (MTD: منجزة + متأخرة + لم تُنفذ + مخططة + نسبة الإنجاز)
+- [x] Frontend: فلترة حسب المهندس (Manager View) أو عرض مهندس واحد (Engineer View)
+- [x] Frontend: فلترة حسب الحالة (planned/delayed/completed/not_done/client_delay)
+- [x] Frontend: Popup تفاصيل المهمة عند الضغط عليها
+- [x] Frontend: دمج Calendar View كـ Tab جديد في TasksModule (التقويم الزمني)
+- [x] Frontend: Engineer View يرى مهامه فقط في التقويم
+- [x] Frontend: Manager View يرى كل المهندسين مع فلترة
+- [x] Auto-scroll لليوم الحالي عند فتح التقويم
+- [x] تحديث تلقائي كل دقيقة

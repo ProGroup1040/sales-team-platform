@@ -37,7 +37,7 @@ import {
   getAuditLogs,
   upsertLeadDailyStats, getLeadDailyStatsList, getLeadSummaryStats,
   getDiscountSummary, validateDealDiscount, createDealWithDiscount, updateDealFull, getEngineerDiscountSummary,
-  getLostDealsAnalysis, LOST_REASON_LABELS,
+  getLostDealsAnalysis, getTasksCalendarView, LOST_REASON_LABELS,
 } from "./db";
 
 // ─── Seed Data ────────────────────────────────────────────────────────────────
@@ -299,6 +299,8 @@ export const appRouter = router({
     reschedule: publicProcedure.input(z.object({ id: z.number(), newDate: z.string() }))
       .mutation(async ({ input }) => { await rescheduleTask(input.id, input.newDate); return { success: true }; }),
     critical: publicProcedure.query(async () => getCriticalTasks()),
+    calendarView: publicProcedure.input(z.object({ engineerId: z.number().optional() }))
+      .query(async ({ input }) => getTasksCalendarView(input.engineerId)),
     engineers: publicProcedure.query(async () => getEngineersWithRole()),
     createEngineer: publicProcedure.input(z.object({
       name: z.string().min(1), email: z.string().optional(), phone: z.string().optional(),

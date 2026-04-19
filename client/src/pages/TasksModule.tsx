@@ -15,6 +15,7 @@ import {
   Flame, Trophy, TrendingDown, UserCog, Trash2, Calendar, Star,
   ClipboardList, BarChart2, CalendarDays, Video, Target
 } from "lucide-react";
+import TaskCalendarView from "@/components/TaskCalendarView";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 function toDateStr(d: Date) { return d.toISOString().split("T")[0]; }
@@ -1195,7 +1196,7 @@ export default function TasksModule() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<"admin" | "engineer">("admin");
   const [selectedEngineer, setSelectedEngineer] = useState<string>("");
-  const [activeTab, setActiveTab] = useState<"tasks" | "ranking" | "critical" | "admin_sales" | "lead_followup">("tasks");
+  const [activeTab, setActiveTab] = useState<"tasks" | "ranking" | "critical" | "admin_sales" | "lead_followup" | "calendar">("tasks");
 
   const dateStr = toDateStr(currentDate);
   const isToday = toDateStr(new Date()) === dateStr;
@@ -1323,6 +1324,7 @@ export default function TasksModule() {
       <div className="flex gap-1 p-1 bg-white/5 rounded-xl border border-white/10 w-fit flex-wrap">
         {[
           { key: "tasks",       label: "قائمة المهام" },
+          { key: "calendar",    label: "📅 التقويم الزمني" },
           { key: "ranking",     label: "ترتيب المهندسين" },
           { key: "critical",    label: `المهام الحرجة${criticalTasks.length > 0 ? ` (${criticalTasks.length})` : ""}` },
           { key: "admin_sales", label: "مهام Admin Sales" },
@@ -1527,6 +1529,15 @@ export default function TasksModule() {
             );
           })}
         </div>
+      )}
+
+      {/* ── Tab: Calendar View ── */}
+      {activeTab === "calendar" && (
+        <TaskCalendarView
+          viewMode={viewMode}
+          engineers={engineers}
+          currentEngineerIdForEngineerView={viewMode === "engineer" && selectedEngineer ? Number(selectedEngineer) : undefined}
+        />
       )}
 
       {/* ── Tab: Admin Sales Tasks ── */}
