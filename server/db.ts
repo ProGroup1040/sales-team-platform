@@ -650,8 +650,8 @@ export async function getEngineersKPI(year: number, month: number) {
     const targetAmount = engTarget ? parseFloat(engTarget.targetAmount) : 0;
     const achievementPct = targetAmount > 0 ? (totalDealValue / targetAmount) * 100 : 0;
 
-    // ── Commission Tiers (based on total sales value) ─────────────────────────────
-    // 1% up to 1M, 1.25% up to 1.25M, 1.5% up to 1.5M, 1.75% up to 1.75M,
+    // ── Commission Tiers (based on total sales value) ─────────────────────────────────────────────
+    // 1% up to 1M (NEW), 1.25% up to 1.25M, 1.5% up to 1.5M, 1.75% up to 1.75M,
     // 2% up to 2M, +0.25% per extra 250K above 2M
     let baseCommissionPct = 0;
     if (totalDealValue >= 2_000_000) {
@@ -666,7 +666,8 @@ export async function getEngineersKPI(year: number, month: number) {
     } else if (totalDealValue >= 1_000_000) {
       baseCommissionPct = 1.0;
     } else {
-      baseCommissionPct = 0;
+      // شريحة جديدة: 1% على أي مبيعات حتى مليون جنيه
+      baseCommissionPct = totalDealValue > 0 ? 1.0 : 0;
     }
 
     // ── Incentive Tiers (fixed amounts based on total sales) ──────────────────────

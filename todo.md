@@ -374,3 +374,9 @@
 - [x] Frontend: الصلاحية محدودة لـ admin_sales و admin فقط (canEdit)
 - [x] Frontend: حقول سبب الخسارة تظهر داخل Dialog عند stage === closed_lost
 - [x] Frontend: handleUpdate يحدث lostReason مباشرة بدون فتح dialog منفصل
+
+## Commission Update - تعديل شرائح الكوميشن
+- [x] تعديل منطق الكوميشن: 1% على المبيعات من 0 حتى 1,000,000 ج.م
+- [x] الشرائح الحالية تبقى كما هي للمبيعات فوق 1,000,000 ج.م
+- [x] إصلاح خطأ تلف الكود والتحقق من TypeScript
+- [x] 215 اختبار ناجح
