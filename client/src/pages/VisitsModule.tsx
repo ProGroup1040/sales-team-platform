@@ -78,6 +78,13 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
 
 // ─── Full Update Dialog ────────────────────────────────────────────────────────
 function FullUpdateDialog({ visit, onClose, onSuccess }: { visit: any; onClose: () => void; onSuccess: () => void }) {
+  // تحويل scheduledAt إلى صيغة datetime-local
+  const toDatetimeLocal = (d: any) => {
+    if (!d) return '';
+    const dt = new Date(d);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+  };
   const [form, setForm] = useState({
     status: visit.status ?? 'scheduled',
     bookingStatus: visit.bookingStatus ?? 'booked',
@@ -91,6 +98,7 @@ function FullUpdateDialog({ visit, onClose, onSuccess }: { visit: any; onClose: 
     paymentScreenshotUrl: visit.paymentScreenshotUrl ?? '',
     debtFollowedUp: visit.debtFollowedUp ? '1' : '0',
     notes: visit.notes ?? '',
+    scheduledAt: toDatetimeLocal(visit.scheduledAt),
   });
 
   const updateMutation = trpc.visits.updateFull.useMutation({
@@ -116,6 +124,7 @@ function FullUpdateDialog({ visit, onClose, onSuccess }: { visit: any; onClose: 
       paymentScreenshotUrl: form.paymentScreenshotUrl || undefined,
       debtFollowedUp: form.debtFollowedUp === '1',
       notes: form.notes || undefined,
+      scheduledAt: form.scheduledAt ? new Date(form.scheduledAt) : undefined,
     });
   };
 
@@ -129,6 +138,15 @@ function FullUpdateDialog({ visit, onClose, onSuccess }: { visit: any; onClose: 
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
+          {/* Date */}
+          <div className="p-3 rounded-xl border space-y-3">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">📅 تاريخ المعاينة</p>
+            <div>
+              <Label className="text-xs">تاريخ ووقت المعاينة</Label>
+              <Input type="datetime-local" className="h-8 text-sm" value={form.scheduledAt}
+                onChange={e => setForm(p => ({ ...p, scheduledAt: e.target.value }))} />
+            </div>
+          </div>
           {/* Booking */}
           <div className="p-3 rounded-xl border space-y-3">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">📋 الحجز والتوزيع</p>

@@ -73,6 +73,7 @@ export default function ClosingModule() {
   const [activeTab, setActiveTab] = useState<'deals' | 'discount' | 'engineers' | 'lost'>('deals');
   const [showAdd, setShowAdd] = useState(false);
   const [filterStage, setFilterStage] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [updateDeal, setUpdateDeal] = useState<UpdateDealState | null>(null);
   const [lostReasonDialog, setLostReasonDialog] = useState<LostReasonState | null>(null);
   const [newDeal, setNewDeal] = useState<NewDealState>({
@@ -320,20 +321,30 @@ export default function ClosingModule() {
           {/* Filter + List */}
           <Card>
             <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base">قائمة الصفقات</CardTitle>
-                <Select value={filterStage} onValueChange={setFilterStage}>
-                  <SelectTrigger className="w-40 h-8 text-sm"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">الكل</SelectItem>
-                    {Object.entries(STAGE_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base">قائمة الصفقات</CardTitle>
+                  <Select value={filterStage} onValueChange={setFilterStage}>
+                    <SelectTrigger className="w-40 h-8 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">الكل</SelectItem>
+                      {Object.entries(STAGE_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Input
+                  placeholder="🔍 بحث باسم العميل..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="h-8 text-sm"
+                />
               </div>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
-                {dealsData?.data?.map(deal => (
+                {(dealsData?.data ?? []).filter(deal =>
+                  !searchQuery || deal.clientName.toLowerCase().includes(searchQuery.toLowerCase())
+                ).map(deal => (
                   <div key={deal.id} className="flex items-start gap-3 p-3 rounded-xl border bg-card hover:bg-muted/30 transition-colors">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">

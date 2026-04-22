@@ -2126,10 +2126,12 @@ export async function updateVisitWithAdminTracking(id: number, data: {
   paymentScreenshotUrl?: string; paymentDate?: Date;
   bookingStatus?: string; adminSalesId?: number;
   debtFollowedUp?: boolean;
+  scheduledAt?: Date;
 }) {
   const db = await getDb();
   if (!db) return;
   const updateData: any = { lastUpdatedByAdminAt: new Date() };
+  if (data.scheduledAt) updateData.scheduledAt = data.scheduledAt;
   if (data.status) { updateData.status = data.status; if (['completed', 'delayed'].includes(data.status)) updateData.actualAt = new Date(); }
   if (data.quality) updateData.quality = data.quality;
   if (data.delayMinutes !== undefined) updateData.delayMinutes = data.delayMinutes;
@@ -2579,6 +2581,34 @@ export async function updateDealFull(id: number, data: {
   if (data.closedAt !== undefined) updateData.closedAt = data.closedAt;
   else if (data.stage === 'closed_won' || data.stage === 'closed_lost') updateData.closedAt = new Date();
   await db.update(deals).set(updateData).where(eq(deals.id, id));
+  // إذا تغيرت المرحلة إلى closed_won ، أنشئ عقداً تلقائياً إذا لم يكن موجوداً
+  if (data.stage === 'closed_won') {
+    const [deal] = await db.select().from(deals).where(eq(deals.id, id)).limit(1);
+    if (deal) {
+      const existing = await db.select().from(collections).where(eq(collections.dealId, id)).limit(1);
+      if (existing.length === 0) {
+        // إنشاء عقد جديد مرتبط بالصفقة
+        await db.insert(collections).values({
+          clientName: deal.clientName,
+          contractAmount: (data.value !== undefined ? data.value : parseFloat(deal.value as string)).toString(),
+          collectedAmount: '0',
+          dealId: id,
+          status: 'on_track',
+          notes: `عقد تلقائي - صفقة #${id}`,
+        });
+      } else if (data.value !== undefined) {
+        // تحديث قيمة العقد إذا تغيرت قيمة الصفقة
+        await db.update(collections).set({ contractAmount: data.value.toString() }).where(eq(collections.dealId, id));
+      }
+    }
+  }
+  // إذا تغيرت القيمة فقط لصفقة closed_won موجودة بالفعل
+  if (data.stage === undefined && data.value !== undefined) {
+    const [deal] = await db.select().from(deals).where(eq(deals.id, id)).limit(1);
+    if (deal && deal.stage === 'closed_won') {
+      await db.update(collections).set({ contractAmount: data.value.toString() }).where(eq(collections.dealId, id));
+    }
+  }
 }
 
 /** ملخص الخصم لكل مهندس (Pipeline + خصم مستخدم + خصم متاح) */

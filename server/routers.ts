@@ -375,6 +375,7 @@ export const appRouter = router({
       bookingStatus: z.enum(['booked', 'distributed', 'distribution_delayed']).optional(),
       adminSalesId: z.number().optional(),
       debtFollowedUp: z.boolean().optional(),
+      scheduledAt: z.date().optional(),
     })).mutation(async ({ input }) => { const { id, ...data } = input; await updateVisitWithAdminTracking(id, data); return { success: true }; }),
     softDelete: publicProcedure.input(z.object({
       id: z.number(),
