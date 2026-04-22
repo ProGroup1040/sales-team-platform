@@ -389,3 +389,12 @@
 - [x] العقود: إضافة منطق إنشاء عقد تلقائي عند إغلاق صفقة closed_won في updateDealFull
 - [x] العقود: تحديث قيمة العقد تلقائياً إذا تغيرت قيمة الصفقة
 - [x] 215 اختبار ناجح + 0 أخطاء TypeScript
+
+## Trend Analysis + Quota Attainment + Weekly Report (23 أبريل)
+- [x] Backend: getEngineersTrend - مقارنة مبيعات كل مهندس الشهر الحالي vs الشهر السابق (مبيعات + نسبة الهدف + تنفيذ المهام)
+- [x] Backend: getWeeklyReport - تقرير أسبوعي شامل (مبيعات + مهام + معاينات + صفقات + أداء كل مهندس)
+- [x] Frontend: KPIModule - إضافة Section 8 "اتجاه الأداء" مع سهم صاعد/هابط
+- [x] Frontend: KPIModule - إضافة Quota Attainment % مع Progress Bar لكل مهندس
+- [x] Frontend: صفحة WeeklyReport.tsx - تقرير أسبوعي شامل (KPIs + أداء المهندسين + ملخص المهام + الصفقات)
+- [x] Frontend: إضافة WeeklyReport في الـ sidebar (التقرير الأسبوعي) والـ routes (/weekly-report)
+- [x] 215 اختبار ناجح + 0 أخطاء TypeScript

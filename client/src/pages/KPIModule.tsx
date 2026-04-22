@@ -7,10 +7,11 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   RadarChart, PolarGrid, PolarAngleAxis, Radar, Legend,
 } from "recharts";
+import { Progress } from "@/components/ui/progress";
 import {
   Trophy, TrendingDown, Zap, Clock, Database, DollarSign,
   AlertTriangle, Star, Gift, CheckCircle, XCircle, MinusCircle,
-  ChevronUp, ChevronDown, Minus, Info,
+  ChevronUp, ChevronDown, Minus, Info, TrendingUp, Target, BarChart2,
 } from "lucide-react";
 
 const now = new Date();
@@ -96,6 +97,7 @@ export default function KPIModule() {
   const [month, setMonth] = useState(now.getMonth() + 1);
 
   const { data: kpiData, isLoading } = trpc.kpi.engineers.useQuery({ year, month });
+  const { data: trendData } = trpc.kpi.trend.useQuery({ year, month });
 
   const sorted = kpiData ? [...kpiData].sort((a, b) => b.kpiScore - a.kpiScore) : [];
   const topPerformer = sorted[0];
@@ -481,6 +483,112 @@ export default function KPIModule() {
                     <td className="py-2.5 px-3 text-emerald-700">{fmtFull(totalPayout)}</td>
                     <td></td>
                   </tr>
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ─── SECTION 8: Trend Analysis ─── */}
+      {trendData && trendData.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <BarChart2 className="w-4 h-4 text-indigo-600" />
+              اتجاه الأداء — مقارنة بالشهر السابق
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-muted-foreground text-xs">
+                    <th className="text-right py-2 px-3">المهندس</th>
+                    <th className="text-right py-2 px-3">مبيعات الشهر</th>
+                    <th className="text-right py-2 px-3">الشهر السابق</th>
+                    <th className="text-right py-2 px-3">التغيير</th>
+                    <th className="text-right py-2 px-3">نسبة الهدف %</th>
+                    <th className="text-right py-2 px-3">تنفيذ المهام %</th>
+                    <th className="text-right py-2 px-3">الاتجاه</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {trendData.map(eng => (
+                    <tr key={eng.engineerId} className="border-b hover:bg-muted/30 transition-colors">
+                      <td className="py-2.5 px-3 font-semibold">{eng.engineerName}</td>
+                      <td className="py-2.5 px-3">{fmt(eng.currSales)}</td>
+                      <td className="py-2.5 px-3 text-muted-foreground">{fmt(eng.prevSales)}</td>
+                      <td className="py-2.5 px-3">
+                        <span className={`font-bold ${
+                          eng.salesDeltaPct > 0 ? 'text-emerald-600' :
+                          eng.salesDeltaPct < 0 ? 'text-red-500' : 'text-muted-foreground'
+                        }`}>
+                          {eng.salesDeltaPct > 0 ? '+' : ''}{eng.salesDeltaPct}%
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <div className="flex items-center gap-2">
+                          <Progress
+                            value={Math.min(100, eng.currQuota)}
+                            className={`h-2 w-20 ${
+                              eng.currQuota >= 100 ? '[&>div]:bg-emerald-500' :
+                              eng.currQuota >= 75 ? '[&>div]:bg-blue-500' :
+                              eng.currQuota >= 50 ? '[&>div]:bg-amber-500' : '[&>div]:bg-red-500'
+                            }`}
+                          />
+                          <span className={`text-xs font-bold ${
+                            eng.currQuota >= 100 ? 'text-emerald-600' :
+                            eng.currQuota >= 75 ? 'text-blue-600' :
+                            eng.currQuota >= 50 ? 'text-amber-600' : 'text-red-500'
+                          }`}>{eng.currQuota}%</span>
+                          {eng.quotaDelta !== 0 && (
+                            <span className={`text-[10px] ${
+                              eng.quotaDelta > 0 ? 'text-emerald-500' : 'text-red-400'
+                            }`}>
+                              {eng.quotaDelta > 0 ? '▲' : '▼'}{Math.abs(eng.quotaDelta)}%
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <div className="flex items-center gap-2">
+                          <Progress
+                            value={eng.currExecRate}
+                            className={`h-2 w-16 ${
+                              eng.currExecRate >= 80 ? '[&>div]:bg-emerald-500' :
+                              eng.currExecRate >= 60 ? '[&>div]:bg-amber-500' : '[&>div]:bg-red-500'
+                            }`}
+                          />
+                          <span className="text-xs font-bold">{eng.currExecRate}%</span>
+                          {eng.execDelta !== 0 && (
+                            <span className={`text-[10px] ${
+                              eng.execDelta > 0 ? 'text-emerald-500' : 'text-red-400'
+                            }`}>
+                              {eng.execDelta > 0 ? '▲' : '▼'}{Math.abs(eng.execDelta)}%
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-2.5 px-3">
+                        {eng.trend === 'up' && (
+                          <span className="flex items-center gap-1 text-emerald-600 font-bold text-xs">
+                            <TrendingUp className="w-4 h-4" /> صاعد
+                          </span>
+                        )}
+                        {eng.trend === 'down' && (
+                          <span className="flex items-center gap-1 text-red-500 font-bold text-xs">
+                            <TrendingDown className="w-4 h-4" /> هابط
+                          </span>
+                        )}
+                        {eng.trend === 'stable' && (
+                          <span className="flex items-center gap-1 text-muted-foreground font-bold text-xs">
+                            <Minus className="w-4 h-4" /> مستقر
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>

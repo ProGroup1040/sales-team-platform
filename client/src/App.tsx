@@ -17,6 +17,7 @@ import SalesModule from "./pages/SalesModule";
 import KPIModule from "./pages/KPIModule";
 import CollectionsModule from "./pages/CollectionsModule";
 import PlanningModule from "./pages/PlanningModule";
+import WeeklyReport from "./pages/WeeklyReport";
 import LoginPage from "./pages/LoginPage";
 
 function withLayout(Component: React.ComponentType) {
@@ -43,6 +44,7 @@ function Router() {
       <Route path={"/kpi"}>{withLayout(KPIModule)}</Route>
       <Route path={"/collections"}>{withLayout(CollectionsModule)}</Route>
       <Route path={"/planning"}>{withLayout(PlanningModule)}</Route>
+      <Route path={"/weekly-report"}>{withLayout(WeeklyReport)}</Route>
 
       {/* Legacy routes redirect */}
       <Route path={"/dashboard"}>{withLayout(Overview)}</Route>

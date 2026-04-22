@@ -38,6 +38,7 @@ import {
   upsertLeadDailyStats, getLeadDailyStatsList, getLeadSummaryStats,
   getDiscountSummary, validateDealDiscount, createDealWithDiscount, updateDealFull, getEngineerDiscountSummary,
   getLostDealsAnalysis, getTasksCalendarView, LOST_REASON_LABELS,
+  getEngineersTrend, getWeeklyReport,
 } from "./db";
 
 // ─── Seed Data ────────────────────────────────────────────────────────────────
@@ -480,6 +481,9 @@ export const appRouter = router({
   kpi: router({
     engineers: publicProcedure.input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getEngineersKPI(input.year, input.month)),
+    trend: publicProcedure.input(z.object({ year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getEngineersTrend(input.year, input.month)),
+    weeklyReport: publicProcedure.query(async () => getWeeklyReport()),
   }),
 
   // ── Collections ───────────────────────────────────────────────────────────

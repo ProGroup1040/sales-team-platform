@@ -2839,3 +2839,159 @@ export async function getTasksCalendarView(engineerId?: number) {
 
   return { days, summary };
 }
+
+// ─── Engineers Trend Analysis (current vs previous month) ─────────────────────
+export async function getEngineersTrend(year: number, month: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  // Current month
+  const currStart = new Date(year, month - 1, 1);
+  const currEnd   = new Date(year, month, 0, 23, 59, 59);
+
+  // Previous month
+  const prevMonth = month === 1 ? 12 : month - 1;
+  const prevYear  = month === 1 ? year - 1 : year;
+  const prevStart = new Date(prevYear, prevMonth - 1, 1);
+  const prevEnd   = new Date(prevYear, prevMonth, 0, 23, 59, 59);
+
+  const engList = await getEngineers();
+
+  const [currDeals, prevDeals, currTasks, prevTasks, currTargets, prevTargets] = await Promise.all([
+    db.select().from(deals).where(between(deals.createdAt, currStart, currEnd)),
+    db.select().from(deals).where(between(deals.createdAt, prevStart, prevEnd)),
+    db.select().from(dailyTasks).where(and(gte(dailyTasks.taskDate, currStart), lte(dailyTasks.taskDate, currEnd))),
+    db.select().from(dailyTasks).where(and(gte(dailyTasks.taskDate, prevStart), lte(dailyTasks.taskDate, prevEnd))),
+    db.select().from(engineerTargets).where(and(eq(engineerTargets.year, year), eq(engineerTargets.month, month))),
+    db.select().from(engineerTargets).where(and(eq(engineerTargets.year, prevYear), eq(engineerTargets.month, prevMonth))),
+  ]);
+
+  return engList.map(eng => {
+    const currSales = currDeals.filter(d => d.engineerId === eng.id && d.stage === 'closed_won').reduce((s, d) => s + parseFloat(d.value), 0);
+    const prevSales = prevDeals.filter(d => d.engineerId === eng.id && d.stage === 'closed_won').reduce((s, d) => s + parseFloat(d.value), 0);
+
+    const currCompleted = currTasks.filter(t => t.engineerId === eng.id && t.status === 'completed').length;
+    const currPlanned   = currTasks.filter(t => t.engineerId === eng.id).length;
+    const prevCompleted = prevTasks.filter(t => t.engineerId === eng.id && t.status === 'completed').length;
+    const prevPlanned   = prevTasks.filter(t => t.engineerId === eng.id).length;
+
+    const currExecRate = currPlanned > 0 ? Math.round((currCompleted / currPlanned) * 100) : 0;
+    const prevExecRate = prevPlanned > 0 ? Math.round((prevCompleted / prevPlanned) * 100) : 0;
+
+    const currTarget = currTargets.find(t => t.engineerId === eng.id);
+    const currTargetAmt = currTarget ? parseFloat(currTarget.targetAmount) : 0;
+    const prevTarget = prevTargets.find(t => t.engineerId === eng.id);
+    const prevTargetAmt = prevTarget ? parseFloat(prevTarget.targetAmount) : 0;
+
+    const currQuota = currTargetAmt > 0 ? Math.round((currSales / currTargetAmt) * 100) : 0;
+    const prevQuota = prevTargetAmt > 0 ? Math.round((prevSales / prevTargetAmt) * 100) : 0;
+
+    const salesDelta     = currSales - prevSales;
+    const salesDeltaPct  = prevSales > 0 ? Math.round(((currSales - prevSales) / prevSales) * 100) : (currSales > 0 ? 100 : 0);
+    const execDelta      = currExecRate - prevExecRate;
+    const quotaDelta     = currQuota - prevQuota;
+
+    const trend: 'up' | 'down' | 'stable' =
+      salesDeltaPct > 5 ? 'up' : salesDeltaPct < -5 ? 'down' : 'stable';
+
+    return {
+      engineerId: eng.id,
+      engineerName: eng.name,
+      department: eng.department,
+      // Current month
+      currSales, currTargetAmt, currQuota,
+      currCompleted, currPlanned, currExecRate,
+      // Previous month
+      prevSales, prevTargetAmt, prevQuota,
+      prevCompleted, prevPlanned, prevExecRate,
+      // Deltas
+      salesDelta, salesDeltaPct, execDelta, quotaDelta,
+      trend,
+    };
+  });
+}
+
+// ─── Weekly Report ────────────────────────────────────────────────────────────
+export async function getWeeklyReport() {
+  const db = await getDb();
+  if (!db) return null;
+
+  const now = new Date();
+  // Week: last 7 days
+  const weekStart = new Date(now);
+  weekStart.setDate(now.getDate() - 6);
+  weekStart.setHours(0, 0, 0, 0);
+  const weekEnd = new Date(now);
+  weekEnd.setHours(23, 59, 59, 999);
+
+  // Previous week
+  const prevWeekStart = new Date(weekStart);
+  prevWeekStart.setDate(weekStart.getDate() - 7);
+  const prevWeekEnd = new Date(weekStart);
+  prevWeekEnd.setDate(weekStart.getDate() - 1);
+  prevWeekEnd.setHours(23, 59, 59, 999);
+
+  const engList = await getEngineers();
+
+  const [weekDeals, prevWeekDeals, weekTasks, prevWeekTasks, weekVisits, prevWeekVisits, weekLeads] = await Promise.all([
+    db.select().from(deals).where(between(deals.createdAt, weekStart, weekEnd)),
+    db.select().from(deals).where(between(deals.createdAt, prevWeekStart, prevWeekEnd)),
+    db.select().from(dailyTasks).where(and(gte(dailyTasks.taskDate, weekStart), lte(dailyTasks.taskDate, weekEnd))),
+    db.select().from(dailyTasks).where(and(gte(dailyTasks.taskDate, prevWeekStart), lte(dailyTasks.taskDate, prevWeekEnd))),
+    db.select().from(visits).where(between(visits.scheduledAt, weekStart, weekEnd)),
+    db.select().from(visits).where(between(visits.scheduledAt, prevWeekStart, prevWeekEnd)),
+    db.select().from(leads).where(between(leads.createdAt, weekStart, weekEnd)),
+  ]);
+
+  // Totals
+  const totalSales     = weekDeals.filter(d => d.stage === 'closed_won').reduce((s, d) => s + parseFloat(d.value), 0);
+  const prevTotalSales = prevWeekDeals.filter(d => d.stage === 'closed_won').reduce((s, d) => s + parseFloat(d.value), 0);
+  const salesGrowth    = prevTotalSales > 0 ? Math.round(((totalSales - prevTotalSales) / prevTotalSales) * 100) : (totalSales > 0 ? 100 : 0);
+
+  const totalTasks     = weekTasks.length;
+  const completedTasks = weekTasks.filter(t => t.status === 'completed').length;
+  const delayedTasks   = weekTasks.filter(t => t.status === 'delayed').length;
+  const execRate       = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+
+  const totalVisits    = weekVisits.length;
+  const completedVisits = weekVisits.filter(v => v.status === 'completed').length;
+
+  const newLeads       = weekLeads.length;
+  const newDeals       = weekDeals.filter(d => d.stage !== 'closed_won' && d.stage !== 'closed_lost').length;
+  const closedWon      = weekDeals.filter(d => d.stage === 'closed_won').length;
+  const closedLost     = weekDeals.filter(d => d.stage === 'closed_lost').length;
+
+  // Per engineer summary
+  const engineerSummary = engList.map(eng => {
+    const engDeals    = weekDeals.filter(d => d.engineerId === eng.id);
+    const engSales    = engDeals.filter(d => d.stage === 'closed_won').reduce((s, d) => s + parseFloat(d.value), 0);
+    const engTasks    = weekTasks.filter(t => t.engineerId === eng.id);
+    const engDone     = engTasks.filter(t => t.status === 'completed').length;
+    const engDelayed  = engTasks.filter(t => t.status === 'delayed').length;
+    const engVisits   = weekVisits.filter(v => v.engineerId === eng.id).length;
+    const engExecRate = engTasks.length > 0 ? Math.round((engDone / engTasks.length) * 100) : 0;
+    return {
+      engineerId: eng.id, engineerName: eng.name,
+      sales: engSales, closedWon: engDeals.filter(d => d.stage === 'closed_won').length,
+      tasks: engTasks.length, tasksDone: engDone, tasksDelayed: engDelayed,
+      visits: engVisits, execRate: engExecRate,
+    };
+  }).sort((a, b) => b.sales - a.sales);
+
+  // Top performer
+  const topPerformer = engineerSummary[0] ?? null;
+
+  return {
+    weekStart: weekStart.toISOString(),
+    weekEnd: weekEnd.toISOString(),
+    generatedAt: now.toISOString(),
+    // Sales
+    totalSales, prevTotalSales, salesGrowth, closedWon, closedLost,
+    // Tasks
+    totalTasks, completedTasks, delayedTasks, execRate,
+    // Visits & Leads
+    totalVisits, completedVisits, newLeads, newDeals,
+    // Per engineer
+    engineerSummary, topPerformer,
+  };
+}
