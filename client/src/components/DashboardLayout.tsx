@@ -101,12 +101,12 @@ function DashboardLayoutContent({
     },
   });
 
-  // Redirect to login if not authenticated - must be in useEffect to avoid setState-in-render error
-  useEffect(() => {
-    if (!isLoading && !session) {
-      setLocation("/login");
-    }
-  }, [isLoading, session, setLocation]);
+  // Auth check disabled temporarily - open access mode
+  // useEffect(() => {
+  //   if (!isLoading && !session) {
+  //     setLocation("/login");
+  //   }
+  // }, [isLoading, session, setLocation]);
 
   const { state, toggleSidebar } = useSidebar();
   const isCollapsed = state === "collapsed";
@@ -151,15 +151,7 @@ function DashboardLayoutContent({
     };
   }, [isResizing, setSidebarWidth]);
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="h-8 w-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-      </div>
-    );
-  }
-
-  if (!session) return null;
+  // Auth loading/guard disabled temporarily - open access mode
 
   return (
     <>
@@ -234,13 +226,6 @@ function DashboardLayoutContent({
                   {session?.role === "admin" ? "مدير النظام" : session?.role === "admin_sales" ? "Admin Sales" : "مستخدم"}
                 </p>
               </div>
-              <button
-                onClick={() => logoutMut.mutate()}
-                className="group-data-[collapsible=icon]:hidden h-7 w-7 flex items-center justify-center hover:bg-destructive/10 hover:text-destructive rounded-md transition-colors shrink-0"
-                title="تسجيل الخروج"
-              >
-                <LogOut className="h-3.5 w-3.5" />
-              </button>
             </div>
           </SidebarFooter>
         </Sidebar>
