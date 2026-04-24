@@ -398,3 +398,11 @@
 - [x] Frontend: صفحة WeeklyReport.tsx - تقرير أسبوعي شامل (KPIs + أداء المهندسين + ملخص المهام + الصفقات)
 - [x] Frontend: إضافة WeeklyReport في الـ sidebar (التقرير الأسبوعي) والـ routes (/weekly-report)
 - [x] 215 اختبار ناجح + 0 أخطاء TypeScript
+
+## REST API Layer - ERP Integration (24 أبريل)
+- [x] GET /api/summary - total_deals, closed_deals, closing_rate, total_revenue
+- [x] GET /api/list - deals list (id, client_name, value, status, assigned_engineer) + query params: limit, offset, stage
+- [x] GET /api/kpi - performance per engineer (engineer_id, deals_closed, revenue, closing_rate, kpi_score, kpi_rank, rating) + query params: year, month
+- [x] CORS مفعّل (Access-Control-Allow-Origin: *) للـ 3 endpoints
+- [x] Endpoints عامة بدون authentication
+- [x] 215 اختبار ناجح + 0 أخطاء TypeScript
