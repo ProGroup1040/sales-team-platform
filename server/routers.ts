@@ -43,6 +43,26 @@ import {
   getWeeklyDistribution, getCriticalInsights, getEngineerRankingFull,
   ACTIVITY_LABELS, WORK_DISTRIBUTION_TARGETS,
   getTasksFiltered, getTasksTimeSummary, checkTimeOverlap, getCriticalTasksEnhanced, getTasksForTimeline,
+  getEngineerPerformanceReport, getWeeklyPerformanceAnalysis,
+  STANDARD_DISTRIBUTION, TASK_TYPE_LABELS_V2,
+  getOutputBasedKPI, getWeeklyPerformanceFull,
+  getEngineerPipelineStats, getPipelineOverview, updateDiscountApproval, computeAndSaveDealBonus, getEngineerBonusSummary,
+  generateCriticalInsightsV2, generateSmartSummary, generateBehaviorAlerts,
+  getPlaybookItems, getPlaybookItemById, createPlaybookItem, updatePlaybookItem, deletePlaybookItem,
+  importPlaybookItems, getPlaybookCategories,
+  createPlaybookQuotation, getPlaybookQuotations, updatePlaybookRecordingLink, updatePlaybookQuotationStatus,
+  getFunnelAnalysis, getMeetingReviewsList, getWeeklyCoachingSummary,
+  createMeetingSession, endMeetingSession, logSessionAction,
+  getSessionDetails, getEngineerMeetingStats, getAllMeetingSessionsAdmin,
+  updateSessionRecordingLink, getEngineerWeeklyCoaching,
+  getFullFunnelAnalysis, getEngineersFunnelComparison, getEngineerFunnelPlaybookInsights,
+  autoCreateReviewTask, getMeetingTasksMissingRecording, getPendingMeetingReviews, getMeetingReviewAdminStats,
+  isMeetingTaskType, validateMeetingTaskCompletion,
+  // Promotion & Evaluation System
+  createOrUpdateMeetingReview, getMeetingReviewByTask, getEngineerMeetingReviewSummary,
+  getMeetingTasksPendingReview, createOrUpdateMonthlyEvaluation, getEngineerEvaluationHistory,
+  getAllEngineersEvaluationDashboard, promoteEngineer, getOrCreateEngineerCareerLevel,
+  getManagementDecisionDashboard,
 } from "./db";
 
 // ─── Seed Data ────────────────────────────────────────────────────────────────
@@ -339,6 +359,40 @@ export const appRouter = router({
       date: z.string(),
       engineerId: z.number().optional(),
     })).query(async ({ input }) => getTasksForTimeline(input.date, input.engineerId)),
+    // Meeting Recording Rule endpoints
+    submitRecording: publicProcedure.input(z.object({
+      taskId: z.number(),
+      recordingLink: z.string().url(),
+      engineerName: z.string().optional(),
+    })).mutation(async ({ input }) => {
+      const { getDb } = await import('./db');
+      const db = await getDb();
+      if (!db) return { success: false };
+      const { dailyTasks: dt } = await import('../drizzle/schema.js');
+      const { eq: eqFn } = await import('drizzle-orm');
+      // Update the task with recording link
+      await db.update(dt).set({
+        meetingRecordingLink: input.recordingLink,
+        recordingSubmittedAt: new Date(),
+        status: 'in_progress' as any,
+      }).where(eqFn(dt.id, input.taskId));
+      // Auto-create admin review task
+      const [task] = await db.select().from(dt).where(eqFn(dt.id, input.taskId)).limit(1);
+      if (task) {
+        await autoCreateReviewTask({
+          meetingTaskId: input.taskId,
+          engineerId: task.engineerId,
+          engineerName: input.engineerName ?? 'مهندس',
+          meetingDate: String(task.taskDate),
+          recordingLink: input.recordingLink,
+        });
+      }
+      return { success: true };
+    }),
+    missingRecordings: publicProcedure.input(z.object({ engineerId: z.number().optional() }))
+      .query(async ({ input }) => getMeetingTasksMissingRecording(input.engineerId)),
+    pendingReviews: publicProcedure.query(async () => getPendingMeetingReviews()),
+    reviewStats: publicProcedure.query(async () => getMeetingReviewAdminStats()),
     createWithTime: publicProcedure.input(z.object({
       engineerId: z.number(), taskDate: z.string(), title: z.string().min(1),
       description: z.string().optional(), plannedHours: z.number().optional(),
@@ -347,7 +401,7 @@ export const appRouter = router({
       meetingRecordingLink: z.string().optional(),
       startTime: z.string().optional(),
       endTime: z.string().optional(),
-      taskType: z.enum(['meeting_2d','meeting_3d','meeting_quotation','meeting_closing','design_3d','design_2d','quotation','negotiation','other']).optional(),
+      taskType: z.enum(['meeting_2d','meeting_3d','meeting_quotation','meeting_closing','design_3d','design_2d','quotation','negotiation','other','meeting_presentation']).optional(),
     })).mutation(async ({ input }) => {
       const { startTime, endTime, taskType, ...rest } = input;
       // Check overlap if times provided
@@ -535,6 +589,13 @@ export const appRouter = router({
     trend: publicProcedure.input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getEngineersTrend(input.year, input.month)),
     weeklyReport: publicProcedure.query(async () => getWeeklyReport()),
+    // ─── Performance Analysis System ───────────────────────────────────────
+    weeklyPerformance: publicProcedure.query(async () => getWeeklyPerformanceAnalysis()),
+    engineerPerformance: publicProcedure
+      .input(z.object({ year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getEngineerPerformanceReport(input.year, input.month)),
+    standardDistribution: publicProcedure.query(async () => STANDARD_DISTRIBUTION),
+    taskTypeLabels: publicProcedure.query(async () => TASK_TYPE_LABELS_V2),
   }),
 
   // ── Collections ───────────────────────────────────────────────────────────
@@ -964,6 +1025,275 @@ export const appRouter = router({
       activityLabels: ACTIVITY_LABELS,
       targets: WORK_DISTRIBUTION_TARGETS,
     })),
+  }),
+  // ── Reports Module ──────────────────────────────────────────────────────────
+  reports: router({
+    // تقرير أسبوعي كامل مع Distribution Score + Behavior Alerts + Insights
+    weeklyFull: publicProcedure.query(async () => getWeeklyPerformanceFull()),
+    // تقرير شهري مبني على Output الفعلي
+    monthlyKPI: publicProcedure
+      .input(z.object({ year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getOutputBasedKPI(input.year, input.month)),
+    // تقرير ربع سنوي (مقارنة 3 أشهر)
+    quarterly: publicProcedure
+      .input(z.object({ year: z.number(), quarter: z.number() }))
+      .query(async ({ input }) => {
+        const { year, quarter } = input;
+        const months = [quarter * 3 - 2, quarter * 3 - 1, quarter * 3];
+        const results = await Promise.all(months.map(m => getOutputBasedKPI(year, m)));
+        return { year, quarter, months: results };
+      }),
+  }),
+  // ── Pipeline & Discount ─────────────────────────────────────────────────────
+  pipeline: router({
+    engineerStats: publicProcedure
+      .input(z.object({ engineerId: z.number().optional() }))
+      .query(async ({ input }) => getEngineerPipelineStats(input.engineerId)),
+    overview: publicProcedure.query(async () => getPipelineOverview()),
+    approveDiscount: protectedProcedure
+      .input(z.object({ dealId: z.number(), status: z.enum(['approved', 'rejected']), approvedBy: z.string().optional() }))
+      .mutation(async ({ input }) => { await updateDiscountApproval(input.dealId, input.status, input.approvedBy); return { success: true }; }),
+    computeBonus: protectedProcedure
+      .input(z.object({ dealId: z.number() }))
+      .mutation(async ({ input }) => { await computeAndSaveDealBonus(input.dealId); return { success: true }; }),
+    bonusSummary: publicProcedure.query(async () => getEngineerBonusSummary()),
+  }),
+  // ── Playbook & Sales Execution ───────────────────────────────────────────────
+  playbook: router({
+    // عناصر الـ Playbook
+    list: publicProcedure
+      .input(z.object({ category: z.string().optional() }))
+      .query(async ({ input }) => getPlaybookItems(input.category)),
+    getById: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => getPlaybookItemById(input.id)),
+    categories: publicProcedure.query(async () => getPlaybookCategories()),
+    create: protectedProcedure
+      .input(z.object({
+        name: z.string(),
+        category: z.string().optional(),
+        code: z.string().optional(),
+        price: z.number().optional(),
+        unit: z.string().optional(),
+        description: z.string().optional(),
+        script: z.string().optional(),
+        keyPoints: z.string().optional(),
+        usageLocations: z.string().optional(),
+        alternatives: z.string().optional(),
+        specData: z.string().optional(),
+        imageUrls: z.string().optional(),
+        videoUrl: z.string().optional(),
+        renderUrl: z.string().optional(),
+        sortOrder: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        await createPlaybookItem({ ...input, price: input.price?.toString() });
+        return { success: true };
+      }),
+    update: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        name: z.string().optional(),
+        category: z.string().optional(),
+        code: z.string().optional(),
+        price: z.number().optional(),
+        unit: z.string().optional(),
+        description: z.string().optional(),
+        script: z.string().optional(),
+        keyPoints: z.string().optional(),
+        usageLocations: z.string().optional(),
+        alternatives: z.string().optional(),
+        specData: z.string().optional(),
+        imageUrls: z.string().optional(),
+        videoUrl: z.string().optional(),
+        renderUrl: z.string().optional(),
+        sortOrder: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, price, ...rest } = input;
+        await updatePlaybookItem(id, { ...rest, price: price?.toString() });
+        return { success: true };
+      }),
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => deletePlaybookItem(input.id)),
+    import: protectedProcedure
+      .input(z.object({
+        items: z.array(z.object({
+          name: z.string(),
+          category: z.string().optional(),
+          code: z.string().optional(),
+          price: z.number().optional(),
+          unit: z.string().optional(),
+          description: z.string().optional(),
+          script: z.string().optional(),
+          keyPoints: z.string().optional(),
+          usageLocations: z.string().optional(),
+          imageUrls: z.string().optional(),
+          videoUrl: z.string().optional(),
+        }))
+      }))
+      .mutation(async ({ input }) => {
+        const items = input.items.map(i => ({ ...i, price: i.price?.toString() }));
+        return importPlaybookItems(items);
+      }),
+    // عروض الأسعار
+    createQuotation: protectedProcedure
+      .input(z.object({
+        engineerId: z.number(),
+        dealId: z.number().optional(),
+        clientName: z.string().optional(),
+        items: z.array(z.object({ itemId: z.number(), qty: z.number(), price: z.number(), notes: z.string().optional() })),
+        totalValue: z.number(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => { await createPlaybookQuotation(input); return { success: true }; }),
+    listQuotations: publicProcedure
+      .input(z.object({ engineerId: z.number().optional(), dealId: z.number().optional() }))
+      .query(async ({ input }) => getPlaybookQuotations(input.engineerId, input.dealId)),
+    updateRecording: protectedProcedure
+      .input(z.object({ quotationId: z.number(), recordingLink: z.string().url() }))
+      .mutation(async ({ input }) => updatePlaybookRecordingLink(input.quotationId, input.recordingLink)),
+    updateStatus: protectedProcedure
+      .input(z.object({ quotationId: z.number(), status: z.enum(['draft', 'presented', 'accepted', 'rejected']) }))
+      .mutation(async ({ input }) => updatePlaybookQuotationStatus(input.quotationId, input.status)),
+    // Funnel Analysis
+    funnelAnalysis: publicProcedure
+      .input(z.object({ engineerId: z.number().optional() }))
+      .query(async ({ input }) => getFunnelAnalysis(input.engineerId)),
+    // Meeting Reviews
+    reviewsList: publicProcedure
+      .input(z.object({ engineerId: z.number().optional(), limit: z.number().optional() }))
+      .query(async ({ input }) => getMeetingReviewsList(input.engineerId, input.limit)),
+    weeklyCoaching: publicProcedure
+      .input(z.object({ engineerId: z.number() }))
+      .query(async ({ input }) => getWeeklyCoachingSummary(input.engineerId)),
+  }),
+  // ── Meeting Session Tracking ───────────────────────────────────────────────
+  session: router({
+    create: protectedProcedure
+      .input(z.object({
+        engineerId: z.number(),
+        quotationId: z.number().optional(),
+        dealId: z.number().optional(),
+        clientName: z.string().optional(),
+        sessionType: z.enum(['presentation', 'closing', 'follow_up']).optional(),
+        itemsTotal: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const id = await createMeetingSession(input);
+        return { success: true, sessionId: id };
+      }),
+    end: protectedProcedure
+      .input(z.object({ sessionId: z.number(), recordingLink: z.string().optional() }))
+      .mutation(async ({ input }) => endMeetingSession(input.sessionId, input.recordingLink)),
+    logAction: protectedProcedure
+      .input(z.object({
+        sessionId: z.number(),
+        itemId: z.number().optional(),
+        actionType: z.enum(['item_opened','video_started','video_completed','render_viewed',
+          'script_opened','script_read','price_viewed','quotation_opened','item_completed','item_skipped']),
+        durationSeconds: z.number().optional(),
+        metadata: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => { await logSessionAction(input); return { success: true }; }),
+    details: publicProcedure
+      .input(z.object({ sessionId: z.number() }))
+      .query(async ({ input }) => getSessionDetails(input.sessionId)),
+    engineerStats: publicProcedure
+      .input(z.object({ engineerId: z.number() }))
+      .query(async ({ input }) => getEngineerMeetingStats(input.engineerId)),
+    adminList: publicProcedure
+      .input(z.object({ limit: z.number().optional() }))
+      .query(async ({ input }) => getAllMeetingSessionsAdmin(input.limit)),
+    updateRecording: protectedProcedure
+      .input(z.object({ sessionId: z.number(), recordingLink: z.string().url() }))
+      .mutation(async ({ input }) => { await updateSessionRecordingLink(input.sessionId, input.recordingLink); return { success: true }; }),
+    weeklyCoaching: publicProcedure
+      .input(z.object({ engineerId: z.number() }))
+      .query(async ({ input }) => getEngineerWeeklyCoaching(input.engineerId)),
+  }),
+  // ── Promotion & Evaluation System ─────────────────────────────────────────
+  promotion: router({
+    // Meeting Review (أداة تقييم حقيقية)
+    createMeetingReview: publicProcedure
+      .input(z.object({
+        taskId: z.number(),
+        engineerId: z.number(),
+        reviewedBy: z.number().optional(),
+        playbookUsageScore: z.number().min(0).max(10),
+        presentationQualityScore: z.number().min(0).max(10),
+        controlScore: z.number().min(0).max(10),
+        closingAttemptScore: z.number().min(0).max(10),
+        decisionTag: z.enum(['strong', 'needs_improvement', 'weak']),
+        strengthPoint: z.string().min(1),
+        improvementPoint: z.string().min(1),
+        comments: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => createOrUpdateMeetingReview(input)),
+
+    getMeetingReviewByTask: publicProcedure
+      .input(z.object({ taskId: z.number() }))
+      .query(async ({ input }) => getMeetingReviewByTask(input.taskId)),
+
+    getMeetingReviewSummary: publicProcedure
+      .input(z.object({ engineerId: z.number().optional() }))
+      .query(async ({ input }) => getEngineerMeetingReviewSummary(input.engineerId)),
+
+    getMeetingTasksPendingReview: publicProcedure
+      .query(async () => getMeetingTasksPendingReview()),
+
+    // Monthly Evaluation
+    createMonthlyEvaluation: publicProcedure
+      .input(z.object({
+        engineerId: z.number(),
+        evaluationMonth: z.number().min(1).max(12),
+        evaluationYear: z.number(),
+        salesAchievementScore: z.number().min(0).max(100),
+        closingRateScore: z.number().min(0).max(100),
+        meetingScore: z.number().min(0).max(100),
+        playbookUsageScore: z.number().min(0).max(100),
+        taskDisciplineScore: z.number().min(0).max(100),
+        reviewedBy: z.number().optional(),
+        coachingNotes: z.string().optional(),
+        improvementPlan: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => createOrUpdateMonthlyEvaluation(input)),
+
+    getEvaluationHistory: publicProcedure
+      .input(z.object({ engineerId: z.number() }))
+      .query(async ({ input }) => getEngineerEvaluationHistory(input.engineerId)),
+
+    getAllEngineersDashboard: publicProcedure
+      .query(async () => getAllEngineersEvaluationDashboard()),
+
+    // Career Path
+    promoteEngineer: publicProcedure
+      .input(z.object({ engineerId: z.number(), promotedBy: z.number().optional() }))
+      .mutation(async ({ input }) => promoteEngineer(input.engineerId, input.promotedBy)),
+
+    getCareerLevel: publicProcedure
+      .input(z.object({ engineerId: z.number() }))
+      .query(async ({ input }) => getOrCreateEngineerCareerLevel(input.engineerId)),
+
+    // Management Decision Dashboard
+    getManagementDashboard: publicProcedure
+      .query(async () => getManagementDecisionDashboard()),
+  }),
+
+  // ── Funnel Analysis ───────────────────────────────────────────────────────
+  funnel: router({
+    full: publicProcedure
+      .input(z.object({
+        engineerId: z.number().optional(),
+        period: z.enum(['week', 'month', 'quarter']).optional(),
+      }))
+      .query(async ({ input }) => getFullFunnelAnalysis(input.engineerId, input.period)),
+    comparison: publicProcedure
+      .query(async () => getEngineersFunnelComparison()),
+    playbookInsights: publicProcedure
+      .input(z.object({ engineerId: z.number() }))
+      .query(async ({ input }) => getEngineerFunnelPlaybookInsights(input.engineerId)),
   }),
 });
 export type AppRouter = typeof appRouter;

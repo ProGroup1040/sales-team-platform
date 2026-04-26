@@ -1,4 +1,4 @@
-import { and, between, count, desc, eq, gte, isNull, lte, or, sql, sum, avg, lt, ne } from "drizzle-orm";
+import { and, between, count, desc, eq, gte, isNull, lte, or, sql, sum, avg, lt, ne, inArray, notInArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser, users,
@@ -15,7 +15,13 @@ import {
   leadFollowupLogs, LeadFollowupLog, InsertLeadFollowupLog,
   auditLogs, AuditLog, InsertAuditLog,
   leadDailyStats, LeadDailyStat, InsertLeadDailyStat,
-  workLogs, WorkLog, InsertWorkLog
+  workLogs, WorkLog, InsertWorkLog,
+  playbookItems, PlaybookItem, InsertPlaybookItem,
+  playbookQuotations, PlaybookQuotation, InsertPlaybookQuotation,
+  meetingSessions, MeetingSession, InsertMeetingSession,
+  sessionActions, SessionAction, InsertSessionAction,
+  engineerEvaluations, EngineerEvaluation, InsertEngineerEvaluation,
+  engineerCareerLevels, EngineerCareerLevel, InsertEngineerCareerLevel
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { notifyOwner } from './_core/notification';
@@ -180,11 +186,15 @@ export async function createTask(data: {
 export async function updateTaskStatus(id: number, status: string, delayDays?: number, notes?: string) {
   const db = await getDb();
   if (!db) return null;
-  // ─── شرط إغلاق Closing/Meeting ────────────────────────────────────────────────────────────────────────────────
+  // ─── شرط إغلاق Meeting Tasks (Recording Mandatory) ─────────────────────────────────────────────────────────────
   if (status === 'completed') {
     const [task] = await db.select().from(dailyTasks).where(eq(dailyTasks.id, id)).limit(1);
-    if (task && (task.category === 'closing' || task.category === 'meeting') && !task.meetingRecordingLink) {
-      return { success: false, error: 'RECORDING_REQUIRED', message: 'يجب إدخال رابط تسجيل الميتينج قبل إغلاق المهمة' };
+    if (task) {
+      const meetingTypes = ['meeting_presentation', 'meeting_closing', 'meeting_2d', 'meeting_3d', 'meeting_quotation'];
+      const isMeetingTask = meetingTypes.includes(task.taskType ?? '') || task.category === 'closing' || task.category === 'meeting';
+      if (isMeetingTask && !task.meetingRecordingLink) {
+        return { success: false, error: 'RECORDING_REQUIRED', message: 'يجب إدخال رابط تسجيل الاجتماع (Recording Link) قبل إغلاق هذه المهمة' };
+      }
     }
   }
   const updateData: any = { status };
@@ -3593,4 +3603,2571 @@ export async function getTasksForTimeline(dateStr: string, engineerId?: number) 
     taskTypeLabel: TASK_TYPE_LABELS[t.taskType ?? "other"] ?? "أخرى",
     taskCategory: TASK_TYPE_CATEGORY[t.taskType ?? "other"] ?? "other",
   }));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PERFORMANCE ANALYSIS SYSTEM (Weekly Report Enhancement)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** Standard target distribution (%) */
+export const STANDARD_DISTRIBUTION = {
+  meetings: 50,   // meeting_presentation + meeting_closing
+  design_3d: 30,  // design_3d + render
+  design_2d: 10,  // design_2d
+  quotation: 10,  // quotation
+} as const;
+
+/** Map taskType → distribution category */
+export function getDistributionCategory(taskType: string): keyof typeof STANDARD_DISTRIBUTION {
+  if (taskType === "meeting_presentation" || taskType === "meeting_closing" ||
+      taskType === "meeting_2d" || taskType === "meeting_3d" || taskType === "meeting_quotation") return "meetings";
+  if (taskType === "design_3d" || taskType === "render") return "design_3d";
+  if (taskType === "design_2d") return "design_2d";
+  if (taskType === "quotation") return "quotation";
+  return "meetings"; // default
+}
+
+/** Task type labels (new + legacy) */
+export const TASK_TYPE_LABELS_V2: Record<string, string> = {
+  meeting_presentation: "ميتينج عرض",
+  meeting_closing:      "ميتينج إغلاق",
+  meeting_2d:           "ميتينج 2D",
+  meeting_3d:           "ميتينج 3D",
+  meeting_quotation:    "ميتينج عرض سعر",
+  design_2d:            "2D",
+  design_3d:            "3D Modeling",
+  render:               "Render",
+  quotation:            "Quotation",
+  closing:              "إغلاق بيع",
+  negotiation:          "تفاوض",
+  other:                "أخرى",
+};
+
+/**
+ * Calculate Distribution Score (0–100)
+ * Based on how close actual distribution is to STANDARD_DISTRIBUTION
+ */
+export function calcDistributionScore(actual: {
+  meetings: number; design_3d: number; design_2d: number; quotation: number;
+}): number {
+  const target = STANDARD_DISTRIBUTION;
+  const total = actual.meetings + actual.design_3d + actual.design_2d + actual.quotation;
+  if (total === 0) return 0;
+  // Normalize to percentages
+  const actualPct = {
+    meetings:  (actual.meetings  / total) * 100,
+    design_3d: (actual.design_3d / total) * 100,
+    design_2d: (actual.design_2d / total) * 100,
+    quotation: (actual.quotation / total) * 100,
+  };
+  // Calculate deviation for each category
+  const deviations = [
+    Math.abs(actualPct.meetings  - target.meetings),
+    Math.abs(actualPct.design_3d - target.design_3d),
+    Math.abs(actualPct.design_2d - target.design_2d),
+    Math.abs(actualPct.quotation - target.quotation),
+  ];
+  const avgDeviation = deviations.reduce((s, d) => s + d, 0) / deviations.length;
+  // Score: 100 = perfect, 0 = max deviation (50%)
+  const score = Math.max(0, Math.round(100 - (avgDeviation / 50) * 100));
+  return score;
+}
+
+/**
+ * Generate Critical Insights for an engineer based on activity + sales
+ */
+export function generateCriticalInsights(params: {
+  meetingsPct: number;
+  design3dPct: number;
+  design2dPct: number;
+  quotationPct: number;
+  sales: number;
+  closedDeals: number;
+  totalMeetings: number;
+  totalQuotations: number;
+  distributionScore: number;
+}): Array<{ type: "warning" | "danger" | "info"; message: string; icon: string }> {
+  const insights: Array<{ type: "warning" | "danger" | "info"; message: string; icon: string }> = [];
+  const { meetingsPct, design3dPct, design2dPct, quotationPct, sales, closedDeals, totalMeetings, totalQuotations, distributionScore } = params;
+
+  // Meeting high + Sales low
+  if (meetingsPct > 65 && sales < 100000) {
+    insights.push({ type: "danger", message: "اجتماعات عالية بدون مبيعات — مشكلة في التفاوض والإغلاق", icon: "🔴" });
+  } else if (meetingsPct > 65) {
+    insights.push({ type: "warning", message: "نسبة الاجتماعات مرتفعة جداً — تحقق من التوازن", icon: "⚠️" });
+  }
+
+  // 3D high + Sales low
+  if (design3dPct > 45 && sales < 100000) {
+    insights.push({ type: "warning", message: "وقت كبير في التصميم 3D بدون تحويل إلى مبيعات", icon: "⚠️" });
+  }
+
+  // 2D very low
+  if (design2dPct < 5 && totalMeetings > 0) {
+    insights.push({ type: "warning", message: "نقص في أعمال التصميم 2D — Bottleneck في بداية المشاريع", icon: "⚠️" });
+  }
+
+  // Quotation very low
+  if (quotationPct < 5 && totalMeetings > 3) {
+    insights.push({ type: "danger", message: "ضعف في عروض الأسعار — Funnel ضعيف", icon: "🔴" });
+  }
+
+  // Meetings high + Closings low
+  if (totalMeetings > 5 && closedDeals === 0) {
+    insights.push({ type: "danger", message: "اجتماعات كثيرة بدون إغلاق صفقات — راجع مهارات التفاوض", icon: "🔴" });
+  }
+
+  // Distribution score low
+  if (distributionScore < 50) {
+    insights.push({ type: "danger", message: "خلل كبير في توزيع الوقت — يحتاج إعادة ضبط", icon: "🔴" });
+  } else if (distributionScore < 70) {
+    insights.push({ type: "warning", message: "توزيع الوقت غير متوازن — انحراف متوسط عن المعيار", icon: "⚠️" });
+  }
+
+  // Good performance
+  if (distributionScore >= 85 && sales > 0) {
+    insights.push({ type: "info", message: "توزيع الوقت ممتاز — استمر على هذا المستوى", icon: "✅" });
+  }
+
+  return insights;
+}
+
+/**
+ * Generate Smart Summary for an engineer
+ */
+export function generateSmartSummary(params: {
+  engineerName: string;
+  distributionScore: number;
+  sales: number;
+  closedDeals: number;
+  targetAmount: number;
+  achievementPct: number;
+  insights: Array<{ type: string; message: string }>;
+}): string {
+  const { distributionScore, sales, closedDeals, achievementPct, insights } = params;
+  const dangerInsights = insights.filter(i => i.type === "danger");
+  const warningInsights = insights.filter(i => i.type === "warning");
+
+  if (dangerInsights.length > 0) {
+    return dangerInsights[0].message;
+  }
+  if (warningInsights.length > 0) {
+    return warningInsights[0].message;
+  }
+  if (achievementPct >= 80) {
+    return `أداء ممتاز — تحقق ${achievementPct}% من الهدف الشهري`;
+  }
+  if (achievementPct >= 50) {
+    return `أداء جيد — ${achievementPct}% من الهدف، تحتاج تسريع الإغلاق`;
+  }
+  if (closedDeals === 0 && sales === 0) {
+    return "لا توجد مبيعات مسجلة — تحقق من حالة الصفقات";
+  }
+  return `تحقق ${achievementPct}% من الهدف — ركز على تحسين معدل الإغلاق`;
+}
+
+/**
+ * Main: Get full performance analysis for all engineers (MTD)
+ */
+export async function getEngineerPerformanceReport(year: number, month: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const startOfMonth = new Date(year, month - 1, 1);
+  const endOfMonth   = new Date(year, month, 0, 23, 59, 59);
+
+  // Get all engineers
+  const engList = await db.select().from(engineers).where(eq(engineers.isDeleted, 0));
+
+  // Get all tasks for this month
+  const allTasks = await db.select().from(dailyTasks).where(
+    and(
+      eq(dailyTasks.isDeleted, 0),
+      gte(dailyTasks.taskDate, startOfMonth),
+      lte(dailyTasks.taskDate, endOfMonth),
+    )
+  );
+
+  // Get all deals (closed_won) for this month
+  const allDeals = await db.select().from(deals).where(
+    and(
+      gte(deals.closedAt, startOfMonth),
+      lte(deals.closedAt, endOfMonth),
+    )
+  );
+
+  // Get engineer targets for this month
+  const allTargets = await db.select().from(engineerTargets).where(
+    and(eq(engineerTargets.year, year), eq(engineerTargets.month, month))
+  );
+
+  return engList.map(eng => {
+    const engTasks  = allTasks.filter(t => t.engineerId === eng.id);
+    const engDeals  = allDeals.filter(d => d.engineerId === eng.id);
+    const engTarget = allTargets.find(t => t.engineerId === eng.id);
+
+    // ─── Activity Breakdown ───────────────────────────────────────────────────
+    const activityCounts: Record<string, number> = {};
+    const activityMinutes: Record<string, number> = {};
+    let totalMinutes = 0;
+
+    for (const t of engTasks) {
+      const type = t.taskType ?? "other";
+      activityCounts[type] = (activityCounts[type] ?? 0) + 1;
+      const mins = calcDurationMinutes(t.startTime, t.endTime) ||
+                   (t.plannedHours ? Math.round(parseFloat(String(t.plannedHours)) * 60) : 60);
+      activityMinutes[type] = (activityMinutes[type] ?? 0) + mins;
+      totalMinutes += mins;
+    }
+
+    // ─── Distribution categories ──────────────────────────────────────────────
+    const catMinutes = { meetings: 0, design_3d: 0, design_2d: 0, quotation: 0 };
+    for (const [type, mins] of Object.entries(activityMinutes)) {
+      const cat = getDistributionCategory(type);
+      catMinutes[cat] += mins;
+    }
+    const catPct = {
+      meetings:  totalMinutes > 0 ? Math.round((catMinutes.meetings  / totalMinutes) * 100) : 0,
+      design_3d: totalMinutes > 0 ? Math.round((catMinutes.design_3d / totalMinutes) * 100) : 0,
+      design_2d: totalMinutes > 0 ? Math.round((catMinutes.design_2d / totalMinutes) * 100) : 0,
+      quotation: totalMinutes > 0 ? Math.round((catMinutes.quotation / totalMinutes) * 100) : 0,
+    };
+
+    // ─── Distribution Score ───────────────────────────────────────────────────
+    const distributionScore = calcDistributionScore(catMinutes);
+
+    // ─── Sales ────────────────────────────────────────────────────────────────
+    const closedWonDeals = engDeals.filter(d => d.stage === "closed_won");
+    const sales = closedWonDeals.reduce((s, d) => s + parseFloat(String(d.value || 0)), 0);
+    const closedDeals = closedWonDeals.length;
+    const targetAmount = parseFloat(String(engTarget?.targetAmount ?? 0));
+    const achievementPct = targetAmount > 0 ? Math.min(999, Math.round((sales / targetAmount) * 100)) : 0;
+
+    // ─── Operational Target Achievement ──────────────────────────────────────
+    const totalMeetings = (activityCounts["meeting_presentation"] ?? 0) +
+                          (activityCounts["meeting_closing"] ?? 0) +
+                          (activityCounts["meeting_2d"] ?? 0) +
+                          (activityCounts["meeting_3d"] ?? 0) +
+                          (activityCounts["meeting_quotation"] ?? 0);
+    const totalDesigns  = (activityCounts["design_2d"] ?? 0) +
+                          (activityCounts["design_3d"] ?? 0) +
+                          (activityCounts["render"] ?? 0);
+    const totalQuotations = activityCounts["quotation"] ?? 0;
+    const totalClosings   = (activityCounts["closing"] ?? 0) + closedDeals;
+
+    const opTargets = {
+      meetings:   { actual: totalMeetings,  target: engTarget?.targetMeetings  ?? 0, pct: engTarget?.targetMeetings  ? Math.round((totalMeetings  / engTarget.targetMeetings)  * 100) : 0 },
+      designs:    { actual: totalDesigns,   target: engTarget?.targetDesigns   ?? 0, pct: engTarget?.targetDesigns   ? Math.round((totalDesigns   / engTarget.targetDesigns)   * 100) : 0 },
+      closings:   { actual: totalClosings,  target: engTarget?.targetClosings  ?? 0, pct: engTarget?.targetClosings  ? Math.round((totalClosings  / engTarget.targetClosings)  * 100) : 0 },
+      quotations: { actual: totalQuotations, target: engTarget?.targetQuotations ?? 0, pct: engTarget?.targetQuotations ? Math.round((totalQuotations / engTarget.targetQuotations) * 100) : 0 },
+      deals:      { actual: closedDeals,    target: engTarget?.targetDeals     ?? 0, pct: engTarget?.targetDeals     ? Math.round((closedDeals    / engTarget.targetDeals)     * 100) : 0 },
+    };
+
+    // ─── Critical Insights ────────────────────────────────────────────────────
+    const insights = generateCriticalInsights({
+      meetingsPct: catPct.meetings, design3dPct: catPct.design_3d,
+      design2dPct: catPct.design_2d, quotationPct: catPct.quotation,
+      sales, closedDeals, totalMeetings, totalQuotations, distributionScore,
+    });
+
+    // ─── Smart Summary ────────────────────────────────────────────────────────
+    const smartSummary = generateSmartSummary({
+      engineerName: eng.name, distributionScore, sales, closedDeals,
+      targetAmount, achievementPct, insights,
+    });
+
+    // ─── Ranking Score (composite) ────────────────────────────────────────────
+    const rankingScore = Math.round(
+      (achievementPct * 0.5) +
+      (distributionScore * 0.3) +
+      (closedDeals > 0 ? Math.min(100, closedDeals * 10) * 0.2 : 0)
+    );
+
+    return {
+      engineerId: eng.id,
+      engineerName: eng.name,
+      // Sales
+      sales, closedDeals, targetAmount, achievementPct,
+      // Activity counts
+      activityCounts,
+      totalMeetings, totalDesigns, totalQuotations, totalClosings,
+      // Time distribution
+      totalMinutes,
+      catMinutes, catPct,
+      distributionScore,
+      // Operational targets
+      opTargets,
+      // Analysis
+      insights,
+      smartSummary,
+      rankingScore,
+    };
+  }).sort((a, b) => b.rankingScore - a.rankingScore);
+}
+
+/**
+ * Get weekly performance analysis (last 7 days)
+ */
+export async function getWeeklyPerformanceAnalysis() {
+  const now   = new Date();
+  const start = new Date(now); start.setDate(now.getDate() - 6); start.setHours(0, 0, 0, 0);
+  const end   = new Date(now); end.setHours(23, 59, 59, 999);
+
+  const db = await getDb();
+  if (!db) return null;
+
+  const engList  = await db.select().from(engineers).where(eq(engineers.isDeleted, 0));
+  const allTasks = await db.select().from(dailyTasks).where(
+    and(eq(dailyTasks.isDeleted, 0), gte(dailyTasks.taskDate, start), lte(dailyTasks.taskDate, end))
+  );
+  const allDeals = await db.select().from(deals).where(
+    and(gte(deals.closedAt, start), lte(deals.closedAt, end))
+  );
+
+  // Get current month targets
+  const year = now.getFullYear(); const month = now.getMonth() + 1;
+  const allTargets = await db.select().from(engineerTargets).where(
+    and(eq(engineerTargets.year, year), eq(engineerTargets.month, month))
+  );
+
+  const engineerReports = engList.map(eng => {
+    const engTasks = allTasks.filter(t => t.engineerId === eng.id);
+    const engDeals = allDeals.filter(d => d.engineerId === eng.id);
+    const engTarget = allTargets.find(t => t.engineerId === eng.id);
+
+    const activityCounts: Record<string, number> = {};
+    const activityMinutes: Record<string, number> = {};
+    let totalMinutes = 0;
+
+    for (const t of engTasks) {
+      const type = t.taskType ?? "other";
+      activityCounts[type] = (activityCounts[type] ?? 0) + 1;
+      const mins = calcDurationMinutes(t.startTime, t.endTime) ||
+                   (t.plannedHours ? Math.round(parseFloat(String(t.plannedHours)) * 60) : 60);
+      activityMinutes[type] = (activityMinutes[type] ?? 0) + mins;
+      totalMinutes += mins;
+    }
+
+    const catMinutes = { meetings: 0, design_3d: 0, design_2d: 0, quotation: 0 };
+    for (const [type, mins] of Object.entries(activityMinutes)) {
+      catMinutes[getDistributionCategory(type)] += mins;
+    }
+    const catPct = {
+      meetings:  totalMinutes > 0 ? Math.round((catMinutes.meetings  / totalMinutes) * 100) : 0,
+      design_3d: totalMinutes > 0 ? Math.round((catMinutes.design_3d / totalMinutes) * 100) : 0,
+      design_2d: totalMinutes > 0 ? Math.round((catMinutes.design_2d / totalMinutes) * 100) : 0,
+      quotation: totalMinutes > 0 ? Math.round((catMinutes.quotation / totalMinutes) * 100) : 0,
+    };
+
+    const distributionScore = calcDistributionScore(catMinutes);
+    const closedWon = engDeals.filter(d => d.stage === "closed_won");
+    const sales = closedWon.reduce((s, d) => s + parseFloat(String(d.value || 0)), 0);
+    const closedDeals = closedWon.length;
+    const targetAmount = parseFloat(String(engTarget?.targetAmount ?? 0));
+    const achievementPct = targetAmount > 0 ? Math.min(999, Math.round((sales / targetAmount) * 100)) : 0;
+
+    const totalMeetings = Object.entries(activityCounts)
+      .filter(([k]) => k.startsWith("meeting_")).reduce((s, [, v]) => s + v, 0);
+    const totalDesigns = (activityCounts["design_2d"] ?? 0) + (activityCounts["design_3d"] ?? 0) + (activityCounts["render"] ?? 0);
+    const totalQuotations = activityCounts["quotation"] ?? 0;
+
+    const insights = generateCriticalInsights({
+      meetingsPct: catPct.meetings, design3dPct: catPct.design_3d,
+      design2dPct: catPct.design_2d, quotationPct: catPct.quotation,
+      sales, closedDeals, totalMeetings, totalQuotations, distributionScore,
+    });
+
+    const smartSummary = generateSmartSummary({
+      engineerName: eng.name, distributionScore, sales, closedDeals,
+      targetAmount, achievementPct, insights,
+    });
+
+    return {
+      engineerId: eng.id, engineerName: eng.name,
+      sales, closedDeals, targetAmount, achievementPct,
+      activityCounts, totalMinutes, catMinutes, catPct,
+      distributionScore, insights, smartSummary,
+      totalMeetings, totalDesigns, totalQuotations,
+      tasksDone: engTasks.filter(t => t.status === "completed").length,
+      tasksTotal: engTasks.length,
+    };
+  }).sort((a, b) => {
+    // Rank by: sales (50%) + distributionScore (30%) + closedDeals (20%)
+    const scoreA = (a.achievementPct * 0.5) + (a.distributionScore * 0.3) + (Math.min(100, a.closedDeals * 10) * 0.2);
+    const scoreB = (b.achievementPct * 0.5) + (b.distributionScore * 0.3) + (Math.min(100, b.closedDeals * 10) * 0.2);
+    return scoreB - scoreA;
+  });
+
+  // Team summary
+  const totalSales = engineerReports.reduce((s, e) => s + e.sales, 0);
+  const avgDistScore = engineerReports.length > 0
+    ? Math.round(engineerReports.reduce((s, e) => s + e.distributionScore, 0) / engineerReports.length)
+    : 0;
+
+  return {
+    weekStart: start.toISOString(),
+    weekEnd:   end.toISOString(),
+    generatedAt: now.toISOString(),
+    standardDistribution: STANDARD_DISTRIBUTION,
+    engineerReports,
+    teamSummary: {
+      totalSales,
+      avgDistributionScore: avgDistScore,
+      totalClosedDeals: engineerReports.reduce((s, e) => s + e.closedDeals, 0),
+      topPerformer: engineerReports[0] ?? null,
+    },
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ADVANCED DISCOUNT & PIPELINE SYSTEM
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** حساب نسبة الخصم المتاحة بناءً على Closing Rate (Performance-Based) */
+export function getPerformanceBasedDiscountPct(closingRate: number, basePct: number): number {
+  // Closing Rate > 60% → +2% bonus
+  // Closing Rate 40-60% → base
+  // Closing Rate < 40% → -2% penalty
+  if (closingRate >= 0.6) return basePct + 2;
+  if (closingRate < 0.4) return Math.max(0, basePct - 2);
+  return basePct;
+}
+
+/** حساب Saved Discount Bonus لصفقة مغلقة */
+export function calcSavedDiscountBonus(dealValue: number, maxDiscountPct: number, usedDiscountPct: number): {
+  maxDiscountValue: number;
+  usedDiscountValue: number;
+  savedDiscountValue: number;
+  engineerBonus: number;
+  companyProfit: number;
+} {
+  const maxDiscountValue = dealValue * (maxDiscountPct / 100);
+  const usedDiscountValue = dealValue * (usedDiscountPct / 100);
+  const savedDiscountValue = Math.max(0, maxDiscountValue - usedDiscountValue);
+  const engineerBonus = savedDiscountValue * 0.5;  // 50% للمهندس
+  const companyProfit = savedDiscountValue * 0.5;  // 50% للشركة
+  return { maxDiscountValue, usedDiscountValue, savedDiscountValue, engineerBonus, companyProfit };
+}
+
+/** Pipeline Stats لكل مهندس (آخر 60 يوم) */
+export async function getEngineerPipelineStats(engineerId?: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const since60 = new Date();
+  since60.setDate(since60.getDate() - 60);
+
+  const engList = await db.select({ id: engineers.id, name: engineers.name, role: engineers.role })
+    .from(engineers)
+    .where(and(eq(engineers.isDeleted, 0)));
+
+  const allDeals = await db.select().from(deals)
+    .where(and(eq(deals.isDeleted, 0), gte(deals.createdAt, since60)));
+
+  const targetEngineers = engineerId
+    ? engList.filter(e => e.id === engineerId)
+    : engList.filter(e => !['admin_sales', 'group_admin'].includes(e.role ?? ''));
+
+  return targetEngineers.map(eng => {
+    const engDeals = allDeals.filter(d => d.engineerId === eng.id);
+
+    const closedWon = engDeals.filter(d => d.stage === 'closed_won');
+    const negotiation = engDeals.filter(d => d.stage === 'negotiation');
+    const proposal = engDeals.filter(d => d.stage === 'proposal' || d.stage === 'contract_sent');
+    const closedLost = engDeals.filter(d => d.stage === 'closed_lost');
+
+    const closedWonValue = closedWon.reduce((s, d) => s + parseFloat(d.value as string), 0);
+    const negotiationValue = negotiation.reduce((s, d) => s + parseFloat(d.value as string), 0);
+    const proposalValue = proposal.reduce((s, d) => s + parseFloat(d.value as string), 0);
+    const closedLostValue = closedLost.reduce((s, d) => s + parseFloat(d.value as string), 0);
+
+    const totalDeals = engDeals.length;
+    const closingRate = totalDeals > 0 ? closedWon.length / totalDeals : 0;
+
+    // Pipeline Value = Negotiation + Proposal
+    const pipelineValue = negotiationValue + proposalValue;
+
+    // Discount Pool = (Actual Sales × base%) + (Negotiation × bonus%)
+    const { tierLabel, discountPct } = getDiscountTierInfo(closedWonValue + negotiationValue);
+    const performancePct = getPerformanceBasedDiscountPct(closingRate, discountPct);
+    const discountPool = (closedWonValue * (performancePct / 100)) + (negotiationValue * (performancePct / 2 / 100));
+
+    // Used Discount
+    const usedDiscount = closedWon.reduce((s, d) => s + parseFloat(d.discountValue as string || '0'), 0);
+    const savedDiscount = Math.max(0, discountPool - usedDiscount);
+
+    // Saved Bonus = 50% of saved discount
+    const engineerBonus = savedDiscount * 0.5;
+
+    // Pending Approval
+    const pendingApproval = engDeals.filter(d => d.discountApprovalStatus === 'pending');
+
+    return {
+      engineerId: eng.id,
+      engineerName: eng.name,
+      role: eng.role,
+      // Pipeline breakdown
+      closedWon: { count: closedWon.length, value: closedWonValue },
+      negotiation: { count: negotiation.length, value: negotiationValue },
+      proposal: { count: proposal.length, value: proposalValue },
+      closedLost: { count: closedLost.length, value: closedLostValue },
+      // KPIs
+      totalDeals,
+      closingRate,
+      closingRatePct: Math.round(closingRate * 100),
+      pipelineValue,
+      // Discount System
+      discountPct: performancePct,
+      tierLabel,
+      discountPool,
+      usedDiscount,
+      remainingDiscount: Math.max(0, discountPool - usedDiscount),
+      savedDiscount,
+      engineerBonus,
+      companyProfit: savedDiscount * 0.5,
+      // Pending approvals
+      pendingApprovalCount: pendingApproval.length,
+    };
+  });
+}
+
+/** نظرة عامة على الـ Pipeline الكلي */
+export async function getPipelineOverview() {
+  const db = await getDb();
+  if (!db) return null;
+
+  const since60 = new Date();
+  since60.setDate(since60.getDate() - 60);
+
+  const allDeals = await db.select().from(deals)
+    .where(and(eq(deals.isDeleted, 0), gte(deals.createdAt, since60)));
+
+  const closedWonValue = allDeals.filter(d => d.stage === 'closed_won')
+    .reduce((s, d) => s + parseFloat(d.value as string), 0);
+  const negotiationValue = allDeals.filter(d => d.stage === 'negotiation')
+    .reduce((s, d) => s + parseFloat(d.value as string), 0);
+  const proposalValue = allDeals.filter(d => d.stage === 'proposal' || d.stage === 'contract_sent')
+    .reduce((s, d) => s + parseFloat(d.value as string), 0);
+  const closedLostValue = allDeals.filter(d => d.stage === 'closed_lost')
+    .reduce((s, d) => s + parseFloat(d.value as string), 0);
+
+  const totalPipeline = negotiationValue + proposalValue;
+  const { tierLabel, discountPct } = getDiscountTierInfo(closedWonValue + totalPipeline);
+  const totalDiscountPool = (closedWonValue + totalPipeline) * (discountPct / 100);
+  const totalUsedDiscount = allDeals.filter(d => d.stage === 'closed_won')
+    .reduce((s, d) => s + parseFloat(d.discountValue as string || '0'), 0);
+  const totalSavedBonus = allDeals.filter(d => d.stage === 'closed_won')
+    .reduce((s, d) => s + parseFloat(d.savedDiscountBonus as string || '0'), 0);
+
+  const pendingApprovals = allDeals.filter(d => d.discountApprovalStatus === 'pending');
+
+  return {
+    closedWonValue,
+    negotiationValue,
+    proposalValue,
+    closedLostValue,
+    totalPipeline,
+    tierLabel,
+    discountPct,
+    totalDiscountPool,
+    totalUsedDiscount,
+    remainingDiscount: Math.max(0, totalDiscountPool - totalUsedDiscount),
+    totalSavedBonus,
+    pendingApprovals: pendingApprovals.map(d => ({
+      id: d.id,
+      clientName: d.clientName,
+      value: parseFloat(d.value as string),
+      discountValue: parseFloat(d.discountValue as string || '0'),
+      discountPercent: parseFloat(d.discountPercent as string || '0'),
+    })),
+  };
+}
+
+/** تحديث حالة موافقة الخصم */
+export async function updateDiscountApproval(dealId: number, status: 'approved' | 'rejected', approvedBy?: string) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(deals).set({
+    discountApprovalStatus: status,
+    discountApprovedBy: approvedBy,
+  }).where(eq(deals.id, dealId));
+}
+
+/** حساب وحفظ Saved Discount Bonus عند إغلاق صفقة */
+export async function computeAndSaveDealBonus(dealId: number) {
+  const db = await getDb();
+  if (!db) return;
+  const [deal] = await db.select().from(deals).where(eq(deals.id, dealId));
+  if (!deal || deal.stage !== 'closed_won') return;
+
+  const dealValue = parseFloat(deal.value as string);
+  const maxPct = parseFloat(deal.maxDiscountPct as string || '0');
+  const usedPct = parseFloat(deal.discountPercent as string || '0');
+
+  const { engineerBonus } = calcSavedDiscountBonus(dealValue, maxPct, usedPct);
+  await db.update(deals).set({ savedDiscountBonus: String(engineerBonus) }).where(eq(deals.id, dealId));
+  return engineerBonus;
+}
+
+/** إجمالي Bonus لكل مهندس */
+export async function getEngineerBonusSummary() {
+  const db = await getDb();
+  if (!db) return [];
+
+  const engList = await db.select({ id: engineers.id, name: engineers.name })
+    .from(engineers).where(eq(engineers.isDeleted, 0));
+
+  const closedDeals = await db.select().from(deals)
+    .where(and(eq(deals.stage, 'closed_won'), eq(deals.isDeleted, 0)));
+
+  return engList.map(eng => {
+    const engDeals = closedDeals.filter(d => d.engineerId === eng.id);
+    const totalBonus = engDeals.reduce((s, d) => s + parseFloat(d.savedDiscountBonus as string || '0'), 0);
+    const totalSaved = engDeals.reduce((s, d) => {
+      const v = parseFloat(d.value as string);
+      const maxPct = parseFloat(d.maxDiscountPct as string || '0');
+      const usedPct = parseFloat(d.discountPercent as string || '0');
+      return s + Math.max(0, v * (maxPct - usedPct) / 100);
+    }, 0);
+    return {
+      engineerId: eng.id,
+      engineerName: eng.name,
+      totalBonus,
+      totalSaved,
+      dealsCount: engDeals.length,
+    };
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// OUTPUT-BASED KPI + DISTRIBUTION SCORE + BEHAVIOR CONTROL + SMART RANKING
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** التوزيع المثالي للوقت */
+export const IDEAL_DISTRIBUTION = {
+  meetings: 0.50,    // 50% Meetings (عرض + Closing)
+  design3d: 0.30,    // 30% 3D Modeling + Render
+  design2d: 0.10,    // 10% 2D
+  quotation: 0.10,   // 10% Quotations
+};
+
+/** تصنيف Task Type إلى فئة رئيسية */
+export function classifyTaskType(taskType: string | null): 'meetings' | 'design3d' | 'design2d' | 'quotation' | 'other' {
+  if (!taskType) return 'other';
+  if (['meeting_modeling', 'meeting_closing', 'meeting_2d', 'meeting_3d', 'meeting_quotation', 'negotiation'].includes(taskType)) return 'meetings';
+  if (['design_3d', '3d_modeling', 'render'].includes(taskType)) return 'design3d';
+  if (['design_2d', '2d'].includes(taskType)) return 'design2d';
+  if (['quotation'].includes(taskType)) return 'quotation';
+  return 'other';
+}
+
+/** حساب Distribution Score (0-100) */
+export function calcDistributionScoreFromHours(hoursMap: { meetings: number; design3d: number; design2d: number; quotation: number; other: number }): {
+  score: number;
+  actualPct: { meetings: number; design3d: number; design2d: number; quotation: number };
+  deviations: { meetings: number; design3d: number; design2d: number; quotation: number };
+  level: 'excellent' | 'good' | 'fair' | 'poor';
+} {
+  const total = hoursMap.meetings + hoursMap.design3d + hoursMap.design2d + hoursMap.quotation + hoursMap.other;
+  if (total === 0) return {
+    score: 0,
+    actualPct: { meetings: 0, design3d: 0, design2d: 0, quotation: 0 },
+    deviations: { meetings: 0, design3d: 0, design2d: 0, quotation: 0 },
+    level: 'poor',
+  };
+
+  const actualPct = {
+    meetings: hoursMap.meetings / total,
+    design3d: hoursMap.design3d / total,
+    design2d: hoursMap.design2d / total,
+    quotation: hoursMap.quotation / total,
+  };
+
+  // الانحراف عن المثالي (بالقيمة المطلقة)
+  const deviations = {
+    meetings: Math.abs(actualPct.meetings - IDEAL_DISTRIBUTION.meetings),
+    design3d: Math.abs(actualPct.design3d - IDEAL_DISTRIBUTION.design3d),
+    design2d: Math.abs(actualPct.design2d - IDEAL_DISTRIBUTION.design2d),
+    quotation: Math.abs(actualPct.quotation - IDEAL_DISTRIBUTION.quotation),
+  };
+
+  // متوسط الانحراف الكلي (0 = مثالي، 1 = أسوأ)
+  const avgDeviation = (deviations.meetings + deviations.design3d + deviations.design2d + deviations.quotation) / 4;
+  const score = Math.round(Math.max(0, 100 - avgDeviation * 200));
+
+  const level: 'excellent' | 'good' | 'fair' | 'poor' =
+    score >= 85 ? 'excellent' : score >= 70 ? 'good' : score >= 50 ? 'fair' : 'poor';
+
+  return {
+    score,
+    actualPct: {
+      meetings: Math.round(actualPct.meetings * 100),
+      design3d: Math.round(actualPct.design3d * 100),
+      design2d: Math.round(actualPct.design2d * 100),
+      quotation: Math.round(actualPct.quotation * 100),
+    },
+    deviations: {
+      meetings: Math.round(deviations.meetings * 100),
+      design3d: Math.round(deviations.design3d * 100),
+      design2d: Math.round(deviations.design2d * 100),
+      quotation: Math.round(deviations.quotation * 100),
+    },
+    level,
+  };
+}
+
+/** توليد Behavior Alerts بناءً على الأداء الفعلي */
+export function generateBehaviorAlerts(params: {
+  actualPct: { meetings: number; design3d: number; design2d: number; quotation: number };
+  closingRate: number;
+  salesAchievement: number;
+  closedDeals: number;
+  totalTasks: number;
+}): Array<{ type: 'warning' | 'danger' | 'info'; message: string; code: string }> {
+  const alerts: Array<{ type: 'warning' | 'danger' | 'info'; message: string; code: string }> = [];
+  const { actualPct, closingRate, salesAchievement, closedDeals, totalTasks } = params;
+
+  // High Meetings + Low Closing
+  if (actualPct.meetings > 60 && closingRate < 0.3) {
+    alerts.push({ type: 'danger', message: 'اجتماعات كثيرة بدون إغلاق صفقات — مشكلة في مهارة التفاوض', code: 'HIGH_MEETINGS_LOW_CLOSING' });
+  }
+
+  // High 3D + Low Sales
+  if (actualPct.design3d > 45 && salesAchievement < 0.4) {
+    alerts.push({ type: 'warning', message: 'تصميم 3D مرتفع بدون مبيعات — شغل بدون عائد', code: 'HIGH_3D_LOW_SALES' });
+  }
+
+  // Low Quotations
+  if (actualPct.quotation < 5 && totalTasks > 5) {
+    alerts.push({ type: 'warning', message: 'نقص في عروض الأسعار — Funnel ضعيف', code: 'LOW_QUOTATIONS' });
+  }
+
+  // Low 2D
+  if (actualPct.design2d < 5 && totalTasks > 5) {
+    alerts.push({ type: 'info', message: 'نقص في أعمال التصميم 2D — Bottleneck في البداية', code: 'LOW_2D' });
+  }
+
+  // High Activity + Low Output
+  if (totalTasks >= 20 && closedDeals <= 1) {
+    alerts.push({ type: 'danger', message: 'نشاط عالي بدون نتائج — عدد المهام لا يعكس الأداء الحقيقي', code: 'HIGH_ACTIVITY_LOW_OUTPUT' });
+  }
+
+  // Avoiding Closing
+  if (actualPct.meetings > 40 && closingRate < 0.2) {
+    alerts.push({ type: 'danger', message: 'المهندس يتجنب مرحلة الإغلاق', code: 'AVOIDING_CLOSING' });
+  }
+
+  return alerts;
+}
+
+/** توليد Critical Insights نصية */
+export function generateCriticalInsightsV2(params: {
+  actualPct: { meetings: number; design3d: number; design2d: number; quotation: number };
+  closingRate: number;
+  salesAchievement: number;
+  distributionScore: number;
+}): string[] {
+  const insights: string[] = [];
+  const { actualPct, closingRate, salesAchievement, distributionScore } = params;
+
+  if (actualPct.meetings > 60 && closingRate < 0.3) insights.push('High Meetings - Low Sales');
+  if (actualPct.design3d > 40 && salesAchievement < 0.4) insights.push('Strong Design - Weak Closing');
+  if (actualPct.quotation < 8) insights.push('Low Quotations Activity');
+  if (distributionScore < 50) insights.push('Unbalanced Workload');
+  if (closingRate < 0.2 && salesAchievement < 0.3) insights.push('Critical: Low Performance Across All Metrics');
+  if (actualPct.meetings > 50 && actualPct.design3d < 15) insights.push('Neglecting Design Work');
+
+  return insights;
+}
+
+/** Output-Based KPI الكامل لكل مهندس (آخر 60 يوم) */
+export async function getOutputBasedKPI(year: number, month: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  // تحديد نطاق الشهر
+  const startDate = new Date(year, month - 1, 1);
+  const endDate = new Date(year, month, 0, 23, 59, 59);
+
+  const engList = await db.select().from(engineers).where(eq(engineers.isDeleted, 0));
+
+   // جلب المهام
+  const startStr = startDate.toISOString().split('T')[0];
+  const endStr = endDate.toISOString().split('T')[0];
+  const tasks = await db.select().from(dailyTasks)
+    .where(and(
+      sql`${dailyTasks.taskDate} >= ${startStr}`,
+      sql`${dailyTasks.taskDate} <= ${endStr}`,
+      eq(dailyTasks.isDeleted, 0),
+    ));
+  // جلب الصفقات
+  const allDeals = await db.select().from(deals)
+    .where(and(eq(deals.isDeleted, 0), sql`${deals.createdAt} >= ${startDate}`, sql`${deals.createdAt} <= ${endDate}`));
+  // جلب الأهداف
+  const targets = await db.select().from(engineerTargets)
+    .where(and(eq(engineerTargets.year, year), eq(engineerTargets.month, month)));
+  return engList
+    .filter(eng => !['admin_sales', 'group_admin'].includes(eng.role ?? ''))
+    .map(eng => {
+      const engTasks = tasks.filter(t => t.engineerId === eng.id);
+      const engDeals = allDeals.filter(d => d.engineerId === eng.id);
+      const target = targets.find(t => t.engineerId === eng.id);
+
+      // حساب ساعات لكل نوع
+      const hoursMap = { meetings: 0, design3d: 0, design2d: 0, quotation: 0, other: 0 };
+      const countMap = { meetings: 0, design3d: 0, design2d: 0, quotation: 0, other: 0 };
+
+      for (const task of engTasks) {
+        const cat = classifyTaskType(task.taskType ?? null);
+         const hours = task.plannedHours ?? 1;
+        hoursMap[cat] += hours;
+        countMap[cat]++;
+      }
+      const distribution = calcDistributionScoreFromHours(hoursMap);
+      // Output Metricss
+      const closedDeals = engDeals.filter(d => d.stage === 'closed_won');
+      const closedDealsCount = closedDeals.length;
+      const totalSales = closedDeals.reduce((s, d) => s + parseFloat(d.value as string), 0);
+      const totalDeals = engDeals.length;
+      const closingRate = totalDeals > 0 ? closedDealsCount / totalDeals : 0;
+
+      // Design output
+      const designsCount = countMap.design3d + countMap.design2d;
+
+      // Target Achievement
+      const targetAmount = target ? parseFloat(target.targetAmount as string) : 0;
+      const salesAchievement = targetAmount > 0 ? totalSales / targetAmount : 0;
+      const targetDesigns = target?.targetDesigns ?? 0;
+      const designsAchievement = targetDesigns > 0 ? designsCount / targetDesigns : 0;
+      const targetMeetings = target?.targetMeetings ?? 0;
+      const meetingsAchievement = targetMeetings > 0 ? countMap.meetings / targetMeetings : 0;
+      const targetClosings = target?.targetClosings ?? 0;
+      const closingsAchievement = targetClosings > 0 ? closedDealsCount / targetClosings : 0;
+
+      // Behavior Alerts
+      const behaviorAlerts = generateBehaviorAlerts({
+        actualPct: distribution.actualPct,
+        closingRate,
+        salesAchievement,
+        closedDeals: closedDealsCount,
+        totalTasks: engTasks.length,
+      });
+
+      // Critical Insights
+      const criticalInsights = generateCriticalInsightsV2({
+        actualPct: distribution.actualPct,
+        closingRate,
+        salesAchievement,
+        distributionScore: distribution.score,
+      });
+
+      // Smart Ranking Score (0-100)
+      const rankingScore = Math.round(
+        (salesAchievement * 40) +          // 40% Sales Achievement
+        (closingRate * 30) +               // 30% Closing Rate
+        (distribution.score / 100 * 20) + // 20% Distribution Balance
+        (designsAchievement * 10)          // 10% Design Output
+      );
+
+      return {
+        engineerId: eng.id,
+        engineerName: eng.name,
+        role: eng.role,
+        // Task Counts
+        totalTasks: engTasks.length,
+        taskCounts: countMap,
+        taskHours: hoursMap,
+        // Distribution
+        distribution,
+        // Output
+        closedDealsCount,
+        totalSales,
+        totalDeals,
+        closingRate: Math.round(closingRate * 100),
+        designsCount,
+        // Target Achievement
+        target: {
+          amount: targetAmount,
+          deals: target?.targetDeals ?? 0,
+          meetings: targetMeetings,
+          designs: targetDesigns,
+          closings: targetClosings,
+          quotations: target?.targetQuotations ?? 0,
+        },
+        achievement: {
+          sales: Math.round(salesAchievement * 100),
+          designs: Math.round(designsAchievement * 100),
+          meetings: Math.round(meetingsAchievement * 100),
+          closings: Math.round(closingsAchievement * 100),
+        },
+        // Behavior & Insights
+        behaviorAlerts,
+        criticalInsights,
+        // Smart Ranking
+        rankingScore,
+      };
+    })
+    .sort((a, b) => b.rankingScore - a.rankingScore);
+}
+
+/** Weekly Performance Analysis (آخر 7 أيام) */
+export async function getWeeklyPerformanceFull() {
+  const db = await getDb();
+  if (!db) return [];
+
+  const now = new Date();
+  const weekStart = new Date(now);
+  weekStart.setDate(now.getDate() - 6);
+  const weekStartStr = weekStart.toISOString().split('T')[0];
+  const weekEndStr = now.toISOString().split('T')[0];
+
+  const engList = await db.select().from(engineers).where(eq(engineers.isDeleted, 0));
+
+   const tasks = await db.select().from(dailyTasks)
+    .where(and(
+      sql`${dailyTasks.taskDate} >= ${weekStartStr}`,
+      sql`${dailyTasks.taskDate} <= ${weekEndStr}`,
+      eq(dailyTasks.isDeleted, 0),
+    ));
+  const allDeals = await db.select().from(deals)
+    .where(and(eq(deals.isDeleted, 0), sql`${deals.createdAt} >= ${weekStart}`));
+
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const targets = await db.select().from(engineerTargets)
+    .where(and(eq(engineerTargets.year, year), eq(engineerTargets.month, month)));
+
+  return engList
+    .filter(eng => !['admin_sales', 'group_admin'].includes(eng.role ?? ''))
+    .map(eng => {
+      const engTasks = tasks.filter(t => t.engineerId === eng.id);
+      const engDeals = allDeals.filter(d => d.engineerId === eng.id);
+      const target = targets.find(t => t.engineerId === eng.id);
+
+      const hoursMap = { meetings: 0, design3d: 0, design2d: 0, quotation: 0, other: 0 };
+      const countMap = { meetings: 0, design3d: 0, design2d: 0, quotation: 0, other: 0 };
+
+      for (const task of engTasks) {
+        const cat = classifyTaskType(task.taskType ?? null);
+        const hours = task.plannedHours ?? 1;
+        hoursMap[cat] += hours;
+        countMap[cat]++;
+      }
+      const distribution = calcDistributionScoreFromHours(hoursMap);
+      const closedDeals = engDeals.filter(d => d.stage === 'closed_won');
+      const totalSales = closedDeals.reduce((s: number, d: typeof closedDeals[0]) => s + parseFloat(d.value as string), 0);
+      const closingRate = engDeals.length > 0 ? closedDeals.length / engDeals.length : 0;
+      const targetAmount = target ? parseFloat(target.targetAmount as string) : 0;
+      const salesAchievement = targetAmount > 0 ? totalSales / targetAmount : 0;
+
+      const behaviorAlerts = generateBehaviorAlerts({
+        actualPct: distribution.actualPct,
+        closingRate,
+        salesAchievement,
+        closedDeals: closedDeals.length,
+        totalTasks: engTasks.length,
+      });
+
+      const criticalInsights = generateCriticalInsightsV2({
+        actualPct: distribution.actualPct,
+        closingRate,
+        salesAchievement,
+        distributionScore: distribution.score,
+      });
+
+      // هل المهندس Balanced؟
+      const isBalanced = distribution.score >= 70;
+      const dominantActivity = Object.entries(distribution.actualPct)
+        .sort(([, a], [, b]) => b - a)[0]?.[0] ?? 'other';
+
+      return {
+        engineerId: eng.id,
+        engineerName: eng.name,
+        weekRange: { start: weekStartStr, end: weekEndStr },
+        totalTasks: engTasks.length,
+        taskCounts: countMap,
+        taskHours: hoursMap,
+        distribution,
+        isBalanced,
+        dominantActivity,
+        closedDealsCount: closedDeals.length,
+        totalSales,
+        closingRate: Math.round(closingRate * 100),
+        salesAchievement: Math.round(salesAchievement * 100),
+        behaviorAlerts,
+        criticalInsights,
+        summary: isBalanced
+          ? `أداء متوازن هذا الأسبوع — Distribution Score: ${distribution.score}%`
+          : `توزيع غير متوازن — تركيز زائد على ${dominantActivity === 'meetings' ? 'الاجتماعات' : dominantActivity === 'design3d' ? '3D' : dominantActivity === 'design2d' ? '2D' : 'عروض الأسعار'}`,
+      };
+    });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PLAYBOOK SYSTEM
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** جلب كل عناصر الـ Playbook */
+export async function getPlaybookItems(category?: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [eq(playbookItems.isActive, 1)];
+  if (category) conditions.push(eq(playbookItems.category, category));
+  return db.select().from(playbookItems)
+    .where(and(...conditions))
+    .orderBy(playbookItems.sortOrder, playbookItems.name);
+}
+
+/** جلب عنصر واحد من الـ Playbook */
+export async function getPlaybookItemById(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(playbookItems).where(eq(playbookItems.id, id));
+  return rows[0] ?? null;
+}
+
+/** إنشاء عنصر جديد في الـ Playbook */
+export async function createPlaybookItem(data: Omit<InsertPlaybookItem, 'id' | 'createdAt' | 'updatedAt'>) {
+  const db = await getDb();
+  if (!db) throw new Error('DB not available');
+  const result = await db.insert(playbookItems).values(data);
+  return result;
+}
+
+/** تحديث عنصر في الـ Playbook */
+export async function updatePlaybookItem(id: number, data: Partial<Omit<InsertPlaybookItem, 'id' | 'createdAt' | 'updatedAt'>>) {
+  const db = await getDb();
+  if (!db) throw new Error('DB not available');
+  await db.update(playbookItems).set(data).where(eq(playbookItems.id, id));
+  return { success: true };
+}
+
+/** حذف عنصر من الـ Playbook (soft delete) */
+export async function deletePlaybookItem(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error('DB not available');
+  await db.update(playbookItems).set({ isActive: 0 }).where(eq(playbookItems.id, id));
+  return { success: true };
+}
+
+/** استيراد عناصر من Excel (batch insert) */
+export async function importPlaybookItems(items: Array<Omit<InsertPlaybookItem, 'id' | 'createdAt' | 'updatedAt'>>) {
+  const db = await getDb();
+  if (!db) throw new Error('DB not available');
+  if (items.length === 0) return { inserted: 0 };
+  await db.insert(playbookItems).values(items);
+  return { inserted: items.length };
+}
+
+/** جلب تصنيفات الـ Playbook */
+export async function getPlaybookCategories() {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.selectDistinct({ category: playbookItems.category })
+    .from(playbookItems)
+    .where(and(eq(playbookItems.isActive, 1)));
+  return rows.map(r => r.category).filter(Boolean) as string[];
+}
+
+/** إنشاء عرض سعر جديد */
+export async function createPlaybookQuotation(data: {
+  engineerId: number;
+  dealId?: number;
+  clientName?: string;
+  items: Array<{ itemId: number; qty: number; price: number; notes?: string }>;
+  totalValue: number;
+  notes?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error('DB not available');
+  const result = await db.insert(playbookQuotations).values({
+    engineerId: data.engineerId,
+    dealId: data.dealId,
+    clientName: data.clientName,
+    itemsJson: JSON.stringify(data.items),
+    totalValue: data.totalValue.toString(),
+    notes: data.notes,
+    status: 'draft',
+  });
+  return result;
+}
+
+/** جلب عروض الأسعار لمهندس */
+export async function getPlaybookQuotations(engineerId?: number, dealId?: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions: any[] = [];
+  if (engineerId) conditions.push(eq(playbookQuotations.engineerId, engineerId));
+  if (dealId) conditions.push(eq(playbookQuotations.dealId, dealId));
+  const rows = await db.select().from(playbookQuotations)
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(desc(playbookQuotations.createdAt));
+  return rows;
+}
+
+/** تحديث رابط التسجيل */
+export async function updatePlaybookRecordingLink(quotationId: number, recordingLink: string) {
+  const db = await getDb();
+  if (!db) throw new Error('DB not available');
+  await db.update(playbookQuotations)
+    .set({ recordingLink, status: 'presented' })
+    .where(eq(playbookQuotations.id, quotationId));
+  return { success: true };
+}
+
+/** تحديث حالة العرض */
+export async function updatePlaybookQuotationStatus(quotationId: number, status: 'draft' | 'presented' | 'accepted' | 'rejected') {
+  const db = await getDb();
+  if (!db) throw new Error('DB not available');
+  await db.update(playbookQuotations).set({ status }).where(eq(playbookQuotations.id, quotationId));
+  return { success: true };
+}
+
+/** جلب Funnel Analysis الكامل */
+export async function getFunnelAnalysis(engineerId?: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  // Leads
+  const allLeads = await db.select({ id: leads.id, engineerId: leads.assignedEngineerId, status: leads.status })
+    .from(leads)
+    .where(and(eq(leads.isDeleted, 0), gte(leads.createdAt, monthStart)));
+  // Visits (Meetings)
+  const allVisits = await db.select({ id: visits.id, engineerId: visits.engineerId, status: visits.status })
+    .from(visits)
+    .where(and(eq(visits.isDeleted, 0), gte(visits.createdAt, monthStart)));
+  // Deals
+  const allDeals = await db.select({ id: deals.id, engineerId: deals.engineerId, stage: deals.stage, lostReason: deals.lostReason, value: deals.value })
+    .from(deals)
+    .where(and(eq(deals.isDeleted, 0), gte(deals.createdAt, monthStart)));
+  const filterByEng = (arr: any[]) => engineerId ? arr.filter(x => x.engineerId === engineerId) : arr;
+  const engLeads = filterByEng(allLeads);
+  const engVisits = filterByEng(allVisits);
+  const engDeals = filterByEng(allDeals);
+  const closedWon = engDeals.filter(d => d.stage === 'closed_won');
+  const closedLost = engDeals.filter(d => d.stage === 'closed_lost');
+  const proposals = engDeals.filter(d => ['proposal', 'contract_sent', 'negotiation'].includes(d.stage));
+  // Conversion Rates
+  const leadToMeeting = engLeads.length > 0 ? engVisits.length / engLeads.length : 0;
+  const meetingToProposal = engVisits.length > 0 ? proposals.length / engVisits.length : 0;
+  const proposalToClose = proposals.length > 0 ? closedWon.length / proposals.length : 0;
+  const overallConversion = engLeads.length > 0 ? closedWon.length / engLeads.length : 0;
+  // Lost Deals Analysis
+  const lostReasons: Record<string, number> = {};
+  for (const d of closedLost) {
+    const reason = d.lostReason ?? 'غير محدد';
+    lostReasons[reason] = (lostReasons[reason] ?? 0) + 1;
+  }
+  const lostReasonsArray = Object.entries(lostReasons)
+    .map(([reason, count]) => ({ reason, count, pct: closedLost.length > 0 ? Math.round(count / closedLost.length * 100) : 0 }))
+    .sort((a, b) => b.count - a.count);
+  return {
+    period: { start: monthStart.toISOString().split('T')[0], end: now.toISOString().split('T')[0] },
+    funnel: {
+      leads: engLeads.length,
+      meetings: engVisits.length,
+      proposals: proposals.length,
+      closedWon: closedWon.length,
+      closedLost: closedLost.length,
+    },
+    conversionRates: {
+      leadToMeeting: Math.round(leadToMeeting * 100),
+      meetingToProposal: Math.round(meetingToProposal * 100),
+      proposalToClose: Math.round(proposalToClose * 100),
+      overall: Math.round(overallConversion * 100),
+    },
+    lostReasonsArray,
+    totalLostValue: closedLost.reduce((s, d) => s + parseFloat(d.value as string || '0'), 0),
+    totalWonValue: closedWon.reduce((s, d) => s + parseFloat(d.value as string || '0'), 0),
+  };
+}
+
+/** جلب Meeting Reviews لمهندس */
+export async function getMeetingReviewsList(engineerId?: number, limit = 20) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions: any[] = [];
+  if (engineerId) conditions.push(eq(meetingReviews.engineerId, engineerId));
+  return db.select().from(meetingReviews)
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(desc(meetingReviews.createdAt))
+    .limit(limit);
+}
+
+/** Weekly Coaching Summary لمهندس */
+export async function getWeeklyCoachingSummary(engineerId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const weekStart = new Date();
+  weekStart.setDate(weekStart.getDate() - 6);
+  const reviews = await db.select().from(meetingReviews)
+    .where(and(
+      eq(meetingReviews.engineerId, engineerId),
+      gte(meetingReviews.createdAt, weekStart),
+    ));
+  if (reviews.length === 0) return null;
+  const avgScore = reviews.reduce((s, r) => s + r.totalScore, 0) / reviews.length;
+  const avgOpening = reviews.reduce((s, r) => s + r.openingScore, 0) / reviews.length;
+  const avgUnderstanding = reviews.reduce((s, r) => s + r.understandingScore, 0) / reviews.length;
+  const avgPresentation = reviews.reduce((s, r) => s + r.presentationScore, 0) / reviews.length;
+  const avgObjection = reviews.reduce((s, r) => s + r.objectionScore, 0) / reviews.length;
+  const avgClosing = reviews.reduce((s, r) => s + r.closingScore, 0) / reviews.length;
+  // نقاط القوة والضعف
+  const scores = [
+    { name: 'الافتتاح', score: avgOpening, max: 10 },
+    { name: 'فهم الاحتياج', score: avgUnderstanding, max: 20 },
+    { name: 'العرض', score: avgPresentation, max: 20 },
+    { name: 'التعامل مع الاعتراضات', score: avgObjection, max: 25 },
+    { name: 'الإغلاق', score: avgClosing, max: 25 },
+  ];
+  const strengths = scores.filter(s => s.score / s.max >= 0.75).map(s => s.name);
+  const improvements = scores.filter(s => s.score / s.max < 0.6).map(s => s.name);
+  return {
+    reviewsCount: reviews.length,
+    avgScore: Math.round(avgScore),
+    strengths,
+    improvements,
+    scores,
+    rating: avgScore >= 85 ? 'ممتاز' : avgScore >= 70 ? 'جيد' : avgScore >= 55 ? 'مقبول' : 'يحتاج تحسين',
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SALES EXECUTION TRACKING SYSTEM
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── Session Management ───────────────────────────────────────────────────────
+
+/** إنشاء جلسة اجتماع جديدة */
+export async function createMeetingSession(input: {
+  engineerId: number;
+  quotationId?: number;
+  dealId?: number;
+  clientName?: string;
+  sessionType?: 'presentation' | 'closing' | 'follow_up';
+  itemsTotal?: number;
+}): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error('DB not available');
+  const [result] = await db.insert(meetingSessions).values({
+    engineerId: input.engineerId,
+    quotationId: input.quotationId,
+    dealId: input.dealId,
+    clientName: input.clientName,
+    sessionType: input.sessionType ?? 'presentation',
+    itemsTotal: input.itemsTotal ?? 0,
+    status: 'active',
+  });
+  return (result as any).insertId as number;
+}
+
+/** إنهاء جلسة وحساب الـ Score */
+export async function endMeetingSession(sessionId: number, recordingLink?: string): Promise<{
+  score: number; itemsViewed: number; videosPlayed: number; scriptsUsed: number;
+}> {
+  const db = await getDb();
+  if (!db) throw new Error('DB not available');
+
+  // جلب كل الـ actions لهذه الجلسة
+  const actions = await db.select().from(sessionActions).where(eq(sessionActions.sessionId, sessionId));
+
+  // حساب الإحصائيات
+  const itemsCompleted = actions.filter(a => a.actionType === 'item_completed').length;
+  const videosPlayed = actions.filter(a => a.actionType === 'video_completed').length;
+  const scriptsUsed = actions.filter(a => a.actionType === 'script_read').length;
+  const rendersViewed = actions.filter(a => a.actionType === 'render_viewed').length;
+  const pricesViewed = actions.filter(a => a.actionType === 'price_viewed').length;
+
+  // جلب إجمالي Items من الجلسة
+  const [session] = await db.select().from(meetingSessions).where(eq(meetingSessions.id, sessionId));
+  const totalItems = session?.itemsTotal ?? 1;
+
+  // حساب الـ Score (0-100)
+  // Video Completed = 25 نقطة من الإجمالي
+  // Script Read = 25 نقطة
+  // Items Completed = 30 نقطة
+  // Render + Price = 20 نقطة
+  const videoScore = Math.min(25, Math.round((videosPlayed / Math.max(totalItems, 1)) * 25));
+  const scriptScore = Math.min(25, Math.round((scriptsUsed / Math.max(totalItems, 1)) * 25));
+  const itemScore = Math.min(30, Math.round((itemsCompleted / Math.max(totalItems, 1)) * 30));
+  const engagementScore = Math.min(20, Math.round(((rendersViewed + pricesViewed) / Math.max(totalItems * 2, 1)) * 20));
+  const totalScore = videoScore + scriptScore + itemScore + engagementScore;
+
+  // حساب المدة
+  const now = new Date();
+  const startTime = session?.startTime ?? now;
+  const durationMinutes = Math.round((now.getTime() - startTime.getTime()) / 60000);
+
+  // تحديث الجلسة
+  await db.update(meetingSessions).set({
+    endTime: now,
+    durationMinutes,
+    totalScore,
+    itemsViewed: itemsCompleted,
+    videosPlayed,
+    scriptsUsed,
+    rendersViewed,
+    pricesViewed,
+    status: 'completed',
+    recordingLink: recordingLink ?? session?.recordingLink ?? undefined,
+  }).where(eq(meetingSessions.id, sessionId));
+
+  return { score: totalScore, itemsViewed: itemsCompleted, videosPlayed, scriptsUsed };
+}
+
+/** تسجيل إجراء داخل الجلسة */
+export async function logSessionAction(input: {
+  sessionId: number;
+  itemId?: number;
+  actionType: 'item_opened' | 'video_started' | 'video_completed' | 'render_viewed' |
+              'script_opened' | 'script_read' | 'price_viewed' | 'quotation_opened' |
+              'item_completed' | 'item_skipped';
+  durationSeconds?: number;
+  metadata?: string;
+}): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(sessionActions).values({
+    sessionId: input.sessionId,
+    itemId: input.itemId,
+    actionType: input.actionType,
+    durationSeconds: input.durationSeconds ?? 0,
+    metadata: input.metadata,
+  });
+}
+
+/** جلب تفاصيل جلسة كاملة (للـ Admin Review) */
+export async function getSessionDetails(sessionId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [session] = await db.select().from(meetingSessions).where(eq(meetingSessions.id, sessionId));
+  if (!session) return null;
+
+  const actions = await db.select().from(sessionActions)
+    .where(eq(sessionActions.sessionId, sessionId))
+    .orderBy(sessionActions.timestamp);
+
+  // تجميع actions حسب Item
+  const itemMap: Record<number, {
+    itemId: number; opened: boolean; videoPlayed: boolean; videoCompleted: boolean;
+    renderViewed: boolean; scriptOpened: boolean; scriptRead: boolean; priceViewed: boolean;
+    completed: boolean; skipped: boolean; totalSeconds: number;
+  }> = {};
+
+  for (const action of actions) {
+    const id = action.itemId ?? 0;
+    if (!itemMap[id]) {
+      itemMap[id] = { itemId: id, opened: false, videoPlayed: false, videoCompleted: false,
+        renderViewed: false, scriptOpened: false, scriptRead: false, priceViewed: false,
+        completed: false, skipped: false, totalSeconds: 0 };
+    }
+    const item = itemMap[id];
+    if (action.actionType === 'item_opened') item.opened = true;
+    if (action.actionType === 'video_started') item.videoPlayed = true;
+    if (action.actionType === 'video_completed') item.videoCompleted = true;
+    if (action.actionType === 'render_viewed') item.renderViewed = true;
+    if (action.actionType === 'script_opened') item.scriptOpened = true;
+    if (action.actionType === 'script_read') item.scriptRead = true;
+    if (action.actionType === 'price_viewed') item.priceViewed = true;
+    if (action.actionType === 'item_completed') item.completed = true;
+    if (action.actionType === 'item_skipped') item.skipped = true;
+    item.totalSeconds += action.durationSeconds ?? 0;
+  }
+
+  // تحليل الـ Alerts
+  const alerts: string[] = [];
+  const itemDetails = Object.values(itemMap);
+  const skippedItems = itemDetails.filter(i => i.skipped).length;
+  const noVideoItems = itemDetails.filter(i => i.opened && !i.videoCompleted).length;
+  const noScriptItems = itemDetails.filter(i => i.opened && !i.scriptRead).length;
+
+  if (skippedItems > 0) alerts.push(`تم تخطي ${skippedItems} عنصر بدون عرض كامل`);
+  if (noVideoItems > 0) alerts.push(`${noVideoItems} عنصر لم يُشغَّل فيديوه`);
+  if (noScriptItems > 0) alerts.push(`${noScriptItems} عنصر لم يُستخدم Script له`);
+  if (session.totalScore !== null && session.totalScore < 50) alerts.push('جودة العرض منخفضة - يحتاج مراجعة');
+
+  return { session, actions, itemDetails, alerts };
+}
+
+/** إحصائيات أداء مهندس في الـ Sessions */
+export async function getEngineerMeetingStats(engineerId: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const sessions = await db.select().from(meetingSessions)
+    .where(and(
+      eq(meetingSessions.engineerId, engineerId),
+      eq(meetingSessions.status, 'completed'),
+      gte(meetingSessions.startTime, monthStart)
+    ));
+
+  if (sessions.length === 0) {
+    return {
+      totalSessions: 0, avgScore: 0, playbookUsagePct: 0,
+      avgItemsViewedPct: 0, avgVideosPlayedPct: 0, avgScriptsUsedPct: 0,
+      alerts: ['لا توجد جلسات مسجلة هذا الشهر'],
+    };
+  }
+
+  const avgScore = Math.round(sessions.reduce((s, x) => s + (x.totalScore ?? 0), 0) / sessions.length);
+  const avgItemsViewedPct = Math.round(
+    sessions.reduce((s, x) => s + (x.itemsTotal ? (x.itemsViewed ?? 0) / x.itemsTotal * 100 : 0), 0) / sessions.length
+  );
+  const avgVideosPlayedPct = Math.round(
+    sessions.reduce((s, x) => s + (x.itemsTotal ? (x.videosPlayed ?? 0) / x.itemsTotal * 100 : 0), 0) / sessions.length
+  );
+  const avgScriptsUsedPct = Math.round(
+    sessions.reduce((s, x) => s + (x.itemsTotal ? (x.scriptsUsed ?? 0) / x.itemsTotal * 100 : 0), 0) / sessions.length
+  );
+
+  // Playbook Usage = جلسات استخدمت الـ Playbook فعلاً (score > 30)
+  const playbookUsedSessions = sessions.filter(s => (s.totalScore ?? 0) > 30).length;
+  const playbookUsagePct = Math.round((playbookUsedSessions / sessions.length) * 100);
+
+  const alerts: string[] = [];
+  if (avgScore < 50) alerts.push('متوسط جودة العروض منخفض');
+  if (playbookUsagePct < 60) alerts.push('نسبة استخدام الـ Playbook ضعيفة');
+  if (avgVideosPlayedPct < 50) alerts.push('أغلب الاجتماعات بدون تشغيل الفيديو');
+  if (avgScriptsUsedPct < 40) alerts.push('ضعف في استخدام Script المبيعات');
+
+  return {
+    totalSessions: sessions.length,
+    avgScore,
+    playbookUsagePct,
+    avgItemsViewedPct,
+    avgVideosPlayedPct,
+    avgScriptsUsedPct,
+    alerts,
+    sessions: sessions.map(s => ({
+      id: s.id, clientName: s.clientName, startTime: s.startTime,
+      durationMinutes: s.durationMinutes, totalScore: s.totalScore,
+      recordingLink: s.recordingLink, status: s.status,
+    })),
+  };
+}
+
+/** قائمة جلسات كل المهندسين (للـ Admin) */
+export async function getAllMeetingSessionsAdmin(limit = 50) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    id: meetingSessions.id,
+    engineerId: meetingSessions.engineerId,
+    clientName: meetingSessions.clientName,
+    sessionType: meetingSessions.sessionType,
+    startTime: meetingSessions.startTime,
+    durationMinutes: meetingSessions.durationMinutes,
+    totalScore: meetingSessions.totalScore,
+    itemsViewed: meetingSessions.itemsViewed,
+    itemsTotal: meetingSessions.itemsTotal,
+    videosPlayed: meetingSessions.videosPlayed,
+    scriptsUsed: meetingSessions.scriptsUsed,
+    recordingLink: meetingSessions.recordingLink,
+    status: meetingSessions.status,
+  }).from(meetingSessions)
+    .orderBy(desc(meetingSessions.startTime))
+    .limit(limit);
+}
+
+/** تحديث Recording Link لجلسة */
+export async function updateSessionRecordingLink(sessionId: number, recordingLink: string): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(meetingSessions).set({ recordingLink }).where(eq(meetingSessions.id, sessionId));
+}
+
+/** Weekly Coaching Summary لمهندس */
+export async function getEngineerWeeklyCoaching(engineerId: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const now = new Date();
+  const weekStart = new Date(now);
+  weekStart.setDate(now.getDate() - now.getDay());
+  weekStart.setHours(0, 0, 0, 0);
+
+  const sessions = await db.select().from(meetingSessions)
+    .where(and(
+      eq(meetingSessions.engineerId, engineerId),
+      eq(meetingSessions.status, 'completed'),
+      gte(meetingSessions.startTime, weekStart)
+    ));
+
+  const strengths: string[] = [];
+  const improvements: string[] = [];
+
+  if (sessions.length === 0) {
+    return { sessions: 0, strengths: [], improvements: ['لا توجد جلسات هذا الأسبوع'], avgScore: 0 };
+  }
+
+  const avgScore = Math.round(sessions.reduce((s, x) => s + (x.totalScore ?? 0), 0) / sessions.length);
+  const avgVideoPct = sessions.reduce((s, x) => s + (x.itemsTotal ? (x.videosPlayed ?? 0) / x.itemsTotal : 0), 0) / sessions.length;
+  const avgScriptPct = sessions.reduce((s, x) => s + (x.itemsTotal ? (x.scriptsUsed ?? 0) / x.itemsTotal : 0), 0) / sessions.length;
+  const avgItemPct = sessions.reduce((s, x) => s + (x.itemsTotal ? (x.itemsViewed ?? 0) / x.itemsTotal : 0), 0) / sessions.length;
+
+  if (avgScore >= 75) strengths.push('جودة عروض ممتازة هذا الأسبوع');
+  if (avgVideoPct >= 0.7) strengths.push('التزام جيد بتشغيل الفيديوهات');
+  if (avgScriptPct >= 0.7) strengths.push('استخدام فعّال لـ Script المبيعات');
+  if (avgItemPct >= 0.8) strengths.push('تغطية شاملة لعناصر العرض');
+
+  if (avgScore < 50) improvements.push('تحسين جودة العرض الكلية - راجع Playbook');
+  if (avgVideoPct < 0.5) improvements.push('تشغيل الفيديو إلزامي لكل عنصر');
+  if (avgScriptPct < 0.4) improvements.push('استخدام Script يحسن Closing Rate بشكل كبير');
+  if (avgItemPct < 0.6) improvements.push('لا تتخطى العناصر - كل عنصر له قيمة بيعية');
+
+  return { sessions: sessions.length, strengths, improvements, avgScore };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FUNNEL ANALYSIS SYSTEM
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** تحليل Funnel كامل لمهندس أو للكل */
+export async function getFullFunnelAnalysis(engineerId?: number, period: 'week' | 'month' | 'quarter' = 'month') {
+  const db = await getDb();
+  if (!db) return null;
+
+  const now = new Date();
+  let startDate: Date;
+  if (period === 'week') {
+    startDate = new Date(now); startDate.setDate(now.getDate() - 7);
+  } else if (period === 'month') {
+    startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+  } else {
+    startDate = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+  }
+
+  // Leads
+  const leadsQuery = db.select().from(leads).where(
+    and(
+      eq(leads.isDeleted, 0),
+      gte(leads.createdAt, startDate),
+      ...(engineerId ? [eq(leads.assignedEngineerId, engineerId)] : [])
+    )
+  );
+  const allLeads = await leadsQuery;
+
+  // Deals
+  const dealsQuery = db.select().from(deals).where(
+    and(
+      eq(deals.isDeleted, 0),
+      gte(deals.createdAt, startDate),
+      ...(engineerId ? [eq(deals.engineerId, engineerId)] : [])
+    )
+  );
+  const allDeals = await dealsQuery;
+
+  // حساب مراحل الـ Funnel
+  const totalLeads = allLeads.length;
+  const contactedLeads = allLeads.filter(l => l.status !== 'new').length;
+  const qualifiedLeads = allLeads.filter(l => l.status === 'qualified' || l.status === 'converted').length;
+  const totalDeals = allDeals.length;
+  const proposals = allDeals.filter(d => d.stage === 'proposal').length;
+  const negotiations = allDeals.filter(d => d.stage === 'negotiation' || d.stage === 'contract_sent').length;
+  const closedWon = allDeals.filter(d => d.stage === 'closed_won').length;
+  const closedLost = allDeals.filter(d => d.stage === 'closed_lost').length;
+
+  // Conversion Rates
+  const leadToMeeting = totalLeads > 0 ? Math.round((contactedLeads / totalLeads) * 100) : 0;
+  const meetingToQuotation = contactedLeads > 0 ? Math.round((totalDeals / Math.max(contactedLeads, 1)) * 100) : 0;
+  const quotationToClosing = totalDeals > 0 ? Math.round((closedWon / Math.max(totalDeals, 1)) * 100) : 0;
+  const overallConversion = totalLeads > 0 ? Math.round((closedWon / Math.max(totalLeads, 1)) * 100) : 0;
+
+  // Lost Deals Analysis
+  const lostDeals = allDeals.filter(d => d.stage === 'closed_lost');
+  const lostByReason: Record<string, number> = {};
+  for (const deal of lostDeals) {
+    const reason = deal.lostReason ?? 'other';
+    lostByReason[reason] = (lostByReason[reason] ?? 0) + 1;
+  }
+
+  // Total Revenue
+  const totalRevenue = allDeals
+    .filter(d => d.stage === 'closed_won')
+    .reduce((s, d) => s + parseFloat(d.value as string || '0'), 0);
+
+  // Pipeline Value
+  const pipelineValue = allDeals
+    .filter(d => d.stage !== 'closed_won' && d.stage !== 'closed_lost')
+    .reduce((s, d) => s + parseFloat(d.value as string || '0'), 0);
+
+  // Funnel Insights
+  const insights: string[] = [];
+  if (leadToMeeting < 30) insights.push('نسبة تحويل Leads إلى اجتماعات منخفضة - يحتاج تحسين Qualification');
+  if (meetingToQuotation < 40) insights.push('كثير من الاجتماعات لا تتحول لعروض أسعار - راجع جودة الاجتماعات');
+  if (quotationToClosing < 25) insights.push('ضعف في إغلاق الصفقات بعد تقديم العرض - تحسين مهارات التفاوض');
+  if (lostDeals.length > closedWon) insights.push('عدد الصفقات المفقودة أكبر من المغلقة - مراجعة استراتيجية البيع');
+  if (lostByReason['price_high'] && lostByReason['price_high'] > lostDeals.length * 0.4) {
+    insights.push('أكثر من 40% من الخسائر بسبب السعر - مراجعة سياسة التسعير');
+  }
+  if (lostByReason['competitor'] && lostByReason['competitor'] > lostDeals.length * 0.3) {
+    insights.push('المنافسون يأخذون 30%+ من الصفقات - تحسين عرض القيمة');
+  }
+
+  return {
+    period,
+    funnel: {
+      totalLeads,
+      contactedLeads,
+      qualifiedLeads,
+      proposals,
+      negotiations,
+      closedWon,
+      closedLost,
+      totalDeals,
+    },
+    conversionRates: {
+      leadToMeeting,
+      meetingToQuotation,
+      quotationToClosing,
+      overallConversion,
+    },
+    lostDealsAnalysis: {
+      total: lostDeals.length,
+      byReason: lostByReason,
+      topReason: Object.entries(lostByReason).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null,
+    },
+    revenue: {
+      totalRevenue,
+      pipelineValue,
+      avgDealValue: closedWon > 0 ? Math.round(totalRevenue / closedWon) : 0,
+    },
+    insights,
+  };
+}
+
+/** مقارنة Funnel بين كل المهندسين */
+export async function getEngineersFunnelComparison() {
+  const db = await getDb();
+  if (!db) return [];
+
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const allEngineers = await db.select().from(engineers).where(and(eq(engineers.status, 'active'), eq(engineers.isDeleted, 0)));
+
+  const results = await Promise.all(allEngineers.map(async (eng) => {
+    const engLeads = await db.select().from(leads).where(
+      and(eq(leads.assignedEngineerId, eng.id), eq(leads.isDeleted, 0), gte(leads.createdAt, monthStart))
+    );
+    const engDeals = await db.select().from(deals).where(
+      and(eq(deals.engineerId, eng.id), eq(deals.isDeleted, 0), gte(deals.createdAt, monthStart))
+    );
+
+    const closedWon = engDeals.filter(d => d.stage === 'closed_won').length;
+    const totalDeals = engDeals.length;
+    const closingRate = totalDeals > 0 ? Math.round((closedWon / totalDeals) * 100) : 0;
+    const totalRevenue = engDeals
+      .filter(d => d.stage === 'closed_won')
+      .reduce((s, d) => s + parseFloat(d.value as string || '0'), 0);
+
+    // Meeting Stats
+    const engSessions = await db.select().from(meetingSessions).where(
+      and(eq(meetingSessions.engineerId, eng.id), eq(meetingSessions.status, 'completed'), gte(meetingSessions.startTime, monthStart))
+    );
+    const avgMeetingScore = engSessions.length > 0
+      ? Math.round(engSessions.reduce((s, x) => s + (x.totalScore ?? 0), 0) / engSessions.length)
+      : 0;
+
+    return {
+      engineerId: eng.id,
+      engineerName: eng.name,
+      totalLeads: engLeads.length,
+      totalDeals,
+      closedWon,
+      closingRate,
+      totalRevenue,
+      totalMeetings: engSessions.length,
+      avgMeetingScore,
+    };
+  }));
+
+  return results.sort((a, b) => b.totalRevenue - a.totalRevenue);
+}
+
+/** تحليل Funnel + Playbook Score مجمّع لمهندس */
+export async function getEngineerFunnelPlaybookInsights(engineerId: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  // Funnel
+  const funnel = await getFullFunnelAnalysis(engineerId, 'month');
+
+  // Meeting Sessions
+  const sessions = await db.select().from(meetingSessions).where(
+    and(eq(meetingSessions.engineerId, engineerId), eq(meetingSessions.status, 'completed'), gte(meetingSessions.startTime, monthStart))
+  );
+  const avgScore = sessions.length > 0
+    ? Math.round(sessions.reduce((s, x) => s + (x.totalScore ?? 0), 0) / sessions.length)
+    : 0;
+  const playbookUsagePct = sessions.length > 0
+    ? Math.round(sessions.filter(s => (s.totalScore ?? 0) > 30).length / sessions.length * 100)
+    : 0;
+
+  // Cross Analysis Insights
+  const crossInsights: string[] = [];
+  if (avgScore >= 70 && (funnel?.conversionRates.quotationToClosing ?? 0) < 25) {
+    crossInsights.push('عرض جيد لكن لا يتحول لإغلاق - مشكلة في التفاوض أو السعر');
+  }
+  if (avgScore < 40 && (funnel?.conversionRates.quotationToClosing ?? 0) > 40) {
+    crossInsights.push('إغلاق جيد رغم ضعف الـ Playbook - مهارة شخصية قوية');
+  }
+  if ((funnel?.funnel.totalLeads ?? 0) > 10 && (funnel?.funnel.closedWon ?? 0) < 2) {
+    crossInsights.push('Leads كثيرة بدون تحويل - مراجعة جودة Qualification');
+  }
+  if (playbookUsagePct < 50) {
+    crossInsights.push('نسبة استخدام Playbook منخفضة - إلزامي لتحسين الأداء');
+  }
+
+  return {
+    funnel,
+    meetingStats: { totalSessions: sessions.length, avgScore, playbookUsagePct },
+    crossInsights: [...(funnel?.insights ?? []), ...crossInsights],
+  };
+}
+
+// ─── Meeting Recording Rule + Auto Review Task + SLA ──────────────────────────────────────────────
+
+const MEETING_TASK_TYPES = [
+  "meeting_presentation", "meeting_closing",
+  "meeting_2d", "meeting_3d", "meeting_quotation"
+] as const;
+
+/** Check if a task type requires a recording link before completion */
+export function isMeetingTaskType(taskType: string | null | undefined): boolean {
+  return MEETING_TASK_TYPES.includes(taskType as typeof MEETING_TASK_TYPES[number]);
+}
+
+/** Validate meeting task completion: returns error message or null if OK */
+export function validateMeetingTaskCompletion(task: {
+  taskType: string | null | undefined;
+  meetingRecordingLink: string | null | undefined;
+  category: string | null | undefined;
+}): string | null {
+  const isMeeting = isMeetingTaskType(task.taskType) || task.category === "meeting";
+  if (!isMeeting) return null; // Not a meeting task, no restriction
+  if (!task.meetingRecordingLink || task.meetingRecordingLink.trim() === "") {
+    return "لا يمكن إغلاق مهمة اجتماع بدون رابط التسجيل (Recording Link)";
+  }
+  return null;
+}
+
+/** Get meeting tasks missing recording (for admin alerts) */
+export async function getMeetingTasksMissingRecording(engineerId?: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const now = new Date();
+  const cutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000); // 24h ago
+
+  const conditions = [
+    eq(dailyTasks.isDeleted, 0),
+    sql`${dailyTasks.taskType} IN ('meeting_presentation','meeting_closing','meeting_2d','meeting_3d','meeting_quotation')`,
+    isNull(dailyTasks.meetingRecordingLink),
+    lte(dailyTasks.taskDate, cutoff),
+  ];
+  if (engineerId) conditions.push(eq(dailyTasks.engineerId, engineerId));
+
+  const tasks = await db
+    .select({
+      id: dailyTasks.id,
+      engineerId: dailyTasks.engineerId,
+      title: dailyTasks.title,
+      taskDate: dailyTasks.taskDate,
+      taskType: dailyTasks.taskType,
+      status: dailyTasks.status,
+      engineerName: engineers.name,
+    })
+    .from(dailyTasks)
+    .leftJoin(engineers, eq(dailyTasks.engineerId, engineers.id))
+    .where(and(...conditions))
+    .orderBy(dailyTasks.taskDate);
+
+  return tasks.map(t => {
+    const taskDateMs = t.taskDate instanceof Date ? t.taskDate.getTime() : new Date(String(t.taskDate)).getTime();
+    const hoursElapsed = Math.floor((now.getTime() - taskDateMs) / (1000 * 60 * 60));
+    return { ...t, hoursElapsed, isSlaBreached: hoursElapsed > 24 };
+  });
+}
+
+/** Auto-create admin review task when a recording is submitted */
+export async function autoCreateReviewTask(params: {
+  meetingTaskId: number;
+  engineerId: number;
+  engineerName: string;
+  meetingDate: string;
+  recordingLink: string;
+}) {
+  const db = await getDb();
+  if (!db) return null;
+
+  // Find admin/manager engineer to assign review
+  const adminEngineers = await db
+    .select({ id: engineers.id, name: engineers.name })
+    .from(engineers)
+    .where(inArray(engineers.role as any, ["admin", "admin_sales"]))
+    .limit(1);
+
+  const adminId = adminEngineers[0]?.id ?? params.engineerId; // fallback to same engineer
+
+  const reviewDeadline = new Date();
+  reviewDeadline.setHours(reviewDeadline.getHours() + 24);
+
+  const [result] = await db.insert(dailyTasks).values({
+    engineerId: adminId,
+    taskDate: new Date() as unknown as Date,
+    title: `مراجعة اجتماع: ${params.engineerName}`,
+    description: `مراجعة تسجيل اجتماع المهندس ${params.engineerName} بتاريخ ${params.meetingDate}\nرابط التسجيل: ${params.recordingLink}\nالمهمة الأصلية ID: ${params.meetingTaskId}`,
+    taskType: "other" as any,
+    category: "meeting_review",
+    status: "planned",
+    priority: "high",
+    plannedHours: 0.5,
+    meetingRecordingLink: params.recordingLink,
+  });
+
+  return result;
+}
+
+/** Get pending meeting reviews for admin (SLA tracking) */
+export async function getPendingMeetingReviews() {
+  const db = await getDb();
+  if (!db) return [];
+  const now = new Date();
+
+  const tasks = await db
+    .select({
+      id: dailyTasks.id,
+      engineerId: dailyTasks.engineerId,
+      title: dailyTasks.title,
+      taskDate: dailyTasks.taskDate,
+      status: dailyTasks.status,
+      priority: dailyTasks.priority,
+      meetingRecordingLink: dailyTasks.meetingRecordingLink,
+      description: dailyTasks.description,
+      engineerName: engineers.name,
+    })
+    .from(dailyTasks)
+    .leftJoin(engineers, eq(dailyTasks.engineerId, engineers.id))
+    .where(
+      and(
+        eq(dailyTasks.isDeleted, 0),
+        eq(dailyTasks.category as any, "meeting_review"),
+        inArray(dailyTasks.status, ["planned", "delayed"])
+      )
+    )
+    .orderBy(dailyTasks.taskDate);
+
+  return tasks.map(t => {
+    const taskDateMs = t.taskDate instanceof Date ? t.taskDate.getTime() : new Date(String(t.taskDate)).getTime();
+    const hoursElapsed = Math.floor((now.getTime() - taskDateMs) / (1000 * 60 * 60));
+    return {
+      ...t,
+      hoursElapsed,
+      isSlaBreached: hoursElapsed > 24,
+      slaStatus: hoursElapsed > 24 ? "breached" : hoursElapsed > 18 ? "warning" : "ok",
+    };
+  });
+}
+
+/** Get meeting review stats for admin KPI */
+export async function getMeetingReviewAdminStats() {
+  const db = await getDb();
+  if (!db) return { pending: 0, completed: 0, delayed: 0, slaBreached: 0 };
+
+  const allReviews = await db
+    .select({
+      id: dailyTasks.id,
+      status: dailyTasks.status,
+      taskDate: dailyTasks.taskDate,
+    })
+    .from(dailyTasks)
+    .where(
+      and(
+        eq(dailyTasks.isDeleted, 0),
+        eq(dailyTasks.category as any, "meeting_review")
+      )
+    );
+
+  const now = new Date();
+  let pending = 0, completed = 0, delayed = 0, slaBreached = 0;
+
+  for (const r of allReviews) {
+    const taskDateMs = r.taskDate instanceof Date ? r.taskDate.getTime() : new Date(String(r.taskDate)).getTime();
+    const hoursElapsed = Math.floor((now.getTime() - taskDateMs) / (1000 * 60 * 60));
+    if (r.status === "completed") completed++;
+    else if (r.status === "delayed") { delayed++; slaBreached++; }
+    else { pending++; if (hoursElapsed > 24) slaBreached++; }
+  }
+
+  return { pending, completed, delayed, slaBreached, total: allReviews.length };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── Meeting Review System (أداة تقييم حقيقية) ────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** إنشاء أو تحديث Meeting Review - 4 عناصر + Decision Tag + Mandatory Feedback */
+export async function createOrUpdateMeetingReview(input: {
+  taskId: number;
+  engineerId: number;
+  reviewedBy?: number;
+  playbookUsageScore: number;       // من 10
+  presentationQualityScore: number; // من 10
+  controlScore: number;             // من 10
+  closingAttemptScore: number;      // من 10
+  decisionTag: "strong" | "needs_improvement" | "weak";
+  strengthPoint: string;            // إجباري
+  improvementPoint: string;         // إجباري
+  comments?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+
+  // التحقق من وجود Recording + Task مكتملة
+  const task = await db.select().from(dailyTasks).where(eq(dailyTasks.id, input.taskId)).limit(1);
+  if (!task[0]) throw new Error("المهمة غير موجودة");
+  if (task[0].status !== "completed") throw new Error("لا يمكن إضافة Review إلا إذا كانت المهمة مكتملة");
+  if (!task[0].meetingRecordingLink) throw new Error("لا يمكن إضافة Review بدون Recording Link");
+
+  // حساب الإجمالي (من 40 → %)
+  const totalScore = input.playbookUsageScore + input.presentationQualityScore +
+    input.controlScore + input.closingAttemptScore;
+
+  // التحقق من وجود Review سابق
+  const existing = await db.select().from(meetingReviews)
+    .where(eq(meetingReviews.taskId, input.taskId)).limit(1);
+
+  if (existing[0]) {
+    await db.update(meetingReviews).set({
+      playbookUsageScore: input.playbookUsageScore,
+      presentationQualityScore: input.presentationQualityScore,
+      controlScore: input.controlScore,
+      closingAttemptScore: input.closingAttemptScore,
+      totalScore,
+      decisionTag: input.decisionTag,
+      strengthPoint: input.strengthPoint,
+      improvementPoint: input.improvementPoint,
+      comments: input.comments,
+      reviewedBy: input.reviewedBy,
+    }).where(eq(meetingReviews.id, existing[0].id));
+    return { id: existing[0].id, updated: true };
+  } else {
+    const [result] = await db.insert(meetingReviews).values({
+      taskId: input.taskId,
+      engineerId: input.engineerId,
+      reviewedBy: input.reviewedBy,
+      playbookUsageScore: input.playbookUsageScore,
+      presentationQualityScore: input.presentationQualityScore,
+      controlScore: input.controlScore,
+      closingAttemptScore: input.closingAttemptScore,
+      totalScore,
+      decisionTag: input.decisionTag,
+      strengthPoint: input.strengthPoint,
+      improvementPoint: input.improvementPoint,
+      comments: input.comments,
+      // Legacy fields default
+      openingScore: 0, understandingScore: 0, presentationScore: 0,
+      objectionScore: 0, closingScore: 0,
+    });
+    return { id: (result as any).insertId, updated: false };
+  }
+}
+
+/** جلب Meeting Review بـ taskId */
+export async function getMeetingReviewByTask(taskId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const reviews = await db.select().from(meetingReviews)
+    .where(eq(meetingReviews.taskId, taskId)).limit(1);
+  if (!reviews[0]) return null;
+  const r = reviews[0];
+  return {
+    ...r,
+    totalScorePct: Math.round((r.totalScore / 40) * 100),
+    decisionTagLabel: r.decisionTag === "strong" ? "Strong Performer" :
+      r.decisionTag === "needs_improvement" ? "يحتاج تحسين" : "ضعيف",
+  };
+}
+
+/** Weekly Summary لكل مهندس: Average Score + عدد Reviews + Trend */
+export async function getEngineerMeetingReviewSummary(engineerId?: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const engList = await db.select({ id: engineers.id, name: engineers.name, role: engineers.role })
+    .from(engineers).where(eq(engineers.isDeleted, 0));
+
+  const targetEngineers = engineerId
+    ? engList.filter(e => e.id === engineerId)
+    : engList.filter(e => !["admin_sales", "group_admin"].includes(e.role ?? ""));
+
+  const now = new Date();
+  const thisWeekStart = new Date(now);
+  thisWeekStart.setDate(now.getDate() - now.getDay());
+  thisWeekStart.setHours(0, 0, 0, 0);
+
+  const lastWeekStart = new Date(thisWeekStart);
+  lastWeekStart.setDate(lastWeekStart.getDate() - 7);
+
+  const allReviews = await db.select().from(meetingReviews);
+
+  return targetEngineers.map(eng => {
+    const engReviews = allReviews.filter(r => r.engineerId === eng.id);
+    const thisWeekReviews = engReviews.filter(r => new Date(r.createdAt) >= thisWeekStart);
+    const lastWeekReviews = engReviews.filter(r =>
+      new Date(r.createdAt) >= lastWeekStart && new Date(r.createdAt) < thisWeekStart);
+
+    const avgScore = engReviews.length > 0
+      ? Math.round(engReviews.reduce((s, r) => s + r.totalScore, 0) / engReviews.length)
+      : 0;
+    const avgScorePct = Math.round((avgScore / 40) * 100);
+
+    const thisWeekAvg = thisWeekReviews.length > 0
+      ? Math.round(thisWeekReviews.reduce((s, r) => s + r.totalScore, 0) / thisWeekReviews.length)
+      : 0;
+    const lastWeekAvg = lastWeekReviews.length > 0
+      ? Math.round(lastWeekReviews.reduce((s, r) => s + r.totalScore, 0) / lastWeekReviews.length)
+      : 0;
+
+    const trend: "up" | "down" | "stable" =
+      thisWeekAvg > lastWeekAvg ? "up" :
+      thisWeekAvg < lastWeekAvg ? "down" : "stable";
+
+    const strongCount = engReviews.filter(r => r.decisionTag === "strong").length;
+    const needsImprovementCount = engReviews.filter(r => r.decisionTag === "needs_improvement").length;
+    const weakCount = engReviews.filter(r => r.decisionTag === "weak").length;
+
+    return {
+      engineerId: eng.id,
+      engineerName: eng.name,
+      totalReviews: engReviews.length,
+      thisWeekReviews: thisWeekReviews.length,
+      avgScore,
+      avgScorePct,
+      thisWeekAvgPct: Math.round((thisWeekAvg / 40) * 100),
+      lastWeekAvgPct: Math.round((lastWeekAvg / 40) * 100),
+      trend,
+      decisionBreakdown: { strong: strongCount, needsImprovement: needsImprovementCount, weak: weakCount },
+      recentReviews: engReviews.slice(-3).map(r => ({
+        id: r.id, taskId: r.taskId,
+        totalScore: r.totalScore,
+        totalScorePct: Math.round((r.totalScore / 40) * 100),
+        decisionTag: r.decisionTag,
+        createdAt: r.createdAt,
+      })),
+    };
+  });
+}
+
+/** قائمة Meeting Tasks التي تحتاج Review */
+export async function getMeetingTasksPendingReview() {
+  const db = await getDb();
+  if (!db) return [];
+
+  const meetingTypes = ["meeting_2d", "meeting_3d", "meeting_quotation", "meeting_closing", "meeting_presentation"];
+  const completedMeetings = await db.select().from(dailyTasks)
+    .where(and(
+      eq(dailyTasks.status, "completed"),
+      eq(dailyTasks.isDeleted, 0),
+      inArray(dailyTasks.taskType as any, meetingTypes)
+    ));
+
+  const reviewedTaskIds = new Set(
+    (await db.select({ taskId: meetingReviews.taskId }).from(meetingReviews))
+      .map(r => r.taskId)
+  );
+
+  return completedMeetings
+    .filter(t => t.meetingRecordingLink && !reviewedTaskIds.has(t.id))
+    .map(t => ({
+      id: t.id, title: t.title, engineerId: t.engineerId,
+      taskType: t.taskType, recordingLink: t.meetingRecordingLink,
+      completedAt: t.createdAt,
+    }));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── Promotion & Evaluation System ────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** حساب Performance Level بناءً على الدرجة الإجمالية */
+function calcPerformanceLevel(overallScore: number): "a_player" | "b_player" | "c_player" {
+  if (overallScore >= 80) return "a_player";
+  if (overallScore >= 60) return "b_player";
+  return "c_player";
+}
+
+/** حساب Decision Action بناءً على Performance Level + تاريخ C Player */
+function calcDecisionAction(
+  level: "a_player" | "b_player" | "c_player",
+  consecutiveCMonths: number
+): "promote" | "bonus" | "coaching" | "warning" | "improvement_plan" | "firing_risk" | "none" {
+  if (level === "a_player") return "promote";
+  if (level === "b_player") return "coaching";
+  if (level === "c_player") {
+    if (consecutiveCMonths >= 2) return "firing_risk";
+    if (consecutiveCMonths >= 1) return "improvement_plan";
+    return "warning";
+  }
+  return "none";
+}
+
+/** حساب Promotion Readiness Score للمهندس */
+function calcPromotionReadiness(
+  careerLevel: "sales_engineer" | "senior_sales_engineer" | "sales_consultant",
+  scores: {
+    salesAchievementScore: number;
+    meetingScore: number;
+    playbookUsageScore: number;
+    taskDisciplineScore: number;
+    closingRateScore: number;
+  },
+  consecutiveMonthsMeetingTarget: number
+): { eligible: boolean; readinessScore: number; missingCriteria: string[] } {
+  const missing: string[] = [];
+  let totalPoints = 0;
+  let maxPoints = 0;
+
+  if (careerLevel === "sales_engineer") {
+    // Sales Engineer → Senior: شهرين متتاليين ≥ 80% + Meeting ≥ 70% + Playbook ≥ 70% + Task 100%
+    maxPoints = 5;
+    if (scores.salesAchievementScore >= 80) totalPoints++; else missing.push("Sales Target ≥ 80%");
+    if (consecutiveMonthsMeetingTarget >= 2) totalPoints++; else missing.push("شهرين متتاليين تحقيق الهدف");
+    if (scores.meetingScore >= 70) totalPoints++; else missing.push("Meeting Score ≥ 70%");
+    if (scores.playbookUsageScore >= 70) totalPoints++; else missing.push("Playbook Usage ≥ 70%");
+    if (scores.taskDisciplineScore >= 100) totalPoints++; else missing.push("Task Completion 100%");
+  } else if (careerLevel === "senior_sales_engineer") {
+    // Senior → Consultant: 3 شهور ≥ 100% + Closing Rate عالي + Meeting ≥ 80% + Playbook ≥ 85%
+    maxPoints = 5;
+    if (scores.salesAchievementScore >= 100) totalPoints++; else missing.push("Sales Target ≥ 100%");
+    if (consecutiveMonthsMeetingTarget >= 3) totalPoints++; else missing.push("3 شهور متتالية تحقيق الهدف");
+    if (scores.meetingScore >= 80) totalPoints++; else missing.push("Meeting Score ≥ 80%");
+    if (scores.playbookUsageScore >= 85) totalPoints++; else missing.push("Playbook Usage ≥ 85%");
+    if (scores.closingRateScore >= 70) totalPoints++; else missing.push("Closing Rate عالي");
+  } else {
+    // Sales Consultant - أعلى مستوى
+    return { eligible: false, readinessScore: 100, missingCriteria: ["أعلى مستوى في المسار الوظيفي"] };
+  }
+
+  const readinessScore = Math.round((totalPoints / maxPoints) * 100);
+  const eligible = missing.length === 0;
+  return { eligible, readinessScore, missingCriteria: missing };
+}
+
+/** إنشاء أو تحديث التقييم الشهري للمهندس */
+export async function createOrUpdateMonthlyEvaluation(input: {
+  engineerId: number;
+  evaluationMonth: number;
+  evaluationYear: number;
+  salesAchievementScore: number;
+  closingRateScore: number;
+  meetingScore: number;
+  playbookUsageScore: number;
+  taskDisciplineScore: number;
+  reviewedBy?: number;
+  coachingNotes?: string;
+  improvementPlan?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+
+  // حساب الدرجة الإجمالية (متوسط 5 عناصر)
+  const overallScore = Math.round((
+    input.salesAchievementScore +
+    input.closingRateScore +
+    input.meetingScore +
+    input.playbookUsageScore +
+    input.taskDisciplineScore
+  ) / 5);
+
+  const performanceLevel = calcPerformanceLevel(overallScore);
+
+  // جلب التقييم السابق لحساب consecutiveCMonths
+  const prevMonth = input.evaluationMonth === 1 ? 12 : input.evaluationMonth - 1;
+  const prevYear = input.evaluationMonth === 1 ? input.evaluationYear - 1 : input.evaluationYear;
+  const prevEval = await db.select().from(engineerEvaluations)
+    .where(and(
+      eq(engineerEvaluations.engineerId, input.engineerId),
+      eq(engineerEvaluations.evaluationMonth, prevMonth),
+      eq(engineerEvaluations.evaluationYear, prevYear)
+    )).limit(1);
+
+  let consecutiveCMonths = 0;
+  if (performanceLevel === "c_player") {
+    consecutiveCMonths = prevEval[0]?.performanceLevel === "c_player"
+      ? (prevEval[0].consecutiveCMonths ?? 0) + 1
+      : 1;
+  }
+
+  const firingDecisionTriggered = consecutiveCMonths >= 2;
+  const decisionAction = calcDecisionAction(performanceLevel, consecutiveCMonths);
+
+  // جلب Career Level الحالي للمهندس
+  const careerLevelRecord = await db.select().from(engineerCareerLevels)
+    .where(eq(engineerCareerLevels.engineerId, input.engineerId)).limit(1);
+  const careerLevel = (careerLevelRecord[0]?.currentLevel ?? "sales_engineer") as
+    "sales_engineer" | "senior_sales_engineer" | "sales_consultant";
+
+  // حساب Promotion Readiness
+  const prevEvalForConsecutive = await db.select().from(engineerEvaluations)
+    .where(eq(engineerEvaluations.engineerId, input.engineerId))
+    .orderBy(desc(engineerEvaluations.evaluationYear), desc(engineerEvaluations.evaluationMonth))
+    .limit(1);
+  const consecutiveMonthsMeetingTarget = (prevEvalForConsecutive[0]?.salesAchievementScore ?? 0) >= 80
+    ? (prevEvalForConsecutive[0]?.consecutiveMonthsMeetingTarget ?? 0) + 1
+    : (input.salesAchievementScore >= 80 ? 1 : 0);
+
+  const { eligible, readinessScore, missingCriteria } = calcPromotionReadiness(careerLevel, {
+    salesAchievementScore: input.salesAchievementScore,
+    meetingScore: input.meetingScore,
+    playbookUsageScore: input.playbookUsageScore,
+    taskDisciplineScore: input.taskDisciplineScore,
+    closingRateScore: input.closingRateScore,
+  }, consecutiveMonthsMeetingTarget);
+
+  // التحقق من وجود تقييم سابق لنفس الشهر
+  const existing = await db.select().from(engineerEvaluations)
+    .where(and(
+      eq(engineerEvaluations.engineerId, input.engineerId),
+      eq(engineerEvaluations.evaluationMonth, input.evaluationMonth),
+      eq(engineerEvaluations.evaluationYear, input.evaluationYear)
+    )).limit(1);
+
+  const evalData = {
+    salesAchievementScore: input.salesAchievementScore,
+    closingRateScore: input.closingRateScore,
+    meetingScore: input.meetingScore,
+    playbookUsageScore: input.playbookUsageScore,
+    taskDisciplineScore: input.taskDisciplineScore,
+    overallScore,
+    performanceLevel,
+    careerLevel,
+    promotionEligible: eligible,
+    promotionReadinessScore: readinessScore,
+    consecutiveMonthsMeetingTarget,
+    decisionAction,
+    consecutiveCMonths,
+    firingDecisionTriggered,
+    coachingNotes: input.coachingNotes,
+    improvementPlan: input.improvementPlan,
+    reviewedBy: input.reviewedBy,
+  };
+
+  if (existing[0]) {
+    await db.update(engineerEvaluations).set(evalData)
+      .where(eq(engineerEvaluations.id, existing[0].id));
+    return { id: existing[0].id, updated: true, overallScore, performanceLevel, decisionAction, promotionEligible: eligible, missingCriteria };
+  } else {
+    const [result] = await db.insert(engineerEvaluations).values({
+      ...evalData,
+      engineerId: input.engineerId,
+      evaluationMonth: input.evaluationMonth,
+      evaluationYear: input.evaluationYear,
+    });
+    return { id: (result as any).insertId, updated: false, overallScore, performanceLevel, decisionAction, promotionEligible: eligible, missingCriteria };
+  }
+}
+
+/** جلب تاريخ تقييمات المهندس */
+export async function getEngineerEvaluationHistory(engineerId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const evals = await db.select().from(engineerEvaluations)
+    .where(eq(engineerEvaluations.engineerId, engineerId))
+    .orderBy(desc(engineerEvaluations.evaluationYear), desc(engineerEvaluations.evaluationMonth));
+
+  return evals.map((e, i) => {
+    const prev = evals[i + 1];
+    const trend: "up" | "down" | "stable" =
+      prev ? (e.overallScore > prev.overallScore ? "up" :
+              e.overallScore < prev.overallScore ? "down" : "stable") : "stable";
+    return {
+      ...e,
+      trend,
+      overallScorePct: e.overallScore,
+      performanceLevelLabel: e.performanceLevel === "a_player" ? "A Player" :
+        e.performanceLevel === "b_player" ? "B Player" : "C Player",
+      careerLevelLabel: e.careerLevel === "sales_engineer" ? "Sales Engineer" :
+        e.careerLevel === "senior_sales_engineer" ? "Senior Sales Engineer" : "Sales Consultant",
+    };
+  });
+}
+
+/** جلب Dashboard الكامل لكل المهندسين (للإدارة) */
+export async function getAllEngineersEvaluationDashboard() {
+  const db = await getDb();
+  if (!db) return [];
+
+  const engList = await db.select().from(engineers)
+    .where(and(eq(engineers.isDeleted, 0)));
+
+  const salesEngineers = engList.filter(e =>
+    !["admin_sales", "group_admin"].includes(e.role ?? ""));
+
+  const now = new Date();
+  const currentMonth = now.getMonth() + 1;
+  const currentYear = now.getFullYear();
+
+  const allEvals = await db.select().from(engineerEvaluations)
+    .where(and(
+      eq(engineerEvaluations.evaluationMonth, currentMonth),
+      eq(engineerEvaluations.evaluationYear, currentYear)
+    ));
+
+  const allCareerLevels = await db.select().from(engineerCareerLevels);
+
+  return salesEngineers.map(eng => {
+    const currentEval = allEvals.find(e => e.engineerId === eng.id);
+    const careerLevel = allCareerLevels.find(c => c.engineerId === eng.id);
+
+    return {
+      engineerId: eng.id,
+      engineerName: eng.name,
+      role: eng.role,
+      careerLevel: careerLevel?.currentLevel ?? "sales_engineer",
+      careerLevelLabel: careerLevel?.currentLevel === "senior_sales_engineer" ? "Senior Sales Engineer" :
+        careerLevel?.currentLevel === "sales_consultant" ? "Sales Consultant" : "Sales Engineer",
+      currentEval: currentEval ? {
+        overallScore: currentEval.overallScore,
+        performanceLevel: currentEval.performanceLevel,
+        performanceLevelLabel: currentEval.performanceLevel === "a_player" ? "A Player" :
+          currentEval.performanceLevel === "b_player" ? "B Player" : "C Player",
+        decisionAction: currentEval.decisionAction,
+        promotionEligible: currentEval.promotionEligible,
+        promotionReadinessScore: currentEval.promotionReadinessScore,
+        firingDecisionTriggered: currentEval.firingDecisionTriggered,
+        consecutiveCMonths: currentEval.consecutiveCMonths,
+        salesAchievementScore: currentEval.salesAchievementScore,
+        meetingScore: currentEval.meetingScore,
+        playbookUsageScore: currentEval.playbookUsageScore,
+        taskDisciplineScore: currentEval.taskDisciplineScore,
+        closingRateScore: currentEval.closingRateScore,
+      } : null,
+      benefits: {
+        commissionMultiplier: parseFloat(careerLevel?.commissionMultiplier as string ?? "1.00"),
+        maxDiscountPct: parseFloat(careerLevel?.maxDiscountPct as string ?? "5.00"),
+        leadsAccessLevel: careerLevel?.leadsAccessLevel ?? "standard",
+      },
+    };
+  });
+}
+
+/** تنفيذ ترقية المهندس */
+export async function promoteEngineer(engineerId: number, promotedBy?: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+
+  const careerLevelRecord = await db.select().from(engineerCareerLevels)
+    .where(eq(engineerCareerLevels.engineerId, engineerId)).limit(1);
+
+  const currentLevel = careerLevelRecord[0]?.currentLevel ?? "sales_engineer";
+
+  const nextLevel: Record<string, string> = {
+    "sales_engineer": "senior_sales_engineer",
+    "senior_sales_engineer": "sales_consultant",
+    "sales_consultant": "sales_consultant", // أعلى مستوى
+  };
+
+  const newLevel = nextLevel[currentLevel] as "sales_engineer" | "senior_sales_engineer" | "sales_consultant";
+  if (newLevel === currentLevel) throw new Error("المهندس في أعلى مستوى بالفعل");
+
+  // Benefits per Level
+  const levelBenefits: Record<string, { commissionMultiplier: string; maxDiscountPct: string; leadsAccessLevel: "standard" | "premium" | "vip" }> = {
+    "sales_engineer": { commissionMultiplier: "1.00", maxDiscountPct: "5.00", leadsAccessLevel: "standard" },
+    "senior_sales_engineer": { commissionMultiplier: "1.15", maxDiscountPct: "10.00", leadsAccessLevel: "premium" },
+    "sales_consultant": { commissionMultiplier: "1.30", maxDiscountPct: "15.00", leadsAccessLevel: "vip" },
+  };
+
+  const benefits = levelBenefits[newLevel];
+  const promotionEvent = {
+    from: currentLevel, to: newLevel,
+    date: new Date().toISOString(),
+    promotedBy,
+  };
+
+  if (careerLevelRecord[0]) {
+    const existingHistory = JSON.parse(careerLevelRecord[0].promotionHistory ?? "[]");
+    existingHistory.push(promotionEvent);
+    await db.update(engineerCareerLevels).set({
+      currentLevel: newLevel,
+      levelStartDate: new Date(),
+      ...benefits,
+      promotionHistory: JSON.stringify(existingHistory),
+    }).where(eq(engineerCareerLevels.engineerId, engineerId));
+  } else {
+    await db.insert(engineerCareerLevels).values({
+      engineerId,
+      currentLevel: newLevel,
+      levelStartDate: new Date(),
+      ...benefits,
+      promotionHistory: JSON.stringify([promotionEvent]),
+    });
+  }
+
+  return { success: true, newLevel, benefits };
+}
+
+/** جلب أو إنشاء Career Level للمهندس */
+export async function getOrCreateEngineerCareerLevel(engineerId: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const existing = await db.select().from(engineerCareerLevels)
+    .where(eq(engineerCareerLevels.engineerId, engineerId)).limit(1);
+
+  if (existing[0]) return existing[0];
+
+  // إنشاء مستوى افتراضي
+  await db.insert(engineerCareerLevels).values({
+    engineerId,
+    currentLevel: "sales_engineer",
+    commissionMultiplier: "1.00",
+    maxDiscountPct: "5.00",
+    leadsAccessLevel: "standard",
+  });
+
+  return (await db.select().from(engineerCareerLevels)
+    .where(eq(engineerCareerLevels.engineerId, engineerId)).limit(1))[0];
+}
+
+/** Dashboard القرار للإدارة: Performance + Execution + Decision + Alerts */
+export async function getManagementDecisionDashboard() {
+  const db = await getDb();
+  if (!db) return null;
+
+  const now = new Date();
+  const currentMonth = now.getMonth() + 1;
+  const currentYear = now.getFullYear();
+  const monthStart = new Date(currentYear, currentMonth - 1, 1);
+  const since60 = new Date();
+  since60.setDate(since60.getDate() - 60);
+
+  // جلب المهندسين
+  const engList = await db.select().from(engineers).where(eq(engineers.isDeleted, 0));
+  const salesEngineers = engList.filter(e => !["admin_sales", "group_admin"].includes(e.role ?? ""));
+
+  // جلب الأهداف
+  const targets = await db.select().from(engineerTargets)
+    .where(and(eq(engineerTargets.month, currentMonth), eq(engineerTargets.year, currentYear)));
+
+  // جلب الصفقات
+  const allDeals = await db.select().from(deals)
+    .where(and(eq(deals.isDeleted, 0), gte(deals.createdAt, since60)));
+
+  // جلب المهام
+  const allTasks = await db.select().from(dailyTasks)
+    .where(and(eq(dailyTasks.isDeleted, 0), gte(dailyTasks.createdAt, monthStart)));
+
+  // جلب Reviews
+  const allReviews = await db.select().from(meetingReviews);
+
+  // جلب التقييمات الشهرية
+  const allEvals = await db.select().from(engineerEvaluations)
+    .where(and(eq(engineerEvaluations.evaluationMonth, currentMonth), eq(engineerEvaluations.evaluationYear, currentYear)));
+
+  // جلب Career Levels
+  const allCareerLevels = await db.select().from(engineerCareerLevels);
+
+  const meetingTypes = ["meeting_2d", "meeting_3d", "meeting_quotation", "meeting_closing", "meeting_presentation"];
+
+  const engineerCards = salesEngineers.map(eng => {
+    const target = targets.find(t => t.engineerId === eng.id);
+    const targetSales = parseFloat(target?.targetAmount as string ?? "0");
+
+    const engDeals = allDeals.filter(d => d.engineerId === eng.id);
+    const closedWon = engDeals.filter(d => d.stage === "closed_won");
+    const actualSales = closedWon.reduce((s, d) => s + parseFloat(d.value as string), 0);
+    const salesAchievementPct = targetSales > 0 ? Math.round((actualSales / targetSales) * 100) : 0;
+    const closingRate = engDeals.length > 0 ? Math.round((closedWon.length / engDeals.length) * 100) : 0;
+
+    const engTasks = allTasks.filter(t => t.engineerId === eng.id);
+    const meetingTasks = engTasks.filter(t => meetingTypes.includes(t.taskType ?? ""));
+    const completedMeetings = meetingTasks.filter(t => t.status === "completed");
+    const meetingsWithRecording = completedMeetings.filter(t => t.meetingRecordingLink);
+    const missingRecordings = completedMeetings.filter(t => !t.meetingRecordingLink).length;
+    const taskCompletionPct = engTasks.length > 0
+      ? Math.round((engTasks.filter(t => t.status === "completed").length / engTasks.length) * 100) : 0;
+
+    const engReviews = allReviews.filter(r => r.engineerId === eng.id);
+    const avgMeetingScore = engReviews.length > 0
+      ? Math.round(engReviews.reduce((s, r) => s + r.totalScore, 0) / engReviews.length / 40 * 100) : 0;
+    const playbookUsagePct = meetingTasks.length > 0
+      ? Math.round((engReviews.length / meetingTasks.length) * 100) : 0;
+
+    const currentEval = allEvals.find(e => e.engineerId === eng.id);
+    const careerLevel = allCareerLevels.find(c => c.engineerId === eng.id);
+
+    // Promotion Status
+    let promotionStatus: "eligible" | "needs_improvement" | "at_risk" = "needs_improvement";
+    if (currentEval?.promotionEligible) promotionStatus = "eligible";
+    else if (currentEval?.firingDecisionTriggered || (currentEval?.consecutiveCMonths ?? 0) >= 2) promotionStatus = "at_risk";
+
+    // Alerts
+    const alerts: string[] = [];
+    if (missingRecordings > 0) alerts.push(`${missingRecordings} اجتماع بدون Recording`);
+    if (taskCompletionPct < 70) alerts.push(`إكمال المهام ${taskCompletionPct}% (أقل من 70%)`);
+    if (avgMeetingScore < 50) alerts.push(`Meeting Score ضعيف (${avgMeetingScore}%)`);
+    if (playbookUsagePct < 50) alerts.push(`Playbook Usage منخفض (${playbookUsagePct}%)`);
+    if (currentEval?.firingDecisionTriggered) alerts.push("⚠️ شهرين C Player - قرار إداري مطلوب");
+
+    return {
+      engineerId: eng.id,
+      engineerName: eng.name,
+      careerLevel: careerLevel?.currentLevel ?? "sales_engineer",
+      careerLevelLabel: careerLevel?.currentLevel === "senior_sales_engineer" ? "Senior" :
+        careerLevel?.currentLevel === "sales_consultant" ? "Consultant" : "Sales Eng.",
+      // Performance
+      actualSales, targetSales, salesAchievementPct,
+      closingRate,
+      // Execution
+      meetingsCount: meetingTasks.length,
+      completedMeetings: completedMeetings.length,
+      missingRecordings,
+      taskCompletionPct,
+      playbookUsagePct,
+      avgMeetingScore,
+      // Decision
+      performanceLevel: currentEval?.performanceLevel ?? null,
+      performanceLevelLabel: currentEval?.performanceLevel === "a_player" ? "A Player" :
+        currentEval?.performanceLevel === "b_player" ? "B Player" :
+        currentEval?.performanceLevel === "c_player" ? "C Player" : "غير مقيّم",
+      promotionStatus,
+      promotionReadinessScore: currentEval?.promotionReadinessScore ?? 0,
+      firingRisk: currentEval?.firingDecisionTriggered ?? false,
+      // Alerts
+      alerts,
+      alertsCount: alerts.length,
+    };
+  });
+
+  // إحصائيات إجمالية
+  const totalAlerts = engineerCards.reduce((s, e) => s + e.alertsCount, 0);
+  const aPlayers = engineerCards.filter(e => e.performanceLevel === "a_player").length;
+  const bPlayers = engineerCards.filter(e => e.performanceLevel === "b_player").length;
+  const cPlayers = engineerCards.filter(e => e.performanceLevel === "c_player").length;
+  const firingRiskCount = engineerCards.filter(e => e.firingRisk).length;
+  const promotionEligibleCount = engineerCards.filter(e => e.promotionStatus === "eligible").length;
+
+  return {
+    engineerCards,
+    summary: {
+      totalEngineers: salesEngineers.length,
+      totalAlerts,
+      aPlayers, bPlayers, cPlayers,
+      firingRiskCount,
+      promotionEligibleCount,
+      avgSalesAchievement: salesEngineers.length > 0
+        ? Math.round(engineerCards.reduce((s, e) => s + e.salesAchievementPct, 0) / salesEngineers.length) : 0,
+      avgMeetingScore: salesEngineers.length > 0
+        ? Math.round(engineerCards.reduce((s, e) => s + e.avgMeetingScore, 0) / salesEngineers.length) : 0,
+    },
+  };
 }

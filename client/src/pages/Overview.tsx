@@ -12,7 +12,7 @@ import {
   TrendingUp, TrendingDown, Users, Target, Calendar,
   AlertTriangle, CheckCircle, Clock, DollarSign, Activity,
   ArrowUpRight, ArrowDownRight, Zap, RefreshCw,
-  ShieldAlert, Megaphone, Eye
+  ShieldAlert, Megaphone, Eye, Crown, Shield, XCircle, ArrowUpCircle
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -259,6 +259,7 @@ function ManagementFocusSection({ data }: { data: any }) {
 
 export default function Overview() {
   const { data: managementFocus } = trpc.management.focus.useQuery({ year: YEAR, month: MONTH });
+  const { data: evalDashboard } = trpc.promotion.getAllEngineersDashboard.useQuery();
   const { data: taskStats } = trpc.tasks.stats.useQuery({ date: TODAY });
   const { data: criticalTasks } = trpc.tasks.critical.useQuery();
   const { data: leadsStats } = trpc.leads.stats.useQuery({ year: YEAR, month: MONTH });
@@ -567,6 +568,124 @@ export default function Overview() {
           </CardContent>
         </Card>
       </div>
+
+      {/* ─── Decision Dashboard ─── */}
+      {evalDashboard && evalDashboard.length > 0 && (
+        <div>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 rounded-lg bg-purple-500/10 border border-purple-500/20">
+              <Crown className="w-4 h-4 text-purple-400" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-foreground">Decision Dashboard</h2>
+              <p className="text-xs text-muted-foreground">مستوى أداء كل مهندس + قرار الترقية</p>
+            </div>
+            {/* Summary badges */}
+            <div className="mr-auto flex items-center gap-2">
+              <span className="px-2 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                A: {evalDashboard.filter(e => e.currentEval?.performanceLevel === 'a_player').length}
+              </span>
+              <span className="px-2 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                B: {evalDashboard.filter(e => e.currentEval?.performanceLevel === 'b_player').length}
+              </span>
+              <span className="px-2 py-1 rounded-full text-xs font-bold bg-red-500/20 text-red-400 border border-red-500/30">
+                C: {evalDashboard.filter(e => e.currentEval?.performanceLevel === 'c_player').length}
+              </span>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {evalDashboard.map((eng: any) => {
+              const level = eng.currentEval?.performanceLevel;
+              const levelConfig = level === 'a_player'
+                ? { label: 'A Player', color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', Icon: Crown }
+                : level === 'b_player'
+                ? { label: 'B Player', color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/30', Icon: Shield }
+                : level === 'c_player'
+                ? { label: 'C Player', color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/30', Icon: XCircle }
+                : null;
+              const promotionStatus = eng.currentEval?.promotionStatus;
+              const careerLabel = eng.careerLevel === 'sales_consultant' ? 'Consultant'
+                : eng.careerLevel === 'senior_sales_engineer' ? 'Senior'
+                : 'Sales Eng.';
+              return (
+                <div key={eng.engineerId} className={`p-4 rounded-xl border bg-card hover:shadow-md transition-all ${
+                  eng.currentEval?.firingDecisionTriggered ? 'border-red-500/50 shadow-red-500/10 shadow-lg' : ''
+                }`}>
+                  {/* Header */}
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-sm font-bold">
+                        {eng.engineerName.charAt(0)}
+                      </div>
+                      <div>
+                        <p className="font-semibold text-sm">{eng.engineerName}</p>
+                        <p className="text-xs text-muted-foreground">{careerLabel}</p>
+                      </div>
+                    </div>
+                    {levelConfig ? (
+                      <Badge className={`${levelConfig.bg} ${levelConfig.color} border ${levelConfig.border} text-xs`}>
+                        <levelConfig.Icon className="w-3 h-3 mr-1" />
+                        {levelConfig.label}
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-xs text-muted-foreground">لم يُقيَّم</Badge>
+                    )}
+                  </div>
+
+                  {/* Score */}
+                  {eng.currentEval && (
+                    <>
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-xs text-muted-foreground">الدرجة الإجمالية</span>
+                        <span className={`text-lg font-bold ${levelConfig?.color ?? 'text-foreground'}`}>
+                          {eng.currentEval.overallScore}%
+                        </span>
+                      </div>
+                      <Progress value={eng.currentEval.overallScore} className="h-2 mb-3" />
+                      {/* 5 scores mini */}
+                      <div className="grid grid-cols-5 gap-1 mb-3">
+                        {[
+                          { label: 'Sales', v: eng.currentEval.salesAchievementScore },
+                          { label: 'Close', v: eng.currentEval.closingRateScore },
+                          { label: 'Meet', v: eng.currentEval.meetingScore },
+                          { label: 'PB', v: eng.currentEval.playbookUsageScore },
+                          { label: 'Task', v: eng.currentEval.taskDisciplineScore },
+                        ].map(({ label, v }) => (
+                          <div key={label} className="text-center">
+                            <div className={`text-xs font-bold ${
+                              v >= 80 ? 'text-emerald-500' : v >= 60 ? 'text-amber-500' : 'text-red-500'
+                            }`}>{v}%</div>
+                            <div className="text-muted-foreground text-[10px]">{label}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Promotion Status */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1">
+                      {promotionStatus === 'eligible' && (
+                        <><ArrowUpCircle className="w-3.5 h-3.5 text-emerald-500" /><span className="text-xs text-emerald-500 font-medium">مؤهل للترقية</span></>
+                      )}
+                      {promotionStatus === 'needs_improvement' && (
+                        <><TrendingUp className="w-3.5 h-3.5 text-amber-500" /><span className="text-xs text-amber-500 font-medium">يحتاج تحسين</span></>
+                      )}
+                      {promotionStatus === 'at_risk' && (
+                        <><AlertTriangle className="w-3.5 h-3.5 text-red-500" /><span className="text-xs text-red-500 font-medium">At Risk</span></>
+                      )}
+                      {!promotionStatus && <span className="text-xs text-muted-foreground">—</span>}
+                    </div>
+                    {eng.currentEval?.firingDecisionTriggered && (
+                      <span className="text-xs font-bold text-red-500 animate-pulse">⚠️ قرار إداري</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Engineers Performance Summary */}
       {kpiData && kpiData.length > 0 && (

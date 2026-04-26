@@ -19,6 +19,7 @@ import CollectionsModule from "./pages/CollectionsModule";
 import PlanningModule from "./pages/PlanningModule";
 import WeeklyReport from "./pages/WeeklyReport";
 import LoginPage from "./pages/LoginPage";
+import PromotionSystem from "./pages/PromotionSystem";
 
 function withLayout(Component: React.ComponentType) {
   return (
@@ -45,6 +46,7 @@ function Router() {
       <Route path={"/collections"}>{withLayout(CollectionsModule)}</Route>
       <Route path={"/planning"}>{withLayout(PlanningModule)}</Route>
       <Route path={"/weekly-report"}>{withLayout(WeeklyReport)}</Route>
+      <Route path={"/promotion-system"}>{withLayout(PromotionSystem)}</Route>
 
       {/* Legacy routes redirect */}
       <Route path={"/dashboard"}>{withLayout(Overview)}</Route>

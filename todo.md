@@ -472,3 +472,212 @@
 - [x] تحديث TasksModule: حذف تاب "متابعة Leads" من هذا الموديول
 - [x] Current Time Indicator (خط أحمر يُظهر الوقت الحالي في Timeline)
 - [x] Summary Bar (إجمالي الوقت + توزيع % لكل نشاط)
+
+## Performance Analysis System - التقرير الأسبوعي (الطلب الجديد)
+- [ ] تحديث schema: إضافة operational_targets (target_meetings, target_designs, target_closings)
+- [ ] تحديث taskType enum: 2d, 3d_modeling, render, quotation, meeting_presentation, meeting_closing, closing
+- [ ] تطبيق migration SQL الجديد
+- [ ] Backend: getWeeklyPerformance (Activity Breakdown لكل مهندس)
+- [ ] Backend: getTargetAchievement (مبيعات + صفقات + Designs + Meetings)
+- [ ] Backend: getCriticalInsights (Meeting عالي + Closing قليل، إلخ)
+- [ ] Backend: getBehaviorAlerts (مهندس Meeting عالي بدون Sales، Activity ضعيف)
+- [ ] Backend: getActivityBalance (توزيع الأنشطة مقارنة بالهدف)
+- [ ] إعادة بناء WeeklyReport.tsx: Target Achievement Section
+- [ ] إعادة بناء WeeklyReport.tsx: Activity Breakdown Section (عدد كل نشاط)
+- [ ] إعادة بناء WeeklyReport.tsx: Critical Insights Section (تحليل ذكي)
+- [ ] إعادة بناء WeeklyReport.tsx: Behavior Alerts Section
+- [ ] إعادة بناء WeeklyReport.tsx: Smart Summary لكل مهندس
+- [ ] إعادة بناء WeeklyReport.tsx: Ranking بناءً على مبيعات + Closing Rate + Activity Balance
+- [ ] تحديث AddTask Dialog: أنواع المهام الجديدة (حذف "عام")
+- [ ] اختبارات Vitest للـ Activity Breakdown + Target Achievement
+
+## Time Distribution Analysis System (الطلب الجديد)
+- [ ] Backend: getTimeDistributionAnalysis (Actual vs Target % لكل مهندس)
+- [ ] Backend: calcDistributionScore (نقاط الالتزام بالتوزيع المثالي)
+- [ ] Backend: getEngineerPerformanceReport (MTD: مبيعات + أنشطة + توزيع وقت)
+- [ ] WeeklyReport: Pie Chart لتوزيع الوقت الفعلي
+- [ ] WeeklyReport: Bar Chart مقارنة Actual vs Target Distribution
+- [ ] WeeklyReport: Distribution Score لكل مهندس
+- [ ] WeeklyReport: Behavior Alerts (Meeting عالي بدون Sales، 3D عالي بدون تحويل)
+- [ ] WeeklyReport: Smart Summary لكل مهندس
+- [ ] TasksModule: AddTask Dialog يجعل Duration إلزامي
+- [ ] TasksModule: AddTask Dialog يجعل TaskType إلزامي (لا يوجد Task بدون Type)
+- [ ] TasksModule: تحديث أنواع المهام: 2D, 3D Modeling, Render, Quotation, Meeting Modeling, Meeting Closing
+
+## Closing & Discount Management System (الطلب الجديد)
+- [ ] إضافة engineerId إجباري في deals schema
+- [ ] إضافة حقول: maxDiscountPct, usedDiscountPct, savedDiscountBonus في deals
+- [ ] إضافة جدول discount_config لإعدادات الخصومات
+- [ ] Backend: حساب Discount Pool لكل مهندس (Actual Sales + Negotiation)
+- [ ] Backend: حساب Saved Discount Bonus بعد الإغلاق (50% للمهندس)
+- [ ] Backend: Pipeline Stats (Closed/Negotiation/Quotation/Lost) لكل مهندس
+- [ ] Backend: Performance-Based Discount (Closing Rate → Discount %)
+- [ ] Backend: استبعاد admin_sales وgroup_admin من Ranking وKPI
+- [ ] Frontend: Pipeline View احترافي بألوان (أخضر/أزرق/رمادي/أحمر)
+- [ ] Frontend: Discount Dashboard لكل مهندس (Pool/Used/Saved/Bonus)
+- [ ] Frontend: عرض Max/Used/Remaining Discount داخل الصفقة
+- [ ] Frontend: Admin Control Panel للخصومات والموافقات
+- [ ] Frontend: Bonus Summary لكل مهندس
+- [ ] Frontend: Total Pipeline Value (Quotations + Negotiation)
+
+## Output-Based KPI System (Tasks + KPI + Goals + Weekly Report)
+- [ ] Backend: calcDistributionScore (50% Meetings, 30% 3D, 10% 2D, 10% Quotation)
+- [ ] Backend: getOutputBasedKPI (Closed Deals + Designs + Meetings Closing)
+- [ ] Backend: getTargetAchievement (Sales % + Designs % + Meetings %)
+- [ ] Backend: getBehaviorAlerts (High Meetings/Low Closing, High Designs/Low Sales, etc.)
+- [ ] Backend: getSmartRanking (Sales + Closing Rate + Distribution + Output)
+- [ ] Backend: getCriticalInsights (Time Waste Control + Behavior Patterns)
+- [ ] Backend: getWeeklyPerformanceFull (Activity Breakdown + Distribution + Targets)
+- [ ] Frontend: WeeklyReport - Distribution Score Chart (Actual vs Target)
+- [ ] Frontend: WeeklyReport - Target Achievement Progress Bars
+- [ ] Frontend: WeeklyReport - Activity Breakdown (count + hours per type)
+- [ ] Frontend: WeeklyReport - Behavior Alerts + Critical Insights
+- [ ] Frontend: KPIModule - Output-Based KPI (not task count)
+- [ ] Frontend: KPIModule - Smart Ranking (4 factors)
+- [ ] Frontend: KPIModule - Progress Tracking (Sales/Design/Meetings %)
+
+## Admin Sales System
+- [ ] Admin Task Types: CRM Update, Task Distribution, Task Follow-up, Collection Follow-up, Inspection Management, Reporting, Meeting Management
+- [ ] Admin KPI: Data Accuracy + Task Completion + Delay Rate + Team Performance
+- [ ] Time Waste Detection: Alert when client consumes time without stage progress
+- [ ] Admin Dashboard: Team Performance + CRM Status + Task Completion + Alerts
+- [ ] Closing Task Type added to engineer task types
+
+## Reports Module (Weekly / Monthly / Quarterly)
+- [ ] Reports Module page with 3 tabs: Weekly / Monthly / Quarterly
+- [ ] Weekly Report: Sales Achievement + Activity Breakdown + Distribution Score + Output + KPI Score + Insights
+- [ ] Monthly Report: Total Sales + Target % + Closing Rate + Designs + Meetings + Distribution + Trend + Ranking + Bonus
+- [ ] Quarterly Report: Sales Growth + Performance Trend + Top/Bottom Engineers
+- [ ] Custom Dashboard: Engineer filter + Date Range + Report Type selector
+- [ ] Alerts inside report: weak performance, unbalanced distribution, delay, weak closing
+- [ ] Auto-generate Weekly Report every Thursday (scheduled task)
+- [ ] Add Reports link in sidebar navigation
+
+## Sales Execution System (Module جديد)
+- [ ] Schema: جدول meeting_reviews (recording_link, score, notes, manager_rating, strengths, improvements)
+- [ ] Schema: جدول playbook_sessions (engineer_id, task_id, steps_completed, started_at)
+- [ ] Migration SQL وتطبيق على قاعدة البيانات
+- [ ] Backend: Funnel stats (Lead→Meeting→Quotation→Closing conversion rates)
+- [ ] Backend: Lost deals analysis (سعر/تأخير/منافس/عدم جدية)
+- [ ] Backend: Meeting review CRUD (create/list/update)
+- [ ] Backend: Playbook session tracking
+- [ ] SalesExecutionSystem.tsx: Tab 1 - Playbook (Quotation + Product Cards + 6-Step Sales Flow)
+- [ ] SalesExecutionSystem.tsx: Tab 2 - Meeting Review (Recording + Rating + Weekly Coaching)
+- [ ] SalesExecutionSystem.tsx: Tab 3 - Funnel Analysis (Conversion Rates + Lost Deals)
+- [ ] App.tsx: تسجيل route /sales-execution
+- [ ] DashboardLayout: إضافة Sales Execution System للـ sidebar
+- [ ] ReportsModule: تسجيل route /reports في App.tsx + sidebar
+- [ ] إصلاح WorkDistribution.tsx: workDist router error
+
+## Playbook Live Presentation Tool
+- [ ] Schema: جدول playbook_items (name, category, price, description, script, media_urls, alternatives, spec_data)
+- [ ] Schema: جدول playbook_quotations (deal_id, items_json, created_by, recording_link)
+- [ ] Migration SQL وتطبيق على قاعدة البيانات
+- [ ] Backend: Excel Import → playbook_items (parse XLSX/CSV)
+- [ ] Backend: CRUD playbook_items (create/list/update/delete)
+- [ ] Backend: getPlaybookByDeal (جلب Items مرتبطة بصفقة)
+- [ ] Backend: saveRecordingLink (حفظ رابط التسجيل داخل الصفقة)
+- [ ] Playbook Tab: Excel Upload → Import Items
+- [ ] Playbook Tab: Items Library (بطاقات تفاعلية)
+- [ ] Presentation Mode: 5 شاشات (Render / Quotation / Excel Data / Media / Script)
+- [ ] Presentation Mode: Next/Previous Navigation + Full Screen
+- [ ] Presentation Mode: Meeting Recording Link Input
+- [ ] Presentation Mode: Item Validation (لا عرض بدون Media + Script + Data)
+
+## Sales Execution Tracking System
+- [ ] Schema: جدول meeting_sessions (engineerId, startTime, endTime, recordingLink, quotationId, score)
+- [ ] Schema: جدول session_actions (sessionId, itemId, actionType, durationSeconds, timestamp)
+- [ ] Migration SQL وتطبيق على قاعدة البيانات
+- [ ] Backend: createMeetingSession + endMeetingSession + logSessionAction
+- [ ] Backend: calculateMeetingScore (Video + Script + Render + Price scoring)
+- [ ] Backend: getEngineerMeetingStats (avg score, playbook usage %)
+- [ ] Backend: getSessionDetails (للـ Admin Review)
+- [ ] Presentation Mode: تسجيل action عند فتح Video/Script/Render/Price
+- [ ] Presentation Mode: Visual Indicators (Viewed ✅ / Not Viewed ❌ / Time Spent)
+- [ ] Presentation Mode: Item validation قبل الانتقال للتالي
+- [ ] Dashboard: Meeting Score + Playbook Usage % لكل مهندس
+- [ ] Admin Review: Recording + Tracking Data معاً
+- [ ] Alerts: "Meeting بدون Playbook" + "لم يُشغَّل الفيديو"
+
+## Meeting Review Auto-Task System
+- [ ] Auto-create admin task when meeting session ends with recording
+- [ ] SLA: 24-hour review deadline tracking
+- [ ] Alert for delayed reviews in Admin KPI
+- [ ] Admin notification on new meeting recording
+- [ ] Admin dashboard: Pending/Completed/Delayed reviews
+- [ ] Meeting score input from admin review
+- [ ] Score feeds into engineer KPI
+
+## Meeting Recording Mandatory Rule
+- [ ] Backend: Block task completion if meetingRecordingLink is missing for meeting-type tasks
+- [ ] Backend: Task status logic: pending (no meeting link) → in_progress (meeting done, no recording) → completed (both links present)
+- [ ] Backend: KPI excludes meeting tasks without recording from score calculation
+- [ ] Backend: Auto-create admin review task when recording is submitted
+- [ ] Backend: SLA 24h tracking for review tasks
+- [ ] Backend: Admin alert for tasks missing recording > 24h after meeting
+- [ ] UI: Meeting Recording Status indicators (✅/❌) in task list
+- [ ] UI: Block "Complete" button if recording missing for meeting tasks
+- [ ] UI: Recording Link input field in task edit dialog
+- [ ] UI: Admin view: filter tasks with missing recordings
+- [ ] UI: Alert badge for "Meeting without Recording"
+
+## Meeting Review System (أداة تقييم حقيقية)
+- [ ] تحديث جدول meeting_reviews بحقول: playbookUsageScore, presentationQualityScore, controlScore, closingAttemptScore, decisionTag, strengthPoint, improvementPoint
+- [ ] شرط أساسي: لا Review إلا إذا Recording موجود + Task مكتملة
+- [ ] 4 عناصر تقييم (من 10 كل عنصر) → إجمالي من 40 → %
+- [ ] Decision Tag: Strong Performer / يحتاج تحسين / ضعيف
+- [ ] Mandatory Feedback: نقطة قوة + نقطة تحسين
+- [ ] ربط Meeting Score بـ KPI (عدم Review = خصم)
+- [ ] Weekly Summary لكل مهندس: Average Score + عدد Reviews + Trend
+
+## Promotion & Evaluation System
+- [ ] إنشاء جدول engineer_evaluations في Schema
+- [ ] 5 عناصر تقييم: Sales Achievement + Closing Rate + Meeting Score + Playbook Usage + Distribution Score
+- [ ] Performance Levels: A Player / B Player / C Player
+- [ ] Rules: A→ترقية+Bonus, B→Coaching إجباري, C→Warning+Plan 30 يوم
+- [ ] Firing Logic: شهرين C Player → قرار إداري
+- [ ] Dashboard: تقييم حالي + تاريخ + اتجاه (Up/Down)
+- [ ] Backend دوال: calculateMonthlyEvaluation, getEngineerEvaluationHistory, checkFiringLogic
+- [ ] tRPC endpoints للـ Promotion System
+- [ ] PromotionSystem.tsx: A/B/C Player Dashboard + History + Trend
+
+## SalesExecutionSystem
+- [ ] إنشاء SalesExecutionSystem.tsx (4 Tabs)
+- [ ] Tab 1 - Playbook: عرض Items + Presentation Mode + Excel Import + Session Tracking
+- [ ] Tab 2 - Meeting Review: نموذج تقييم 4 عناصر + Decision Tag + Mandatory Feedback
+- [ ] Tab 3 - Funnel Analysis: Funnel مراحل + Conversion Rates + Lost Deals + Insights
+- [ ] Tab 4 - Coaching Dashboard: Weekly Summary + Average Score + Performance Trend
+
+## Navigation & Registration
+- [ ] إصلاح WorkDistribution.tsx (trpc.workDist error)
+- [ ] تسجيل SalesExecutionSystem في App.tsx + Sidebar
+- [ ] تسجيل ReportsModule في App.tsx + Sidebar
+- [ ] تسجيل PromotionSystem في App.tsx + Sidebar
+
+## Dashboard كأداة قرار (Management Decision Tool)
+- [ ] Performance Section: Sales Target vs Actual + Closing Rate + Meeting Score + Ranking
+- [ ] Execution Section: عدد Meetings + % Playbook Usage + Task Completion % + Missing Recordings
+- [ ] Decision Section: Performance Level (A/B/C) + Promotion Status (Eligible/يحتاج تحسين/At Risk)
+- [ ] Alerts System: Meetings بدون Recording + Tasks غير مكتملة + أداء ضعيف + عدم استخدام Playbook
+- [ ] Engineer Cards: صورة/اسم + Sales + Meeting Score + Ranking + Status (A/B/C)
+- [ ] تحويل Overview.tsx إلى Management Decision Dashboard
+
+## Promotion & Evaluation System (مكتمل)
+- [x] Schema: engineer_evaluations جدول (A/B/C Player + Career Path + Firing Logic)
+- [x] Schema: engineer_career_levels جدول (Sales Engineer → Senior → Consultant)
+- [x] Migration: 0023 + 0024 تطبيق على قاعدة البيانات
+- [x] Backend: createOrUpdateMeetingReview (4 عناصر + Decision Tag)
+- [x] Backend: createOrUpdateMonthlyEvaluation (5 عناصر + A/B/C Logic)
+- [x] Backend: getAllEngineersEvaluationDashboard
+- [x] Backend: promoteEngineer + getOrCreateEngineerCareerLevel
+- [x] Backend: getManagementDecisionDashboard
+- [x] Frontend: PromotionSystem.tsx (Career Path + A/B/C + History + Benefits)
+- [x] Frontend: Overview.tsx Decision Dashboard (Engineer Cards + A/B/C + Promotion Status)
+- [x] Navigation: إضافة "التقييم والترقية" في DashboardLayout
+- [x] App.tsx: Route /promotion-system
+
+## Dashboard كأداة قرار (مكتمل)
+- [x] Performance Section: Sales Target vs Actual + Closing Rate + Meeting Score + Ranking
+- [x] Decision Section: Performance Level (A/B/C) + Promotion Status (Eligible/Needs Improvement/At Risk)
+- [x] Engineer Cards: اسم + درجة + 5 عناصر + Promotion Status + Firing Warning
+- [x] Summary Badges: عدد A/B/C Players في الـ header

@@ -1,6 +1,6 @@
 import {
   int, mysqlEnum, mysqlTable, text, timestamp,
-  varchar, decimal, date, float
+  varchar, decimal, date, float, boolean
 } from "drizzle-orm/mysql-core";
 
 // ─── Users ────────────────────────────────────────────────────────────────────
@@ -66,8 +66,21 @@ export const dailyTasks = mysqlTable("daily_tasks", {
   startTime: varchar("startTime", { length: 5 }),  // HH:MM e.g. '09:00'
   endTime: varchar("endTime", { length: 5 }),      // HH:MM e.g. '10:30'
   taskType: mysqlEnum("taskType", [
-    "meeting_2d", "meeting_3d", "meeting_quotation", "meeting_closing",
-    "design_3d", "design_2d", "quotation", "negotiation", "other"
+    // Meetings
+    "meeting_presentation",  // ميتينج عرض
+    "meeting_closing",       // ميتينج إغلاق
+    // Legacy (keep for backward compat)
+    "meeting_2d", "meeting_3d", "meeting_quotation",
+    // Design
+    "design_2d",             // 2D
+    "design_3d",             // 3D Modeling
+    "render",                // Render
+    // Sales
+    "quotation",             // عرض سعر
+    "closing",               // إغلاق بيع
+    // Legacy
+    "negotiation",
+    "other"
   ]).default("other"),
   // ─── Meeting Recording ─────────────────────────────────────────────────────
   category: varchar("category", { length: 80 }), // e.g. 'closing', 'meeting', 'general'
@@ -178,6 +191,11 @@ export const deals = mysqlTable("deals", {
   discountPercent: decimal("discountPercent", { precision: 5, scale: 2 }).default("0").notNull(),
   discountValue: decimal("discountValue", { precision: 14, scale: 2 }).default("0").notNull(),
   discountNote: text("discountNote"),
+  // ─── Advanced Discount Fields ─────────────────────────────────────────────
+  maxDiscountPct: decimal("maxDiscountPct", { precision: 5, scale: 2 }).default("0").notNull(),
+  savedDiscountBonus: decimal("savedDiscountBonus", { precision: 14, scale: 2 }).default("0").notNull(),
+  discountApprovalStatus: mysqlEnum("discountApprovalStatus", ["none", "pending", "approved", "rejected"]).default("none").notNull(),
+  discountApprovedBy: varchar("discountApprovedBy", { length: 120 }),
   // ─── Lost Deal Analysis ─────────────────────────────────────────────────────
   lostReason: mysqlEnum("lostReason", ["price_high", "competitor", "slow_response", "wrong_product", "not_serious", "budget_cut", "other"]),
   lostReasonNote: varchar("lostReasonNote", { length: 255 }),
@@ -229,7 +247,13 @@ export const engineerTargets = mysqlTable("engineer_targets", {
   year: int("year").notNull(),
   month: int("month").notNull(),
   targetAmount: decimal("targetAmount", { precision: 14, scale: 2 }).notNull(),
-  manpower: float("manpower").default(1).notNull(), // عدد الأشخاص أو الوحدات
+  manpower: float("manpower").default(1).notNull(),
+  // ─── Operational Targets (الطلب الجديد) ─────────────────────────────────────────────────────
+  targetDeals: int("targetDeals").default(0),        // هدف عدد الصفقات
+  targetMeetings: int("targetMeetings").default(0),   // هدف عدد الميتينجات
+  targetDesigns: int("targetDesigns").default(0),     // هدف عدد التصاميم (2D+3D+Render)
+  targetClosings: int("targetClosings").default(0),   // هدف عدد الإغلاقات
+  targetQuotations: int("targetQuotations").default(0), // هدف عروض السعر
   notes: text("notes"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
@@ -416,14 +440,24 @@ export const meetingReviews = mysqlTable("meeting_reviews", {
   taskId: int("taskId").notNull(),          // FK → daily_tasks.id
   engineerId: int("engineerId").notNull(),  // المهندس صاحب المهمة
   reviewedBy: int("reviewedBy"),             // Admin Sales user id
-  // ─── أبعاد التقييم ────────────────────────────────────────────────────────────────────────────────
-  openingScore: int("openingScore").default(0).notNull(),          // من 10
-  understandingScore: int("understandingScore").default(0).notNull(), // من 20
-  presentationScore: int("presentationScore").default(0).notNull(),  // من 20
-  objectionScore: int("objectionScore").default(0).notNull(),        // من 25
-  closingScore: int("closingScore").default(0).notNull(),            // من 25
-  totalScore: int("totalScore").default(0).notNull(),               // مجموع من 100
-  comments: text("comments"),
+  // ─── 4 عناصر التقييم الجديدة (كل عنصر من 10) ────────────────────────────────────────────────────
+  playbookUsageScore: int("playbookUsageScore").default(0).notNull(),         // Playbook Usage (من 10)
+  presentationQualityScore: int("presentationQualityScore").default(0).notNull(), // Presentation Quality (من 10)
+  controlScore: int("controlScore").default(0).notNull(),                    // Control of Meeting (من 10)
+  closingAttemptScore: int("closingAttemptScore").default(0).notNull(),       // Closing Attempt (من 10)
+  totalScore: int("totalScore").default(0).notNull(),                        // مجموع من 40 → يتحول %
+  // ─── Decision Tag ────────────────────────────────────────────────────────────────────────────────
+  decisionTag: mysqlEnum("decisionTag", ["strong", "needs_improvement", "weak"]).notNull().default("needs_improvement"),
+  // ─── Mandatory Feedback ──────────────────────────────────────────────────────────────────────────
+  strengthPoint: text("strengthPoint"),     // نقطة قوة واحدة (إجبارية)
+  improvementPoint: text("improvementPoint"), // نقطة تحسين واحدة (إجبارية)
+  comments: text("comments"),               // ملاحظات إضافية اختيارية
+  // ─── Legacy fields (kept for backward compat) ────────────────────────────────────────────────────
+  openingScore: int("openingScore").default(0).notNull(),
+  understandingScore: int("understandingScore").default(0).notNull(),
+  presentationScore: int("presentationScore").default(0).notNull(),
+  objectionScore: int("objectionScore").default(0).notNull(),
+  closingScore: int("closingScore").default(0).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -523,3 +557,176 @@ export const workLogs = mysqlTable("work_logs", {
 });
 export type WorkLog = typeof workLogs.$inferSelect;
 export type InsertWorkLog = typeof workLogs.$inferInsert;
+
+// ─── Playbook Items ────────────────────────────────────────────────────────────────────────────────
+// مكتبة العناصر المستخدمة في عروض البيع - يتم استيرادها من Excel أو إدخالها يدوياً
+export const playbookItems = mysqlTable("playbook_items", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  category: varchar("category", { length: 100 }),          // تصنيف العنصر
+  code: varchar("code", { length: 100 }),                   // كود المنتج
+  price: decimal("price", { precision: 14, scale: 2 }).default("0"),
+  unit: varchar("unit", { length: 50 }).default("وحدة"),    // وحدة القياس
+  description: text("description"),                         // وصف العنصر
+  script: text("script"),                                   // Script جاهز للمهندس
+  keyPoints: text("keyPoints"),                             // أهم نقاط البيع (JSON array)
+  usageLocations: text("usageLocations"),                   // أماكن الاستخدام
+  alternatives: text("alternatives"),                       // البدائل (JSON array)
+  specData: text("specData"),                               // بيانات المواصفات (JSON object)
+  imageUrls: text("imageUrls"),                             // روابط الصور (JSON array)
+  videoUrl: varchar("videoUrl", { length: 500 }),           // رابط الفيديو
+  renderUrl: varchar("renderUrl", { length: 500 }),         // رابط صورة الـ Render
+  isActive: int("isActive").default(1).notNull(),
+  sortOrder: int("sortOrder").default(0),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type PlaybookItem = typeof playbookItems.$inferSelect;
+export type InsertPlaybookItem = typeof playbookItems.$inferInsert;
+
+// ─── Playbook Quotations ────────────────────────────────────────────────────────────────────────────────
+// عروض الأسعار المرتبطة بالصفقات - تحتوي على Items المختارة
+export const playbookQuotations = mysqlTable("playbook_quotations", {
+  id: int("id").autoincrement().primaryKey(),
+  dealId: int("dealId"),                                    // FK → deals.id (اختياري)
+  engineerId: int("engineerId").notNull(),
+  clientName: varchar("clientName", { length: 255 }),
+  itemsJson: text("itemsJson").notNull(),                   // JSON array of { itemId, qty, price, notes }
+  totalValue: decimal("totalValue", { precision: 14, scale: 2 }).default("0"),
+  recordingLink: varchar("recordingLink", { length: 500 }), // رابط تسجيل الاجتماع
+  presentationStartedAt: timestamp("presentationStartedAt"),
+  presentationEndedAt: timestamp("presentationEndedAt"),
+  status: mysqlEnum("status", ["draft", "presented", "accepted", "rejected"]).default("draft"),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type PlaybookQuotation = typeof playbookQuotations.$inferSelect;
+export type InsertPlaybookQuotation = typeof playbookQuotations.$inferInsert;
+
+// ─── Meeting Sessions (Sales Execution Tracking) ────────────────────────────────────────────────────────
+// تتبع كل جلسة اجتماع / عرض مبيعات
+export const meetingSessions = mysqlTable("meeting_sessions", {
+  id: int("id").autoincrement().primaryKey(),
+  engineerId: int("engineerId").notNull(),
+  quotationId: int("quotationId"),                          // FK → playbook_quotations.id (اختياري)
+  dealId: int("dealId"),                                    // FK → deals.id (اختياري)
+  clientName: varchar("clientName", { length: 255 }),
+  sessionType: mysqlEnum("sessionType", ["presentation", "closing", "follow_up"]).default("presentation"),
+  startTime: timestamp("startTime").defaultNow().notNull(),
+  endTime: timestamp("endTime"),
+  durationMinutes: int("durationMinutes"),                  // يُحسب عند الإنهاء
+  recordingLink: varchar("recordingLink", { length: 500 }),
+  // Scoring
+  totalScore: int("totalScore").default(0),                 // 0-100
+  itemsViewed: int("itemsViewed").default(0),               // عدد Items تم عرضها بالكامل
+  itemsTotal: int("itemsTotal").default(0),                 // إجمالي Items في العرض
+  videosPlayed: int("videosPlayed").default(0),
+  scriptsUsed: int("scriptsUsed").default(0),
+  rendersViewed: int("rendersViewed").default(0),
+  pricesViewed: int("pricesViewed").default(0),
+  // Status
+  status: mysqlEnum("status", ["active", "completed", "abandoned"]).default("active"),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type MeetingSession = typeof meetingSessions.$inferSelect;
+export type InsertMeetingSession = typeof meetingSessions.$inferInsert;
+
+// ─── Session Actions (تتبع كل إجراء داخل الجلسة) ────────────────────────────────────────────────────────
+export const sessionActions = mysqlTable("session_actions", {
+  id: int("id").autoincrement().primaryKey(),
+  sessionId: int("sessionId").notNull(),                    // FK → meeting_sessions.id
+  itemId: int("itemId"),                                    // FK → playbook_items.id (اختياري)
+  actionType: mysqlEnum("actionType", [
+    "item_opened",        // فتح العنصر
+    "video_started",      // بدء تشغيل الفيديو
+    "video_completed",    // إكمال الفيديو
+    "render_viewed",      // مشاهدة الـ Render
+    "script_opened",      // فتح الـ Script
+    "script_read",        // قراءة الـ Script (بعد 10 ثواني)
+    "price_viewed",       // فتح تفاصيل السعر
+    "quotation_opened",   // فتح عرض السعر الكامل
+    "item_completed",     // إكمال عرض العنصر بالكامل
+    "item_skipped",       // تخطي العنصر
+  ]).notNull(),
+  durationSeconds: int("durationSeconds").default(0),       // مدة التفاعل بالثواني
+  metadata: text("metadata"),                               // JSON بيانات إضافية
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
+});
+export type SessionAction = typeof sessionActions.$inferSelect;
+export type InsertSessionAction = typeof sessionActions.$inferInsert;
+
+// ─── Engineer Evaluations (Promotion & A/B/C Player System) ──────────────────
+// تقييم شهري لكل مهندس بناءً على 5 عناصر أداء
+// Career Path: Sales Engineer → Senior Sales Engineer → Sales Consultant
+export const engineerEvaluations = mysqlTable("engineer_evaluations", {
+  id: int("id").autoincrement().primaryKey(),
+  engineerId: int("engineerId").notNull(),
+  // ─── الفترة الزمنية ────────────────────────────────────────────────────────
+  evaluationMonth: int("evaluationMonth").notNull(),   // 1-12
+  evaluationYear: int("evaluationYear").notNull(),     // e.g. 2026
+  // ─── 5 عناصر التقييم (كل عنصر من 100) ────────────────────────────────────
+  salesAchievementScore: int("salesAchievementScore").default(0).notNull(),  // نسبة تحقيق الهدف %
+  closingRateScore: int("closingRateScore").default(0).notNull(),            // Closing Rate %
+  meetingScore: int("meetingScore").default(0).notNull(),                    // متوسط Meeting Reviews %
+  playbookUsageScore: int("playbookUsageScore").default(0).notNull(),        // Playbook Usage %
+  taskDisciplineScore: int("taskDisciplineScore").default(0).notNull(),      // Task Discipline % (Meeting + Recording 100%)
+  // ─── الدرجة الإجمالية والمستوى ────────────────────────────────────────────
+  overallScore: int("overallScore").default(0).notNull(),                    // متوسط الـ 5 عناصر
+  performanceLevel: mysqlEnum("performanceLevel", ["a_player", "b_player", "c_player"]).notNull().default("b_player"),
+  // ─── Career Path Level ────────────────────────────────────────────────────
+  careerLevel: mysqlEnum("careerLevel", [
+    "sales_engineer",       // المستوى الأول
+    "senior_sales_engineer",// المستوى الثاني
+    "sales_consultant",     // المستوى الثالث
+  ]).notNull().default("sales_engineer"),
+  // ─── Promotion Eligibility ────────────────────────────────────────────────
+  promotionEligible: boolean("promotionEligible").default(false).notNull(),
+  promotionReadinessScore: int("promotionReadinessScore").default(0).notNull(), // % من متطلبات الترقية
+  consecutiveMonthsMeetingTarget: int("consecutiveMonthsMeetingTarget").default(0).notNull(), // أشهر متتالية تحقق الهدف
+  // ─── القرار الإداري ────────────────────────────────────────────────────────
+  decisionAction: mysqlEnum("decisionAction", [
+    "promote",          // A Player → ترقية
+    "bonus",            // A Player → Bonus
+    "coaching",         // B Player → Coaching إجباري
+    "warning",          // C Player → Warning
+    "improvement_plan", // C Player → Plan 30 يوم
+    "firing_risk",      // شهرين C Player → قرار إداري
+    "none",
+  ]).notNull().default("none"),
+  // ─── Firing Logic ─────────────────────────────────────────────────────────
+  consecutiveCMonths: int("consecutiveCMonths").default(0).notNull(),        // عدد أشهر C Player متتالية
+  firingDecisionTriggered: boolean("firingDecisionTriggered").default(false).notNull(),
+  // ─── ملاحظات ──────────────────────────────────────────────────────────────
+  coachingNotes: text("coachingNotes"),
+  improvementPlan: text("improvementPlan"),
+  reviewedBy: int("reviewedBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type EngineerEvaluation = typeof engineerEvaluations.$inferSelect;
+export type InsertEngineerEvaluation = typeof engineerEvaluations.$inferInsert;
+
+// ─── Engineer Career Level (الحالة الحالية للمهندس في Career Path) ──────────
+export const engineerCareerLevels = mysqlTable("engineer_career_levels", {
+  id: int("id").autoincrement().primaryKey(),
+  engineerId: int("engineerId").notNull().unique(),
+  currentLevel: mysqlEnum("currentLevel", [
+    "sales_engineer",
+    "senior_sales_engineer",
+    "sales_consultant",
+  ]).notNull().default("sales_engineer"),
+  levelStartDate: timestamp("levelStartDate").defaultNow().notNull(),
+  // ─── Benefits per Level ───────────────────────────────────────────────────
+  commissionMultiplier: decimal("commissionMultiplier", { precision: 4, scale: 2 }).default("1.00").notNull(), // 1.00 / 1.15 / 1.30
+  maxDiscountPct: decimal("maxDiscountPct", { precision: 5, scale: 2 }).default("5.00").notNull(),  // 5% / 10% / 15%
+  leadsAccessLevel: mysqlEnum("leadsAccessLevel", ["standard", "premium", "vip"]).notNull().default("standard"),
+  // ─── Promotion History ────────────────────────────────────────────────────
+  promotionHistory: text("promotionHistory"),  // JSON array of promotion events
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type EngineerCareerLevel = typeof engineerCareerLevels.$inferSelect;
+export type InsertEngineerCareerLevel = typeof engineerCareerLevels.$inferInsert;

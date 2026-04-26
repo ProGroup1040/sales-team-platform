@@ -134,6 +134,48 @@
       "when": 1777222488796,
       "tag": "0018_flawless_masked_marvel",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "5",
+      "when": 1777242213794,
+      "tag": "0019_mighty_umar",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "5",
+      "when": 1777243134640,
+      "tag": "0020_aberrant_salo",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "5",
+      "when": 1777244205026,
+      "tag": "0021_white_medusa",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "5",
+      "when": 1777244547853,
+      "tag": "0022_common_darwin",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "5",
+      "when": 1777245689801,
+      "tag": "0023_orange_mockingbird",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "5",
+      "when": 1777245956806,
+      "tag": "0024_career_path_promotion",
+      "breakpoints": true
     }
   ]
 }

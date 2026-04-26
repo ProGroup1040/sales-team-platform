@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/_core/hooks/useAuth";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 import {
   BarChart2, Clock, Target, TrendingUp, TrendingDown, Minus,
   AlertTriangle, CheckCircle, Plus, Users, Activity, Award
@@ -96,7 +96,6 @@ function LogActivityDialog({
   onSuccess: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const { toast } = useToast();
   const today = new Date().toISOString().split("T")[0];
 
   const [form, setForm] = useState({
@@ -109,12 +108,12 @@ function LogActivityDialog({
 
   const logMutation = trpc.workDist.log.useMutation({
     onSuccess: () => {
-      toast({ title: "✅ تم تسجيل النشاط بنجاح" });
+      toast.success("✅ تم تسجيل النشاط بنجاح");
       setOpen(false);
       onSuccess();
     },
     onError: (e: { message: string }) =>
-      toast({ title: "خطأ", description: e.message, variant: "destructive" }),
+      toast.error(e.message ?? "حدث خطأ"),
   });
 
   return (
@@ -189,7 +188,7 @@ function LogActivityDialog({
               logMutation.mutate({
                 engineerId,
                 logDate: form.logDate,
-                activityType: form.activityType,
+                activityType: form.activityType as "meeting_closing" | "meeting_2d" | "meeting_3d" | "meeting_quotation" | "design_2d" | "design_3d" | "quotation",
                 durationMinutes: form.durationMinutes,
                 clientName: form.clientName || undefined,
                 notes: form.notes || undefined,
@@ -391,7 +390,7 @@ function MyDistributionView({ dist }: { dist: DistData }) {
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function WorkDistribution() {
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin" || user?.role === "admin_sales";
+  const isAdmin = (user?.role as string) === "admin" || (user?.role as string) === "admin_sales";
 
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -399,14 +398,12 @@ export default function WorkDistribution() {
   const [selectedEngineerId, setSelectedEngineerId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<"my" | "team" | "ranking" | "insights">("my");
 
-  const { toast } = useToast();
-
-  // Fetch engineers list for admin
-  const engineersQuery = trpc.engineer.list.useQuery(undefined, { enabled: isAdmin });
+  // Fetch engineers list for adminn
+  const engineersQuery = trpc.engineers.list.useQuery(undefined, { enabled: isAdmin });
 
   // Get current engineer ID
   const myEngineerId = engineersQuery.data?.find(
-    (e) => e.name === user?.name
+    (e: { name: string; id: number }) => e.name === user?.name
   )?.id ?? (engineersQuery.data?.[0]?.id ?? 0);
 
   const targetEngineerId = isAdmin
@@ -511,7 +508,7 @@ export default function WorkDistribution() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">الكل</SelectItem>
-                {engineersQuery.data?.map((e) => (
+                {engineersQuery.data?.map((e: { id: number; name: string }) => (
                   <SelectItem key={e.id} value={String(e.id)}>{e.name}</SelectItem>
                 ))}
               </SelectContent>
