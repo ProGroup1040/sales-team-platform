@@ -14,7 +14,8 @@ import {
   meetingReviews, MeetingReview, InsertMeetingReview,
   leadFollowupLogs, LeadFollowupLog, InsertLeadFollowupLog,
   auditLogs, AuditLog, InsertAuditLog,
-  leadDailyStats, LeadDailyStat, InsertLeadDailyStat
+  leadDailyStats, LeadDailyStat, InsertLeadDailyStat,
+  workLogs, WorkLog, InsertWorkLog
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { notifyOwner } from './_core/notification';
@@ -2994,4 +2995,602 @@ export async function getWeeklyReport() {
     // Per engineer
     engineerSummary, topPerformer,
   };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// WORK DISTRIBUTION SYSTEM
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** Target distribution percentages */
+export const WORK_DISTRIBUTION_TARGETS = {
+  meetings: 50,    // meeting_2d + meeting_quotation + meeting_3d + meeting_closing
+  design_3d: 30,   // design_3d
+  design_2d: 10,   // design_2d
+  quotation: 10,   // quotation
+} as const;
+
+/** Activity type labels in Arabic */
+export const ACTIVITY_LABELS: Record<string, string> = {
+  meeting_2d: "ميتينج 2D",
+  meeting_quotation: "ميتينج عرض سعر",
+  meeting_3d: "ميتينج 3D",
+  meeting_closing: "ميتينج إغلاق/تفاوض",
+  design_3d: "تصميم 3D",
+  design_2d: "تصميم 2D",
+  quotation: "عرض سعر",
+};
+
+/** Category mapping */
+export function getActivityCategory(activityType: string): "meetings" | "design_3d" | "design_2d" | "quotation" {
+  if (activityType.startsWith("meeting_")) return "meetings";
+  if (activityType === "design_3d") return "design_3d";
+  if (activityType === "design_2d") return "design_2d";
+  return "quotation";
+}
+
+/** Log a work activity */
+export async function logWorkActivity(data: InsertWorkLog) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const d = new Date(data.logDate);
+  // Calculate week number
+  const startOfYear = new Date(d.getFullYear(), 0, 1);
+  const weekNumber = Math.ceil(((d.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
+  await db.insert(workLogs).values({
+    ...data,
+    weekNumber,
+    month: d.getMonth() + 1,
+    year: d.getFullYear(),
+  });
+}
+
+/** Get work distribution for a single engineer (MTD or custom period) */
+export async function getWorkDistribution(
+  engineerId: number,
+  year: number,
+  month: number
+) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const rows = await db
+    .select({
+      activityType: workLogs.activityType,
+      totalMinutes: sum(workLogs.durationMinutes),
+      count: count(workLogs.id),
+    })
+    .from(workLogs)
+    .where(and(
+      eq(workLogs.engineerId, engineerId),
+      eq(workLogs.year, year),
+      eq(workLogs.month, month)
+    ))
+    .groupBy(workLogs.activityType);
+
+  const totalMinutes = rows.reduce((s, r) => s + Number(r.totalMinutes || 0), 0);
+
+  // Build per-activity breakdown
+  const byActivity: Record<string, { minutes: number; count: number; pct: number }> = {};
+  for (const r of rows) {
+    const mins = Number(r.totalMinutes || 0);
+    byActivity[r.activityType] = {
+      minutes: mins,
+      count: Number(r.count || 0),
+      pct: totalMinutes > 0 ? Math.round((mins / totalMinutes) * 1000) / 10 : 0,
+    };
+  }
+
+  // Build category totals
+  const categories = {
+    meetings: 0,
+    design_3d: 0,
+    design_2d: 0,
+    quotation: 0,
+  };
+  for (const [type, data] of Object.entries(byActivity)) {
+    const cat = getActivityCategory(type);
+    categories[cat] += data.minutes;
+  }
+  const categoryPct = {
+    meetings: totalMinutes > 0 ? Math.round((categories.meetings / totalMinutes) * 1000) / 10 : 0,
+    design_3d: totalMinutes > 0 ? Math.round((categories.design_3d / totalMinutes) * 1000) / 10 : 0,
+    design_2d: totalMinutes > 0 ? Math.round((categories.design_2d / totalMinutes) * 1000) / 10 : 0,
+    quotation: totalMinutes > 0 ? Math.round((categories.quotation / totalMinutes) * 1000) / 10 : 0,
+  };
+
+  const distributionScore = calculateDistributionScore(categoryPct);
+
+  return {
+    engineerId,
+    year,
+    month,
+    totalMinutes,
+    totalHours: Math.round(totalMinutes / 60 * 10) / 10,
+    byActivity,
+    categories: categoryPct,
+    distributionScore,
+    feedback: getDistributionFeedback(categoryPct),
+  };
+}
+
+/** Calculate Distribution Score (0-100) based on deviation from targets */
+export function calculateDistributionScore(
+  actual: { meetings: number; design_3d: number; design_2d: number; quotation: number }
+): number {
+  if (actual.meetings === 0 && actual.design_3d === 0 && actual.design_2d === 0 && actual.quotation === 0) return 0;
+
+  const targets = WORK_DISTRIBUTION_TARGETS;
+  // Max deviation per category (weighted)
+  const weights = { meetings: 0.4, design_3d: 0.3, design_2d: 0.15, quotation: 0.15 };
+  let score = 100;
+
+  for (const key of ["meetings", "design_3d", "design_2d", "quotation"] as const) {
+    const deviation = Math.abs(actual[key] - targets[key]);
+    // Each 10% deviation reduces score proportionally
+    const penalty = (deviation / 10) * 15 * weights[key];
+    score -= penalty;
+  }
+
+  return Math.max(0, Math.min(100, Math.round(score * 10) / 10));
+}
+
+/** Generate human-readable feedback about distribution */
+export function getDistributionFeedback(
+  actual: { meetings: number; design_3d: number; design_2d: number; quotation: number }
+): { status: "balanced" | "focused" | "weak"; message: string; warnings: string[] } {
+  const warnings: string[] = [];
+  const targets = WORK_DISTRIBUTION_TARGETS;
+
+  if (actual.meetings > targets.meetings + 20) warnings.push("ميتينجات كثيرة بدون إغلاق كافٍ");
+  if (actual.meetings < targets.meetings - 20) warnings.push("نقص في الميتينجات مع العملاء");
+  if (actual.design_3d > targets.design_3d + 20) warnings.push("تركيز زائد على التصميم 3D");
+  if (actual.design_3d < targets.design_3d - 15) warnings.push("نقص في التصميم 3D");
+  if (actual.design_2d < 3) warnings.push("لا يوجد تقريباً تصميم 2D");
+  if (actual.quotation < 3) warnings.push("نقص في عروض الأسعار");
+
+  const score = calculateDistributionScore(actual);
+  const status = score >= 75 ? "balanced" : score >= 50 ? "focused" : "weak";
+  const message = score >= 75
+    ? "توزيع متوازن — أداء ممتاز"
+    : score >= 50
+    ? "توزيع مقبول — يحتاج تحسين في بعض المجالات"
+    : "توزيع غير متوازن — يحتاج مراجعة عاجلة";
+
+  return { status, message, warnings };
+}
+
+/** Get distribution for all engineers (Manager View) */
+export async function getAllEngineersDistribution(year: number, month: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const allEngineers = await db.select().from(engineers).where(eq(engineers.status, "active"));
+  const results = await Promise.all(
+    allEngineers.map(async (eng) => {
+      const dist = await getWorkDistribution(eng.id, year, month);
+      return {
+        engineerId: eng.id,
+        engineerName: eng.name,
+        distribution: dist,
+      };
+    })
+  );
+  return results;
+}
+
+/** Get weekly distribution for an engineer */
+export async function getWeeklyDistribution(engineerId: number, year: number, weekNumber: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const rows = await db
+    .select({
+      activityType: workLogs.activityType,
+      totalMinutes: sum(workLogs.durationMinutes),
+      count: count(workLogs.id),
+    })
+    .from(workLogs)
+    .where(and(
+      eq(workLogs.engineerId, engineerId),
+      eq(workLogs.year, year),
+      eq(workLogs.weekNumber, weekNumber)
+    ))
+    .groupBy(workLogs.activityType);
+
+  const totalMinutes = rows.reduce((s, r) => s + Number(r.totalMinutes || 0), 0);
+  const categories = { meetings: 0, design_3d: 0, design_2d: 0, quotation: 0 };
+
+  for (const r of rows) {
+    const cat = getActivityCategory(r.activityType);
+    categories[cat] += Number(r.totalMinutes || 0);
+  }
+
+  const categoryPct = {
+    meetings: totalMinutes > 0 ? Math.round((categories.meetings / totalMinutes) * 1000) / 10 : 0,
+    design_3d: totalMinutes > 0 ? Math.round((categories.design_3d / totalMinutes) * 1000) / 10 : 0,
+    design_2d: totalMinutes > 0 ? Math.round((categories.design_2d / totalMinutes) * 1000) / 10 : 0,
+    quotation: totalMinutes > 0 ? Math.round((categories.quotation / totalMinutes) * 1000) / 10 : 0,
+  };
+
+  return {
+    engineerId, year, weekNumber, totalMinutes,
+    categories: categoryPct,
+    distributionScore: calculateDistributionScore(categoryPct),
+    feedback: getDistributionFeedback(categoryPct),
+  };
+}
+
+/** Get critical insights across all engineers */
+export async function getCriticalInsights(year: number, month: number) {
+  const allDist = await getAllEngineersDistribution(year, month);
+  const insights: {
+    engineerId: number;
+    engineerName: string;
+    type: string;
+    severity: "high" | "medium" | "low";
+    message: string;
+  }[] = [];
+
+  for (const { engineerId, engineerName, distribution } of allDist) {
+    if (!distribution || distribution.totalMinutes === 0) continue;
+    const { categories } = distribution;
+
+    if (categories.meetings > 70)
+      insights.push({ engineerId, engineerName, type: "meetings_overload", severity: "high", message: `${engineerName}: ميتينجات كثيرة (${categories.meetings}%) بدون إغلاق كافٍ` });
+
+    if (categories.design_3d > 60)
+      insights.push({ engineerId, engineerName, type: "design_overload", severity: "medium", message: `${engineerName}: تركيز زائد على التصميم 3D (${categories.design_3d}%)` });
+
+    if (categories.quotation < 5)
+      insights.push({ engineerId, engineerName, type: "no_quotations", severity: "high", message: `${engineerName}: لا يقوم بعروض الأسعار (${categories.quotation}%)` });
+
+    if (categories.meetings < 20)
+      insights.push({ engineerId, engineerName, type: "no_meetings", severity: "high", message: `${engineerName}: نقص شديد في الميتينجات (${categories.meetings}%)` });
+
+    if (distribution.distributionScore < 40)
+      insights.push({ engineerId, engineerName, type: "unbalanced", severity: "high", message: `${engineerName}: توزيع غير متوازن (Score: ${distribution.distributionScore})` });
+  }
+
+  return insights.sort((a, b) => {
+    const order = { high: 0, medium: 1, low: 2 };
+    return order[a.severity] - order[b.severity];
+  });
+}
+
+/** Full ranking: Sales + Closing Rate + Distribution Score */
+export async function getEngineerRankingFull(year: number, month: number) {
+  const [kpiData, allDist] = await Promise.all([
+    getEngineersKPI(year, month),
+    getAllEngineersDistribution(year, month),
+  ]);
+
+  const distMap = new Map(allDist.map(d => [d.engineerId, d.distribution]));
+
+  return kpiData.map(eng => {
+    const dist = distMap.get(eng.engineerId);
+    const distributionScore = dist?.distributionScore ?? 0;
+
+    // Composite score: 40% Sales, 30% Closing, 30% Distribution
+    const salesScore = Math.min(eng.achievementPct, 100);
+    // closingRate = closedWon / dealsCount * 100
+    const rawClosingRate = eng.dealsCount > 0 ? (eng.closedWon / eng.dealsCount) * 100 : 0;
+    const closingScore = Math.min(rawClosingRate * 2, 100); // closing rate * 2 capped at 100
+    const compositeScore = Math.round(
+      salesScore * 0.4 + closingScore * 0.3 + distributionScore * 0.3
+    );
+
+    return {
+      engineerId: eng.engineerId,
+      engineerName: eng.engineerName,
+      salesScore,
+      closingScore: Math.round(closingScore),
+      distributionScore,
+      compositeScore,
+      kpiRank: eng.kpiRank,
+      closedWon: eng.closedWon,
+      totalRevenue: eng.totalDealValue,
+      closingRate: Math.round(rawClosingRate * 10) / 10,
+      distributionFeedback: dist?.feedback?.status ?? "balanced",
+    };
+  }).sort((a, b) => b.compositeScore - a.compositeScore)
+    .map((eng, idx) => ({ ...eng, fullRank: idx + 1 }));
+}
+
+// ─── Time-based Calendar: Task Types & Colors ─────────────────────────────────
+export const TASK_TYPE_LABELS: Record<string, string> = {
+  meeting_2d:        "ميتينج 2D",
+  meeting_3d:        "ميتينج 3D",
+  meeting_quotation: "ميتينج عرض سعر",
+  meeting_closing:   "ميتينج إغلاق",
+  design_3d:         "تصميم 3D",
+  design_2d:         "تصميم 2D",
+  quotation:         "عرض سعر",
+  negotiation:       "تفاوض/إغلاق",
+  other:             "أخرى",
+};
+
+export const TASK_TYPE_CATEGORY: Record<string, "meetings" | "design_3d" | "design_2d" | "quotation" | "other"> = {
+  meeting_2d:        "meetings",
+  meeting_3d:        "meetings",
+  meeting_quotation: "meetings",
+  meeting_closing:   "meetings",
+  design_3d:         "design_3d",
+  design_2d:         "design_2d",
+  quotation:         "quotation",
+  negotiation:       "other",
+  other:             "other",
+};
+
+/** حساب مدة المهمة بالدقائق من startTime/endTime */
+function calcDurationMinutes(startTime?: string | null, endTime?: string | null): number {
+  if (!startTime || !endTime) return 0;
+  const [sh, sm] = startTime.split(":").map(Number);
+  const [eh, em] = endTime.split(":").map(Number);
+  const start = sh * 60 + sm;
+  const end   = eh * 60 + em;
+  return end > start ? end - start : 0;
+}
+
+/** التحقق من تداخل مهمتين زمنياً */
+export function doTimesOverlap(
+  s1: string, e1: string,
+  s2: string, e2: string
+): boolean {
+  const [sh1, sm1] = s1.split(":").map(Number);
+  const [eh1, em1] = e1.split(":").map(Number);
+  const [sh2, sm2] = s2.split(":").map(Number);
+  const [eh2, em2] = e2.split(":").map(Number);
+  const start1 = sh1 * 60 + sm1, end1 = eh1 * 60 + em1;
+  const start2 = sh2 * 60 + sm2, end2 = eh2 * 60 + em2;
+  return start1 < end2 && start2 < end1;
+}
+
+/**
+ * جلب المهام مع فلترة زمنية متقدمة
+ * dateRange: 'today' | 'yesterday' | 'week' | 'month' | 'custom'
+ */
+export async function getTasksFiltered(params: {
+  dateRange: "today" | "yesterday" | "week" | "month" | "custom";
+  dateFrom?: string;
+  dateTo?: string;
+  engineerId?: number;
+  taskType?: string;
+  status?: string;
+}) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const now = new Date();
+  let fromDate: Date;
+  let toDate: Date;
+
+  if (params.dateRange === "today") {
+    fromDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    toDate   = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+  } else if (params.dateRange === "yesterday") {
+    const y = new Date(now); y.setDate(y.getDate() - 1);
+    fromDate = new Date(y.getFullYear(), y.getMonth(), y.getDate());
+    toDate   = new Date(y.getFullYear(), y.getMonth(), y.getDate(), 23, 59, 59);
+  } else if (params.dateRange === "week") {
+    const day = now.getDay();
+    fromDate = new Date(now); fromDate.setDate(now.getDate() - day);
+    fromDate.setHours(0, 0, 0, 0);
+    toDate = new Date(fromDate); toDate.setDate(fromDate.getDate() + 6);
+    toDate.setHours(23, 59, 59, 999);
+  } else if (params.dateRange === "month") {
+    fromDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    toDate   = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+  } else {
+    // custom
+    fromDate = params.dateFrom ? new Date(params.dateFrom + "T00:00:00") : new Date(now.getFullYear(), now.getMonth(), 1);
+    toDate   = params.dateTo   ? new Date(params.dateTo   + "T23:59:59") : new Date();
+  }
+
+  const conditions: any[] = [
+    gte(dailyTasks.taskDate, fromDate),
+    lte(dailyTasks.taskDate, toDate),
+    eq(dailyTasks.isDeleted, 0),
+  ];
+  if (params.engineerId) conditions.push(eq(dailyTasks.engineerId, params.engineerId));
+  if (params.taskType)   conditions.push(eq(dailyTasks.taskType, params.taskType as any));
+  if (params.status)     conditions.push(eq(dailyTasks.status, params.status as any));
+
+  const tasks = await db
+    .select()
+    .from(dailyTasks)
+    .where(and(...conditions))
+    .orderBy(dailyTasks.taskDate, dailyTasks.startTime as any);
+
+  // جلب أسماء المهندسين
+  const allEngineers = await db.select({ id: engineers.id, name: engineers.name }).from(engineers).where(eq(engineers.isDeleted, 0));
+  const engMap = new Map(allEngineers.map(e => [e.id, e.name]));
+
+  return tasks.map(t => ({
+    ...t,
+    engineerName: engMap.get(t.engineerId) ?? "غير معروف",
+    durationMinutes: calcDurationMinutes(t.startTime, t.endTime),
+    taskTypeLabel: TASK_TYPE_LABELS[t.taskType ?? "other"] ?? "أخرى",
+    taskCategory: TASK_TYPE_CATEGORY[t.taskType ?? "other"] ?? "other",
+  }));
+}
+
+/**
+ * ملخص توزيع الوقت الفعلي لمهندس في فترة زمنية
+ * يُستخدم في KPI وWeekly Report
+ */
+export async function getTasksTimeSummary(params: {
+  engineerId?: number;
+  dateFrom: string;
+  dateTo: string;
+}) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const fromDate = new Date(params.dateFrom + "T00:00:00");
+  const toDate   = new Date(params.dateTo   + "T23:59:59");
+
+  const conditions: any[] = [
+    gte(dailyTasks.taskDate, fromDate),
+    lte(dailyTasks.taskDate, toDate),
+    eq(dailyTasks.isDeleted, 0),
+  ];
+  if (params.engineerId) conditions.push(eq(dailyTasks.engineerId, params.engineerId));
+
+  const tasks = await db.select().from(dailyTasks).where(and(...conditions));
+
+  let totalMinutes = 0;
+  const byCategory: Record<string, number> = { meetings: 0, design_3d: 0, design_2d: 0, quotation: 0, other: 0 };
+
+  for (const t of tasks) {
+    const dur = calcDurationMinutes(t.startTime, t.endTime);
+    if (dur > 0) {
+      totalMinutes += dur;
+      const cat = TASK_TYPE_CATEGORY[t.taskType ?? "other"] ?? "other";
+      byCategory[cat] = (byCategory[cat] ?? 0) + dur;
+    }
+  }
+
+  const totalHours = Math.round(totalMinutes / 60 * 10) / 10;
+  const pct = (cat: string) => totalMinutes > 0 ? Math.round((byCategory[cat] / totalMinutes) * 100) : 0;
+
+  return {
+    totalMinutes,
+    totalHours,
+    byCategory,
+    percentages: {
+      meetings:  pct("meetings"),
+      design_3d: pct("design_3d"),
+      design_2d: pct("design_2d"),
+      quotation: pct("quotation"),
+      other:     pct("other"),
+    },
+    taskCount: tasks.length,
+  };
+}
+
+/**
+ * التحقق من تداخل مهمة جديدة مع المهام الموجودة
+ */
+export async function checkTimeOverlap(params: {
+  engineerId: number;
+  taskDate: string;
+  startTime: string;
+  endTime: string;
+  excludeTaskId?: number;
+}): Promise<{ hasOverlap: boolean; conflictingTask?: { id: number; title: string; startTime: string; endTime: string } }> {
+  const db = await getDb();
+  if (!db) return { hasOverlap: false };
+
+  const dateObj = new Date(params.taskDate + "T00:00:00");
+  const conditions: any[] = [
+    eq(dailyTasks.engineerId, params.engineerId),
+    eq(dailyTasks.taskDate, dateObj),
+    eq(dailyTasks.isDeleted, 0),
+  ];
+  if (params.excludeTaskId) {
+    conditions.push(ne(dailyTasks.id, params.excludeTaskId));
+  }
+
+  const existingTasks = await db.select({
+    id: dailyTasks.id,
+    title: dailyTasks.title,
+    startTime: dailyTasks.startTime,
+    endTime: dailyTasks.endTime,
+  }).from(dailyTasks).where(and(...conditions));
+
+  for (const t of existingTasks) {
+    if (!t.startTime || !t.endTime) continue;
+    if (doTimesOverlap(params.startTime, params.endTime, t.startTime, t.endTime)) {
+      return {
+        hasOverlap: true,
+        conflictingTask: { id: t.id, title: t.title, startTime: t.startTime, endTime: t.endTime },
+      };
+    }
+  }
+  return { hasOverlap: false };
+}
+
+/**
+ * المهام الحرجة المحسّنة:
+ * - متأخرة (isCritical=1)
+ * - لم تُنفذ (not_done)
+ * - مخططة ومر عليها أكثر من 24 ساعة بدون تحديث
+ */
+export async function getCriticalTasksEnhanced() {
+  const db = await getDb();
+  if (!db) return [];
+
+  const now = new Date();
+  const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
+
+  // المهام الحرجة القديمة + not_done + planned قديمة
+  const tasks = await db
+    .select()
+    .from(dailyTasks)
+    .where(
+      and(
+        eq(dailyTasks.isDeleted, 0),
+        or(
+          eq(dailyTasks.isCritical, 1),
+          eq(dailyTasks.status, "not_done"),
+          and(
+            eq(dailyTasks.status, "planned"),
+            lte(dailyTasks.taskDate, yesterday),
+          )
+        )
+      )
+    )
+    .orderBy(desc(dailyTasks.taskDate))
+    .limit(100);
+
+  const allEngineers = await db.select({ id: engineers.id, name: engineers.name }).from(engineers).where(eq(engineers.isDeleted, 0));
+  const engMap = new Map(allEngineers.map(e => [e.id, e.name]));
+
+  return tasks.map(t => {
+    const ageHours = Math.round((now.getTime() - new Date(t.taskDate).getTime()) / 3600000);
+    let alertType: "critical" | "not_done" | "stale_planned" = "critical";
+    if (t.status === "not_done") alertType = "not_done";
+    else if (t.status === "planned" && ageHours > 24) alertType = "stale_planned";
+
+    return {
+      ...t,
+      engineerName: engMap.get(t.engineerId) ?? "غير معروف",
+      ageHours,
+      alertType,
+      durationMinutes: calcDurationMinutes(t.startTime, t.endTime),
+      taskTypeLabel: TASK_TYPE_LABELS[t.taskType ?? "other"] ?? "أخرى",
+    };
+  });
+}
+
+/**
+ * جلب مهام يوم واحد مع بيانات الوقت للـ Timeline
+ */
+export async function getTasksForTimeline(dateStr: string, engineerId?: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const dateObj = new Date(dateStr + "T00:00:00");
+  const conditions: any[] = [
+    eq(dailyTasks.taskDate, dateObj),
+    eq(dailyTasks.isDeleted, 0),
+  ];
+  if (engineerId) conditions.push(eq(dailyTasks.engineerId, engineerId));
+
+  const tasks = await db
+    .select()
+    .from(dailyTasks)
+    .where(and(...conditions))
+    .orderBy(dailyTasks.startTime as any, dailyTasks.priority);
+
+  const allEngineers = await db.select({ id: engineers.id, name: engineers.name }).from(engineers).where(eq(engineers.isDeleted, 0));
+  const engMap = new Map(allEngineers.map(e => [e.id, e.name]));
+
+  return tasks.map(t => ({
+    ...t,
+    engineerName: engMap.get(t.engineerId) ?? "غير معروف",
+    durationMinutes: calcDurationMinutes(t.startTime, t.endTime),
+    taskTypeLabel: TASK_TYPE_LABELS[t.taskType ?? "other"] ?? "أخرى",
+    taskCategory: TASK_TYPE_CATEGORY[t.taskType ?? "other"] ?? "other",
+  }));
 }

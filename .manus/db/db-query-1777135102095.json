@@ -1,0 +1,9 @@
+{
+  "query": "CREATE TABLE `work_logs` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`engineerId` int NOT NULL,\n\t`logDate` date NOT NULL,\n\t`activityType` enum('meeting_2d','meeting_quotation','meeting_3d','meeting_closing','design_3d','design_2d','quotation') NOT NULL,\n\t`durationMinutes` int NOT NULL DEFAULT 60,\n\t`clientName` varchar(255),\n\t`notes` text,\n\t`weekNumber` int NOT NULL,\n\t`month` int NOT NULL,\n\t`year` int NOT NULL,\n\t`createdAt` timestamp NOT NULL DEFAULT (now()),\n\t`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,\n\tCONSTRAINT `work_logs_id` PRIMARY KEY(`id`)\n);",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user fZydmv6Jueen1GW.d1ac4e774f80 --database 9B5dXFSohC6AundZRCEr3i --execute CREATE TABLE `work_logs` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`engineerId` int NOT NULL,\n\t`logDate` date NOT NULL,\n\t`activityType` enum('meeting_2d','meeting_quotation','meeting_3d','meeting_closing','design_3d','design_2d','quotation') NOT NULL,\n\t`durationMinutes` int NOT NULL DEFAULT 60,\n\t`clientName` varchar(255),\n\t`notes` text,\n\t`weekNumber` int NOT NULL,\n\t`month` int NOT NULL,\n\t`year` int NOT NULL,\n\t`createdAt` timestamp NOT NULL DEFAULT (now()),\n\t`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,\n\tCONSTRAINT `work_logs_id` PRIMARY KEY(`id`)\n);",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 1720
+}

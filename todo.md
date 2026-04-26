@@ -406,3 +406,69 @@
 - [x] CORS مفعّل (Access-Control-Allow-Origin: *) للـ 3 endpoints
 - [x] Endpoints عامة بدون authentication
 - [x] 215 اختبار ناجح + 0 أخطاء TypeScript
+
+## Work Distribution + KPI Analysis System (25 أبريل)
+
+### Database
+- [ ] جدول work_logs: (id, engineer_id, activity_type, duration_minutes, log_date, week_number, month, year, notes)
+- [ ] activity_type enum: meeting_2d, meeting_quotation, meeting_3d, meeting_closing, design_3d, design_2d, quotation
+- [ ] Migration SQL لجدول work_logs
+
+### Backend - db.ts
+- [ ] logWorkActivity() - تسجيل نشاط جديد
+- [ ] getWorkDistribution(engineerId, year, month) - توزيع الوقت لمهندس
+- [ ] getAllEngineersDistribution(year, month) - توزيع كل المهندسين
+- [ ] calculateDistributionScore(distribution) - حساب Distribution Score
+- [ ] getWeeklyDistribution(engineerId, year, week) - توزيع أسبوعي
+- [ ] getCriticalInsights(year, month) - تحليل نقاط الضعف تلقائياً
+- [ ] getEngineerRankingFull(year, month) - ترتيب شامل (Sales + Closing + Distribution)
+
+### Backend - routers.ts
+- [ ] workDist.log - تسجيل نشاط (protected)
+- [ ] workDist.myDistribution - توزيع المهندس الحالي
+- [ ] workDist.allEngineers - توزيع كل المهندسين (admin فقط)
+- [ ] workDist.criticalInsights - تحليل نقاط الضعف (admin فقط)
+- [ ] workDist.weeklyAnalysis - تحليل أسبوعي
+- [ ] workDist.fullRanking - ترتيب شامل
+
+### Frontend - WorkDistribution.tsx
+- [ ] صفحة رئيسية بـ 2 views: Engineer View + Manager View
+- [ ] Engineer View: Donut Chart للتوزيع الفعلي vs المستهدف
+- [ ] Engineer View: Distribution Score مع تفسير
+- [ ] Engineer View: Weekly Feedback (متوازن؟ مركّز؟ ضعيف في Closing؟)
+- [ ] Engineer View: نموذج تسجيل نشاط جديد
+- [ ] Manager View: جدول مقارنة كل المهندسين
+- [ ] Manager View: Critical Insights تلقائية
+- [ ] Manager View: Ranking شامل (Sales + Closing + Distribution)
+- [ ] إضافة WorkDistribution في sidebar وroutes
+
+### تحديث KPIModule
+- [ ] إضافة Distribution Score في بطاقة كل مهندس
+- [ ] إضافة Critical Insights section
+- [ ] تحديث Ranking ليشمل Distribution Score
+
+### اختبارات
+- [ ] Vitest لـ calculateDistributionScore
+- [ ] Vitest لـ getCriticalInsights
+- [ ] Vitest لـ getEngineerRankingFull
+
+## Time-based Calendar في موديول المهام (الطلب الجديد)
+- [x] تحديث schema: إضافة startTime, endTime, taskType لجدول daily_tasks
+- [x] تطبيق migration SQL الجديد
+- [x] Backend: getTasksFiltered (فلترة زمنية متقدمة: today/yesterday/week/month/custom)
+- [x] Backend: getTasksTimeSummary (ملخص توزيع الوقت الفعلي للـ KPI)
+- [x] Backend: checkTimeOverlap (منع التداخل الزمني بين المهام)
+- [x] Backend: getCriticalTasksEnhanced (3 أنواع: critical/not_done/stale_planned)
+- [x] Backend: getTasksForTimeline (مهام يوم واحد مع بيانات الوقت)
+- [x] Backend: createWithTime (إنشاء مهمة بوقت + فحص تداخل تلقائي)
+- [x] مكوّن TimeFilterBar (اليوم/أمس/الأسبوع/الشهر/مخصص)
+- [x] مكوّن DailyTimeline (Timeline زمني مع Task Blocks ملونة حسب النوع)
+- [x] مكوّن AddTimeTaskDialog (إضافة مهمة بوقت + نوع + منع تداخل)
+- [x] تحديث TasksModule: Time Filter Bar فوق قائمة المهام
+- [x] تحديث TasksModule: List/Timeline Toggle
+- [x] تحديث TasksModule: Advanced Filters (مهندس + نوع + حالة)
+- [x] تحديث TasksModule: List View يعرض وقت البداية/النهاية ونوع المهمة
+- [x] تحديث TasksModule: Critical Alerts محسّن (3 تصنيفات + عمر المهمة)
+- [x] تحديث TasksModule: حذف تاب "متابعة Leads" من هذا الموديول
+- [x] Current Time Indicator (خط أحمر يُظهر الوقت الحالي في Timeline)
+- [x] Summary Bar (إجمالي الوقت + توزيع % لكل نشاط)

@@ -16,6 +16,9 @@ import {
   ClipboardList, BarChart2, CalendarDays, Video, Target
 } from "lucide-react";
 import TaskCalendarView from "@/components/TaskCalendarView";
+import TimeFilterBar, { type TimeFilterValue } from "@/components/TimeFilterBar";
+import DailyTimeline from "@/components/DailyTimeline";
+import { LayoutList, LayoutGrid, Filter, X } from "lucide-react";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 function toDateStr(d: Date) { return d.toISOString().split("T")[0]; }
@@ -1196,31 +1199,53 @@ export default function TasksModule() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<"admin" | "engineer">("admin");
   const [selectedEngineer, setSelectedEngineer] = useState<string>("");
-  const [activeTab, setActiveTab] = useState<"tasks" | "ranking" | "critical" | "admin_sales" | "lead_followup" | "calendar">("tasks");
+  const [activeTab, setActiveTab] = useState<"tasks" | "ranking" | "critical" | "admin_sales" | "calendar">("tasks");
+  // ── New: list vs timeline toggle
+  const [listViewMode, setListViewMode] = useState<"list" | "timeline">("list");
+  // ── New: Time Filter
+  const [timeFilter, setTimeFilter] = useState<TimeFilterValue>({ dateRange: "today" });
+  // ── New: Advanced Filters
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterEngineer, setFilterEngineer] = useState<string>("");
+  const [filterTaskType, setFilterTaskType] = useState<string>("");
+  const [filterStatus, setFilterStatus] = useState<string>("");
 
   const dateStr = toDateStr(currentDate);
   const isToday = toDateStr(new Date()) === dateStr;
   const utils = trpc.useUtils();
   const statsQ = trpc.tasks.stats.useQuery({ date: dateStr });
+  // ── Use filtered query when time filter or advanced filters are active
+  const useFilteredQuery = timeFilter.dateRange !== "today" || !!filterEngineer || !!filterTaskType || !!filterStatus;
+  const filteredQ = trpc.tasks.filtered.useQuery({
+    dateRange: timeFilter.dateRange,
+    dateFrom: timeFilter.dateFrom,
+    dateTo: timeFilter.dateTo,
+    engineerId: filterEngineer ? Number(filterEngineer) : undefined,
+    taskType: filterTaskType || undefined,
+    status: filterStatus || undefined,
+  }, { enabled: useFilteredQuery });
   const listQ = trpc.tasks.list.useQuery({
     date: dateStr,
     engineerId: viewMode === "engineer" && selectedEngineer ? Number(selectedEngineer) : undefined
-  });
-  const criticalQ = trpc.tasks.critical.useQuery();
+  }, { enabled: !useFilteredQuery });
+  const criticalQ = trpc.tasks.criticalEnhanced.useQuery();
   const engineersQ = trpc.tasks.engineers.useQuery();
   const stats = statsQ.data;
-  const tasks = listQ.data ?? [];
+  const rawTasks = useFilteredQuery ? (filteredQ.data ?? []) : (listQ.data ?? []);
   const engineers = engineersQ.data ?? [];
   const criticalTasks = criticalQ.data ?? [];
   const deleteMut = trpc.softDelete.task.useMutation({
-    onSuccess: () => { utils.tasks.stats.invalidate(); utils.tasks.list.invalidate(); toast.success("تم حذف المهمة"); setDeleteTaskTarget(null); },
+    onSuccess: () => { utils.tasks.stats.invalidate(); utils.tasks.list.invalidate(); filteredQ.refetch(); toast.success("تم حذف المهمة"); setDeleteTaskTarget(null); },
     onError: () => toast.error("حدث خطأ"),
   });
   const [deleteTaskTarget, setDeleteTaskTarget] = useState<number | null>(null);
   const filteredTasks = useMemo(() => {
-    if (viewMode === "engineer" && selectedEngineer) return tasks.filter(t => t.engineerId === Number(selectedEngineer));
-    return tasks;
-  }, [tasks, viewMode, selectedEngineer]);
+    let t = rawTasks;
+    if (!useFilteredQuery && viewMode === "engineer" && selectedEngineer)
+      t = t.filter((task: any) => task.engineerId === Number(selectedEngineer));
+    return t;
+  }, [rawTasks, viewMode, selectedEngineer, useFilteredQuery]);
+  const hasActiveFilters = filterEngineer || filterTaskType || filterStatus || timeFilter.dateRange !== "today";
   return (
     <div className="p-6 space-y-6 min-h-screen" dir="rtl">
       {/* Header */}
@@ -1320,6 +1345,101 @@ export default function TasksModule() {
           </button>
         </div>
       )}
+      {/* ── Time Filter Bar (only in tasks tab) ── */}
+      {activeTab === "tasks" && (
+        <div className="space-y-3">
+          <TimeFilterBar value={timeFilter} onChange={(v) => { setTimeFilter(v); if (v.dateRange === "today") { setCurrentDate(new Date()); } }} />
+          {/* Advanced Filters Toggle */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowFilters(f => !f)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+                showFilters || hasActiveFilters
+                  ? "bg-indigo-600/20 border-indigo-500/40 text-indigo-300"
+                  : "bg-white/5 border-white/10 text-white/50 hover:text-white hover:bg-white/10"
+              }`}
+            >
+              <Filter className="h-3 w-3" />
+              فلترة متقدمة
+              {hasActiveFilters && <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />}
+            </button>
+            {/* List / Timeline Toggle */}
+            <div className="flex items-center gap-1 p-1 bg-white/5 rounded-lg border border-white/10">
+              <button
+                onClick={() => setListViewMode("list")}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                  listViewMode === "list" ? "bg-indigo-600 text-white" : "text-white/50 hover:text-white"
+                }`}
+              >
+                <LayoutList className="h-3.5 w-3.5" /> قائمة
+              </button>
+              <button
+                onClick={() => setListViewMode("timeline")}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                  listViewMode === "timeline" ? "bg-indigo-600 text-white" : "text-white/50 hover:text-white"
+                }`}
+              >
+                <LayoutGrid className="h-3.5 w-3.5" /> تقويم زمني
+              </button>
+            </div>
+            {hasActiveFilters && (
+              <button
+                onClick={() => { setFilterEngineer(""); setFilterTaskType(""); setFilterStatus(""); setTimeFilter({ dateRange: "today" }); }}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs hover:bg-red-500/20"
+              >
+                <X className="h-3 w-3" /> مسح الفلاتر
+              </button>
+            )}
+          </div>
+          {/* Advanced Filters Panel */}
+          {showFilters && (
+            <div className="p-4 rounded-xl bg-white/5 border border-white/10 grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-white/60 text-xs">المهندس</Label>
+                <Select value={filterEngineer} onValueChange={setFilterEngineer}>
+                  <SelectTrigger className="bg-white/5 border-white/10 text-white text-xs h-8">
+                    <SelectValue placeholder="الكل" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-900 border-white/10">
+                    <SelectItem value="" className="text-white hover:bg-white/10 text-xs">الكل</SelectItem>
+                    {engineers.map((e: any) => (
+                      <SelectItem key={e.id} value={String(e.id)} className="text-white hover:bg-white/10 text-xs">{e.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-white/60 text-xs">نوع المهمة</Label>
+                <Select value={filterTaskType} onValueChange={setFilterTaskType}>
+                  <SelectTrigger className="bg-white/5 border-white/10 text-white text-xs h-8">
+                    <SelectValue placeholder="الكل" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-900 border-white/10">
+                    <SelectItem value="" className="text-white hover:bg-white/10 text-xs">الكل</SelectItem>
+                    {[{v:'meeting_2d',l:'ميتينج 2D'},{v:'meeting_3d',l:'ميتينج 3D'},{v:'meeting_quotation',l:'ميتينج عرض سعر'},{v:'meeting_closing',l:'ميتينج إغلاق'},{v:'design_3d',l:'تصميم 3D'},{v:'design_2d',l:'تصميم 2D'},{v:'quotation',l:'عرض سعر'},{v:'negotiation',l:'تفاوض/إغلاق'},{v:'other',l:'أخرى'}].map(({v,l}) => (
+                      <SelectItem key={v} value={v} className="text-white hover:bg-white/10 text-xs">{l}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-white/60 text-xs">الحالة</Label>
+                <Select value={filterStatus} onValueChange={setFilterStatus}>
+                  <SelectTrigger className="bg-white/5 border-white/10 text-white text-xs h-8">
+                    <SelectValue placeholder="الكل" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-900 border-white/10">
+                    <SelectItem value="" className="text-white hover:bg-white/10 text-xs">الكل</SelectItem>
+                    {[{v:'planned',l:'مخططة'},{v:'completed',l:'منجزة'},{v:'delayed',l:'متأخرة'},{v:'not_done',l:'لم تُنفذ'},{v:'client_delay',l:'تأخير العميل'}].map(({v,l}) => (
+                      <SelectItem key={v} value={v} className="text-white hover:bg-white/10 text-xs">{l}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
       {/* Tabs */}
       <div className="flex gap-1 p-1 bg-white/5 rounded-xl border border-white/10 w-fit flex-wrap">
         {[
@@ -1328,7 +1448,6 @@ export default function TasksModule() {
           { key: "ranking",     label: "ترتيب المهندسين" },
           { key: "critical",    label: `المهام الحرجة${criticalTasks.length > 0 ? ` (${criticalTasks.length})` : ""}` },
           { key: "admin_sales", label: "مهام Admin Sales" },
-          { key: "lead_followup", label: "متابعة Leads" },
         ].map(tab => (
           <button key={tab.key} onClick={() => setActiveTab(tab.key as any)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === tab.key ? "bg-indigo-600 text-white" : "text-white/60 hover:text-white hover:bg-white/5"}`}>
@@ -1339,18 +1458,63 @@ export default function TasksModule() {
       {/* ── Tab: Tasks List ── */}
       {activeTab === "tasks" && (
         <div className="space-y-3">
+          {/* Timeline View */}
+          {listViewMode === "timeline" ? (
+            <DailyTimeline
+              dateStr={dateStr}
+              engineerId={filterEngineer ? Number(filterEngineer) : (viewMode === "engineer" && selectedEngineer ? Number(selectedEngineer) : undefined)}
+              engineers={engineers}
+              viewMode={viewMode}
+              onTaskAdded={() => { statsQ.refetch(); listQ.refetch(); filteredQ.refetch(); }}
+            />
+          ) : (
+          // List View
+          <>
           {filteredTasks.length === 0 ? (
             <div className="text-center py-16 text-white/30">
               <Calendar className="h-12 w-12 mx-auto mb-3 opacity-30" />
-              <p>لا توجد مهام لهذا اليوم</p>
-              {viewMode === "admin" && <p className="text-xs mt-2">اضغط "إضافة مهمة" لإضافة مهام جديدة</p>}
+              <p>لا توجد مهام في هذا النطاق</p>
+              {viewMode === "admin" && <p className="text-xs mt-2">اضغط "إضافة مهمة" أو غيّر الفلاتر</p>}
             </div>
-          ) : filteredTasks.map(task => {
+          ) : filteredTasks.map((task: any) => {
             const eng = engineers.find((e: any) => e.id === task.engineerId);
             const statusCfg = STATUS_CONFIG[task.status] ?? STATUS_CONFIG.planned;
             const priorityCfg = PRIORITY_CONFIG[task.priority ?? "medium"];
+            // Task type color
+            const TASK_TYPE_COLORS: Record<string, string> = {
+              meeting_2d: "bg-blue-500/20 border-blue-500/30 text-blue-300",
+              meeting_3d: "bg-cyan-500/20 border-cyan-500/30 text-cyan-300",
+              meeting_quotation: "bg-violet-500/20 border-violet-500/30 text-violet-300",
+              meeting_closing: "bg-emerald-500/20 border-emerald-500/30 text-emerald-300",
+              design_3d: "bg-amber-500/20 border-amber-500/30 text-amber-300",
+              design_2d: "bg-orange-500/20 border-orange-500/30 text-orange-300",
+              quotation: "bg-pink-500/20 border-pink-500/30 text-pink-300",
+              negotiation: "bg-rose-500/20 border-rose-500/30 text-rose-300",
+              other: "bg-slate-500/20 border-slate-500/30 text-slate-300",
+            };
+            const TASK_TYPE_LABELS: Record<string, string> = {
+              meeting_2d: "ميتينج 2D", meeting_3d: "ميتينج 3D",
+              meeting_quotation: "ميتينج عرض سعر", meeting_closing: "ميتينج إغلاق",
+              design_3d: "تصميم 3D", design_2d: "تصميم 2D",
+              quotation: "عرض سعر", negotiation: "تفاوض/إغلاق", other: "أخرى",
+            };
+            // Critical alert styling
+            const isCriticalAlert = task.status === "not_done" || task.status === "delayed" || task.isCritical;
             return (
-              <div key={task.id} className={`p-4 rounded-xl border transition-all ${task.status === "completed" ? "border-emerald-500/30 bg-emerald-500/5" : task.status === "not_done" ? "border-red-500/30 bg-red-500/5" : task.status === "delayed" ? "border-amber-500/30 bg-amber-500/5" : "border-white/10 bg-white/3"}`}>
+              <div key={task.id} className={`p-4 rounded-xl border transition-all ${
+                task.status === "not_done" ? "border-red-500/40 bg-red-500/8" :
+                task.status === "completed" ? "border-emerald-500/30 bg-emerald-500/5" :
+                task.status === "delayed" ? "border-amber-500/40 bg-amber-500/8" :
+                "border-white/10 bg-white/3"
+              }`}>
+                {isCriticalAlert && (
+                  <div className="flex items-center gap-1.5 mb-2 text-xs">
+                    <AlertTriangle className="h-3.5 w-3.5 text-red-400" />
+                    <span className="text-red-400 font-medium">
+                      {task.status === "not_done" ? "لم تُنفذ" : task.status === "delayed" ? "متأخرة" : "حرجة"}
+                    </span>
+                  </div>
+                )}
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -1359,13 +1523,26 @@ export default function TasksModule() {
                         {statusCfg.icon}<span className="mr-1">{statusCfg.label}</span>
                       </Badge>
                       {priorityCfg && <span className={`text-xs font-medium ${priorityCfg.color}`}>{priorityCfg.label}</span>}
-                      {task.category === 'closing' && <span className="text-xs px-1.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-400">إغلاق بيع</span>}
-                      {task.category === 'meeting' && <span className="text-xs px-1.5 py-0.5 rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-400">ميتينج</span>}
+                      {task.taskType && task.taskType !== "other" && (
+                        <span className={`text-xs px-1.5 py-0.5 rounded-full border ${TASK_TYPE_COLORS[task.taskType] ?? TASK_TYPE_COLORS.other}`}>
+                          {TASK_TYPE_LABELS[task.taskType] ?? task.taskType}
+                        </span>
+                      )}
+                      {task.category === 'closing' && !task.taskType && <span className="text-xs px-1.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-400">إغلاق بيع</span>}
+                      {task.category === 'meeting' && !task.taskType && <span className="text-xs px-1.5 py-0.5 rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-400">ميتينج</span>}
                     </div>
                     {task.description && <p className="text-xs text-white/40 mb-2">{task.description}</p>}
                     <div className="flex items-center gap-3 flex-wrap text-xs text-white/40">
                       {eng && <span>{(eng as any).name}</span>}
-                      {task.plannedHours && <span>{task.plannedHours} ساعة</span>}
+                      {/* Time info */}
+                      {task.startTime && task.endTime && (
+                        <span className="flex items-center gap-1 text-indigo-400">
+                          <Clock className="h-3 w-3" />
+                          {task.startTime} - {task.endTime}
+                          {task.durationMinutes && <span className="text-white/30">({task.durationMinutes < 60 ? `${task.durationMinutes}د` : `${Math.round(task.durationMinutes/60*10)/10}س`})</span>}
+                        </span>
+                      )}
+                      {task.plannedHours && !task.startTime && <span>{task.plannedHours} ساعة</span>}
                       {task.delayDays && task.delayDays > 0 && <span className="text-amber-400">{task.delayDays} {task.delayDays === 1 ? "يوم" : "أيام"} تأخير</span>}
                       {task.notes && <span className="text-white/30 truncate max-w-[200px]">{task.notes}</span>}
                       {(task.category === 'closing' || task.category === 'meeting') && (
@@ -1398,6 +1575,8 @@ export default function TasksModule() {
               </div>
             );
           })}
+          </>
+          )}
         </div>
       )}
 
@@ -1496,29 +1675,60 @@ export default function TasksModule() {
       {/* ── Tab: Critical Tasks ── */}
       {activeTab === "critical" && (
         <div className="space-y-3">
-          <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-300 text-sm flex items-center gap-2">
-            <Flame className="h-4 w-4 shrink-0" />
-            المهام الحرجة هي المهام المتأخرة أكثر من يومين وتحتاج تدخلاً فورياً
+          {/* Summary */}
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { type: "critical",      label: "حرجة",               count: criticalTasks.filter((t: any) => t.alertType === "critical").length,      color: "text-red-400",    bg: "bg-red-500/10 border-red-500/20" },
+              { type: "not_done",      label: "لم تُنفذ",            count: criticalTasks.filter((t: any) => t.alertType === "not_done").length,      color: "text-orange-400", bg: "bg-orange-500/10 border-orange-500/20" },
+              { type: "stale_planned", label: "مخططة قديمة",        count: criticalTasks.filter((t: any) => t.alertType === "stale_planned").length, color: "text-amber-400",  bg: "bg-amber-500/10 border-amber-500/20" },
+            ].map(s => (
+              <div key={s.type} className={`p-3 rounded-xl border ${s.bg} text-center`}>
+                <p className={`text-2xl font-bold ${s.color}`}>{s.count}</p>
+                <p className="text-white/50 text-xs mt-0.5">{s.label}</p>
+              </div>
+            ))}
           </div>
           {criticalTasks.length === 0 ? (
             <div className="text-center py-16 text-white/30">
               <CheckCircle2 className="h-12 w-12 mx-auto mb-3 opacity-30" />
-              <p>لا توجد مهام حرجة حالياً</p>
+              <p>لا توجد مهام تحتاج انتباهاً حالياً</p>
             </div>
           ) : criticalTasks.map((task: any) => {
-            const eng = engineers.find((e: any) => e.id === task.engineerId);
+            const alertStyles: Record<string, { border: string; bg: string; icon: React.ReactNode; label: string; color: string }> = {
+              critical:      { border: "border-red-500/40",    bg: "bg-red-500/8",    icon: <Flame className="h-4 w-4 text-red-400" />,         label: "حرجة",         color: "text-red-400" },
+              not_done:      { border: "border-orange-500/40", bg: "bg-orange-500/8", icon: <XCircle className="h-4 w-4 text-orange-400" />,    label: "لم تُنفذ",      color: "text-orange-400" },
+              stale_planned: { border: "border-amber-500/40",  bg: "bg-amber-500/8",  icon: <Clock className="h-4 w-4 text-amber-400" />,       label: "مخططة قديمة",  color: "text-amber-400" },
+            };
+            const alertStyle = alertStyles[task.alertType ?? "critical"] ?? alertStyles.critical;
+            const TASK_TYPE_LABELS: Record<string, string> = {
+              meeting_2d: "ميتينج 2D", meeting_3d: "ميتينج 3D",
+              meeting_quotation: "ميتينج عرض سعر", meeting_closing: "ميتينج إغلاق",
+              design_3d: "تصميم 3D", design_2d: "تصميم 2D",
+              quotation: "عرض سعر", negotiation: "تفاوض/إغلاق", other: "أخرى",
+            };
             return (
-              <div key={task.id} className="p-4 rounded-xl border border-red-500/40 bg-red-500/5">
+              <div key={task.id} className={`p-4 rounded-xl border ${alertStyle.border} ${alertStyle.bg}`}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Flame className="h-4 w-4 text-red-400" />
+                    <div className="flex items-center gap-2 mb-1.5">
+                      {alertStyle.icon}
                       <p className="font-semibold text-white text-sm">{task.title}</p>
+                      <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full bg-white/10 ${alertStyle.color}`}>{alertStyle.label}</span>
                     </div>
-                    <div className="flex items-center gap-3 flex-wrap">
-                      {eng && <span className="text-xs text-white/50">{(eng as any).name}</span>}
-                      <span className="text-xs text-red-400 font-medium">{task.delayDays} {task.delayDays === 1 ? "يوم" : "أيام"} تأخير</span>
-                      <span className="text-xs text-white/40">{new Date(task.taskDate).toLocaleDateString("ar-EG")}</span>
+                    <div className="flex items-center gap-3 flex-wrap text-xs">
+                      <span className="text-white/50">{task.engineerName}</span>
+                      {task.taskType && task.taskType !== "other" && (
+                        <span className="text-white/40">{TASK_TYPE_LABELS[task.taskType] ?? task.taskType}</span>
+                      )}
+                      {task.startTime && task.endTime && (
+                        <span className="text-indigo-400 flex items-center gap-1">
+                          <Clock className="h-3 w-3" />{task.startTime} - {task.endTime}
+                        </span>
+                      )}
+                      <span className={`${alertStyle.color} font-medium`}>
+                        {task.ageHours < 24 ? `منذ ${task.ageHours} ساعة` : `منذ ${Math.floor(task.ageHours/24)} يوم`}
+                      </span>
+                      <span className="text-white/30">{new Date(task.taskDate).toLocaleDateString("ar-EG")}</span>
                     </div>
                   </div>
                   {viewMode === "admin" && (
@@ -1543,11 +1753,6 @@ export default function TasksModule() {
       {/* ── Tab: Admin Sales Tasks ── */}
       {activeTab === "admin_sales" && (
         <AdminSalesTab engineers={engineers} currentDate={currentDate} />
-      )}
-
-      {/* ── Tab: Lead Followup Tracking ── */}
-      {activeTab === "lead_followup" && (
-        <LeadFollowupTab engineers={engineers} />
       )}
 
       {/* Delete Task Confirm */}

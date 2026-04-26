@@ -120,6 +120,20 @@
       "when": 1776635577590,
       "tag": "0016_large_scarlet_spider",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "5",
+      "when": 1777135089176,
+      "tag": "0017_medical_reptil",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "5",
+      "when": 1777222488796,
+      "tag": "0018_flawless_masked_marvel",
+      "breakpoints": true
     }
   ]
 }

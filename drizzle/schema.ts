@@ -62,6 +62,13 @@ export const dailyTasks = mysqlTable("daily_tasks", {
   deleteReason: mysqlEnum("deleteReason", ["data_entry_error", "duplicate", "client_cancelled", "other"]),
   deleteReasonCustom: varchar("deleteReasonCustom", { length: 255 }),
   deletedBy: varchar("deletedBy", { length: 120 }),
+  // ─── Time-based Calendar ─────────────────────────────────────────────────────
+  startTime: varchar("startTime", { length: 5 }),  // HH:MM e.g. '09:00'
+  endTime: varchar("endTime", { length: 5 }),      // HH:MM e.g. '10:30'
+  taskType: mysqlEnum("taskType", [
+    "meeting_2d", "meeting_3d", "meeting_quotation", "meeting_closing",
+    "design_3d", "design_2d", "quotation", "negotiation", "other"
+  ]).default("other"),
   // ─── Meeting Recording ─────────────────────────────────────────────────────
   category: varchar("category", { length: 80 }), // e.g. 'closing', 'meeting', 'general'
   meetingRecordingLink: varchar("meetingRecordingLink", { length: 500 }),
@@ -488,3 +495,31 @@ export const leadDailyStats = mysqlTable("lead_daily_stats", {
 });
 export type LeadDailyStat = typeof leadDailyStats.$inferSelect;
 export type InsertLeadDailyStat = typeof leadDailyStats.$inferInsert;
+
+// ─── Work Logs (Work Distribution System) ─────────────────────────────────────
+// يسجل المهندس أنشطته اليومية لحساب توزيع وقته
+export const workLogs = mysqlTable("work_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  engineerId: int("engineerId").notNull(),
+  logDate: date("logDate").notNull(),
+  // نوع النشاط - 7 أنواع تُصنَّف في 4 فئات
+  activityType: mysqlEnum("activityType", [
+    "meeting_2d",         // Meeting 2D       → Meetings (50%)
+    "meeting_quotation",  // Meeting Quotation → Meetings (50%)
+    "meeting_3d",         // Meeting 3D        → Meetings (50%)
+    "meeting_closing",    // Meeting Closing   → Meetings (50%)
+    "design_3d",          // 3D Design         → 3D Design (30%)
+    "design_2d",          // 2D Design         → 2D Design (10%)
+    "quotation",          // Quotation         → Quotations (10%)
+  ]).notNull(),
+  durationMinutes: int("durationMinutes").notNull().default(60), // مدة النشاط بالدقائق
+  clientName: varchar("clientName", { length: 255 }),            // اسم العميل (اختياري)
+  notes: text("notes"),
+  weekNumber: int("weekNumber").notNull(),  // رقم الأسبوع في السنة
+  month: int("month").notNull(),
+  year: int("year").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type WorkLog = typeof workLogs.$inferSelect;
+export type InsertWorkLog = typeof workLogs.$inferInsert;

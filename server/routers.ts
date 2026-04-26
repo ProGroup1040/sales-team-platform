@@ -39,6 +39,10 @@ import {
   getDiscountSummary, validateDealDiscount, createDealWithDiscount, updateDealFull, getEngineerDiscountSummary,
   getLostDealsAnalysis, getTasksCalendarView, LOST_REASON_LABELS,
   getEngineersTrend, getWeeklyReport,
+  logWorkActivity, getWorkDistribution, getAllEngineersDistribution,
+  getWeeklyDistribution, getCriticalInsights, getEngineerRankingFull,
+  ACTIVITY_LABELS, WORK_DISTRIBUTION_TARGETS,
+  getTasksFiltered, getTasksTimeSummary, checkTimeOverlap, getCriticalTasksEnhanced, getTasksForTimeline,
 } from "./db";
 
 // ─── Seed Data ────────────────────────────────────────────────────────────────
@@ -309,6 +313,53 @@ export const appRouter = router({
     })).mutation(async ({ input }) => { await createEngineerWithRole(input); return { success: true }; }),
     deleteEngineer: publicProcedure.input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => { await deleteEngineer(input.id); return { success: true }; }),
+    // ── New time-based endpoints ──
+    filtered: publicProcedure.input(z.object({
+      dateRange: z.enum(['today', 'yesterday', 'week', 'month', 'custom']),
+      dateFrom: z.string().optional(),
+      dateTo: z.string().optional(),
+      engineerId: z.number().optional(),
+      taskType: z.string().optional(),
+      status: z.string().optional(),
+    })).query(async ({ input }) => getTasksFiltered(input)),
+    timeSummary: publicProcedure.input(z.object({
+      engineerId: z.number().optional(),
+      dateFrom: z.string(),
+      dateTo: z.string(),
+    })).query(async ({ input }) => getTasksTimeSummary(input)),
+    checkOverlap: publicProcedure.input(z.object({
+      engineerId: z.number(),
+      taskDate: z.string(),
+      startTime: z.string(),
+      endTime: z.string(),
+      excludeTaskId: z.number().optional(),
+    })).query(async ({ input }) => checkTimeOverlap(input)),
+    criticalEnhanced: publicProcedure.query(async () => getCriticalTasksEnhanced()),
+    timeline: publicProcedure.input(z.object({
+      date: z.string(),
+      engineerId: z.number().optional(),
+    })).query(async ({ input }) => getTasksForTimeline(input.date, input.engineerId)),
+    createWithTime: publicProcedure.input(z.object({
+      engineerId: z.number(), taskDate: z.string(), title: z.string().min(1),
+      description: z.string().optional(), plannedHours: z.number().optional(),
+      priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
+      category: z.string().optional(),
+      meetingRecordingLink: z.string().optional(),
+      startTime: z.string().optional(),
+      endTime: z.string().optional(),
+      taskType: z.enum(['meeting_2d','meeting_3d','meeting_quotation','meeting_closing','design_3d','design_2d','quotation','negotiation','other']).optional(),
+    })).mutation(async ({ input }) => {
+      const { startTime, endTime, taskType, ...rest } = input;
+      // Check overlap if times provided
+      if (startTime && endTime) {
+        const overlap = await checkTimeOverlap({ engineerId: input.engineerId, taskDate: input.taskDate, startTime, endTime });
+        if (overlap.hasOverlap) {
+          throw new Error(`تداخل زمني مع مهمة: ${overlap.conflictingTask?.title} (${overlap.conflictingTask?.startTime} - ${overlap.conflictingTask?.endTime})`);
+        }
+      }
+      await createTask({ ...rest, startTime, endTime, taskType } as any);
+      return { success: true };
+    }),
   }),
 
   // ── Leads ─────────────────────────────────────────────────────────────────
@@ -840,6 +891,79 @@ export const appRouter = router({
         to: z.string(),
       }))
       .query(async ({ input }) => getLeadSummaryStats(input)),
+  }),
+
+  // ── Work Distribution ─────────────────────────────────────────────────────────
+  workDist: router({
+    // تسجيل نشاط جديد
+    log: protectedProcedure
+      .input(z.object({
+        engineerId: z.number(),
+        logDate: z.string(),
+        activityType: z.enum([
+          "meeting_2d", "meeting_quotation", "meeting_3d", "meeting_closing",
+          "design_3d", "design_2d", "quotation"
+        ]),
+        durationMinutes: z.number().min(5).max(480).default(60),
+        clientName: z.string().optional(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const d = new Date(input.logDate);
+        const startOfYear = new Date(d.getFullYear(), 0, 1);
+        const weekNumber = Math.ceil(((d.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
+        await logWorkActivity({
+          engineerId: input.engineerId,
+          logDate: d,
+          activityType: input.activityType,
+          durationMinutes: input.durationMinutes,
+          clientName: input.clientName,
+          notes: input.notes,
+          weekNumber,
+          month: d.getMonth() + 1,
+          year: d.getFullYear(),
+        });
+        return { success: true };
+      }),
+
+    // توزيع مهندس واحد (MTD)
+    myDistribution: protectedProcedure
+      .input(z.object({
+        engineerId: z.number(),
+        year: z.number(),
+        month: z.number(),
+      }))
+      .query(async ({ input }) => getWorkDistribution(input.engineerId, input.year, input.month)),
+
+    // توزيع كل المهندسين (admin فقط)
+    allEngineers: protectedProcedure
+      .input(z.object({ year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getAllEngineersDistribution(input.year, input.month)),
+
+    // تحليل أسبوعي
+    weeklyAnalysis: protectedProcedure
+      .input(z.object({
+        engineerId: z.number(),
+        year: z.number(),
+        weekNumber: z.number(),
+      }))
+      .query(async ({ input }) => getWeeklyDistribution(input.engineerId, input.year, input.weekNumber)),
+
+    // تحليل نقاط الضعف (Critical Insights)
+    criticalInsights: protectedProcedure
+      .input(z.object({ year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getCriticalInsights(input.year, input.month)),
+
+    // ترتيب شامل (Sales + Closing + Distribution)
+    fullRanking: protectedProcedure
+      .input(z.object({ year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getEngineerRankingFull(input.year, input.month)),
+
+    // ثوابت (labels + targets)
+    config: publicProcedure.query(() => ({
+      activityLabels: ACTIVITY_LABELS,
+      targets: WORK_DISTRIBUTION_TARGETS,
+    })),
   }),
 });
 export type AppRouter = typeof appRouter;
