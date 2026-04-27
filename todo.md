@@ -882,7 +882,7 @@
 - [x] tasks.create router يقبل taskType
 - [x] createTask يحفظ taskType
 - [x] AddTaskDialog: 7 Task Types + Department Enforcement
-- [ ] Work Distribution Tab: تحديث ليعرض 7 أنواع بشكل صحيح مع الأسماء الجديدة
+- [x] Work Distribution Tab: تحديث ليعرض 7 أنواع بشكل صحيح مع الأسماء الجديدة
 
 ### Feature 2: Deals Automation
 - [x] autoCreateOrUpdateDealFromTask موجودة وتعمل
