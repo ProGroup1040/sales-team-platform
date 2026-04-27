@@ -13,6 +13,197 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 const now = new Date();
 const MONTHS = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
 
+
+// ─── Engineer Targets Section ─────────────────────────────────────────────────
+function EngineerTargetsSection({ year, month }: { year: number; month: number }) {
+  const utils = trpc.useUtils();
+  const { data: engineers } = trpc.engineers.list.useQuery();
+  const { data: perfData, isLoading } = trpc.sales.engineersPerformance.useQuery({ year, month });
+  const { data: opData } = trpc.kpi.operationalPerformance.useQuery({ year, month });
+
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editTarget, setEditTarget] = useState('');
+  const [editManpower, setEditManpower] = useState('1');
+
+  const setTargetMut = trpc.sales.setEngineerTarget.useMutation({
+    onSuccess: () => {
+      toast.success('تم حفظ هدف المهندس');
+      utils.sales.engineersPerformance.invalidate();
+      utils.kpi.engineers.invalidate();
+      setEditingId(null);
+    },
+    onError: () => toast.error('حدث خطأ في الحفظ'),
+  });
+
+  const MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-bold flex items-center gap-2">
+            <Target className="w-5 h-5 text-indigo-500" />
+            أهداف المهندسين الفردية
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            {MONTHS[month - 1]} {year} — الأداء الفعلي مقابل الهدف المحدد
+          </p>
+        </div>
+      </div>
+
+      {isLoading && <div className="text-center py-8 text-muted-foreground">جاري التحميل...</div>}
+
+      {perfData && perfData.length === 0 && (
+        <div className="text-center py-8 text-muted-foreground">لا توجد بيانات لهذا الشهر</div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {perfData && perfData.map((eng: any) => {
+          const op = opData?.find((o: any) => o.engineerId === eng.engineerId);
+          const isEditing = editingId === eng.engineerId;
+          const achievementColor = eng.achievementPct >= 100 ? 'text-emerald-600' :
+            eng.achievementPct >= 70 ? 'text-indigo-600' :
+            eng.achievementPct >= 50 ? 'text-amber-600' : 'text-red-600';
+          const progressColor = eng.achievementPct >= 100 ? 'bg-emerald-500' :
+            eng.achievementPct >= 70 ? 'bg-indigo-500' :
+            eng.achievementPct >= 50 ? 'bg-amber-500' : 'bg-red-500';
+
+          return (
+            <Card key={eng.engineerId} className="border">
+              <CardContent className="p-4 space-y-3">
+                {/* Header */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-9 h-9 rounded-full bg-indigo-100 dark:bg-indigo-950/40 flex items-center justify-center font-bold text-indigo-700 dark:text-indigo-400">
+                      {eng.engineerName.charAt(0)}
+                    </div>
+                    <div>
+                      <div className="font-semibold text-sm">{eng.engineerName}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {eng.closedWon} صفقة مغلقة • {eng.dealsCount} إجمالي
+                      </div>
+                    </div>
+                  </div>
+                  <div className={`text-2xl font-bold ${achievementColor}`}>
+                    {eng.achievementPct}%
+                  </div>
+                </div>
+
+                {/* Progress bar */}
+                <div>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-muted-foreground">
+                      {eng.actualSales.toLocaleString('ar-EG')} ج.م
+                    </span>
+                    <span className="text-muted-foreground">
+                      هدف: {eng.targetAmount > 0 ? eng.targetAmount.toLocaleString('ar-EG') + ' ج.م' : 'غير محدد'}
+                    </span>
+                  </div>
+                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${progressColor}`}
+                      style={{ width: `${Math.min(100, eng.achievementPct)}%` }}
+                    />
+                  </div>
+                  {eng.targetAmount > 0 && eng.remaining > 0 && (
+                    <div className="text-xs text-muted-foreground mt-1">
+                      متبقي: {eng.remaining.toLocaleString('ar-EG')} ج.م
+                    </div>
+                  )}
+                </div>
+
+                {/* KPI from Tasks */}
+                {op && (
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div className="bg-muted/50 rounded-lg p-2 text-center">
+                      <div className="font-bold text-base">{op.totalTasks}</div>
+                      <div className="text-muted-foreground">مهام</div>
+                    </div>
+                    <div className="bg-muted/50 rounded-lg p-2 text-center">
+                      <div className={`font-bold text-base ${op.taskEfficiency >= 80 ? 'text-emerald-600' : op.taskEfficiency >= 60 ? 'text-amber-600' : 'text-red-600'}`}>
+                        {op.taskEfficiency}%
+                      </div>
+                      <div className="text-muted-foreground">كفاءة</div>
+                    </div>
+                    <div className="bg-muted/50 rounded-lg p-2 text-center">
+                      <div className="font-bold text-base">{op.countTotalMeetings}</div>
+                      <div className="text-muted-foreground">اجتماعات</div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Edit target */}
+                {isEditing ? (
+                  <div className="space-y-2 pt-2 border-t">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label className="text-xs">الهدف (ج.م)</Label>
+                        <Input
+                          type="number"
+                          value={editTarget}
+                          onChange={e => setEditTarget(e.target.value)}
+                          className="h-8 text-sm"
+                          placeholder="مثال: 500000"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">عدد الأفراد</Label>
+                        <Input
+                          type="number"
+                          value={editManpower}
+                          onChange={e => setEditManpower(e.target.value)}
+                          className="h-8 text-sm"
+                          min="0.5" step="0.5"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        className="flex-1 h-8 text-xs"
+                        onClick={() => {
+                          if (!editTarget) return toast.error('أدخل الهدف');
+                          setTargetMut.mutate({
+                            engineerId: eng.engineerId,
+                            year, month,
+                            targetAmount: parseFloat(editTarget),
+                            manpower: parseFloat(editManpower) || 1,
+                          });
+                        }}
+                        disabled={setTargetMut.isPending}
+                      >
+                        <Save className="w-3 h-3 mr-1" />
+                        حفظ
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => setEditingId(null)}>
+                        إلغاء
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full h-8 text-xs"
+                    onClick={() => {
+                      setEditingId(eng.engineerId);
+                      setEditTarget(eng.targetAmount > 0 ? String(eng.targetAmount) : '');
+                      setEditManpower(String(eng.manpower ?? 1));
+                    }}
+                  >
+                    <Target className="w-3 h-3 mr-1" />
+                    {eng.targetAmount > 0 ? 'تعديل الهدف' : 'تحديد هدف'}
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function PlanningModule() {
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -217,6 +408,8 @@ export default function PlanningModule() {
           </CardContent>
         </Card>
       )}
+      {/* ── Engineer Targets Section ── */}
+      <EngineerTargetsSection year={year} month={month} />
     </div>
   );
 }

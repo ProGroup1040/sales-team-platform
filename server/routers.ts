@@ -63,6 +63,7 @@ import {
   getMeetingTasksPendingReview, createOrUpdateMonthlyEvaluation, getEngineerEvaluationHistory,
   getAllEngineersEvaluationDashboard, promoteEngineer, getOrCreateEngineerCareerLevel,
   getManagementDecisionDashboard, getEngineerPromotionProgress,
+  getOperationalPerformance, getEnhancedRanking,
 } from "./db";
 
 // ─── Seed Data ────────────────────────────────────────────────────────────────
@@ -596,6 +597,14 @@ export const appRouter = router({
       .query(async ({ input }) => getEngineerPerformanceReport(input.year, input.month)),
     standardDistribution: publicProcedure.query(async () => STANDARD_DISTRIBUTION),
     taskTypeLabels: publicProcedure.query(async () => TASK_TYPE_LABELS_V2),
+    // تحليل الأداء التشغيلي من Tasks Module
+    operationalPerformance: publicProcedure
+      .input(z.object({ year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getOperationalPerformance(input.year, input.month)),
+    // Ranking بـ 4 معايير: Revenue + Closing Rate + Task Efficiency + Target Achievement
+    enhancedRanking: publicProcedure
+      .input(z.object({ year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getEnhancedRanking(input.year, input.month)),
   }),
 
   // ── Collections ───────────────────────────────────────────────────────────

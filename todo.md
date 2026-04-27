@@ -693,3 +693,44 @@
 - [x] Overview Alerts: إضافة Meetings بدون Recording + Playbook Usage
 - [x] TypeScript: نظيف تماماً (0 errors)
 - [x] Tests: 233 passed
+
+## Refactor: Single Source of Truth (القرار النهائي)
+
+- [ ] حذف WorkDistribution من Sidebar + App.tsx
+- [ ] حذف WeeklyReport من Sidebar + App.tsx
+- [ ] TasksModule: Task Types إلزامية (7 أنواع: 2D Design, 3D Modeling, Render, Quotation, Meeting Modeling, Meeting Presentation, Meeting Closing)
+- [ ] TasksModule: Calendar View
+- [ ] TasksModule: Meeting Mandatory Rules (Meeting Link + Recording Link إجباري)
+- [ ] TasksModule: Tab "تحليل توزيع العمل" (Actual vs Target: 50% Meetings, 30% 3D+Render, 10% 2D, 10% Quotations)
+- [ ] KPIModule: إعادة بناء بـ 5 Tabs (Performance Dashboard + Target Achievement + Reports + Ranking + Alerts)
+- [ ] PlanningModule: Target لكل Engineer (Revenue + Designs + Meetings + Quotations)
+- [ ] PlanningModule: ربط بـ KPI مباشرة
+- [ ] Backend: setEngineerTarget يشمل targetDesigns + targetMeetings + targetQuotations
+- [ ] Backend: getEngineerPerformanceReport يقيس على Targets الفردية
+
+## KPI Refactor (الحفاظ على الموجود + إضافات)
+
+- [ ] Backend: Progressive Commission System (cumulative tiers, لا flat)
+- [ ] Backend: getOperationalPerformance (عدد كل نوع Task من Tasks Module)
+- [ ] Backend: Ranking يعتمد على Revenue + Closing Rate + Task Efficiency + Target Achievement
+- [ ] KPIModule: إضافة Section "تحليل الأداء التشغيلي" (Actual vs Target per Task Type)
+- [ ] KPIModule: Progressive Commission Breakdown واضح للمستخدم
+- [ ] KPIModule: Tabs Weekly/Monthly/Quarterly (دمج التقارير بدون Module منفصل)
+- [ ] TasksModule: Task Types إلزامية (7 أنواع: 2D Design, 3D Modeling, Render, Quotation, Meeting Modeling, Meeting Presentation, Meeting Closing)
+- [ ] TasksModule: Calendar View
+- [ ] TasksModule: Meeting Mandatory Rules (Meeting Link + Recording Link إجباري)
+- [ ] TasksModule: Tab "توزيع العمل" (Actual vs Target: 50% Meetings, 30% 3D+Render, 10% 2D, 10% Quotations)
+- [ ] PlanningModule: Target لكل Engineer (Revenue + Designs + Meetings + Quotations)
+- [ ] PlanningModule: ربط بـ KPI مباشرة
+
+## KPI Refactor - مكتمل (Apr 2026)
+- [x] Backend: Progressive Commission System (cumulative tiers, لا flat) - getEngineersKPI يحسب commissionBreakdown
+- [x] Backend: getOperationalPerformance (عدد كل نوع Task من Tasks Module) - 7 أنواع
+- [x] Backend: getEnhancedRanking (Revenue 35% + Closing Rate 25% + Task Efficiency 20% + Target 20%)
+- [x] KPIModule: Section 8 - Progressive Commission Breakdown واضح للمستخدم
+- [x] KPIModule: Section 9 - تحليل الأداء التشغيلي (Actual vs Target per Task Type)
+- [x] KPIModule: Section 10 - Enhanced Ranking (4 معايير مركبة)
+- [x] TasksModule: Tab "توزيع العمل" (WorkDistributionTab - Actual vs Target: 50% Meetings, 30% 3D+Render, 10% 2D, 10% Quotations)
+- [x] PlanningModule: EngineerTargetsSection (Target لكل Engineer + ربط بـ KPI)
+- [x] TypeScript: نظيف (0 errors)
+- [x] Tests: 233 passed

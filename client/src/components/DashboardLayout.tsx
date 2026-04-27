@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/useMobile";
 import { useLocalAuth } from "@/hooks/useLocalAuth";
-import { LayoutDashboard, PanelLeft, BarChart2, CheckSquare, UserPlus, MapPin, Handshake, TrendingUp, Award, DollarSign, Target, LogOut, CalendarDays, Crown, Zap, PieChart, FileBarChart } from "lucide-react";
+import { LayoutDashboard, PanelLeft, BarChart2, CheckSquare, UserPlus, MapPin, Handshake, TrendingUp, Award, DollarSign, Target, LogOut, Crown, Zap, FileBarChart } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
@@ -42,13 +42,11 @@ const menuGroups = [
       { icon: Award, label: 'مؤشرات الأداء', path: '/kpi' },
       { icon: DollarSign, label: 'التحصيل المالي', path: '/collections' },
       { icon: Target, label: 'تخطيط الأهداف', path: '/planning' },
-      { icon: CalendarDays, label: 'التقرير الأسبوعي', path: '/weekly-report' },
     ]
   },
   {
     label: 'تحليل وتقارير',
     items: [
-      { icon: PieChart, label: 'توزيع العمل', path: '/work-distribution' },
       { icon: FileBarChart, label: 'التقارير', path: '/reports' },
     ]
   },

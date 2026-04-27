@@ -661,25 +661,57 @@ export async function getEngineersKPI(year: number, month: number) {
     const targetAmount = engTarget ? parseFloat(engTarget.targetAmount) : 0;
     const achievementPct = targetAmount > 0 ? (totalDealValue / targetAmount) * 100 : 0;
 
-    // ── Commission Tiers (based on total sales value) ─────────────────────────────────────────────
-    // 1% up to 1M (NEW), 1.25% up to 1.25M, 1.5% up to 1.5M, 1.75% up to 1.75M,
-    // 2% up to 2M, +0.25% per extra 250K above 2M
-    let baseCommissionPct = 0;
-    if (totalDealValue >= 2_000_000) {
-      const extraSlabs = Math.floor((totalDealValue - 2_000_000) / 250_000);
-      baseCommissionPct = 2 + extraSlabs * 0.25;
-    } else if (totalDealValue >= 1_750_000) {
-      baseCommissionPct = 1.75;
-    } else if (totalDealValue >= 1_500_000) {
-      baseCommissionPct = 1.5;
-    } else if (totalDealValue >= 1_250_000) {
-      baseCommissionPct = 1.25;
-    } else if (totalDealValue >= 1_000_000) {
-      baseCommissionPct = 1.0;
-    } else {
-      // شريحة جديدة: 1% على أي مبيعات حتى مليون جنيه
-      baseCommissionPct = totalDealValue > 0 ? 1.0 : 0;
+    // ── Progressive Cumulative Commission System ─────────────────────────────────────────────
+    // الحساب تراكمي: كل شريحة تُحسب على الجزء المقابل لها فقط
+    // 0 → 1,000,000 = 1%
+    // 1,000,000 → 1,250,000 = 1.25%
+    // 1,250,000 → 1,500,000 = 1.5%
+    // 1,500,000 → 1,750,000 = 1.75%
+    // 1,750,000 → 2,000,000 = 2%
+    // كل 250K فوق 2M = +0.25%
+    const commissionTiersFixed = [
+      { from: 0,         to: 1_000_000, rate: 1.0 },
+      { from: 1_000_000, to: 1_250_000, rate: 1.25 },
+      { from: 1_250_000, to: 1_500_000, rate: 1.5 },
+      { from: 1_500_000, to: 1_750_000, rate: 1.75 },
+      { from: 1_750_000, to: 2_000_000, rate: 2.0 },
+    ];
+    // حساب الكوميشن التراكمي مع Breakdown لكل شريحة
+    let progressiveCommissionValue = 0;
+    const commissionBreakdown: Array<{ label: string; amount: number; rate: number; portion: number }> = [];
+    let remaining = totalDealValue;
+    for (const tier of commissionTiersFixed) {
+      if (remaining <= 0) break;
+      const tierSize = tier.to - tier.from;
+      const portion = Math.min(remaining, tierSize);
+      const tierCommission = Math.round(portion * (tier.rate / 100));
+      progressiveCommissionValue += tierCommission;
+      if (portion > 0) {
+        commissionBreakdown.push({
+          label: `${(tier.from/1000).toFixed(0)}K → ${(tier.to/1000).toFixed(0)}K`,
+          amount: tierCommission, rate: tier.rate, portion
+        });
+      }
+      remaining -= portion;
     }
+    // فوق 2M: شرائح إضافية +0.25% كل 250K
+    if (remaining > 0) {
+      let extraBase = 2.0;
+      let extraRemaining = remaining;
+      while (extraRemaining > 0) {
+        const portion = Math.min(extraRemaining, 250_000);
+        const tierCommission = Math.round(portion * (extraBase / 100));
+        progressiveCommissionValue += tierCommission;
+        commissionBreakdown.push({
+          label: `+250K (${extraBase}%)`,
+          amount: tierCommission, rate: extraBase, portion
+        });
+        extraRemaining -= portion;
+        extraBase += 0.25;
+      }
+    }
+    // للتوافق مع الكود القديم: نحسب effective rate كنسبة مئوية من الإجمالي
+    const baseCommissionPct = totalDealValue > 0 ? (progressiveCommissionValue / totalDealValue) * 100 : 0;
 
     // ── Incentive Tiers (fixed amounts based on total sales) ──────────────────────
     let baseIncentiveAmount = 0;
@@ -772,7 +804,8 @@ export async function getEngineersKPI(year: number, month: number) {
       closedWon, totalDealValue, achievementPct: Math.round(achievementPct * 10) / 10,
       targetAmount,
       baseCommissionPct, commissionMultiplier, effectiveCommissionPct: Math.round(effectiveCommissionPct * 100) / 100,
-      commissionValue, commissionStatus,
+      commissionValue: progressiveCommissionValue, commissionStatus,
+      commissionBreakdown, progressiveCommissionValue,
       baseIncentiveAmount, incentiveValue, incentiveStatus,
       totalPayout,
     };
@@ -6493,4 +6526,181 @@ export async function getEngineerPromotionProgress(engineerId: number) {
       decisionAction: e.decisionAction,
     })),
   };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── Operational Performance Analysis (from Tasks Module) ─────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Target distribution percentages
+const TASK_TYPE_TARGETS = {
+  '2d_design':            10, // 10% of total tasks
+  '3d_modeling':          15, // 30% combined with render
+  'render':               15, // 30% combined with 3d_modeling
+  'quotation':            10, // 10%
+  'meeting_modeling':      8, // part of 50% meetings
+  'meeting_presentation': 14, // part of 50% meetings
+  'meeting_closing':      28, // part of 50% meetings
+};
+
+export async function getOperationalPerformance(year: number, month: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const startDate = new Date(year, month - 1, 1);
+  const endDate = new Date(year, month, 0, 23, 59, 59);
+
+  const engList = await db.select().from(engineers).where(and(eq(engineers.isDeleted, 0), eq(engineers.status, 'active')));
+  const allTasks = await db.select().from(dailyTasks).where(
+    and(
+      gte(dailyTasks.taskDate, startDate),
+      lte(dailyTasks.taskDate, endDate),
+      eq(dailyTasks.isDeleted, 0)
+    )
+  );
+
+  const allDeals = await db.select().from(deals).where(
+    and(
+      between(deals.createdAt, startDate, endDate),
+      eq(deals.stage, 'closed_won')
+    )
+  );
+
+  const taskTypes = ['2d_design', '3d_modeling', 'render', 'quotation', 'meeting_modeling', 'meeting_presentation', 'meeting_closing'] as const;
+
+  const results = engList.map((eng: any) => {
+    const engTasks = allTasks.filter((t: any) => t.engineerId === eng.id);
+    const totalTasks = engTasks.length;
+    const completedTasks = engTasks.filter(t => t.status === 'completed').length;
+
+    // Count by task type
+    const typeCounts: Record<string, number> = {};
+    const typeCompleted: Record<string, number> = {};
+    for (const type of taskTypes) {
+      typeCounts[type] = engTasks.filter((t: any) => t.taskType === type).length;
+      typeCompleted[type] = engTasks.filter((t: any) => t.taskType === type && t.status === 'completed').length;
+    }
+
+    // Meeting types combined
+    const totalMeetings = (typeCounts['meeting_modeling'] || 0) + (typeCounts['meeting_presentation'] || 0) + (typeCounts['meeting_closing'] || 0);
+    const total3DRender = (typeCounts['3d_modeling'] || 0) + (typeCounts['render'] || 0);
+    const total2D = typeCounts['2d_design'] || 0;
+    const totalQuotations = typeCounts['quotation'] || 0;
+
+    // Actual distribution percentages
+    const meetingsPct = totalTasks > 0 ? (totalMeetings / totalTasks) * 100 : 0;
+    const threeDRenderPct = totalTasks > 0 ? (total3DRender / totalTasks) * 100 : 0;
+    const twoDPct = totalTasks > 0 ? (total2D / totalTasks) * 100 : 0;
+    const quotationsPct = totalTasks > 0 ? (totalQuotations / totalTasks) * 100 : 0;
+
+    // Target distribution: 50% Meetings, 30% 3D+Render, 10% 2D, 10% Quotations
+    const distributionScore = Math.max(0, 100 - (
+      Math.abs(meetingsPct - 50) * 0.5 +
+      Math.abs(threeDRenderPct - 30) * 0.5 +
+      Math.abs(twoDPct - 10) * 0.5 +
+      Math.abs(quotationsPct - 10) * 0.5
+    ));
+
+    // Conversion rates
+    const engDeals = allDeals.filter(d => d.engineerId === eng.id);
+    const closingMeetings = typeCounts['meeting_closing'] || 0;
+    const meetingToClosingRate = closingMeetings > 0 ? (engDeals.length / closingMeetings) * 100 : 0;
+    const totalDesigns = total2D + total3DRender;
+    const designToSalesRate = totalDesigns > 0 ? (engDeals.length / totalDesigns) * 100 : 0;
+
+    // Task efficiency: planned hours vs actual
+    const plannedHours = engTasks.reduce((s, t) => s + (t.plannedHours || 0), 0);
+    const taskEfficiency = completedTasks > 0 && totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
+
+    // Alerts
+    const alerts: string[] = [];
+    if (meetingsPct < 30) alerts.push('عدد الاجتماعات منخفض جداً (أقل من 30%)');
+    if (meetingsPct > 70) alerts.push('تركيز مفرط على الاجتماعات بدون مخرجات كافية');
+    if (closingMeetings > 0 && engDeals.length === 0) alerts.push('اجتماعات Closing بدون صفقات مغلقة');
+    if (totalDesigns > 0 && engDeals.length === 0) alerts.push('تصميمات كثيرة بدون تحويل لمبيعات');
+    if (taskEfficiency < 50) alerts.push('نسبة إتمام المهام منخفضة');
+
+    return {
+      engineerId: eng.id,
+      engineerName: eng.name,
+      totalTasks,
+      completedTasks,
+      taskEfficiency: Math.round(taskEfficiency * 10) / 10,
+      plannedHours,
+      // Task type counts
+      count2D: total2D,
+      count3D: typeCounts['3d_modeling'] || 0,
+      countRender: typeCounts['render'] || 0,
+      countQuotation: totalQuotations,
+      countMeetingModeling: typeCounts['meeting_modeling'] || 0,
+      countMeetingPresentation: typeCounts['meeting_presentation'] || 0,
+      countMeetingClosing: closingMeetings,
+      countTotalMeetings: totalMeetings,
+      count3DRender: total3DRender,
+      // Distribution percentages (Actual)
+      meetingsPct: Math.round(meetingsPct * 10) / 10,
+      threeDRenderPct: Math.round(threeDRenderPct * 10) / 10,
+      twoDPct: Math.round(twoDPct * 10) / 10,
+      quotationsPct: Math.round(quotationsPct * 10) / 10,
+      // Target distribution
+      targetMeetingsPct: 50,
+      targetThreeDRenderPct: 30,
+      targetTwoDPct: 10,
+      targetQuotationsPct: 10,
+      // Distribution score
+      distributionScore: Math.round(distributionScore * 10) / 10,
+      // Conversion rates
+      closedDeals: engDeals.length,
+      meetingToClosingRate: Math.round(meetingToClosingRate * 10) / 10,
+      designToSalesRate: Math.round(designToSalesRate * 10) / 10,
+      // Alerts
+      alerts,
+    };
+  });
+
+  // Ranking by task efficiency
+  const sorted = [...results].sort((a: any, b: any) => b.taskEfficiency - a.taskEfficiency);
+  return results.map((r: any) => ({
+    ...r,
+    efficiencyRank: sorted.findIndex((s: any) => s.engineerId === r.engineerId) + 1,
+  }));
+}
+
+// ─── Enhanced Ranking (4 criteria) ────────────────────────────────────────────
+export async function getEnhancedRanking(year: number, month: number) {
+  // db not needed - uses other functions
+  const kpiData = await getEngineersKPI(year, month);
+  const opData = await getOperationalPerformance(year, month);
+
+  return kpiData.map((eng: any) => {
+    const op = opData.find((o: any) => o.engineerId === eng.engineerId);
+    const targetAmount = eng.targetAmount || 0;
+    const achievementPct = eng.achievementPct || 0;
+
+    // Composite ranking score (4 criteria)
+    const revenueScore = Math.min(100, achievementPct);
+    const closingRateScore = op ? Math.min(100, op.meetingToClosingRate) : 0;
+    const taskEfficiencyScore = op ? op.taskEfficiency : 0;
+    const targetAchievementScore = Math.min(100, achievementPct);
+
+    const compositeScore = Math.round(
+      revenueScore * 0.35 +
+      closingRateScore * 0.25 +
+      taskEfficiencyScore * 0.20 +
+      targetAchievementScore * 0.20
+    );
+
+    return {
+      engineerId: eng.engineerId,
+      engineerName: eng.engineerName,
+      compositeScore,
+      revenueScore: Math.round(revenueScore * 10) / 10,
+      closingRateScore: Math.round(closingRateScore * 10) / 10,
+      taskEfficiencyScore: Math.round(taskEfficiencyScore * 10) / 10,
+      targetAchievementScore: Math.round(targetAchievementScore * 10) / 10,
+      totalRevenue: eng.totalDealValue,
+      kpiScore: eng.kpiScore,
+      kpiRank: eng.kpiRank,
+    };
+  }).sort((a, b) => b.compositeScore - a.compositeScore)
+    .map((r, i) => ({ ...r, compositeRank: i + 1 }));
 }

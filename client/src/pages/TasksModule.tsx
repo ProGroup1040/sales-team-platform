@@ -618,6 +618,160 @@ function AdminSalesTaskCard({ task, onUpdated }: { task: any; onUpdated: () => v
   );
 }
 
+
+// ─── Work Distribution Tab (Actual vs Target) ─────────────────────────────────
+function WorkDistributionTab({ engineers, currentDate }: { engineers: any[]; currentDate: Date }) {
+  const [year, setYear] = useState(currentDate.getFullYear());
+  const [month, setMonth] = useState(currentDate.getMonth() + 1);
+  const MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+
+  const { data: opData, isLoading } = trpc.kpi.operationalPerformance.useQuery({ year, month });
+
+  // Mapping from old schema values to new 7 types
+  const TASK_TYPE_DISPLAY = [
+    { key: '2d_design',            label: '2D Design',             color: '#06b6d4', target: 10 },
+    { key: '3d_modeling',          label: '3D Modeling',           color: '#8b5cf6', target: 15 },
+    { key: 'render',               label: 'Render',                color: '#a78bfa', target: 15 },
+    { key: 'quotation',            label: 'Quotation',             color: '#f59e0b', target: 10 },
+    { key: 'meeting_modeling',     label: 'Meeting Modeling',      color: '#6366f1', target: 17 },
+    { key: 'meeting_presentation', label: 'Meeting Presentation',  color: '#3b82f6', target: 17 },
+    { key: 'meeting_closing',      label: 'Meeting Closing',       color: '#10b981', target: 16 },
+  ];
+
+  return (
+    <div className="space-y-4">
+      {/* Header + Month Filter */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-white flex items-center gap-2">
+            <Target className="w-5 h-5 text-indigo-400" />
+            توزيع العمل الفعلي مقابل الهدف
+          </h2>
+          <p className="text-xs text-white/50 mt-0.5">
+            الهدف: 50% اجتماعات • 30% 3D+Render • 10% 2D • 10% عروض سعر
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <select value={month} onChange={e => setMonth(parseInt(e.target.value))}
+            className="bg-white/5 border border-white/10 text-white text-xs rounded-lg px-2 py-1.5">
+            {MONTHS.map((m, i) => <option key={i+1} value={i+1} className="bg-slate-900">{m}</option>)}
+          </select>
+          <select value={year} onChange={e => setYear(parseInt(e.target.value))}
+            className="bg-white/5 border border-white/10 text-white text-xs rounded-lg px-2 py-1.5">
+            {[2024,2025,2026].map(y => <option key={y} value={y} className="bg-slate-900">{y}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {isLoading && (
+        <div className="text-center py-12 text-white/40">جاري التحميل...</div>
+      )}
+
+      {!isLoading && opData && opData.length === 0 && (
+        <div className="text-center py-12 text-white/40">لا توجد بيانات لهذا الشهر</div>
+      )}
+
+      {opData && opData.map((eng: any) => (
+        <div key={eng.engineerId} className="bg-white/5 border border-white/10 rounded-xl p-4">
+          {/* Engineer header */}
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center text-indigo-400 font-bold text-sm">
+                {eng.engineerName.charAt(0)}
+              </div>
+              <div>
+                <div className="font-semibold text-white">{eng.engineerName}</div>
+                <div className="text-xs text-white/40">إجمالي المهام: {eng.totalTasks}</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 text-xs">
+              <div className="text-center">
+                <div className="font-bold text-lg" style={{ color: eng.taskEfficiency >= 80 ? '#10b981' : eng.taskEfficiency >= 60 ? '#f59e0b' : '#ef4444' }}>
+                  {eng.taskEfficiency}%
+                </div>
+                <div className="text-white/40">كفاءة الإتمام</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Distribution: 4 main groups */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+            {[
+              { label: 'اجتماعات', actual: eng.meetingsPct, target: 50, color: '#6366f1',
+                counts: eng.countMeetingModeling + eng.countMeetingPresentation + eng.countMeetingClosing },
+              { label: '3D + Render', actual: eng.threeDRenderPct, target: 30, color: '#8b5cf6',
+                counts: eng.count3D + eng.countRender },
+              { label: '2D تصميم', actual: eng.twoDPct, target: 10, color: '#06b6d4',
+                counts: eng.count2D },
+              { label: 'عروض سعر', actual: eng.quotationsPct, target: 10, color: '#f59e0b',
+                counts: eng.countQuotation },
+            ].map((item, i) => {
+              const ratio = item.target > 0 ? Math.min(100, (item.actual / item.target) * 100) : 0;
+              const diff = item.actual - item.target;
+              const isGood = Math.abs(diff) <= 5;
+              return (
+                <div key={i} className="bg-white/5 rounded-lg p-3">
+                  <div className="text-xs text-white/60 mb-1">{item.label}</div>
+                  <div className="flex items-end gap-1 mb-1">
+                    <span className="text-xl font-bold" style={{ color: item.color }}>{item.actual.toFixed(1)}%</span>
+                    <span className="text-[10px] text-white/40 mb-0.5">هدف: {item.target}%</span>
+                  </div>
+                  <div className="h-1.5 bg-white/10 rounded-full overflow-hidden mb-1">
+                    <div className="h-full rounded-full transition-all" style={{ width: `${ratio}%`, backgroundColor: item.color }} />
+                  </div>
+                  <div className="flex items-center justify-between text-[10px]">
+                    <span style={{ color: isGood ? '#10b981' : diff > 0 ? '#f59e0b' : '#ef4444' }}>
+                      {diff > 0 ? '+' : ''}{diff.toFixed(1)}% {isGood ? '✓' : diff > 0 ? '↑' : '↓'}
+                    </span>
+                    <span className="text-white/40">{item.counts} مهمة</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* 7 Task Types breakdown */}
+          <div className="space-y-2">
+            <div className="text-xs text-white/40 font-medium mb-2">تفصيل 7 أنواع المهام</div>
+            {[
+              { label: '2D Design',            count: eng.count2D,                   color: '#06b6d4', pct: eng.twoDPct },
+              { label: '3D Modeling',           count: eng.count3D,                   color: '#8b5cf6', pct: eng.totalTasks > 0 ? (eng.count3D / eng.totalTasks * 100) : 0 },
+              { label: 'Render',                count: eng.countRender,               color: '#a78bfa', pct: eng.totalTasks > 0 ? (eng.countRender / eng.totalTasks * 100) : 0 },
+              { label: 'Quotation',             count: eng.countQuotation,            color: '#f59e0b', pct: eng.quotationsPct },
+              { label: 'Meeting Modeling',      count: eng.countMeetingModeling,      color: '#6366f1', pct: eng.totalTasks > 0 ? (eng.countMeetingModeling / eng.totalTasks * 100) : 0 },
+              { label: 'Meeting Presentation',  count: eng.countMeetingPresentation,  color: '#3b82f6', pct: eng.totalTasks > 0 ? (eng.countMeetingPresentation / eng.totalTasks * 100) : 0 },
+              { label: 'Meeting Closing',       count: eng.countMeetingClosing,       color: '#10b981', pct: eng.totalTasks > 0 ? (eng.countMeetingClosing / eng.totalTasks * 100) : 0 },
+            ].map((item, i) => (
+              <div key={i} className="flex items-center gap-3">
+                <div className="w-28 text-xs text-white/60 shrink-0">{item.label}</div>
+                <div className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full" style={{ width: `${Math.min(100, item.pct)}%`, backgroundColor: item.color }} />
+                </div>
+                <div className="w-12 text-right text-xs font-bold" style={{ color: item.color }}>{item.pct.toFixed(1)}%</div>
+                <div className="w-8 text-right text-xs text-white/40">{item.count}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Conversion rates + Alerts */}
+          <div className="mt-3 pt-3 border-t border-white/10 flex flex-wrap items-center gap-4 text-xs">
+            <span className="text-white/50">اجتماعات → صفقات: <strong className="text-indigo-400">{eng.meetingToClosingRate}%</strong></span>
+            <span className="text-white/50">تصميم → مبيعات: <strong className="text-purple-400">{eng.designToSalesRate}%</strong></span>
+          </div>
+          {eng.alerts && eng.alerts.length > 0 && (
+            <div className="mt-2 space-y-1">
+              {eng.alerts.map((alert: string, i: number) => (
+                <div key={i} className="flex items-center gap-1.5 text-xs text-amber-400 bg-amber-500/10 rounded px-2 py-1 border border-amber-500/20">
+                  <AlertTriangle className="w-3 h-3" />{alert}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 // ─── Admin Sales Tab ──────────────────────────────────────────────────────────
 function AdminSalesTab({ engineers, currentDate }: { engineers: any[]; currentDate: Date }) {
   const [selectedEngId, setSelectedEngId] = useState<string>("");
@@ -1199,7 +1353,7 @@ export default function TasksModule() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<"admin" | "engineer">("admin");
   const [selectedEngineer, setSelectedEngineer] = useState<string>("");
-  const [activeTab, setActiveTab] = useState<"tasks" | "ranking" | "critical" | "admin_sales" | "calendar">("tasks");
+  const [activeTab, setActiveTab] = useState<"tasks" | "ranking" | "critical" | "admin_sales" | "calendar" | "distribution">("tasks");
   // ── New: list vs timeline toggle
   const [listViewMode, setListViewMode] = useState<"list" | "timeline">("list");
   // ── New: Time Filter
@@ -1445,6 +1599,7 @@ export default function TasksModule() {
         {[
           { key: "tasks",       label: "قائمة المهام" },
           { key: "calendar",    label: "📅 التقويم الزمني" },
+          { key: "distribution", label: "📊 توزيع العمل" },
           { key: "ranking",     label: "ترتيب المهندسين" },
           { key: "critical",    label: `المهام الحرجة${criticalTasks.length > 0 ? ` (${criticalTasks.length})` : ""}` },
           { key: "admin_sales", label: "مهام Admin Sales" },
@@ -1750,6 +1905,10 @@ export default function TasksModule() {
         />
       )}
 
+      {/* ── Tab: Work Distribution (Actual vs Target) ── */}
+      {activeTab === "distribution" && (
+        <WorkDistributionTab engineers={engineers} currentDate={currentDate} />
+      )}
       {/* ── Tab: Admin Sales Tasks ── */}
       {activeTab === "admin_sales" && (
         <AdminSalesTab engineers={engineers} currentDate={currentDate} />

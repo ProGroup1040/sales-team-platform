@@ -98,6 +98,8 @@ export default function KPIModule() {
 
   const { data: kpiData, isLoading } = trpc.kpi.engineers.useQuery({ year, month });
   const { data: trendData } = trpc.kpi.trend.useQuery({ year, month });
+  const { data: opData } = trpc.kpi.operationalPerformance.useQuery({ year, month });
+  const { data: rankingData } = trpc.kpi.enhancedRanking.useQuery({ year, month });
 
   const sorted = kpiData ? [...kpiData].sort((a, b) => b.kpiScore - a.kpiScore) : [];
   const topPerformer = sorted[0];
@@ -587,6 +589,184 @@ export default function KPIModule() {
                           </span>
                         )}
                       </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+
+      {/* ─── SECTION 8: Progressive Commission Breakdown ─── */}
+      {sorted.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <DollarSign className="w-4 h-4 text-green-500" />
+              تفاصيل الكوميشن التراكمي
+              <span className="text-xs font-normal text-muted-foreground">(كل شريحة تُحسب على جزءها فقط)</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {sorted.map(eng => (
+                <div key={eng.engineerId} className="border rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-semibold text-sm">{eng.engineerName}</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-muted-foreground">إجمالي المبيعات: <strong>{fmt(eng.totalDealValue)}</strong></span>
+                      <span className="text-sm font-bold text-green-600">كوميشن: {fmtFull((eng as any).progressiveCommissionValue ?? eng.commissionValue ?? 0)}</span>
+                    </div>
+                  </div>
+                  {(eng as any).commissionBreakdown && (eng as any).commissionBreakdown.length > 0 ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                      {((eng as any).commissionBreakdown as Array<{label:string;amount:number;rate:number;portion:number}>).map((tier, i) => (
+                        <div key={i} className="bg-muted/50 rounded p-2 text-xs">
+                          <div className="text-muted-foreground">{tier.label}</div>
+                          <div className="flex items-center justify-between mt-0.5">
+                            <span className="font-bold text-green-600">{fmtFull(tier.amount)}</span>
+                            <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded">{tier.rate}%</span>
+                          </div>
+                          <div className="text-[10px] text-muted-foreground">على {fmt(tier.portion)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">لا توجد مبيعات مسجلة</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ─── SECTION 9: Operational Performance from Tasks ─── */}
+      {opData && opData.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <BarChart2 className="w-4 h-4 text-indigo-500" />
+              تحليل الأداء التشغيلي (من المهام)
+              <span className="text-xs font-normal text-muted-foreground">Actual vs Target Distribution</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {opData.map((eng: any) => (
+                <div key={eng.engineerId} className="border rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="font-semibold text-sm">{eng.engineerName}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">إجمالي المهام: <strong>{eng.totalTasks}</strong></span>
+                      <span className="text-xs font-bold" style={{ color: eng.taskEfficiency >= 80 ? '#10b981' : eng.taskEfficiency >= 60 ? '#f59e0b' : '#ef4444' }}>
+                        كفاءة: {eng.taskEfficiency}%
+                      </span>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                    {[
+                      { label: 'اجتماعات', actual: eng.meetingsPct, target: 50, color: '#6366f1' },
+                      { label: '3D + Render', actual: eng.threeDRenderPct, target: 30, color: '#8b5cf6' },
+                      { label: '2D تصميم', actual: eng.twoDPct, target: 10, color: '#06b6d4' },
+                      { label: 'عروض سعر', actual: eng.quotationsPct, target: 10, color: '#f59e0b' },
+                    ].map((item, i) => (
+                      <div key={i} className="bg-muted/40 rounded p-2">
+                        <div className="text-xs text-muted-foreground mb-1">{item.label}</div>
+                        <div className="flex items-end gap-1">
+                          <span className="text-base font-bold" style={{ color: item.color }}>{item.actual}%</span>
+                          <span className="text-[10px] text-muted-foreground mb-0.5">هدف: {item.target}%</span>
+                        </div>
+                        <div className="h-1.5 bg-muted rounded-full mt-1 overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${Math.min(100, (item.actual/item.target)*100)}%`, backgroundColor: item.color }} />
+                        </div>
+                        <div className="text-[10px] mt-0.5" style={{ color: Math.abs(item.actual - item.target) <= 5 ? '#10b981' : '#ef4444' }}>
+                          {item.actual >= item.target ? '✓' : '↓'} {Math.abs(item.actual - item.target).toFixed(1)}% فرق
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5 mb-2">
+                    {[
+                      { label: '2D', count: eng.count2D, color: '#06b6d4' },
+                      { label: '3D', count: eng.count3D, color: '#8b5cf6' },
+                      { label: 'Render', count: eng.countRender, color: '#a78bfa' },
+                      { label: 'عروض', count: eng.countQuotation, color: '#f59e0b' },
+                      { label: 'نمذجة', count: eng.countMeetingModeling, color: '#6366f1' },
+                      { label: 'عرض', count: eng.countMeetingPresentation, color: '#3b82f6' },
+                      { label: 'إغلاق', count: eng.countMeetingClosing, color: '#10b981' },
+                    ].map((item, i) => (
+                      <div key={i} className="text-center bg-muted/30 rounded p-1.5">
+                        <div className="text-lg font-bold" style={{ color: item.color }}>{item.count}</div>
+                        <div className="text-[10px] text-muted-foreground">{item.label}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-4 text-xs">
+                    <span className="text-muted-foreground">تحويل اجتماعات → صفقات: <strong className="text-indigo-600">{eng.meetingToClosingRate}%</strong></span>
+                    <span className="text-muted-foreground">تحويل تصميم → مبيعات: <strong className="text-purple-600">{eng.designToSalesRate}%</strong></span>
+                  </div>
+                  {eng.alerts && eng.alerts.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      {eng.alerts.map((alert: string, i: number) => (
+                        <div key={i} className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 rounded px-2 py-1">
+                          <AlertTriangle className="w-3 h-3" />{alert}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ─── SECTION 10: Enhanced Ranking (4 criteria) ─── */}
+      {rankingData && rankingData.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Trophy className="w-4 h-4 text-amber-500" />
+              ترتيب المهندسين (معيار مركب)
+              <span className="text-xs font-normal text-muted-foreground">Revenue 35% + Closing 25% + Efficiency 20% + Target 20%</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-xs text-muted-foreground">
+                    <th className="text-right py-2 px-3">#</th>
+                    <th className="text-right py-2 px-3">المهندس</th>
+                    <th className="text-right py-2 px-3">الدرجة المركبة</th>
+                    <th className="text-right py-2 px-3">الإيرادات</th>
+                    <th className="text-right py-2 px-3">الإغلاق</th>
+                    <th className="text-right py-2 px-3">كفاءة المهام</th>
+                    <th className="text-right py-2 px-3">تحقيق الهدف</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rankingData.map((eng: any, i: number) => (
+                    <tr key={eng.engineerId} className={`border-b hover:bg-muted/30 ${i === 0 ? 'bg-amber-50' : ''}`}>
+                      <td className="py-2.5 px-3">
+                        <span className={`font-bold text-base ${i === 0 ? 'text-amber-500' : i === 1 ? 'text-slate-500' : i === 2 ? 'text-orange-400' : 'text-muted-foreground'}`}>
+                          {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 font-semibold">{eng.engineerName}</td>
+                      <td className="py-2.5 px-3">
+                        <div className="flex items-center gap-2">
+                          <Progress value={eng.compositeScore} className="h-2 w-16" />
+                          <span className="font-bold" style={{ color: getScoreColor(eng.compositeScore) }}>{eng.compositeScore}%</span>
+                        </div>
+                      </td>
+                      <td className="py-2.5 px-3 text-xs">{Math.round(eng.revenueScore)}%</td>
+                      <td className="py-2.5 px-3 text-xs">{Math.round(eng.closingRateScore)}%</td>
+                      <td className="py-2.5 px-3 text-xs">{Math.round(eng.taskEfficiencyScore)}%</td>
+                      <td className="py-2.5 px-3 text-xs">{Math.round(eng.targetAchievementScore)}%</td>
                     </tr>
                   ))}
                 </tbody>
