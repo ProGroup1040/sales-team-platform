@@ -6608,7 +6608,7 @@ export async function getOperationalPerformance(year: number, month: number) {
     const designToSalesRate = totalDesigns > 0 ? (engDeals.length / totalDesigns) * 100 : 0;
 
     // Task efficiency: planned hours vs actual
-    const plannedHours = engTasks.reduce((s, t) => s + (t.plannedHours || 0), 0);
+    const plannedHours = engTasks.reduce((s: number, t: any) => s + (t.plannedHours || 0), 0);
     const taskEfficiency = completedTasks > 0 && totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
 
     // Alerts
