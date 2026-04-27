@@ -13,7 +13,7 @@ import { toast } from "sonner";
 import {
   DollarSign, AlertTriangle, CheckCircle, Plus, Calendar,
   Clock, User, CreditCard, FileText, Bell, Award, ChevronDown, ChevronUp,
-  Banknote, HandshakeIcon
+  Banknote, HandshakeIcon, TrendingUp, Upload, Zap
 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
@@ -48,6 +48,48 @@ export default function CollectionsModule() {
   const { data: followUp } = trpc.financial.dailyFollowUp.useQuery();
   const { data: engCommission = [] } = trpc.financial.engineersCommission.useQuery();
   const { data: engineers = [] } = trpc.engineers.list.useQuery();
+
+  const now = new Date();
+  const [currentMonth] = useState(now.getMonth() + 1);
+  const [currentYear] = useState(now.getFullYear());
+  const [filterDept, setFilterDept] = useState("all");
+  const [newPaymentReceiptUrl, setNewPaymentReceiptUrl] = useState("");
+  const [newPaymentNextDate, setNewPaymentNextDate] = useState("");
+
+  // New endpoints
+  const { data: collectionDashboard } = trpc.financial.dashboard.useQuery({ month: currentMonth, year: currentYear });
+  const { data: collectionAlerts = [] } = trpc.financial.alerts.useQuery();
+  const { data: contractsWithComm = [] } = trpc.financial.contractsWithCommission.useQuery({});
+
+  // Filter: Sales Engineers + Sales Specialists + Admin Sales only
+  const SALES_DEPTS = ["sales_engineer", "sales_specialist", "admin_sales"];
+  const salesEngineers = engineers.filter((e: any) => SALES_DEPTS.includes(e.department ?? e.role ?? ""));
+
+  const addPaymentWithFollowUpMut = trpc.financial.addPaymentWithFollowUp.useMutation({
+    onSuccess: () => {
+      toast.success("تم تسجيل الدفعة وإنشاء متابعة");
+      setShowAddPayment(null);
+      setNewPaymentReceiptUrl("");
+      setNewPaymentNextDate("");
+      utils.financial.allContracts.invalidate();
+      utils.financial.contractsWithCommission.invalidate();
+      utils.financial.alerts.invalidate();
+      utils.financial.dashboard.invalidate();
+    },
+    onError: () => toast.error("حدث خطأ في تسجيل الدفعة"),
+  });
+
+  const autoCreateContractMut = trpc.financial.autoCreateContract.useMutation({
+    onSuccess: (res) => {
+      if (res?.isNew) toast.success("تم إنشاء العقد تلقائياً من الصفقة");
+      else toast.info("العقد موجود بالفعل");
+      utils.financial.allContracts.invalidate();
+    },
+  });
+
+  const alertsDueToday = collectionAlerts.filter((a: any) => a.type === "due_today");
+  const alertsOverdue = collectionAlerts.filter((a: any) => a.type === "overdue");
+  const alertsUpcoming = collectionAlerts.filter((a: any) => a.type === "upcoming");
 
   const addContractMut = trpc.financial.addContract.useMutation({
     onSuccess: () => { toast.success("تم إضافة العقد"); setShowAddContract(false); setNewContract({ clientName: "", contractAmount: "", dueDate: "", notes: "" }); utils.financial.allContracts.invalidate(); },
@@ -152,12 +194,169 @@ export default function CollectionsModule() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid grid-cols-4 w-full max-w-2xl">
+        <TabsList className="grid grid-cols-6 w-full">
+          <TabsTrigger value="dashboard">لوحة التحكم</TabsTrigger>
           <TabsTrigger value="contracts">العقود والتحصيل</TabsTrigger>
+          <TabsTrigger value="alerts" className="relative">
+            تنبيهات
+            {collectionAlerts.length > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
+                {collectionAlerts.length}
+              </span>
+            )}
+          </TabsTrigger>
           <TabsTrigger value="followup">المتابعة اليومية</TabsTrigger>
           <TabsTrigger value="commission">الكوميشن</TabsTrigger>
           <TabsTrigger value="analytics">التحليلات</TabsTrigger>
         </TabsList>
+
+        {/* Tab: Dashboard */}
+        <TabsContent value="dashboard" className="space-y-4 mt-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Card className="border-0 shadow-sm bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950/40 dark:to-blue-900/30">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <DollarSign className="w-4 h-4 text-blue-500" />
+                  <span className="text-xs text-muted-foreground">تحصيل اليوم</span>
+                </div>
+                <div className="text-xl font-bold text-blue-700">{fmt(collectionDashboard?.today?.collected ?? 0)}</div>
+                <div className="text-xs text-muted-foreground">{collectionDashboard?.today?.count ?? 0} دفعة</div>
+              </CardContent>
+            </Card>
+            <Card className="border-0 shadow-sm bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950/40 dark:to-emerald-900/30">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <TrendingUp className="w-4 h-4 text-emerald-500" />
+                  <span className="text-xs text-muted-foreground">تحصيل الشهر</span>
+                </div>
+                <div className="text-xl font-bold text-emerald-700">{fmt(collectionDashboard?.month?.collected ?? 0)}</div>
+                <div className="text-xs text-muted-foreground">{collectionDashboard?.month?.count ?? 0} دفعة</div>
+              </CardContent>
+            </Card>
+            <Card className="border-0 shadow-sm bg-gradient-to-br from-red-50 to-red-100 dark:from-red-950/40 dark:to-red-900/30">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <AlertTriangle className="w-4 h-4 text-red-500" />
+                  <span className="text-xs text-muted-foreground">متأخرة</span>
+                </div>
+                <div className="text-xl font-bold text-red-700">{collectionDashboard?.overdue?.count ?? 0} عقد</div>
+                <div className="text-xs text-muted-foreground">{fmt(collectionDashboard?.overdue?.remaining ?? 0)} ج.م</div>
+              </CardContent>
+            </Card>
+            <Card className="border-0 shadow-sm bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-950/40 dark:to-amber-900/30">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Calendar className="w-4 h-4 text-amber-500" />
+                  <span className="text-xs text-muted-foreground">قادمة (7 أيام)</span>
+                </div>
+                <div className="text-xl font-bold text-amber-700">{collectionDashboard?.upcoming?.count ?? 0} وعد</div>
+                <div className="text-xs text-muted-foreground">{fmt(collectionDashboard?.upcoming?.total ?? 0)} ج.م</div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Commission on Collected */}
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Award className="w-4 h-4 text-purple-500" />
+                الكوميشن على المحصّل (لا على العقد الكامل)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {contractsWithComm.slice(0, 5).map((c: any) => (
+                  <div key={c.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+                    <div>
+                      <div className="font-medium text-sm">{c.clientName}</div>
+                      <div className="text-xs text-muted-foreground">{c.engineerName ?? "غير محدد"}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-bold text-emerald-600">{fmt(c.commissionEarned)} ج.م</div>
+                      <div className="text-xs text-muted-foreground">
+                        {c.commissionRate}% × {fmt(c.collectedAmount)} محصّل
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <Progress value={c.collectionRate} className="w-20 h-2" />
+                      <div className="text-xs text-muted-foreground mt-1">{Math.round(c.collectionRate)}%</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Tab: Alerts */}
+        <TabsContent value="alerts" className="space-y-4 mt-4">
+          {alertsDueToday.length > 0 && (
+            <Card className="border-red-200 bg-red-50 dark:bg-red-950/20">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base text-red-700 flex items-center gap-2">
+                  <Zap className="w-4 h-4" /> مستحقة اليوم ({alertsDueToday.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {alertsDueToday.map((a: any) => (
+                  <div key={a.id} className="flex items-center justify-between p-2 rounded bg-white dark:bg-red-950/30">
+                    <div>
+                      <div className="font-medium text-sm">{a.clientName}</div>
+                      <div className="text-xs text-muted-foreground">{fmtDate(a.date)}</div>
+                    </div>
+                    <div className="font-bold text-red-600">{fmt(a.amount)} ج.م</div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+          {alertsOverdue.length > 0 && (
+            <Card className="border-orange-200 bg-orange-50 dark:bg-orange-950/20">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base text-orange-700 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4" /> متأخرة ({alertsOverdue.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {alertsOverdue.map((a: any) => (
+                  <div key={a.id} className="flex items-center justify-between p-2 rounded bg-white dark:bg-orange-950/30">
+                    <div>
+                      <div className="font-medium text-sm">{a.clientName}</div>
+                      <div className="text-xs text-muted-foreground">كان مقرراً: {fmtDate(a.date)}</div>
+                    </div>
+                    <div className="font-bold text-orange-600">{fmt(a.amount)} ج.م</div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+          {alertsUpcoming.length > 0 && (
+            <Card className="border-blue-200 bg-blue-50 dark:bg-blue-950/20">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base text-blue-700 flex items-center gap-2">
+                  <Calendar className="w-4 h-4" /> قادمة خلال 7 أيام ({alertsUpcoming.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {alertsUpcoming.map((a: any) => (
+                  <div key={a.id} className="flex items-center justify-between p-2 rounded bg-white dark:bg-blue-950/30">
+                    <div>
+                      <div className="font-medium text-sm">{a.clientName}</div>
+                      <div className="text-xs text-muted-foreground">{fmtDate(a.date)}</div>
+                    </div>
+                    <div className="font-bold text-blue-600">{fmt(a.amount)} ج.م</div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+          {collectionAlerts.length === 0 && (
+            <div className="text-center py-12 text-muted-foreground">
+              <CheckCircle className="w-12 h-12 mx-auto mb-3 text-emerald-400" />
+              <p>لا توجد تنبيهات حالياً</p>
+            </div>
+          )}
+        </TabsContent>
 
         {/* Tab: Contracts */}
         <TabsContent value="contracts" className="space-y-4 mt-4">

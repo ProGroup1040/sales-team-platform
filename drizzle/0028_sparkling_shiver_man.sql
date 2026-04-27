@@ -1,0 +1,2 @@
+ALTER TABLE `engineers` MODIFY COLUMN `department` enum('sales_engineer','sales_specialist','interior_designer','tele_sales','site','admin_sales','manager') DEFAULT 'sales_engineer';--> statement-breakpoint
+ALTER TABLE `engineers` MODIFY COLUMN `role` enum('admin','engineer','admin_sales','sales_engineer','tele_sales','site_engineer','system_user','sales_specialist','interior_designer','manager') NOT NULL DEFAULT 'sales_engineer';

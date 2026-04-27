@@ -696,32 +696,32 @@
 
 ## Refactor: Single Source of Truth (القرار النهائي)
 
-- [ ] حذف WorkDistribution من Sidebar + App.tsx
-- [ ] حذف WeeklyReport من Sidebar + App.tsx
-- [ ] TasksModule: Task Types إلزامية (7 أنواع: 2D Design, 3D Modeling, Render, Quotation, Meeting Modeling, Meeting Presentation, Meeting Closing)
-- [ ] TasksModule: Calendar View
-- [ ] TasksModule: Meeting Mandatory Rules (Meeting Link + Recording Link إجباري)
-- [ ] TasksModule: Tab "تحليل توزيع العمل" (Actual vs Target: 50% Meetings, 30% 3D+Render, 10% 2D, 10% Quotations)
-- [ ] KPIModule: إعادة بناء بـ 5 Tabs (Performance Dashboard + Target Achievement + Reports + Ranking + Alerts)
-- [ ] PlanningModule: Target لكل Engineer (Revenue + Designs + Meetings + Quotations)
-- [ ] PlanningModule: ربط بـ KPI مباشرة
-- [ ] Backend: setEngineerTarget يشمل targetDesigns + targetMeetings + targetQuotations
-- [ ] Backend: getEngineerPerformanceReport يقيس على Targets الفردية
+- [x] حذف WorkDistribution من Sidebar + App.tsx
+- [x] حذف WeeklyReport من Sidebar + App.tsx
+- [x] TasksModule: Task Types إلزامية (7 أنواع: 2D Design, 3D Modeling, Render, Quotation, Meeting Modeling, Meeting Presentation, Meeting Closing)
+- [x] TasksModule: Calendar View
+- [x] TasksModule: Meeting Mandatory Rules (Meeting Link + Recording Link إجباري)
+- [x] TasksModule: Tab "تحليل توزيع العمل" (Actual vs Target: 50% Meetings, 30% 3D+Render, 10% 2D, 10% Quotations)
+- [x] KPIModule: إعادة بناء بـ 5 Tabs (Performance Dashboard + Target Achievement + Reports + Ranking + Alerts)
+- [x] PlanningModule: Target لكل Engineer (Revenue + Designs + Meetings + Quotations)
+- [x] PlanningModule: ربط بـ KPI مباشرة
+- [x] Backend: setEngineerTarget يشمل targetDesigns + targetMeetings + targetQuotations
+- [x] Backend: getEngineerPerformanceReport يقيس على Targets الفردية
 
 ## KPI Refactor (الحفاظ على الموجود + إضافات)
 
-- [ ] Backend: Progressive Commission System (cumulative tiers, لا flat)
-- [ ] Backend: getOperationalPerformance (عدد كل نوع Task من Tasks Module)
-- [ ] Backend: Ranking يعتمد على Revenue + Closing Rate + Task Efficiency + Target Achievement
-- [ ] KPIModule: إضافة Section "تحليل الأداء التشغيلي" (Actual vs Target per Task Type)
-- [ ] KPIModule: Progressive Commission Breakdown واضح للمستخدم
-- [ ] KPIModule: Tabs Weekly/Monthly/Quarterly (دمج التقارير بدون Module منفصل)
-- [ ] TasksModule: Task Types إلزامية (7 أنواع: 2D Design, 3D Modeling, Render, Quotation, Meeting Modeling, Meeting Presentation, Meeting Closing)
-- [ ] TasksModule: Calendar View
-- [ ] TasksModule: Meeting Mandatory Rules (Meeting Link + Recording Link إجباري)
-- [ ] TasksModule: Tab "توزيع العمل" (Actual vs Target: 50% Meetings, 30% 3D+Render, 10% 2D, 10% Quotations)
-- [ ] PlanningModule: Target لكل Engineer (Revenue + Designs + Meetings + Quotations)
-- [ ] PlanningModule: ربط بـ KPI مباشرة
+- [x] Backend: Progressive Commission System (cumulative tiers, لا flat)
+- [x] Backend: getOperationalPerformance (عدد كل نوع Task من Tasks Module)
+- [x] Backend: Ranking يعتمد على Revenue + Closing Rate + Task Efficiency + Target Achievement
+- [x] KPIModule: إضافة Section "تحليل الأداء التشغيلي" (Actual vs Target per Task Type)
+- [x] KPIModule: Progressive Commission Breakdown واضح للمستخدم
+- [x] KPIModule: Tabs Weekly/Monthly/Quarterly (دمج التقارير بدون Module منفصل)
+- [x] TasksModule: Task Types إلزامية (7 أنواع: 2D Design, 3D Modeling, Render, Quotation, Meeting Modeling, Meeting Presentation, Meeting Closing)
+- [x] TasksModule: Calendar View
+- [x] TasksModule: Meeting Mandatory Rules (Meeting Link + Recording Link إجباري)
+- [x] TasksModule: Tab "توزيع العمل" (Actual vs Target: 50% Meetings, 30% 3D+Render, 10% 2D, 10% Quotations)
+- [x] PlanningModule: Target لكل Engineer (Revenue + Designs + Meetings + Quotations)
+- [x] PlanningModule: ربط بـ KPI مباشرة
 
 ## KPI Refactor - مكتمل (Apr 2026)
 - [x] Backend: Progressive Commission System (cumulative tiers, لا flat) - getEngineersKPI يحسب commissionBreakdown
@@ -734,3 +734,108 @@
 - [x] PlanningModule: EngineerTargetsSection (Target لكل Engineer + ربط بـ KPI)
 - [x] TypeScript: نظيف (0 errors)
 - [x] Tests: 233 passed
+
+## Role-Based System Refactor (Apr 2026)
+- [ ] Schema: تحديث engineers.role enum ليشمل (sales_engineer, admin_sales, tele_sales, site_engineer)
+- [ ] Migration: تطبيق SQL migration لتغيير enum
+- [ ] Backend: getEngineersKPI يفلتر sales_engineer فقط (يستثني admin_group/group_admin)
+- [ ] Backend: getTeleSalesKPI دالة جديدة (Calls + Leads + Conversion + Response Speed)
+- [ ] Backend: getSiteEngineersKPI دالة جديدة (Visits + Punctuality + Data Quality + Conversion)
+- [ ] Backend: getAdminSalesKPI دالة جديدة (Task Distribution + CRM + Process Compliance)
+- [ ] Backend: getOperationalPerformance يفلتر sales_engineer فقط
+- [ ] Backend: getEnhancedRanking يفلتر sales_engineer فقط
+- [ ] Backend: تحديث جميع دوال KPI لاستثناء admin/group_admin/system users
+- [ ] Router: إضافة kpi.teleSales + kpi.siteEngineers + kpi.adminSales endpoints
+- [ ] Frontend: KPIModule - إضافة Tabs منفصلة (Sales / Admin Sales / Tele Sales / Site Engineers)
+- [ ] Frontend: TasksModule - فلترة Engineers حسب Role في الـ dropdown
+- [ ] Frontend: Engineers Management - تحديث Role options (4 أدوار + system_user)
+- [ ] Frontend: Reports - فلترة حسب Role (Sales Report / Tele Report / Site Report)
+
+## Deal Ownership & Closing Module Refactor (Apr 2026)
+- [ ] Backend: autoCreateOrUpdateDealFromTask (Quotation/Meeting/Closing → Deal)
+- [ ] Backend: addDealTimelineEntry (تسجيل كل نشاط في deal_timeline)
+- [ ] Backend: updateDealEngineer endpoint مع Audit Log (old/new engineer + date + modified by)
+- [ ] Backend: فلترة Sales Engineers فقط في قوائم Assign Engineer (استثناء admin/tele/site)
+- [ ] Backend: Warning عند تغيير مهندس صفقة WON
+- [ ] Frontend: ClosingModule - إضافة Gross/Net/Discount fields في Add Deal + Update Deal
+- [ ] Frontend: ClosingModule - إضافة Assigned Engineer dropdown في Update Deal (Sales Engineers فقط)
+- [ ] Frontend: ClosingModule - Lock fields بعد إغلاق الصفقة (WON/LOST)
+- [ ] Frontend: ClosingModule - Warning Modal عند تغيير مهندس صفقة WON
+- [ ] Frontend: ClosingModule - Audit Log tab يعرض تاريخ تغييرات المهندس
+- [ ] Frontend: ClosingModule - Deal Timeline tab يعرض نشاطات الصفقة
+- [ ] Frontend: KPIModule - Tabs منفصلة (Sales / Tele Sales / Site Engineers / Admin Sales)
+- [ ] Frontend: TasksModule - فلترة Engineers حسب Role في dropdown
+- [ ] Frontend: Engineers Management - تحديث Role options (4 أدوار + system_user)
+- [ ] Backend: getTeleSalesKPI endpoint في routers.ts
+- [ ] Backend: getSiteEngineersKPI endpoint في routers.ts
+- [ ] Backend: getAdminSalesKPI endpoint في routers.ts
+
+## Discount System Refactor (Advanced)
+- [ ] Backend: حساب شريحة الخصم من (Actual Sales + Pipeline Value)
+- [ ] Backend: Realized Discount = Actual Sales × Discount%
+- [ ] Backend: Potential Discount = Pipeline × Discount%
+- [ ] Backend: توزيع Potential Discount على المهندسين بالوزن (مبيعات 60d + pipeline + closing rate + ranking)
+- [ ] Backend: تقسيم نصيب المهندس على صفقاته بالوزن (حسب قيمة كل صفقة من إجمالي pipeline)
+- [ ] Backend: Bonus = 50% مهندس + 15% Admin Sales + 35% شركة من Unused Discount
+- [ ] Backend: شرط الـ Bonus: Closed/Won فقط
+- [ ] Backend: Net Sales = Gross - Used Discount
+- [ ] Backend: منع تعديل Used Discount بعد الإغلاق إلا بصلاحية Manager
+- [ ] Backend: Audit Log لأي تعديل بعد الإغلاق
+- [ ] Frontend: Discount Dashboard لكل مهندس (Allocated/Used/Remaining/Bonus + صفقاته)
+- [ ] Frontend: Admin Sales Dashboard (صفقات موفرة + Bonus + نسبة التوفير)
+- [ ] Frontend: تحديث KPIModule بـ Role Tabs (Tele/Site/Admin Sales)
+
+## Department System (نظام الأقسام)
+- [ ] Schema: إضافة department field في engineers table (7 قيم)
+- [ ] Migration: تطبيق تعديل الـ schema
+- [ ] Backend: تحديث SALES_ENGINEER_ROLES و DEAL_OWNER_ROLES لاستخدام department
+- [ ] Backend: فلترة getEngineersKPI لـ Sales فقط
+- [ ] Backend: فلترة getAdvancedDiscountSummary لـ Sales فقط
+- [ ] Backend: فلترة getSalesEngineers لـ Sales فقط
+- [ ] Backend: endpoints جديدة لكل KPI حسب Department
+- [ ] Frontend: Engineers Management - إضافة Department dropdown
+- [ ] Frontend: ClosingModule - فلترة Dropdown لـ Sales فقط
+- [ ] Frontend: KPIModule - Tabs منفصلة لكل Department
+- [ ] Frontend: Discount Dashboard - فلترة لـ Sales فقط
+
+## Advanced Discount Distribution System (Score-Based)
+- [ ] Backend: دالة calcEngineerDiscountScore (Performance 40% + Pipeline 30% + Closing Skill 30%)
+- [ ] Backend: Ranking Multiplier (Top×1.1, Mid×1.0, Low×0.8)
+- [ ] Backend: Boost +10% لأعلى 2 مهندسين
+- [ ] Backend: Minimum Threshold (Performance < 20% = لا خصم)
+- [ ] Backend: Output لكل مهندس (Score + Rank + Share + عدد صفقات + متوسط خصم)
+- [ ] Frontend: Discount Distribution Dashboard
+
+## Company Closing KPI + Reward System
+- [ ] Backend: دالة getCompanyClosingKPI (Current Rate + Target 60% + Gap + Trend)
+- [ ] Backend: دالة getTeamRewardStatus (Bonus عند Rate ≥ 60%)
+- [ ] Backend: Commission Structure = Base + Individual Bonus + Saving Discount Bonus + Team Closing Bonus
+- [ ] Backend: Discount Pool Adjustment حسب Closing Rate
+- [ ] Frontend: KPIModule - Company Closing KPI Section
+- [ ] Frontend: KPIModule - Team Reward Dashboard (Total Earnings لكل مهندس)
+- [ ] Frontend: Alert عند Closing Rate < 60%
+
+## Lost Deals Impact System
+- [ ] Backend: دالة getLostDealsImpact (Lost Rate + Lost Value Impact + KPI Penalty)
+- [ ] Backend: Lost Rate > 30% → -20% من KPI Score
+- [ ] Backend: Discount Allocation Reduction (High Loss × 0.7, Very High × 0.5)
+- [ ] Backend: Alert عند خسارة 2+ صفقات كبيرة
+- [ ] Backend: تحليل أسباب الخسارة (Top Loss Reasons)
+- [ ] Frontend: KPIModule - Lost Deals Impact Section
+- [ ] Frontend: ClosingModule - Lost Analysis Dashboard
+
+## Collections Module - Full Refactor (Financial Collection System)
+- [ ] Backend: autoCreateContractFromDeal (عند WON/CLOSED → إنشاء Contract تلقائي)
+- [ ] Backend: Commission يُحسب على Collected Amount فقط (لا على Contract Value)
+- [ ] Backend: createFollowUpTask (عند Next Payment Date → Task للـ Sales Engineer)
+- [ ] Backend: getCollectionAlerts (Due Today + Overdue + Upcoming)
+- [ ] Backend: getCollectionDashboard (Total Today + Month + Overdue + Upcoming)
+- [ ] Backend: فلترة CollectionsModule لـ Sales Engineer + Sales Specialist + Admin Sales فقط
+- [ ] Backend: Admin Sales Bonus من التحصيل المنتظم + تقليل التأخير
+- [ ] Frontend: CollectionsModule - Auto-contract notification عند WON
+- [ ] Frontend: CollectionsModule - Dashboard (Today + Month + Overdue + Upcoming)
+- [ ] Frontend: CollectionsModule - Payment form (Amount + Type + Date + Receipt + Notes)
+- [ ] Frontend: CollectionsModule - Commission Earned = f(Collected Amount)
+- [ ] Frontend: CollectionsModule - Alerts Section (Due Today + Overdue + Upcoming)
+- [ ] Frontend: CollectionsModule - فلترة Engineers (Sales + Admin Sales فقط)
+- [ ] Frontend: ClosingModule - Auto-trigger Contract عند تغيير Status إلى WON

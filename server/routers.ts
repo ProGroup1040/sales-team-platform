@@ -28,6 +28,8 @@ import {
   getAllCollectionsWithSummary, addPayment, addPaymentPromise, updatePromiseStatus,
   getDailyFollowUpList, getEngineersCollectionCommission, markCommissionPaid,
   addCollection, updateCollectionStatus, calcProgressiveCommission,
+  autoCreateContractFromDeal, addPaymentWithFollowUp, getCollectionBasedCommission,
+  getCollectionDashboard, getCollectionAlerts, getCollectionsWithCommission,
   getClientFinancialProfile,
   getManagementFocus,
   submitMeetingRecordingLink, upsertMeetingReview, getMeetingReview, getEngineerClosingQualityScore,
@@ -64,6 +66,16 @@ import {
   getAllEngineersEvaluationDashboard, promoteEngineer, getOrCreateEngineerCareerLevel,
   getManagementDecisionDashboard, getEngineerPromotionProgress,
   getOperationalPerformance, getEnhancedRanking,
+  autoCreateOrUpdateDealFromTask, addDealTimelineEntry, getDealTimeline,
+  updateDealEngineer, getSalesEngineers,
+  // Department & Advanced Discount System
+  DEPARTMENT_LABELS, SALES_DEPARTMENTS, filterByDepartment, isSalesDepartment,
+  getAdvancedDiscountSummary, validateAdvancedDealDiscount, calcDealSavingBonus,
+  calcScoreBasedDiscountDistribution,
+  // Tele Sales & Site Engineer KPI
+  getTeleSalesKPI, getSiteEngineersKPI,
+  // Company Closing KPI + Reward System + Lost Deals Impact
+  getCompanyClosingKPI, getTeamRewardStatus, getLostDealsImpact,
 } from "./db";
 
 // ─── Seed Data ────────────────────────────────────────────────────────────────
@@ -80,11 +92,11 @@ async function seedData() {
     { name: 'أحمد محمد علي', email: 'ahmed@company.com', phone: '0501234567', department: 'المبيعات', status: 'active' as const },
     { name: 'سارة عبدالله', email: 'sara@company.com', phone: '0502345678', department: 'المبيعات', status: 'active' as const },
     { name: 'محمد الشمري', email: 'mohammed@company.com', phone: '0503456789', department: 'التشغيل', status: 'active' as const },
-    { name: 'فاطمة الزهراني', email: 'fatima@company.com', phone: '0504567890', department: 'المبيعات', status: 'active' as const },
-    { name: 'خالد العتيبي', email: 'khalid@company.com', phone: '0505678901', department: 'المبيعات', status: 'active' as const },
-    { name: 'نورة القحطاني', email: 'noura@company.com', phone: '0506789012', department: 'التشغيل', status: 'active' as const },
+    { name: 'فاطمة الزهراني', email: 'fatima@company.com', phone: '0504567890', department: 'sales_engineer' as const, status: 'active' as const },
+    { name: 'خالد العتيبي', email: 'khalid@company.com', phone: '0505678901', department: 'sales_engineer' as const, status: 'active' as const },
+    { name: 'نورة القحطاني', email: 'noura@company.com', phone: '0506789012', department: 'sales_specialist' as const, status: 'active' as const },
   ];
-  await db.insert(engineers).values(engData).onDuplicateKeyUpdate({ set: { name: sql`VALUES(name)` } });
+  await db.insert(engineers).values(engData as any[]).onDuplicateKeyUpdate({ set: { name: sql`VALUES(name)` } });
   const engList = await db.select().from(engineers);
 
   // Seed daily tasks for today and past 7 days
@@ -545,6 +557,46 @@ export const appRouter = router({
       });
       return { success: true };
     }),
+    // ─── Sales Engineers list (for Assign Engineer dropdown) ────────────────────────
+    salesEngineers: publicProcedure.query(async () => getSalesEngineers()),
+    // ─── Deal Timeline ───────────────────────────────────────────────────────────────
+    timeline: publicProcedure.input(z.object({ dealId: z.number() }))
+      .query(async ({ input }) => getDealTimeline(input.dealId)),
+    // ─── Update Deal Engineer (Deal Ownership) ──────────────────────────────────────
+    updateEngineer: protectedProcedure.input(z.object({
+      dealId: z.number(),
+      newEngineerId: z.number(),
+      forceIfWon: z.boolean().optional(),
+    })).mutation(async ({ input, ctx }) => {
+      const result = await updateDealEngineer({
+        dealId: input.dealId,
+        newEngineerId: input.newEngineerId,
+        modifiedBy: ctx.user.name ?? ctx.user.openId,
+        forceIfWon: input.forceIfWon,
+      });
+      return result;
+    }),
+    // ─── Auto-create Deal from Task ─────────────────────────────────────────────────────
+    autoCreateFromTask: publicProcedure.input(z.object({
+      taskId: z.number(),
+      engineerId: z.number(),
+      clientName: z.string().optional(),
+      taskType: z.string(),
+      notes: z.string().optional(),
+      grossValue: z.number().optional(),
+      discountValue: z.number().optional(),
+    })).mutation(async ({ input }) => {
+      const result = await autoCreateOrUpdateDealFromTask({
+        id: input.taskId,
+        engineerId: input.engineerId,
+        clientName: input.clientName,
+        taskType: input.taskType,
+        notes: input.notes,
+        grossValue: input.grossValue,
+        discountValue: input.discountValue,
+      });
+      return result ?? { action: 'skipped', dealId: null };
+    }),
   }),
 
   // ── Sales Control Tower ───────────────────────────────────────────────────────────────────────────────────────
@@ -605,6 +657,31 @@ export const appRouter = router({
     enhancedRanking: publicProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getEnhancedRanking(input.year, input.month)),
+    // ─── Role-Based KPI Endpoints ──────────────────────────────────────────────
+    teleSalesKPI: publicProcedure
+      .input(z.object({ year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getTeleSalesKPI(input.year, input.month)),
+    siteEngineersKPI: publicProcedure
+      .input(z.object({ year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getSiteEngineersKPI(input.year, input.month)),
+    // ─── Department Labels ─────────────────────────────────────────────────────
+    departmentLabels: publicProcedure.query(async () => DEPARTMENT_LABELS),
+    salesDepartments: publicProcedure.query(async () => SALES_DEPARTMENTS),
+    // ─── Company Closing KPI + Reward System ──────────────────────────────────
+    companyClosingKPI: publicProcedure
+      .input(z.object({ year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getCompanyClosingKPI(input.year, input.month)),
+    teamRewardStatus: publicProcedure
+      .input(z.object({ year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getTeamRewardStatus(input.year, input.month)),
+    // ─── Lost Deals Impact System ─────────────────────────────────────────────
+    lostDealsImpact: publicProcedure
+      .input(z.object({ year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getLostDealsImpact(input.year, input.month)),
+    // ─── Score-Based Discount Distribution ────────────────────────────────────
+    scoreBasedDiscountDistribution: publicProcedure
+      .input(z.object({ year: z.number(), month: z.number() }))
+      .query(async ({ input }) => calcScoreBasedDiscountDistribution(input.year, input.month)),
   }),
 
   // ── Collections ───────────────────────────────────────────────────────────
@@ -708,6 +785,35 @@ export const appRouter = router({
         commission: calcProgressiveCommission(input.amount),
         amount: input.amount,
       })),
+    // إنشاء Contract تلقائي من صفقة WON
+    autoCreateContract: publicProcedure.input(z.object({ dealId: z.number() }))
+      .mutation(async ({ input }) => autoCreateContractFromDeal(input.dealId)),
+    // إضافة دفعة مع Follow-up Task
+    addPaymentWithFollowUp: publicProcedure.input(z.object({
+      collectionId: z.number(),
+      engineerId: z.number().optional(),
+      clientName: z.string().min(1),
+      amount: z.number().positive(),
+      paymentDate: z.string(),
+      paymentType: z.enum(["initial", "installment", "final", "visit_fee"]).default("installment"),
+      addedBy: z.enum(["engineer", "admin"]).default("admin"),
+      receiptNumber: z.string().optional(),
+      receiptUrl: z.string().optional(),
+      nextPaymentDate: z.string().optional(),
+      notes: z.string().optional(),
+    })).mutation(async ({ input }) => addPaymentWithFollowUp(input)),
+    // Commission على المحصّل فقط
+    collectionCommission: publicProcedure.input(z.object({
+      engineerId: z.number(), month: z.number(), year: z.number(),
+    })).query(async ({ input }) => getCollectionBasedCommission(input.engineerId, input.month, input.year)),
+    // Dashboard التحصيل
+    dashboard: publicProcedure.input(z.object({ month: z.number(), year: z.number() }))
+      .query(async ({ input }) => getCollectionDashboard(input.month, input.year)),
+    // Alerts التحصيل
+    alerts: publicProcedure.query(async () => getCollectionAlerts()),
+    // قائمة العقود مع الكومشن
+    contractsWithCommission: publicProcedure.input(z.object({ engineerId: z.number().optional() }))
+      .query(async ({ input }) => getCollectionsWithCommission(input.engineerId)),
   }),
   // ── Legacy: Customers / Products ───────────────────────────────────────────────────────────────────────────────
   customers: router({

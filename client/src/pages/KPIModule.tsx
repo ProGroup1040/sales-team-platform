@@ -100,6 +100,13 @@ export default function KPIModule() {
   const { data: trendData } = trpc.kpi.trend.useQuery({ year, month });
   const { data: opData } = trpc.kpi.operationalPerformance.useQuery({ year, month });
   const { data: rankingData } = trpc.kpi.enhancedRanking.useQuery({ year, month });
+  const { data: teleSalesKPI } = trpc.kpi.teleSalesKPI.useQuery({ year, month });
+  const { data: siteEngKPI } = trpc.kpi.siteEngineersKPI.useQuery({ year, month });
+  const { data: companyClosingKPI } = trpc.kpi.companyClosingKPI.useQuery({ year, month });
+  const { data: teamReward } = trpc.kpi.teamRewardStatus.useQuery({ year, month });
+  const { data: lostImpact } = trpc.kpi.lostDealsImpact.useQuery({ year, month });
+  const { data: discountDist } = trpc.kpi.scoreBasedDiscountDistribution.useQuery({ year, month });
+  const [kpiTab, setKpiTab] = useState<'sales'|'tele'|'site'|'closing'|'rewards'|'lost'>('sales');
 
   const sorted = kpiData ? [...kpiData].sort((a, b) => b.kpiScore - a.kpiScore) : [];
   const topPerformer = sorted[0];
@@ -776,7 +783,285 @@ export default function KPIModule() {
         </Card>
       )}
 
-      {sorted.length === 0 && !isLoading && (
+      {/* ─── ROLE TABS ─── */}
+      <div className="flex flex-wrap gap-2 border-b pb-2">
+        {([
+          { id: 'sales', label: 'مبيعات (Sales Engineers)' },
+          { id: 'tele', label: 'Tele Sales' },
+          { id: 'site', label: 'Site Engineers' },
+          { id: 'closing', label: 'Company Closing KPI' },
+          { id: 'rewards', label: 'نظام المكافآت' },
+          { id: 'lost', label: 'تأثير الصفقات الخاسرة' },
+        ] as const).map(tab => (
+          <button key={tab.id} onClick={() => setKpiTab(tab.id)}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-full border transition-colors ${
+              kpiTab === tab.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-muted text-muted-foreground border-muted hover:bg-muted/80'
+            }`}>{tab.label}</button>
+        ))}
+      </div>
+
+      {/* ─── TAB: Tele Sales KPI ─── */}
+      {kpiTab === 'tele' && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Zap className="w-4 h-4 text-blue-500" />
+              KPI فريق Tele Sales
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {!teleSalesKPI || teleSalesKPI.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">لا يوجد موظفو Tele Sales مسجلون</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead><tr className="border-b text-xs text-muted-foreground">
+                    <th className="text-right py-2 px-3">الموظف</th>
+                    <th className="text-right py-2 px-3">المكالمات</th>
+                    <th className="text-right py-2 px-3">Leads</th>
+                    <th className="text-right py-2 px-3">تحويل Lead→Meeting</th>
+                    <th className="text-right py-2 px-3">سرعة الاستجابة</th>
+                    <th className="text-right py-2 px-3">درجة KPI</th>
+                  </tr></thead>
+                  <tbody>
+                    {teleSalesKPI.map((emp: any) => (
+                      <tr key={emp.engineerId} className="border-b hover:bg-muted/30">
+                        <td className="py-2.5 px-3 font-semibold">{emp.engineerName}</td>
+                        <td className="py-2.5 px-3">{emp.callsCount ?? 0}</td>
+                        <td className="py-2.5 px-3">{emp.leadsCount ?? 0}</td>
+                        <td className="py-2.5 px-3">
+                          <span className={`font-bold ${ (emp.leadToMeetingRate ?? 0) >= 30 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                            {emp.leadToMeetingRate ?? 0}%
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3">{emp.avgResponseHours ?? '-'} ساعة</td>
+                        <td className="py-2.5 px-3">
+                          <div className="flex items-center gap-2">
+                            <Progress value={emp.kpiScore ?? 0} className="h-2 w-16" />
+                            <span className="font-bold text-xs" style={{ color: getScoreColor(emp.kpiScore ?? 0) }}>{emp.kpiScore ?? 0}%</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ─── TAB: Site Engineers KPI ─── */}
+      {kpiTab === 'site' && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Target className="w-4 h-4 text-orange-500" />
+              KPI مهندسو المعاينات (Site Engineers)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {!siteEngKPI || siteEngKPI.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">لا يوجد مهندسو معاينات مسجلون</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead><tr className="border-b text-xs text-muted-foreground">
+                    <th className="text-right py-2 px-3">المهندس</th>
+                    <th className="text-right py-2 px-3">المعاينات</th>
+                    <th className="text-right py-2 px-3">الالتزام بالمواعيد</th>
+                    <th className="text-right py-2 px-3">تحويل معاينة→تصميم</th>
+                    <th className="text-right py-2 px-3">جودة البيانات</th>
+                    <th className="text-right py-2 px-3">درجة KPI</th>
+                  </tr></thead>
+                  <tbody>
+                    {siteEngKPI.map((eng: any) => (
+                      <tr key={eng.engineerId} className="border-b hover:bg-muted/30">
+                        <td className="py-2.5 px-3 font-semibold">{eng.engineerName}</td>
+                        <td className="py-2.5 px-3">{eng.visitsCount ?? 0}</td>
+                        <td className="py-2.5 px-3">
+                          <span className={`font-bold ${ (eng.punctualityRate ?? 0) >= 80 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                            {eng.punctualityRate ?? 0}%
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span className={`font-bold ${ (eng.visitToDesignRate ?? 0) >= 50 ? 'text-emerald-600' : 'text-red-500'}`}>
+                            {eng.visitToDesignRate ?? 0}%
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3">{eng.dataQualityScore ?? 0}%</td>
+                        <td className="py-2.5 px-3">
+                          <div className="flex items-center gap-2">
+                            <Progress value={eng.kpiScore ?? 0} className="h-2 w-16" />
+                            <span className="font-bold text-xs" style={{ color: getScoreColor(eng.kpiScore ?? 0) }}>{eng.kpiScore ?? 0}%</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ─── TAB: Company Closing KPI ─── */}
+      {kpiTab === 'closing' && companyClosingKPI && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              { label: 'إجمالي الصفقات', value: companyClosingKPI.totalDeals, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+              { label: 'صفقات ناجحة (WON)', value: companyClosingKPI.wonDeals, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+              { label: 'نسبة الإغلاق', value: `${companyClosingKPI.currentRate}%`, color: (companyClosingKPI.currentRate ?? 0) >= 60 ? 'text-emerald-600' : 'text-red-500', bg: (companyClosingKPI.currentRate ?? 0) >= 60 ? 'bg-emerald-50' : 'bg-red-50' },
+              { label: 'الهدف الشهري', value: `${companyClosingKPI.target ?? 60}%`, color: 'text-green-600', bg: 'bg-green-50' },
+            ].map((item, i) => (
+              <Card key={i}><CardContent className={`p-4 ${item.bg} rounded-lg`}>
+                <p className="text-xs text-muted-foreground">{item.label}</p>
+                <p className={`text-2xl font-bold ${item.color}`}>{item.value}</p>
+              </CardContent></Card>
+            ))}
+          </div>
+          <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Funnel الإغلاق</CardTitle></CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { label: 'إجمالي الصفقات', count: companyClosingKPI.totalDeals ?? 0, color: '#6366f1' },
+                  { label: 'صفقات ناجحة', count: companyClosingKPI.wonDeals ?? 0, color: '#10b981' },
+                  { label: 'صفقات مفتوحة', count: companyClosingKPI.openDeals ?? 0, color: '#f59e0b' },
+                ].map((item, i) => (
+                  <div key={i} className="text-center p-3 bg-muted/30 rounded-lg">
+                    <div className="text-3xl font-bold" style={{ color: item.color }}>{item.count}</div>
+                    <div className="text-xs text-muted-foreground mt-1">{item.label}</div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* ─── TAB: Team Rewards ─── */}
+      {kpiTab === 'rewards' && teamReward && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Gift className="w-4 h-4 text-purple-500" />
+              نظام مكافآت الفريق
+              <Badge className={teamReward.targetMet ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}>
+                {teamReward.targetMet ? '✓ مؤهل للمكافأة' : '✗ غير مؤهل'}
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="p-3 bg-muted/30 rounded-lg">
+                <p className="text-xs text-muted-foreground">نسبة الإغلاق الفعلية</p>
+                <p className={`text-2xl font-bold ${ (teamReward.currentRate ?? 0) >= 60 ? 'text-emerald-600' : 'text-red-500'}`}>{teamReward.currentRate ?? 0}%</p>
+                <p className="text-xs text-muted-foreground">الحد الأدنى: {teamReward.target ?? 60}%</p>
+              </div>
+              <div className="p-3 bg-muted/30 rounded-lg">
+                <p className="text-xs text-muted-foreground">مكافأة الفريق المتاحة</p>
+                <p className="text-2xl font-bold text-purple-600">{fmtFull(teamReward.totalTeamBonus ?? 0)}</p>
+              </div>
+              <div className="p-3 bg-muted/30 rounded-lg">
+                <p className="text-xs text-muted-foreground">إجمالي مكاسب الفريق</p>
+                <p className="text-2xl font-bold text-indigo-600">{fmtFull(teamReward.totalTeamEarnings ?? 0)}</p>
+              </div>
+            </div>
+            {teamReward.engineerEarnings && teamReward.engineerEarnings.length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead><tr className="border-b text-xs text-muted-foreground">
+                    <th className="text-right py-2 px-3">المهندس</th>
+                    <th className="text-right py-2 px-3">الكوميشن</th>
+                    <th className="text-right py-2 px-3">الحافز</th>
+                    <th className="text-right py-2 px-3">الإجمالي</th>
+                  </tr></thead>
+                  <tbody>
+                    {teamReward.engineerEarnings.map((eng: any) => (
+                      <tr key={eng.engineerId} className="border-b hover:bg-muted/30">
+                        <td className="py-2 px-3 font-semibold">{eng.engineerName}</td>
+                        <td className="py-2 px-3">{fmtFull(eng.commission ?? 0)}</td>
+                        <td className="py-2 px-3">{fmtFull(eng.incentive ?? 0)}</td>
+                        <td className="py-2 px-3 font-bold text-purple-600">{fmtFull(eng.total ?? 0)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ─── TAB: Lost Deals Impact ─── */}
+      {kpiTab === 'lost' && lostImpact && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              { label: 'صفقات خاسرة', value: lostImpact.company.lostDeals, color: 'text-red-600', bg: 'bg-red-50' },
+              { label: 'إيرادات ضائعة', value: fmt(lostImpact.company.lostValue ?? 0), color: 'text-red-600', bg: 'bg-red-50' },
+              { label: 'تأثير على نسبة الإغلاق', value: `${lostImpact.company.closingRateImpact ?? 0}%`, color: 'text-orange-600', bg: 'bg-orange-50' },
+              { label: 'نسبة الخسارة', value: `${lostImpact.company.lostRate ?? 0}%`, color: 'text-red-600', bg: 'bg-red-50' },
+            ].map((item, i) => (
+              <Card key={i}><CardContent className={`p-4 ${item.bg} rounded-lg`}>
+                <p className="text-xs text-muted-foreground">{item.label}</p>
+                <p className={`text-2xl font-bold ${item.color}`}>{item.value}</p>
+              </CardContent></Card>
+            ))}
+          </div>
+          {lostImpact.topLostReasons && lostImpact.topLostReasons.length > 0 && (
+            <Card><CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><TrendingDown className="w-4 h-4 text-red-500" /> أسباب الخسارة</CardTitle></CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {lostImpact.topLostReasons.map((reason: any, i: number) => (
+                    <div key={i} className="flex items-center justify-between">
+                      <span className="text-sm">{reason.label}</span>
+                      <div className="flex items-center gap-3">
+                        <Progress value={reason.pct ?? 0} className="h-2 w-24" />
+                        <span className="text-xs font-bold text-red-600">{reason.count} ({reason.pct ?? 0}%)</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          {lostImpact.engineerImpacts && lostImpact.engineerImpacts.length > 0 && (
+            <Card><CardHeader className="pb-2"><CardTitle className="text-sm">تأثير الخسارة على كل مهندس</CardTitle></CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead><tr className="border-b text-xs text-muted-foreground">
+                      <th className="text-right py-2 px-3">المهندس</th>
+                      <th className="text-right py-2 px-3">صفقات خاسرة</th>
+                      <th className="text-right py-2 px-3">إيرادات ضائعة</th>
+                      <th className="text-right py-2 px-3">نسبة الخسارة</th>
+                    </tr></thead>
+                    <tbody>
+                      {lostImpact.engineerImpacts.map((eng: any) => (
+                        <tr key={eng.engineerId} className="border-b hover:bg-muted/30">
+                          <td className="py-2 px-3 font-semibold">{eng.engineerName}</td>
+                          <td className="py-2 px-3 text-red-600 font-bold">{eng.lostDeals}</td>
+                          <td className="py-2 px-3 text-red-600">{fmt(eng.lostValue ?? 0)}</td>
+                          <td className="py-2 px-3">
+                            <span className={`font-bold ${ (eng.lostRate ?? 0) > 40 ? 'text-red-600' : (eng.lostRate ?? 0) > 20 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                              {eng.lostRate ?? 0}%
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {sorted.length === 0 && !isLoading && kpiTab === 'sales' && (
         <div className="text-center py-12 text-muted-foreground">لا توجد بيانات لهذا الشهر</div>
       )}
     </div>

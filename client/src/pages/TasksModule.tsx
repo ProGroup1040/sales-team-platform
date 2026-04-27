@@ -364,8 +364,18 @@ function ManageEngineersDialog({ engineers, onDone }: { engineers: any[]; onDone
                   className="bg-white/5 border-white/10 text-white text-sm" placeholder="الاسم *" />
                 <Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
                   className="bg-white/5 border-white/10 text-white text-sm" placeholder="الهاتف" />
-                <Input value={form.department} onChange={e => setForm(f => ({ ...f, department: e.target.value }))}
-                  className="bg-white/5 border-white/10 text-white text-sm" placeholder="القسم" />
+                <Select value={form.department} onValueChange={v => setForm(f => ({ ...f, department: v }))}>
+                  <SelectTrigger className="bg-white/5 border-white/10 text-white text-sm col-span-2"><SelectValue placeholder="اختر القسم *" /></SelectTrigger>
+                  <SelectContent className="bg-slate-900 border-white/10">
+                    <SelectItem value="sales_engineer" className="text-white hover:bg-white/10">مهندس مبيعات (Sales Engineer)</SelectItem>
+                    <SelectItem value="sales_specialist" className="text-white hover:bg-white/10">أخصائي مبيعات (Sales Specialist)</SelectItem>
+                    <SelectItem value="interior_designer" className="text-white hover:bg-white/10">مصمم داخلي (Interior Designer)</SelectItem>
+                    <SelectItem value="tele_sales" className="text-white hover:bg-white/10">تيلي سيلز (Tele Sales)</SelectItem>
+                    <SelectItem value="site_engineer" className="text-white hover:bg-white/10">مهندس معاينات (Site Engineer)</SelectItem>
+                    <SelectItem value="admin_sales" className="text-white hover:bg-white/10">إداري مبيعات (Admin Sales)</SelectItem>
+                    <SelectItem value="manager" className="text-white hover:bg-white/10">مدير (Manager)</SelectItem>
+                  </SelectContent>
+                </Select>
                 <Select value={form.role} onValueChange={v => setForm(f => ({ ...f, role: v }))}>
                   <SelectTrigger className="bg-white/5 border-white/10 text-white text-sm"><SelectValue /></SelectTrigger>
                   <SelectContent className="bg-slate-900 border-white/10">
@@ -385,8 +395,25 @@ function ManageEngineersDialog({ engineers, onDone }: { engineers: any[]; onDone
                 <div key={eng.id} className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/10">
                   <div>
                     <p className="font-medium text-sm">{eng.name}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      {eng.department && <span className="text-xs text-white/40">{eng.department}</span>}
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      {eng.department && (
+                        <Badge className={`text-xs ${
+                          ['sales_engineer','sales_specialist'].includes(eng.department) ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
+                          eng.department === 'tele_sales' ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' :
+                          eng.department === 'site_engineer' ? 'bg-orange-500/20 text-orange-400 border-orange-500/30' :
+                          eng.department === 'admin_sales' ? 'bg-purple-500/20 text-purple-400 border-purple-500/30' :
+                          eng.department === 'manager' ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' :
+                          'bg-slate-500/20 text-slate-400 border-slate-500/30'
+                        }`}>{
+                          eng.department === 'sales_engineer' ? 'مهندس مبيعات' :
+                          eng.department === 'sales_specialist' ? 'أخصائي مبيعات' :
+                          eng.department === 'interior_designer' ? 'مصمم داخلي' :
+                          eng.department === 'tele_sales' ? 'تيلي سيلز' :
+                          eng.department === 'site_engineer' ? 'مهندس معاينات' :
+                          eng.department === 'admin_sales' ? 'إداري مبيعات' :
+                          eng.department === 'manager' ? 'مدير' : eng.department
+                        }</Badge>
+                      )}
                       <Badge className={`text-xs ${eng.role === "admin" ? "bg-amber-500/20 text-amber-400 border-amber-500/30" : "bg-blue-500/20 text-blue-400 border-blue-500/30"}`}>
                         {eng.role === "admin" ? "مدير" : "مهندس"}
                       </Badge>

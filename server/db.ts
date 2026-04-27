@@ -21,7 +21,8 @@ import {
   meetingSessions, MeetingSession, InsertMeetingSession,
   sessionActions, SessionAction, InsertSessionAction,
   engineerEvaluations, EngineerEvaluation, InsertEngineerEvaluation,
-  engineerCareerLevels, EngineerCareerLevel, InsertEngineerCareerLevel
+  engineerCareerLevels, EngineerCareerLevel, InsertEngineerCareerLevel,
+  dealTimeline, DealTimeline, InsertDealTimeline
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { notifyOwner } from './_core/notification';
@@ -73,10 +74,10 @@ export async function getEngineers() {
   return db.select().from(engineers).where(eq(engineers.status, 'active')).orderBy(engineers.name);
 }
 
-export async function createEngineer(data: { name: string; email?: string; phone?: string; department?: string }) {
+export async function createEngineer(data: { name: string; email?: string; phone?: string; department?: string; role?: string }) {
   const db = await getDb();
   if (!db) return;
-  await db.insert(engineers).values({ ...data, status: 'active' });
+  await db.insert(engineers).values({ ...data, department: (data.department as any) ?? 'sales_engineer', role: (data.role as any) ?? 'sales_engineer', status: 'active' });
 }
 
 // ─── Daily Tasks ──────────────────────────────────────────────────────────────
@@ -259,7 +260,7 @@ export async function getEngineersWithRole() {
 export async function createEngineerWithRole(data: { name: string; email?: string; phone?: string; department?: string; role?: string }) {
   const db = await getDb();
   if (!db) return;
-  await db.insert(engineers).values({ ...data, role: (data.role as any) ?? 'engineer', status: 'active' });
+  await db.insert(engineers).values({ ...data, department: (data.department as any) ?? 'sales_engineer', role: (data.role as any) ?? 'sales_engineer', status: 'active' });
 }
 
 export async function deleteEngineer(id: number) {
@@ -488,7 +489,7 @@ export async function getDealsStats(year: number, month: number) {
   const closedWon = allDeals.filter(d => d.stage === 'closed_won').length;
   const closedLost = allDeals.filter(d => d.stage === 'closed_lost').length;
   const totalValue = allDeals.reduce((s, d) => s + parseFloat(d.value), 0);
-  const closedValue = allDeals.filter(d => d.stage === 'closed_won').reduce((s, d) => s + parseFloat(d.value), 0);
+  const closedValue = allDeals.filter(d => d.stage === 'closed_won').reduce((s, d) => s + parseFloat((d.netValue as string) || d.value || '0'), 0);
 
   // Conversion rate from visits
   const visitsCount = await db.select({ total: count() }).from(visits).where(between(visits.scheduledAt, startDate, endDate));
@@ -525,15 +526,16 @@ export async function createDeal(data: {
   const db = await getDb();
   if (!db) return;
     await db.insert(deals).values({
-      engineerId: data.engineerId, clientName: data.clientName,
+       engineerId: data.engineerId, clientName: data.clientName,
       value: data.value.toString(), stage: 'proposal',
+      grossValue: data.value.toString(),
+      netValue: data.value.toString(),
       visitId: data.visitId, leadId: data.leadId,
       nextAction: data.nextAction,
       nextActionDate: data.nextActionDate ? new Date(data.nextActionDate + 'T00:00:00') : undefined,
       notes: data.notes,
     });
 }
-
 export async function updateDealStage(id: number, stage: string, nextAction?: string, nextActionDate?: string, notes?: string) {
   const db = await getDb();
   if (!db) return;
@@ -656,7 +658,7 @@ export async function getEngineersKPI(year: number, month: number) {
     const rating = kpiScore >= 90 ? 'ممتاز' : kpiScore >= 75 ? 'جيد جداً' : kpiScore >= 60 ? 'جيد' : kpiScore >= 45 ? 'مقبول' : 'ضعيف';
 
     // ── Sales figures (from closed_won deals) ────────────────────────────────────
-    const totalDealValue = engDeals.filter(d => d.stage === 'closed_won').reduce((s, d) => s + parseFloat(d.value), 0);
+    const totalDealValue = engDeals.filter(d => d.stage === 'closed_won').reduce((s, d) => s + parseFloat((d.netValue as string) || (d.value as string) || '0'), 0);
     const engTarget = engTargetsList.find(t => t.engineerId === eng.id);
     const targetAmount = engTarget ? parseFloat(engTarget.targetAmount) : 0;
     const achievementPct = targetAmount > 0 ? (totalDealValue / targetAmount) * 100 : 0;
@@ -2600,9 +2602,10 @@ export async function createDealWithDiscount(data: {
     discountPercent: (data.discountPercent ?? 0).toString(),
     discountValue: (data.discountValue ?? 0).toString(),
     discountNote: data.discountNote,
+    grossValue: data.value.toString(),
+    netValue: (data.value - (data.discountValue ?? 0)).toString(),
   });
 }
-
 /** تحديث صفقة (stage + discount) */
 export async function updateDealFull(id: number, data: {
   stage?: string; nextAction?: string; nextActionDate?: string; notes?: string;
@@ -2620,6 +2623,18 @@ export async function updateDealFull(id: number, data: {
   if (data.discountPercent !== undefined) updateData.discountPercent = data.discountPercent.toString();
   if (data.discountValue !== undefined) updateData.discountValue = data.discountValue.toString();
   if (data.discountNote !== undefined) updateData.discountNote = data.discountNote;
+  // Auto-update grossValue and netValue
+  if (data.value !== undefined) updateData.grossValue = data.value.toString();
+  if (data.value !== undefined || data.discountValue !== undefined) {
+    // Fetch current deal to get latest values if only one is being updated
+    // netValue = grossValue - discountValue
+    const gv = data.value;
+    const dv = data.discountValue;
+    if (gv !== undefined && dv !== undefined) updateData.netValue = (gv - dv).toString();
+    else if (gv !== undefined) updateData.netValue = gv.toString(); // no discount info, use gross
+  }
+  // Lock deal after closing
+  if (data.stage === 'closed_won' || data.stage === 'closed_lost') updateData.isLocked = 1;
   if (data.lostReason !== undefined) updateData.lostReason = data.lostReason;
   if (data.lostReasonNote !== undefined) updateData.lostReasonNote = data.lostReasonNote;
   if (data.closedAt !== undefined) updateData.closedAt = data.closedAt;
@@ -5221,7 +5236,7 @@ export async function getFullFunnelAnalysis(engineerId?: number, period: 'week' 
   // Total Revenue
   const totalRevenue = allDeals
     .filter(d => d.stage === 'closed_won')
-    .reduce((s, d) => s + parseFloat(d.value as string || '0'), 0);
+    .reduce((s, d) => s + parseFloat((d.netValue as string) || (d.value as string) || '0'), 0);
 
   // Pipeline Value
   const pipelineValue = allDeals
@@ -5296,7 +5311,7 @@ export async function getEngineersFunnelComparison() {
     const closingRate = totalDeals > 0 ? Math.round((closedWon / totalDeals) * 100) : 0;
     const totalRevenue = engDeals
       .filter(d => d.stage === 'closed_won')
-      .reduce((s, d) => s + parseFloat(d.value as string || '0'), 0);
+      .reduce((s, d) => s + parseFloat((d.netValue as string) || (d.value as string) || '0'), 0);
 
     // Meeting Stats
     const engSessions = await db.select().from(meetingSessions).where(
@@ -6703,4 +6718,1629 @@ export async function getEnhancedRanking(year: number, month: number) {
     };
   }).sort((a, b) => b.compositeScore - a.compositeScore)
     .map((r, i) => ({ ...r, compositeRank: i + 1 }));
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ROLE-BASED KPI SYSTEM — كل دور له KPI مستقل
+// ════════════════════════════════════════════════════════════════════════════
+
+/** الأدوار التي تُعتبر Sales Engineers (لـ KPI المبيعات) */
+export const SALES_ENGINEER_ROLES = ['engineer', 'sales_engineer'] as const;
+/** الأدوار التي يجب استثناؤها من KPI المبيعات */
+export const NON_SALES_ROLES = ['admin', 'admin_sales', 'tele_sales', 'site_engineer', 'system_user', 'group_admin'] as const;
+
+/** أقسام البيع الفعلية (Sales Engineer + Sales Specialist) */
+export const SALES_DEPARTMENTS = ['sales_engineer', 'sales_specialist'] as const;
+/** أقسام لا تدخل في KPI البيع */
+export const NON_SALES_DEPARTMENTS = ['interior_designer', 'tele_sales', 'site', 'admin_sales', 'manager'] as const;
+/** أسماء الأقسام بالعربية */
+export const DEPARTMENT_LABELS: Record<string, string> = {
+  sales_engineer: 'مهندس مبيعات',
+  sales_specialist: 'أخصائي مبيعات',
+  interior_designer: 'مصمم داخلي',
+  tele_sales: 'تيلي سيلز',
+  site: 'مهندس معاينات',
+  admin_sales: 'أدمن مبيعات',
+  manager: 'مدير',
+};
+
+/** فلترة المهندسين حسب الدور (legacy) */
+export function filterByRole(engList: any[], roles: readonly string[]): any[] {
+  return engList.filter(e => roles.includes(e.role ?? 'sales_engineer'));
+}
+/** فلترة المهندسين حسب القسم (الجديد) */
+export function filterByDepartment(engList: any[], depts: readonly string[]): any[] {
+  return engList.filter(e => {
+    const dept = e.department ?? e.role ?? 'sales_engineer';
+    return depts.includes(dept);
+  });
+}
+/** هل المهندس ينتمي لقسم البيع؟ */
+export function isSalesDepartment(eng: { department?: string | null; role?: string }): boolean {
+  const dept = eng.department ?? eng.role ?? 'sales_engineer';
+  return (SALES_DEPARTMENTS as readonly string[]).includes(dept);
+}
+
+// ─── Tele Sales KPI ───────────────────────────────────────────────────────────
+/**
+ * KPI خاص بـ Tele Sales:
+ * - عدد الـ Leads المعالجة
+ * - Conversion Rate (Lead → Meeting)
+ * - سرعة الاستجابة
+ * - عدد المكالمات (من Tasks)
+ */
+export async function getTeleSalesKPI(year: number, month: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const startDate = new Date(year, month - 1, 1);
+  const endDate = new Date(year, month, 0, 23, 59, 59);
+  const allEngineers = await getEngineers();
+  const teleSalesEngineers = allEngineers.filter(e => e.role === 'tele_sales');
+  if (teleSalesEngineers.length === 0) return [];
+  const allLeads = await db.select().from(leads)
+    .where(between(leads.createdAt, startDate, endDate));
+  const allTasks = await db.select().from(dailyTasks)
+    .where(and(gte(dailyTasks.taskDate, startDate), lte(dailyTasks.taskDate, endDate)));
+  const allVisits = await db.select().from(visits)
+    .where(between(visits.scheduledAt, startDate, endDate));
+  return teleSalesEngineers.map(eng => {
+    const engLeads = allLeads.filter(l => l.assignedEngineerId === eng.id);
+    const totalLeads = engLeads.length;
+    const contactedLeads = engLeads.filter(l => l.status !== 'new').length;
+    const convertedToMeeting = allVisits.filter(v => v.engineerId === eng.id).length;
+    const conversionRate = totalLeads > 0 ? Math.round((convertedToMeeting / totalLeads) * 100) : 0;
+    // سرعة الاستجابة
+    const respondedLeads = engLeads.filter(l => l.responseTimeMinutes != null);
+    const avgResponseTime = respondedLeads.length > 0
+      ? Math.round(respondedLeads.reduce((s: number, l: any) => s + (l.responseTimeMinutes ?? 0), 0) / respondedLeads.length)
+      : null;
+    const responseScore = avgResponseTime == null ? 0
+      : avgResponseTime <= 30 ? 100 : avgResponseTime <= 60 ? 80
+      : avgResponseTime <= 120 ? 60 : avgResponseTime <= 240 ? 40 : 20;
+    // عدد المكالمات من Tasks
+    const callTasks = allTasks.filter(t => t.engineerId === eng.id);
+    const completedCalls = callTasks.filter(t => t.status === 'completed').length;
+    const totalCalls = callTasks.length;
+    const callCompletionRate = totalCalls > 0 ? Math.round((completedCalls / totalCalls) * 100) : 0;
+    // KPI Score: Leads 30% + Conversion 30% + Response 20% + Calls 20%
+    const leadsScore = Math.min(100, totalLeads > 0 ? (contactedLeads / totalLeads) * 100 : 0);
+    const kpiScore = Math.round(
+      leadsScore * 0.30 +
+      conversionRate * 0.30 +
+      responseScore * 0.20 +
+      callCompletionRate * 0.20
+    );
+    return {
+      engineerId: eng.id,
+      engineerName: eng.name,
+      role: eng.role,
+      totalLeads,
+      contactedLeads,
+      convertedToMeeting,
+      conversionRate,
+      avgResponseTime,
+      responseScore,
+      totalCalls,
+      completedCalls,
+      callCompletionRate,
+      kpiScore,
+      kpiStatus: kpiScore >= 90 ? 'excellent' : kpiScore >= 75 ? 'good' : kpiScore >= 60 ? 'average' : 'poor',
+    };
+  });
+}
+
+// ─── Site Engineers KPI ───────────────────────────────────────────────────────
+/**
+ * KPI خاص بـ Site Engineers (المعاينات):
+ * - عدد المعاينات
+ * - الالتزام بالمواعيد
+ * - جودة البيانات المدخلة
+ * - نسبة التحويل من معاينة → تصميم
+ */
+export async function getSiteEngineersKPI(year: number, month: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const startDate = new Date(year, month - 1, 1);
+  const endDate = new Date(year, month, 0, 23, 59, 59);
+  const allEngineers = await getEngineers();
+  const siteEngineers = allEngineers.filter(e => e.role === 'site_engineer');
+  if (siteEngineers.length === 0) return [];
+  const allVisits = await db.select().from(visits)
+    .where(between(visits.scheduledAt, startDate, endDate));
+  const allTasks = await db.select().from(dailyTasks)
+    .where(and(gte(dailyTasks.taskDate, startDate), lte(dailyTasks.taskDate, endDate)));
+  return siteEngineers.map(eng => {
+    const engVisits = allVisits.filter(v => v.engineerId === eng.id);
+    const totalVisits = engVisits.length;
+    const completedVisits = engVisits.filter(v => v.status === 'completed').length;
+    const cancelledVisits = engVisits.filter(v => v.status === 'cancelled').length;
+    const confirmedSameDay = engVisits.filter(v => (v as any).confirmedSameDay).length;
+    const uploadedSameDay = engVisits.filter(v => (v as any).uploadedSameDay).length;
+    // الالتزام بالمواعيد: نسبة التأكيد في نفس اليوم
+    const punctualityScore = totalVisits > 0 ? Math.round((confirmedSameDay / totalVisits) * 100) : 0;
+    // جودة البيانات: نسبة الرفع في نفس اليوم
+    const dataQualityScore = completedVisits > 0 ? Math.round((uploadedSameDay / completedVisits) * 100) : 0;
+    // نسبة التحويل من معاينة → تصميم (من Tasks)
+    const designTasks = allTasks.filter(t => t.engineerId === eng.id &&
+      ['design_2d', 'design_3d', 'render'].includes(t.taskType ?? ''));
+    const conversionRate = completedVisits > 0 ? Math.round((designTasks.length / completedVisits) * 100) : 0;
+    // معدل الإلغاء
+    const cancellationRate = totalVisits > 0 ? Math.round((cancelledVisits / totalVisits) * 100) : 0;
+    // KPI Score: Visits 30% + Punctuality 25% + DataQuality 25% + Conversion 20%
+    const visitsScore = Math.min(100, totalVisits * 5); // 20 معاينة = 100%
+    const kpiScore = Math.round(
+      visitsScore * 0.30 +
+      punctualityScore * 0.25 +
+      dataQualityScore * 0.25 +
+      conversionRate * 0.20
+    );
+    return {
+      engineerId: eng.id,
+      engineerName: eng.name,
+      role: eng.role,
+      totalVisits,
+      completedVisits,
+      cancelledVisits,
+      cancellationRate,
+      confirmedSameDay,
+      uploadedSameDay,
+      punctualityScore,
+      dataQualityScore,
+      conversionRate,
+      designTasksCount: designTasks.length,
+      kpiScore,
+      kpiStatus: kpiScore >= 90 ? 'excellent' : kpiScore >= 75 ? 'good' : kpiScore >= 60 ? 'average' : 'poor',
+    };
+  });
+}
+
+// ─── Admin Sales KPI ──────────────────────────────────────────────────────────
+/**
+ * KPI خاص بـ Admin Sales:
+ * - توزيع المهام (Task Distribution)
+ * - متابعة CRM
+ * - متابعة التنفيذ
+ * - الالتزام بالـ Process
+ */
+export async function getAdminSalesKPI(year: number, month: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const startDate = new Date(year, month - 1, 1);
+  const endDate = new Date(year, month, 0, 23, 59, 59);
+  const allEngineers = await getEngineers();
+  const adminSalesEngineers = allEngineers.filter(e => e.role === 'admin_sales');
+  if (adminSalesEngineers.length === 0) return [];
+  const allTasks = await db.select().from(dailyTasks)
+    .where(and(gte(dailyTasks.taskDate, startDate), lte(dailyTasks.taskDate, endDate)));
+  const allLeads = await db.select().from(leads)
+    .where(between(leads.createdAt, startDate, endDate));
+  const allVisits = await db.select().from(visits)
+    .where(between(visits.scheduledAt, startDate, endDate));
+  return adminSalesEngineers.map(eng => {
+    const engTasks = allTasks.filter(t => t.engineerId === eng.id);
+    const totalTasks = engTasks.length;
+    const completedTasks = engTasks.filter(t => t.status === 'completed').length;
+    const delayedTasks = engTasks.filter(t => t.status === 'delayed').length;
+    const taskCompletionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+    // متابعة CRM: Leads تمت متابعتها
+    const followedLeads = allLeads.filter(l => l.assignedEngineerId === eng.id && l.status !== 'new').length;
+    const totalLeads = allLeads.filter(l => l.assignedEngineerId === eng.id).length;
+    const crmFollowupRate = totalLeads > 0 ? Math.round((followedLeads / totalLeads) * 100) : 0;
+    // متابعة التنفيذ: Visits تم توزيعها وتأكيدها
+    const distributedVisits = allVisits.filter(v => (v as any).distributionStatus === 'distributed').length;
+    const totalVisits = allVisits.length;
+    const distributionRate = totalVisits > 0 ? Math.round((distributedVisits / totalVisits) * 100) : 0;
+    // الالتزام بالـ Process: نسبة المهام المكتملة في وقتها
+    const onTimeCompleted = engTasks.filter(t => t.status === 'completed' && (t.delayDays ?? 0) === 0).length;
+    const processComplianceRate = completedTasks > 0 ? Math.round((onTimeCompleted / completedTasks) * 100) : 0;
+    // KPI Score: Tasks 30% + CRM 25% + Distribution 25% + Process 20%
+    const kpiScore = Math.round(
+      taskCompletionRate * 0.30 +
+      crmFollowupRate * 0.25 +
+      distributionRate * 0.25 +
+      processComplianceRate * 0.20
+    );
+    return {
+      engineerId: eng.id,
+      engineerName: eng.name,
+      role: eng.role,
+      totalTasks,
+      completedTasks,
+      delayedTasks,
+      taskCompletionRate,
+      totalLeads,
+      followedLeads,
+      crmFollowupRate,
+      totalVisits,
+      distributedVisits,
+      distributionRate,
+      onTimeCompleted,
+      processComplianceRate,
+      kpiScore,
+      kpiStatus: kpiScore >= 90 ? 'excellent' : kpiScore >= 75 ? 'good' : kpiScore >= 60 ? 'average' : 'poor',
+    };
+  });
+}
+
+/** تحديث getEngineersKPI لفلترة Sales Engineers فقط (استثناء Non-Sales Roles) */
+export async function getSalesEngineersOnly(): Promise<any[]> {
+  const allEngineers = await getEngineers();
+  return allEngineers.filter(e => SALES_ENGINEER_ROLES.includes(e.role as any));
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// DEAL AUTOMATION — Auto-create/update Deal from Tasks
+// ════════════════════════════════════════════════════════════════════════════
+
+/** الأدوار المسموح لها بامتلاك صفقة (Sales Engineers فقط) */
+export const DEAL_OWNER_ROLES = ['engineer', 'sales_engineer'] as const;
+
+/** جلب Sales Engineers فقط (للـ Assign Engineer dropdown) */
+export async function getSalesEngineers() {
+  const allEngineers = await getEngineers();
+  return allEngineers.filter(e => DEAL_OWNER_ROLES.includes(e.role as any));
+}
+
+/** تسجيل نشاط في deal_timeline */
+export async function addDealTimelineEntry(entry: {
+  dealId: number;
+  taskId?: number;
+  engineerId: number;
+  activityType: InsertDealTimeline['activityType'];
+  description?: string;
+  stageFrom?: string;
+  stageTo?: string;
+  grossValue?: number;
+  netValue?: number;
+}) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(dealTimeline).values({
+    dealId: entry.dealId,
+    taskId: entry.taskId,
+    engineerId: entry.engineerId,
+    activityType: entry.activityType,
+    description: entry.description,
+    stageFrom: entry.stageFrom,
+    stageTo: entry.stageTo,
+    grossValue: entry.grossValue?.toString(),
+    netValue: entry.netValue?.toString(),
+  });
+}
+
+/** جلب timeline الصفقة */
+export async function getDealTimeline(dealId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(dealTimeline)
+    .where(eq(dealTimeline.dealId, dealId))
+    .orderBy(dealTimeline.createdAt);
+}
+
+/**
+ * Auto-create أو Update صفقة من Task
+ * - Quotation → stage: proposal
+ * - Meeting Presentation → stage: negotiation
+ * - Meeting Closing → stage: contract_sent
+ */
+export async function autoCreateOrUpdateDealFromTask(task: {
+  id: number;
+  engineerId: number;
+  clientName?: string | null;
+  taskType: string;
+  notes?: string | null;
+  grossValue?: number;
+  discountValue?: number;
+}) {
+  const db = await getDb();
+  if (!db) return null;
+  if (!task.clientName) return null;
+  // Map taskType → deal stage
+  const stageMap: Record<string, string> = {
+    'quotation': 'proposal',
+    'meeting_presentation': 'negotiation',
+    'meeting_closing': 'contract_sent',
+  };
+  const newStage = stageMap[task.taskType];
+  if (!newStage) return null; // Not a deal-triggering task type
+  // Map taskType → timeline activity
+  const activityMap: Record<string, InsertDealTimeline['activityType']> = {
+    'quotation': 'quotation',
+    'meeting_presentation': 'meeting_presentation',
+    'meeting_closing': 'meeting_closing',
+  };
+  const activityType = activityMap[task.taskType];
+  const grossValue = task.grossValue ?? 0;
+  const discountValue = task.discountValue ?? 0;
+  const netValue = grossValue - discountValue;
+  // Check if open deal exists for same client + engineer
+  const existingDeals = await db.select().from(deals)
+    .where(and(
+      eq(deals.clientName, task.clientName),
+      eq(deals.engineerId, task.engineerId),
+      eq(deals.isDeleted, 0),
+    ))
+    .orderBy(desc(deals.createdAt))
+    .limit(1);
+  const openDeal = existingDeals.find(d => !['closed_won', 'closed_lost'].includes(d.stage));
+  if (!openDeal) {
+    // Create new deal
+    const insertResult = await db.insert(deals).values({
+      engineerId: task.engineerId,
+      clientName: task.clientName,
+      value: grossValue.toString(),
+      grossValue: grossValue.toString(),
+      netValue: netValue.toString(),
+      stage: newStage as any,
+      sourceTaskId: task.id,
+      isAutoCreated: 1,
+      notes: task.notes ?? undefined,
+    });
+    const newDealId = (insertResult as any).insertId as number;
+    // Log timeline
+    await addDealTimelineEntry({
+      dealId: newDealId,
+      taskId: task.id,
+      engineerId: task.engineerId,
+      activityType: 'deal_created',
+      description: `صفقة جديدة من ${task.taskType === 'quotation' ? 'عرض سعر' : task.taskType === 'meeting_presentation' ? 'ميتينج عرض' : 'ميتينج إغلاق'}`,
+      stageTo: newStage,
+      grossValue,
+      netValue,
+    });
+    await addDealTimelineEntry({
+      dealId: newDealId,
+      taskId: task.id,
+      engineerId: task.engineerId,
+      activityType,
+      description: task.notes ?? undefined,
+      grossValue,
+      netValue,
+    });
+    return { action: 'created', dealId: newDealId };
+  } else {
+    // Update existing deal
+    const stageOrder = ['proposal', 'negotiation', 'contract_sent', 'closed_won', 'closed_lost'];
+    const currentIdx = stageOrder.indexOf(openDeal.stage);
+    const newIdx = stageOrder.indexOf(newStage);
+    const shouldAdvanceStage = newIdx > currentIdx;
+    const updateData: any = {
+      nextAction: task.notes ?? undefined,
+    };
+    if (shouldAdvanceStage) {
+      updateData.stage = newStage;
+    }
+    if (grossValue > 0) {
+      updateData.value = grossValue.toString();
+      updateData.grossValue = grossValue.toString();
+      updateData.netValue = netValue.toString();
+    }
+    await db.update(deals).set(updateData).where(eq(deals.id, openDeal.id));
+    // Log timeline
+    await addDealTimelineEntry({
+      dealId: openDeal.id,
+      taskId: task.id,
+      engineerId: task.engineerId,
+      activityType,
+      description: task.notes ?? undefined,
+      stageFrom: shouldAdvanceStage ? openDeal.stage : undefined,
+      stageTo: shouldAdvanceStage ? newStage : undefined,
+      grossValue: grossValue > 0 ? grossValue : undefined,
+      netValue: grossValue > 0 ? netValue : undefined,
+    });
+    return { action: 'updated', dealId: openDeal.id };
+  }
+}
+
+/**
+ * تغيير مهندس الصفقة مع Audit Log
+ */
+export async function updateDealEngineer(params: {
+  dealId: number;
+  newEngineerId: number;
+  modifiedBy: string;
+  forceIfWon?: boolean;
+}) {
+  const db = await getDb();
+  if (!db) return { success: false, error: 'DB not available' };
+  // Get current deal
+  const [deal] = await db.select().from(deals).where(eq(deals.id, params.dealId)).limit(1);
+  if (!deal) return { success: false, error: 'Deal not found' };
+  if (deal.isLocked && !params.forceIfWon) {
+    return { success: false, requiresConfirmation: true, dealStage: deal.stage };
+  }
+  const oldEngineerId = deal.engineerId;
+  // Get engineer names for audit
+  const allEngineers = await getEngineers();
+  const oldEng = allEngineers.find(e => e.id === oldEngineerId);
+  const newEng = allEngineers.find(e => e.id === params.newEngineerId);
+  if (!newEng) return { success: false, error: 'New engineer not found' };
+  // Validate new engineer is Sales Engineer
+  if (!DEAL_OWNER_ROLES.includes(newEng.role as any)) {
+    return { success: false, error: 'Engineer must be a Sales Engineer' };
+  }
+  // Update deal ownership
+  await db.update(deals).set({ engineerId: params.newEngineerId }).where(eq(deals.id, params.dealId));
+  // Log audit in deal_timeline
+  await addDealTimelineEntry({
+    dealId: params.dealId,
+    engineerId: params.newEngineerId,
+    activityType: 'stage_changed',
+    description: `تغيير المهندس من "${oldEng?.name ?? oldEngineerId}" إلى "${newEng.name}" بواسطة ${params.modifiedBy}`,
+  });
+  // Log in audit_logs
+  await db.insert(auditLogs).values({
+    action: 'deal_engineer_changed',
+    entityType: 'deal',
+    entityId: params.dealId,
+    oldValue: JSON.stringify({ engineerId: oldEngineerId, engineerName: oldEng?.name }),
+    newValue: JSON.stringify({ engineerId: params.newEngineerId, engineerName: newEng.name }),
+    performedBy: params.modifiedBy,
+  } as any);
+  return { success: true, oldEngineerId, newEngineerId: params.newEngineerId };
+}
+
+// ─── Advanced Discount System (v2) ───────────────────────────────────────────
+/**
+ * نظام الخصومات المتقدم:
+ * 1. شريحة الخصم = Actual Sales + Pipeline
+ * 2. Realized Discount = Actual × %
+ * 3. Potential Discount = Pipeline × %
+ * 4. توزيع Potential على المهندسين بالوزن (مبيعات 60d + pipeline + closing rate + ranking)
+ * 5. تقسيم نصيب المهندس على صفقاته بالوزن (حسب قيمة كل صفقة)
+ * 6. Bonus = 50% مهندس + 15% Admin Sales + 35% شركة
+ */
+
+/**
+ * حساب ملخص الخصومات المتقدم
+ */
+export async function getAdvancedDiscountSummary() {
+  const db = await getDb();
+  if (!db) return null;
+
+  const now = new Date();
+  const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+
+  const allDeals = await db.select().from(deals).where(eq(deals.isDeleted, 0));
+  const allEngineers = await getEngineers();
+  const salesEngineers = allEngineers.filter(e =>
+    SALES_ENGINEER_ROLES.includes(e.role as any)
+  );
+
+  // ── 1. حساب Actual Sales + Pipeline ──────────────────────────────────────
+  const wonDeals = allDeals.filter(d => d.stage === 'closed_won');
+  const pipelineDeals = allDeals.filter(d =>
+    !['closed_won', 'closed_lost'].includes(d.stage)
+  );
+
+  const actualSales = wonDeals.reduce((s, d) => {
+    const v = parseFloat((d.netValue ?? d.value) as string || '0');
+    return s + (isNaN(v) ? 0 : v);
+  }, 0);
+
+  const pipelineValue = pipelineDeals.reduce((s, d) => {
+    const v = parseFloat(d.value as string || '0');
+    return s + (isNaN(v) ? 0 : v);
+  }, 0);
+
+  const totalVolume = actualSales + pipelineValue;
+  const { tierLabel, discountPct } = getDiscountTierInfo(totalVolume);
+
+  // ── 2. Realized vs Potential Discount ────────────────────────────────────
+  const realizedDiscount = actualSales * (discountPct / 100);
+  const potentialDiscount = pipelineValue * (discountPct / 100);
+  const allowedDiscount = totalVolume * (discountPct / 100);
+
+  // الخصم المستخدم فعلياً على الصفقات المغلقة
+  const usedDiscount = wonDeals.reduce((s, d) => {
+    const v = parseFloat(d.discountValue as string || '0');
+    return s + (isNaN(v) ? 0 : v);
+  }, 0);
+
+  // ── 3. حساب وزن كل مهندس ─────────────────────────────────────────────────
+  // مبيعات آخر 60 يوم
+  const recentWonDeals = wonDeals.filter(d => {
+    const updatedAt = d.updatedAt ? new Date(d.updatedAt) : null;
+    return updatedAt && updatedAt >= sixtyDaysAgo;
+  });
+
+  const engWeights = salesEngineers.map(eng => {
+    const engRecentSales = recentWonDeals
+      .filter(d => d.engineerId === eng.id)
+      .reduce((s, d) => {
+        const v = parseFloat((d.netValue ?? d.value) as string || '0');
+        return s + (isNaN(v) ? 0 : v);
+      }, 0);
+
+    const engPipeline = pipelineDeals
+      .filter(d => d.engineerId === eng.id)
+      .reduce((s, d) => {
+        const v = parseFloat(d.value as string || '0');
+        return s + (isNaN(v) ? 0 : v);
+      }, 0);
+
+    const engAllDeals = allDeals.filter(d => d.engineerId === eng.id);
+    const engWon = engAllDeals.filter(d => d.stage === 'closed_won').length;
+    const engClosed = engAllDeals.filter(d =>
+      ['closed_won', 'closed_lost'].includes(d.stage)
+    ).length;
+    const closingRate = engClosed > 0 ? engWon / engClosed : 0;
+
+    return {
+      engineerId: eng.id,
+      engineerName: eng.name,
+      role: eng.role,
+      recentSales: engRecentSales,
+      pipeline: engPipeline,
+      closingRate,
+      // وزن مركب: 40% مبيعات + 40% pipeline + 20% closing rate
+      rawWeight: engRecentSales * 0.4 + engPipeline * 0.4 + closingRate * 100000 * 0.2,
+    };
+  });
+
+  const totalRawWeight = engWeights.reduce((s, e) => s + e.rawWeight, 0);
+
+  // ── 4. توزيع Potential Discount على المهندسين ────────────────────────────
+  const engineerAllocations = engWeights.map(eng => {
+    const shareRatio = totalRawWeight > 0 ? eng.rawWeight / totalRawWeight : 0;
+    const allocatedDiscount = potentialDiscount * shareRatio;
+
+    // صفقات المهندس في التفاوض
+    const engPipelineDeals = pipelineDeals.filter(d => d.engineerId === eng.engineerId);
+    const engPipelineTotal = eng.pipeline;
+
+    // ── 5. توزيع نصيب المهندس على صفقاته بالوزن ─────────────────────────
+    const dealAllocations = engPipelineDeals.map(deal => {
+      const dealValue = parseFloat(deal.value as string || '0');
+      const dealWeight = engPipelineTotal > 0 ? dealValue / engPipelineTotal : 0;
+      const dealAllocated = allocatedDiscount * dealWeight;
+      const dealUsed = parseFloat(deal.discountValue as string || '0');
+      const dealUnused = Math.max(0, dealAllocated - dealUsed);
+
+      return {
+        dealId: deal.id,
+        clientName: deal.clientName,
+        dealValue,
+        stage: deal.stage,
+        allocatedDiscount: Math.round(dealAllocated),
+        usedDiscount: Math.round(dealUsed),
+        unusedDiscount: Math.round(dealUnused),
+        isLocked: deal.isLocked ?? false,
+      };
+    });
+
+    // صفقات مغلقة (won) لحساب الـ Bonus
+    const engWonDeals = wonDeals.filter(d => d.engineerId === eng.engineerId);
+    const totalSavingBonus = engWonDeals.reduce((s, d) => {
+      const allocated = parseFloat((d as any).allocatedDiscount as string || '0');
+      const used = parseFloat(d.discountValue as string || '0');
+      const unused = Math.max(0, allocated - used);
+      return s + unused;
+    }, 0);
+
+    const engineerBonus = Math.round(totalSavingBonus * 0.50);
+    const adminSalesBonus = Math.round(totalSavingBonus * 0.15);
+    const companySaving = Math.round(totalSavingBonus * 0.35);
+
+    const engUsedDiscount = engWonDeals.reduce((s, d) => {
+      const v = parseFloat(d.discountValue as string || '0');
+      return s + (isNaN(v) ? 0 : v);
+    }, 0);
+
+    return {
+      engineerId: eng.engineerId,
+      engineerName: eng.engineerName,
+      role: eng.role,
+      recentSales: Math.round(eng.recentSales),
+      pipeline: Math.round(eng.pipeline),
+      closingRate: Math.round(eng.closingRate * 100),
+      shareRatio: Math.round(shareRatio * 100),
+      allocatedDiscount: Math.round(allocatedDiscount),
+      usedDiscount: Math.round(engUsedDiscount),
+      unusedDiscount: Math.round(Math.max(0, allocatedDiscount - engUsedDiscount)),
+      engineerBonus,
+      adminSalesBonus,
+      companySaving,
+      dealAllocations,
+    };
+  });
+
+  // ── 6. Admin Sales Dashboard ──────────────────────────────────────────────
+  const adminSalesEngineers = allEngineers.filter(e => e.role === 'admin_sales');
+  const totalAdminBonus = engineerAllocations.reduce((s, e) => s + e.adminSalesBonus, 0);
+
+  // صفقات أُغلقت بدون استخدام كامل الخصم
+  const dealsWithSaving = wonDeals.filter(d => {
+    const used = parseFloat(d.discountValue as string || '0');
+    const allocated = parseFloat((d as any).allocatedDiscount as string || '0');
+    return allocated > 0 && used < allocated;
+  });
+
+  const adminSalesDashboard = {
+    totalAdminBonus,
+    dealsWithSavingCount: dealsWithSaving.length,
+    dealsWithSavingValue: dealsWithSaving.reduce((s, d) => {
+      const v = parseFloat((d.netValue ?? d.value) as string || '0');
+      return s + (isNaN(v) ? 0 : v);
+    }, 0),
+    savingRate: allowedDiscount > 0
+      ? Math.round(((allowedDiscount - usedDiscount) / allowedDiscount) * 100)
+      : 0,
+    adminSalesNames: adminSalesEngineers.map(e => e.name),
+  };
+
+  return {
+    // ملخص عام
+    actualSales: Math.round(actualSales),
+    pipelineValue: Math.round(pipelineValue),
+    totalVolume: Math.round(totalVolume),
+    tierLabel,
+    discountPct,
+    allowedDiscount: Math.round(allowedDiscount),
+    realizedDiscount: Math.round(realizedDiscount),
+    potentialDiscount: Math.round(potentialDiscount),
+    usedDiscount: Math.round(usedDiscount),
+    remainingDiscount: Math.round(Math.max(0, allowedDiscount - usedDiscount)),
+    // توزيع على المهندسين
+    engineerAllocations,
+    // Admin Sales Dashboard
+    adminSalesDashboard,
+  };
+}
+
+/**
+ * التحقق من صحة خصم صفقة بناءً على النظام الجديد
+ */
+export async function validateAdvancedDealDiscount(
+  dealId: number,
+  newDiscountValue: number
+): Promise<{ valid: boolean; maxAllowed: number; message?: string }> {
+  const db = await getDb();
+  if (!db) return { valid: false, maxAllowed: 0, message: 'خطأ في الاتصال بقاعدة البيانات' };
+
+  const [deal] = await db.select().from(deals).where(eq(deals.id, dealId)).limit(1);
+  if (!deal) return { valid: false, maxAllowed: 0, message: 'الصفقة غير موجودة' };
+
+  // لا يمكن تعديل الخصم بعد الإغلاق
+  if (deal.isLocked) {
+    return { valid: false, maxAllowed: 0, message: 'لا يمكن تعديل الخصم بعد إغلاق الصفقة' };
+  }
+
+  // حساب الخصم المخصص لهذه الصفقة من النظام الجديد
+  const summary = await getAdvancedDiscountSummary();
+  if (!summary) return { valid: false, maxAllowed: 0, message: 'خطأ في حساب الخصومات' };
+
+  const engAllocation = summary.engineerAllocations.find(e => e.engineerId === deal.engineerId);
+  if (!engAllocation) return { valid: false, maxAllowed: 0, message: 'المهندس غير موجود في نظام الخصومات' };
+
+  const dealAllocation = engAllocation.dealAllocations.find(d => d.dealId === dealId);
+  const maxAllowed = dealAllocation ? dealAllocation.allocatedDiscount : 0;
+
+  if (newDiscountValue > maxAllowed) {
+    return {
+      valid: false,
+      maxAllowed,
+      message: `الخصم المطلوب (${newDiscountValue.toLocaleString('ar-EG')} ج.م) يتجاوز الحد المخصص لهذه الصفقة (${maxAllowed.toLocaleString('ar-EG')} ج.م)`,
+    };
+  }
+
+  return { valid: true, maxAllowed };
+}
+
+/**
+ * حساب Bonus الخصم غير المستخدم عند إغلاق صفقة
+ */
+export async function calcDealSavingBonus(dealId: number): Promise<{
+  unusedDiscount: number;
+  engineerBonus: number;
+  adminSalesBonus: number;
+  companySaving: number;
+} | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  const [deal] = await db.select().from(deals).where(eq(deals.id, dealId)).limit(1);
+  if (!deal || deal.stage !== 'closed_won') return null;
+
+  const summary = await getAdvancedDiscountSummary();
+  if (!summary) return null;
+
+  const engAllocation = summary.engineerAllocations.find(e => e.engineerId === deal.engineerId);
+  if (!engAllocation) return null;
+
+  const dealAllocation = engAllocation.dealAllocations.find(d => d.dealId === dealId);
+  if (!dealAllocation) return null;
+
+  const unusedDiscount = dealAllocation.unusedDiscount;
+  return {
+    unusedDiscount,
+    engineerBonus: Math.round(unusedDiscount * 0.50),
+    adminSalesBonus: Math.round(unusedDiscount * 0.15),
+    companySaving: Math.round(unusedDiscount * 0.35),
+  };
+}
+
+// ─── Score-Based Discount Distribution System ─────────────────────────────────
+/**
+ * نظام توزيع الخصومات المتقدم المبني على الأداء:
+ * Score = Performance(40%) + Pipeline(30%) + ClosingSkill(30%)
+ * مع Ranking Multiplier + Boost لأعلى 2 مهندسين
+ * Minimum Threshold: Performance < 20% → لا خصم
+ */
+export async function calcScoreBasedDiscountDistribution(
+  year: number,
+  month: number
+): Promise<{
+  totalDiscountPool: number;
+  discountPct: number;
+  tierLabel: string;
+  engineers: Array<{
+    engineerId: number;
+    engineerName: string;
+    department: string;
+    performanceScore: number;
+    pipelineScore: number;
+    closingSkillScore: number;
+    rawScore: number;
+    rankingMultiplier: number;
+    finalScore: number;
+    boostApplied: boolean;
+    meetsThreshold: boolean;
+    discountShare: number;
+    sharePercent: number;
+    dealsCount: number;
+    avgDiscountPerDeal: number;
+    rank: number;
+  }>;
+} | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  const now = new Date();
+  const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+
+  const allEngineers = await getEngineers();
+  // فلترة Sales فقط (department أو role)
+  const salesEngineers = allEngineers.filter(isSalesDepartment);
+  if (salesEngineers.length === 0) return null;
+
+  const allDeals = await db.select().from(deals).where(eq(deals.isDeleted, 0));
+  const wonDeals = allDeals.filter(d => d.stage === 'closed_won');
+  const pipelineDeals = allDeals.filter(d => !['closed_won', 'closed_lost'].includes(d.stage));
+
+  // ── حساب إجمالي الحجم لتحديد شريحة الخصم ────────────────────────────────
+  const actualSales = wonDeals.reduce((s, d) => {
+    const v = parseFloat((d.netValue ?? d.value) as string || '0');
+    return s + (isNaN(v) ? 0 : v);
+  }, 0);
+  const pipelineValue = pipelineDeals.reduce((s, d) => {
+    const v = parseFloat(d.value as string || '0');
+    return s + (isNaN(v) ? 0 : v);
+  }, 0);
+  const totalVolume = actualSales + pipelineValue;
+  const { tierLabel, discountPct } = getDiscountTierInfo(totalVolume);
+  const totalDiscountPool = pipelineValue * (discountPct / 100);
+
+  // ── حساب أقصى مبيعات ومحفظة لـ Normalization ─────────────────────────────
+  const engStats = salesEngineers.map(eng => {
+    // Performance: مبيعات آخر 60 يوم
+    const recentSales = wonDeals
+      .filter(d => {
+        const updatedAt = d.updatedAt ? new Date(d.updatedAt) : null;
+        return d.engineerId === eng.id && updatedAt && updatedAt >= sixtyDaysAgo;
+      })
+      .reduce((s, d) => {
+        const v = parseFloat((d.netValue ?? d.value) as string || '0');
+        return s + (isNaN(v) ? 0 : v);
+      }, 0);
+
+    // Pipeline Score
+    const engPipeline = pipelineDeals
+      .filter(d => d.engineerId === eng.id)
+      .reduce((s, d) => {
+        const v = parseFloat(d.value as string || '0');
+        return s + (isNaN(v) ? 0 : v);
+      }, 0);
+
+    // Closing Skill: closing rate × 100 + عدد صفقات مغلقة × 5
+    const engAllDeals = allDeals.filter(d => d.engineerId === eng.id);
+    const engWon = engAllDeals.filter(d => d.stage === 'closed_won').length;
+    const engClosed = engAllDeals.filter(d => ['closed_won', 'closed_lost'].includes(d.stage)).length;
+    const closingRate = engClosed > 0 ? engWon / engClosed : 0;
+    const closingSkillRaw = closingRate * 80 + Math.min(engWon * 5, 20);
+
+    return {
+      eng,
+      recentSales,
+      engPipeline,
+      closingSkillRaw,
+      closingRate,
+      engWon,
+      dealsCount: engAllDeals.filter(d => !['closed_lost'].includes(d.stage)).length,
+    };
+  });
+
+  // Normalize
+  const maxSales = Math.max(...engStats.map(e => e.recentSales), 1);
+  const maxPipeline = Math.max(...engStats.map(e => e.engPipeline), 1);
+  const maxClosing = Math.max(...engStats.map(e => e.closingSkillRaw), 1);
+
+  // ── حساب الـ Score لكل مهندس ─────────────────────────────────────────────
+  const PERFORMANCE_THRESHOLD = 20; // أقل من 20% = لا خصم
+  const scored = engStats.map(e => {
+    const performanceScore = (e.recentSales / maxSales) * 100;
+    const pipelineScore = (e.engPipeline / maxPipeline) * 100;
+    const closingSkillScore = (e.closingSkillRaw / maxClosing) * 100;
+    const rawScore = performanceScore * 0.4 + pipelineScore * 0.3 + closingSkillScore * 0.3;
+    const meetsThreshold = performanceScore >= PERFORMANCE_THRESHOLD;
+    return {
+      eng: e.eng,
+      performanceScore: Math.round(performanceScore),
+      pipelineScore: Math.round(pipelineScore),
+      closingSkillScore: Math.round(closingSkillScore),
+      rawScore,
+      meetsThreshold,
+      dealsCount: e.dealsCount,
+      engPipeline: e.engPipeline,
+    };
+  });
+
+  // ── ترتيب لتحديد Ranking Multiplier ──────────────────────────────────────
+  const sorted = [...scored].sort((a, b) => b.rawScore - a.rawScore);
+  const topCount = Math.max(1, Math.ceil(sorted.length * 0.33));
+  const midCount = Math.max(1, Math.ceil(sorted.length * 0.33));
+
+  const withMultiplier = scored.map(e => {
+    const rank = sorted.findIndex(s => s.eng.id === e.eng.id) + 1;
+    let rankingMultiplier = 1.0;
+    if (rank <= topCount) rankingMultiplier = 1.1;
+    else if (rank > topCount + midCount) rankingMultiplier = 0.8;
+    const finalScore = e.meetsThreshold ? e.rawScore * rankingMultiplier : 0;
+    return { ...e, rank, rankingMultiplier, finalScore };
+  });
+
+  // ── Boost +10% لأعلى 2 مهندسين ───────────────────────────────────────────
+  const sortedFinal = [...withMultiplier].sort((a, b) => b.finalScore - a.finalScore);
+  const top2Ids = sortedFinal.slice(0, 2).map(e => e.eng.id);
+
+  const withBoost = withMultiplier.map(e => ({
+    ...e,
+    boostApplied: top2Ids.includes(e.eng.id),
+    finalScore: top2Ids.includes(e.eng.id) ? e.finalScore * 1.1 : e.finalScore,
+  }));
+
+  // ── توزيع الـ Discount Pool ───────────────────────────────────────────────
+  const totalFinalScore = withBoost.reduce((s, e) => s + e.finalScore, 0);
+
+  const result = withBoost.map(e => {
+    const shareRatio = totalFinalScore > 0 ? e.finalScore / totalFinalScore : 0;
+    const discountShare = Math.round(totalDiscountPool * shareRatio);
+    const avgDiscountPerDeal = e.dealsCount > 0 ? Math.round(discountShare / e.dealsCount) : 0;
+    return {
+      engineerId: e.eng.id,
+      engineerName: e.eng.name,
+      department: (e.eng as any).department ?? e.eng.role ?? 'sales_engineer',
+      performanceScore: e.performanceScore,
+      pipelineScore: e.pipelineScore,
+      closingSkillScore: e.closingSkillScore,
+      rawScore: Math.round(e.rawScore),
+      rankingMultiplier: e.rankingMultiplier,
+      finalScore: Math.round(e.finalScore),
+      boostApplied: e.boostApplied,
+      meetsThreshold: e.meetsThreshold,
+      discountShare,
+      sharePercent: Math.round(shareRatio * 100),
+      dealsCount: e.dealsCount,
+      avgDiscountPerDeal,
+      rank: e.rank,
+    };
+  }).sort((a, b) => a.rank - b.rank);
+
+  return {
+    totalDiscountPool: Math.round(totalDiscountPool),
+    discountPct,
+    tierLabel,
+    engineers: result,
+  };
+}
+
+// ─── Company Closing KPI + Team Reward System ─────────────────────────────────
+const COMPANY_CLOSING_TARGET = 60; // 60% target
+
+export async function getCompanyClosingKPI(year: number, month: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const now = new Date();
+  const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+  const prevSixtyStart = new Date(sixtyDaysAgo.getTime() - 60 * 24 * 60 * 60 * 1000);
+
+  const allDeals = await db.select().from(deals).where(eq(deals.isDeleted, 0));
+
+  // Current period (last 60 days)
+  const currentDeals = allDeals.filter(d => {
+    const updatedAt = d.updatedAt ? new Date(d.updatedAt) : null;
+    return updatedAt && updatedAt >= sixtyDaysAgo;
+  });
+  const wonCurrent = currentDeals.filter(d => d.stage === 'closed_won').length;
+  const lostCurrent = currentDeals.filter(d => d.stage === 'closed_lost').length;
+  const openCurrent = currentDeals.filter(d => !['closed_won', 'closed_lost'].includes(d.stage)).length;
+  const totalCurrent = wonCurrent + lostCurrent + openCurrent;
+  const currentRate = totalCurrent > 0 ? Math.round((wonCurrent / totalCurrent) * 100) : 0;
+
+  // Previous period (60-120 days ago)
+  const prevDeals = allDeals.filter(d => {
+    const updatedAt = d.updatedAt ? new Date(d.updatedAt) : null;
+    return updatedAt && updatedAt >= prevSixtyStart && updatedAt < sixtyDaysAgo;
+  });
+  const wonPrev = prevDeals.filter(d => d.stage === 'closed_won').length;
+  const totalPrev = prevDeals.length;
+  const prevRate = totalPrev > 0 ? Math.round((wonPrev / totalPrev) * 100) : 0;
+
+  // Monthly stats for trend
+  const monthlyStats = [];
+  for (let i = 5; i >= 0; i--) {
+    const mDate = new Date(year, month - 1 - i, 1);
+    const mEnd = new Date(year, month - i, 0, 23, 59, 59);
+    const mDeals = allDeals.filter(d => {
+      const updatedAt = d.updatedAt ? new Date(d.updatedAt) : null;
+      return updatedAt && updatedAt >= mDate && updatedAt <= mEnd;
+    });
+    const mWon = mDeals.filter(d => d.stage === 'closed_won').length;
+    const mTotal = mDeals.length;
+    monthlyStats.push({
+      month: mDate.toLocaleString('ar-EG', { month: 'short', year: 'numeric' }),
+      rate: mTotal > 0 ? Math.round((mWon / mTotal) * 100) : 0,
+      won: mWon,
+      total: mTotal,
+    });
+  }
+
+  // Per-engineer closing rates (Sales only)
+  const allEngineers = await getEngineers();
+  const salesEngList = allEngineers.filter(isSalesDepartment);
+  const engineerRates = salesEngList.map(eng => {
+    const engDeals = currentDeals.filter(d => d.engineerId === eng.id);
+    const engWon = engDeals.filter(d => d.stage === 'closed_won').length;
+    const engLost = engDeals.filter(d => d.stage === 'closed_lost').length;
+    const engTotal = engDeals.length;
+    const rate = engTotal > 0 ? Math.round((engWon / engTotal) * 100) : 0;
+    return {
+      engineerId: eng.id,
+      engineerName: eng.name,
+      closingRate: rate,
+      won: engWon,
+      lost: engLost,
+      total: engTotal,
+      vsCompany: rate - currentRate,
+    };
+  }).sort((a, b) => b.closingRate - a.closingRate);
+
+  // Funnel analysis: Meeting → Quotation → Closing
+  const meetingTasks = await db.select().from(dailyTasks)
+    .where(and(
+      gte(dailyTasks.taskDate, sixtyDaysAgo),
+      eq(dailyTasks.isDeleted, 0)
+    ));
+  const meetingCount = meetingTasks.filter(t => ['meeting_modeling', 'meeting_presentation', 'meeting_closing'].includes(t.taskType ?? '')).length;
+  const quotationCount = meetingTasks.filter(t => t.taskType === 'quotation').length;
+  const closingCount = wonCurrent;
+
+  const targetMet = currentRate >= COMPANY_CLOSING_TARGET;
+  const gap = currentRate - COMPANY_CLOSING_TARGET;
+
+  return {
+    currentRate,
+    prevRate,
+    target: COMPANY_CLOSING_TARGET,
+    gap,
+    targetMet,
+    trend: currentRate - prevRate,
+    totalDeals: totalCurrent,
+    wonDeals: wonCurrent,
+    lostDeals: lostCurrent,
+    openDeals: openCurrent,
+    monthlyTrend: monthlyStats,
+    engineerRates,
+    funnel: {
+      meetings: meetingCount,
+      quotations: quotationCount,
+      closings: closingCount,
+      meetingToQuotation: meetingCount > 0 ? Math.round((quotationCount / meetingCount) * 100) : 0,
+      quotationToClosing: quotationCount > 0 ? Math.round((closingCount / quotationCount) * 100) : 0,
+    },
+  };
+}
+
+/**
+ * نظام الحافز الجماعي:
+ * - يُفعَّل عند Closing Rate ≥ 60%
+ * - يشمل: Commission Boost + Team Bonus + Discount Pool Boost + Saving Bonus Boost
+ */
+export async function getTeamRewardStatus(year: number, month: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const closingKPI = await getCompanyClosingKPI(year, month);
+  if (!closingKPI) return null;
+
+  const targetMet = closingKPI.targetMet;
+  const rate = closingKPI.currentRate;
+
+  // Commission Structure لكل مهندس
+  const allEngineers = await getEngineers();
+  const salesEngList = allEngineers.filter(isSalesDepartment);
+
+  const allDeals = await db.select().from(deals).where(eq(deals.isDeleted, 0));
+  const wonDeals = allDeals.filter(d => d.stage === 'closed_won');
+
+  const startDate = new Date(year, month - 1, 1);
+  const endDate = new Date(year, month, 0, 23, 59, 59);
+
+  const engineerEarnings = await Promise.all(salesEngList.map(async eng => {
+    const engWonDeals = wonDeals.filter(d => {
+      const updatedAt = d.updatedAt ? new Date(d.updatedAt) : null;
+      return d.engineerId === eng.id && updatedAt && updatedAt >= startDate && updatedAt <= endDate;
+    });
+    const totalRevenue = engWonDeals.reduce((s, d) => {
+      const v = parseFloat((d.netValue ?? d.value) as string || '0');
+      return s + (isNaN(v) ? 0 : v);
+    }, 0);
+
+    // Base Commission (Progressive)
+    const baseCommission = calcProgressiveCommission(totalRevenue);
+
+    // Individual Bonus (10% of base commission as performance bonus)
+    const individualBonus = Math.round(baseCommission * 0.1);
+
+    // Saving Discount Bonus
+    const allBonusSummaries = await getEngineerBonusSummary();
+    const discountBonus = allBonusSummaries.find(b => b.engineerId === eng.id);
+    const savingDiscountBonus = discountBonus?.totalBonus ?? 0;
+
+    // Team Closing Bonus (only if target met)
+    const teamBonus = targetMet ? Math.round(totalRevenue * 0.005) : 0; // 0.5% of revenue as team bonus
+
+    // Commission Boost (only if target met: +5% on base commission)
+    const commissionBoost = targetMet ? Math.round(baseCommission * 0.05) : 0;
+
+    const totalEarnings = baseCommission + commissionBoost + individualBonus + savingDiscountBonus + teamBonus;
+
+    return {
+      engineerId: eng.id,
+      engineerName: eng.name,
+      totalRevenue: Math.round(totalRevenue),
+      baseCommission: Math.round(baseCommission),
+      commissionBoost: Math.round(commissionBoost),
+      individualBonus: Math.round(individualBonus),
+      savingDiscountBonus: Math.round(savingDiscountBonus),
+      teamBonus: Math.round(teamBonus),
+      totalEarnings: Math.round(totalEarnings),
+    };
+  }));
+
+  // Discount Pool Adjustment
+  const discountAdjustmentFactor = targetMet
+    ? 1 + (rate - COMPANY_CLOSING_TARGET) / 100  // رفع Pool بنسبة الزيادة
+    : 1 - (COMPANY_CLOSING_TARGET - rate) / 200; // تقليل Pool بنصف نسبة النقص
+
+  // Saving Bonus Rate Adjustment
+  const savingBonusRate = targetMet ? 60 : 50; // 60% للمهندس عند تحقيق الهدف، 50% بدونه
+
+  return {
+    targetMet,
+    currentRate: rate,
+    target: COMPANY_CLOSING_TARGET,
+    gap: closingKPI.gap,
+    rewards: {
+      commissionBoostPct: targetMet ? 5 : 0,
+      teamBonusRate: targetMet ? 0.5 : 0, // 0.5% of revenue
+      discountPoolAdjustmentFactor: Math.round(discountAdjustmentFactor * 100) / 100,
+      savingBonusRate,
+      rankingBoost: targetMet ? 10 : 0,
+    },
+    engineerEarnings,
+    totalTeamBonus: engineerEarnings.reduce((s, e) => s + e.teamBonus, 0),
+    totalTeamEarnings: engineerEarnings.reduce((s, e) => s + e.totalEarnings, 0),
+    alert: !targetMet ? `تحذير: معدل الإغلاق ${rate}% أقل من الهدف ${COMPANY_CLOSING_TARGET}% - لا يوجد حافز جماعي` : null,
+  };
+}
+
+// ─── Lost Deals Impact System ─────────────────────────────────────────────────
+const LOST_RATE_THRESHOLD_HIGH = 30;      // > 30% → -20% KPI
+const LOST_RATE_THRESHOLD_VERY_HIGH = 50; // > 50% → -35% KPI
+const BIG_DEAL_THRESHOLD = 500_000;       // صفقة كبيرة = أكثر من 500K
+
+export async function getLostDealsImpact(year: number, month: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const allEngineers = await getEngineers();
+  const salesEngList = allEngineers.filter(isSalesDepartment);
+
+  const allDeals = await db.select().from(deals).where(eq(deals.isDeleted, 0));
+  const wonDeals = allDeals.filter(d => d.stage === 'closed_won');
+  const lostDeals = allDeals.filter(d => d.stage === 'closed_lost');
+  const allClosedDeals = [...wonDeals, ...lostDeals];
+
+  // Company-level stats
+  const companyTotalValue = allClosedDeals.reduce((s, d) => {
+    const v = parseFloat((d.netValue ?? d.value) as string || '0');
+    return s + (isNaN(v) ? 0 : v);
+  }, 0);
+  const companyLostValue = lostDeals.reduce((s, d) => {
+    const v = parseFloat((d.netValue ?? d.value) as string || '0');
+    return s + (isNaN(v) ? 0 : v);
+  }, 0);
+  const companyLostRate = allClosedDeals.length > 0
+    ? Math.round((lostDeals.length / allClosedDeals.length) * 100)
+    : 0;
+  const companyLostValueImpact = companyTotalValue > 0
+    ? Math.round((companyLostValue / companyTotalValue) * 100)
+    : 0;
+
+  // Lost Reason Analysis
+  const lostReasonCounts: Record<string, number> = {};
+  for (const d of lostDeals) {
+    const reason = (d as any).lostReason ?? 'unknown';
+    lostReasonCounts[reason] = (lostReasonCounts[reason] ?? 0) + 1;
+  }
+  const topLostReasons = Object.entries(lostReasonCounts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([reason, count]) => ({
+      reason,
+      label: LOST_REASON_LABELS[reason as keyof typeof LOST_REASON_LABELS] ?? reason,
+      count,
+      pct: lostDeals.length > 0 ? Math.round((count / lostDeals.length) * 100) : 0,
+    }));
+
+  // Per-engineer analysis
+  const engineerImpacts = salesEngList.map(eng => {
+    const engWon = wonDeals.filter(d => d.engineerId === eng.id);
+    const engLost = lostDeals.filter(d => d.engineerId === eng.id);
+    const engClosed = [...engWon, ...engLost];
+
+    const lostCount = engLost.length;
+    const lostValue = engLost.reduce((s, d) => {
+      const v = parseFloat((d.netValue ?? d.value) as string || '0');
+      return s + (isNaN(v) ? 0 : v);
+    }, 0);
+    const totalValue = engClosed.reduce((s, d) => {
+      const v = parseFloat((d.netValue ?? d.value) as string || '0');
+      return s + (isNaN(v) ? 0 : v);
+    }, 0);
+
+    const lostRate = engClosed.length > 0
+      ? Math.round((lostCount / engClosed.length) * 100)
+      : 0;
+    const lostValueImpact = totalValue > 0
+      ? Math.round((lostValue / totalValue) * 100)
+      : 0;
+
+    // KPI Penalty
+    let kpiPenalty = 0;
+    if (lostRate > LOST_RATE_THRESHOLD_VERY_HIGH) kpiPenalty = 35;
+    else if (lostRate > LOST_RATE_THRESHOLD_HIGH) kpiPenalty = 20;
+    else if (lostRate > 20) kpiPenalty = 10;
+
+    // Discount Allocation Factor
+    let discountFactor = 1.0;
+    if (lostRate > LOST_RATE_THRESHOLD_VERY_HIGH) discountFactor = 0.5;
+    else if (lostRate > LOST_RATE_THRESHOLD_HIGH) discountFactor = 0.7;
+    else if (lostRate > 20) discountFactor = 0.85;
+
+    // Big Deal Alert (2+ صفقات كبيرة خاسرة)
+    const bigLostDeals = engLost.filter(d => {
+      const v = parseFloat((d.netValue ?? d.value) as string || '0');
+      return v >= BIG_DEAL_THRESHOLD;
+    });
+    const highLossAlert = bigLostDeals.length >= 2;
+
+    // Lost Reasons for this engineer
+    const engLostReasons: Record<string, number> = {};
+    for (const d of engLost) {
+      const reason = (d as any).lostReason ?? 'unknown';
+      engLostReasons[reason] = (engLostReasons[reason] ?? 0) + 1;
+    }
+
+    // Commission Boost Reduction
+    const commissionBoostReduction = lostRate > LOST_RATE_THRESHOLD_HIGH ? 50 : lostRate > 20 ? 25 : 0;
+
+    return {
+      engineerId: eng.id,
+      engineerName: eng.name,
+      lostCount,
+      lostValue: Math.round(lostValue),
+      lostRate,
+      lostValueImpact,
+      wonCount: engWon.length,
+      totalClosed: engClosed.length,
+      kpiPenalty,
+      discountFactor,
+      commissionBoostReduction,
+      highLossAlert,
+      bigLostDealsCount: bigLostDeals.length,
+      lostReasons: Object.entries(engLostReasons).map(([reason, count]) => ({
+        reason,
+        label: LOST_REASON_LABELS[reason as keyof typeof LOST_REASON_LABELS] ?? reason,
+        count,
+      })).sort((a, b) => b.count - a.count),
+      riskLevel: lostRate > LOST_RATE_THRESHOLD_VERY_HIGH ? 'critical' :
+                 lostRate > LOST_RATE_THRESHOLD_HIGH ? 'high' :
+                 lostRate > 20 ? 'medium' : 'low',
+    };
+  }).sort((a, b) => b.lostRate - a.lostRate);
+
+  // Company-level closing rate impact
+  const closingRateImpact = companyLostRate;
+
+  return {
+    company: {
+      totalDeals: allClosedDeals.length,
+      wonDeals: wonDeals.length,
+      lostDeals: lostDeals.length,
+      lostRate: companyLostRate,
+      lostValue: Math.round(companyLostValue),
+      lostValueImpact: companyLostValueImpact,
+      closingRateImpact,
+    },
+    topLostReasons,
+    engineerImpacts,
+    alerts: engineerImpacts
+      .filter(e => e.highLossAlert)
+      .map(e => ({
+        engineerId: e.engineerId,
+        engineerName: e.engineerName,
+        message: `تحذير: ${e.engineerName} خسر ${e.bigLostDealsCount} صفقة كبيرة - High Loss Risk Engineer`,
+        riskLevel: e.riskLevel,
+      })),
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Collections Module - Full Financial Collection System
+// ═══════════════════════════════════════════════════════════════════════
+
+/** إنشاء Contract تلقائي عند إغلاق صفقة (WON/CLOSED) */
+export async function autoCreateContractFromDeal(dealId: number): Promise<{ collectionId: number; isNew: boolean } | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  // التحقق من وجود contract مسبق لنفس الصفقة
+  const existing = await db.select({ id: collections.id })
+    .from(collections)
+    .where(eq(collections.dealId, dealId))
+    .limit(1);
+
+  if (existing.length > 0) {
+    return { collectionId: existing[0].id, isNew: false };
+  }
+
+  // جلب بيانات الصفقة
+  const dealRows = await db.select().from(deals).where(eq(deals.id, dealId)).limit(1);
+  if (!dealRows.length) return null;
+  const deal = dealRows[0];
+
+  // حساب قيمة العقد (Net Value أو Value)
+  const contractValue = deal.netValue ?? deal.value ?? "0";
+  const engineerId = deal.engineerId ?? undefined;
+
+  const [result] = await db.insert(collections).values({
+    dealId,
+    engineerId: engineerId ?? null,
+    clientName: deal.clientName || "عميل غير محدد",
+    contractAmount: contractValue.toString(),
+    collectedAmount: "0",
+    status: "on_track",
+    notes: `تم إنشاؤه تلقائياً من صفقة #${dealId}`,
+  });
+
+  return { collectionId: (result as any).insertId, isNew: true };
+}
+
+/** إضافة دفعة مع تحديث المبلغ المحصّل + إنشاء Follow-up Task إذا كان nextPaymentDate محدداً */
+export async function addPaymentWithFollowUp(data: {
+  collectionId: number;
+  engineerId?: number;
+  clientName: string;
+  amount: number;
+  paymentDate: string;
+  paymentType: "initial" | "installment" | "final" | "visit_fee";
+  addedBy: "engineer" | "admin";
+  receiptNumber?: string;
+  receiptUrl?: string;
+  nextPaymentDate?: string;
+  notes?: string;
+}): Promise<{ paymentId: number; taskCreated: boolean }> {
+  const db = await getDb();
+  if (!db) return { paymentId: 0, taskCreated: false };
+
+  // إضافة الدفعة
+  const [payResult] = await db.insert(payments).values({
+    collectionId: data.collectionId,
+    engineerId: data.engineerId ?? null,
+    clientName: data.clientName,
+    amount: data.amount.toString(),
+    paymentDate: data.paymentDate as unknown as Date,
+    paymentType: data.paymentType,
+    addedBy: data.addedBy,
+    receiptNumber: data.receiptNumber,
+    receiptUrl: data.receiptUrl,
+    nextPaymentDate: data.nextPaymentDate as unknown as Date | undefined,
+    notes: data.notes,
+  });
+
+  const paymentId = (payResult as any).insertId;
+
+  // تحديث collectedAmount في collections
+  const collRows = await db.select({ collectedAmount: collections.collectedAmount, contractAmount: collections.contractAmount })
+    .from(collections)
+    .where(eq(collections.id, data.collectionId))
+    .limit(1);
+
+  if (collRows.length > 0) {
+    const newCollected = parseFloat(collRows[0].collectedAmount ?? "0") + data.amount;
+    const contractAmt = parseFloat(collRows[0].contractAmount ?? "0");
+    const newStatus: "on_track" | "due_soon" | "overdue" | "completed" =
+      newCollected >= contractAmt ? "completed" : "on_track";
+
+    await db.update(collections)
+      .set({
+        collectedAmount: newCollected.toString(),
+        lastPaymentAt: new Date(),
+        status: newStatus,
+      })
+      .where(eq(collections.id, data.collectionId));
+  }
+
+  // إنشاء Follow-up Task إذا كان nextPaymentDate محدداً
+  let taskCreated = false;
+  if (data.nextPaymentDate && data.engineerId) {
+    try {
+      await db.insert(dailyTasks).values({
+        engineerId: data.engineerId,
+        taskType: "follow_up_payment" as any,
+        title: `متابعة دفعة: ${data.clientName}`,
+        description: `دفعة متوقعة بتاريخ ${data.nextPaymentDate} - مبلغ العقد: ${data.amount}`,
+        status: "pending",
+        taskDate: data.nextPaymentDate as unknown as Date,
+        priority: "high" as any,
+        notes: `Collection ID: ${data.collectionId}`,
+      } as any);
+      taskCreated = true;
+    } catch {
+      // ignore if taskType not in enum
+    }
+  }
+
+  return { paymentId, taskCreated };
+}
+
+/** حساب Commission على المبلغ المحصّل فقط */
+export async function getCollectionBasedCommission(engineerId: number, month: number, year: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  // جلب إجمالي التحصيل للمهندس في الشهر
+  const startDate = new Date(year, month - 1, 1);
+  const endDate = new Date(year, month, 0);
+
+  const paymentRows = await db.select({
+    totalCollected: sql<string>`SUM(${payments.amount})`,
+  })
+    .from(payments)
+    .where(
+      and(
+        eq(payments.engineerId, engineerId),
+        gte(payments.paymentDate, startDate as unknown as Date),
+        lte(payments.paymentDate, endDate as unknown as Date),
+      )
+    );
+
+  const totalCollected = parseFloat(paymentRows[0]?.totalCollected ?? "0");
+
+  // جلب إجمالي قيمة العقود للمهندس
+  const contractRows = await db.select({
+    totalContract: sql<string>`SUM(${collections.contractAmount})`,
+  })
+    .from(collections)
+    .where(eq(collections.engineerId, engineerId));
+
+  const totalContract = parseFloat(contractRows[0]?.totalContract ?? "0");
+
+  // حساب Commission على المحصّل فقط (Progressive)
+  const commissionRate = totalCollected <= 1_000_000 ? 0.01
+    : totalCollected <= 1_250_000 ? 0.0125
+    : totalCollected <= 1_500_000 ? 0.015
+    : totalCollected <= 2_000_000 ? 0.02
+    : 0.025;
+
+  const commissionEarned = totalCollected * commissionRate;
+  const remainingToCollect = Math.max(0, totalContract - totalCollected);
+  const potentialCommission = remainingToCollect * commissionRate;
+
+  return {
+    engineerId,
+    totalContract,
+    totalCollected,
+    collectionRate: totalContract > 0 ? (totalCollected / totalContract) * 100 : 0,
+    commissionRate: commissionRate * 100,
+    commissionEarned,
+    potentialCommission,
+    remainingToCollect,
+  };
+}
+
+/** Dashboard التحصيل - ملخص شامل */
+export async function getCollectionDashboard(month: number, year: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const today = new Date();
+  const todayStr = today.toISOString().split("T")[0];
+  const startDate = new Date(year, month - 1, 1);
+  const endDate = new Date(year, month, 0);
+
+  // إجمالي التحصيل اليوم
+  const todayPayments = await db.select({
+    total: sql<string>`SUM(${payments.amount})`,
+    count: sql<number>`COUNT(*)`,
+  })
+    .from(payments)
+    .where(eq(payments.paymentDate, todayStr as unknown as Date));
+
+  // إجمالي التحصيل هذا الشهر
+  const monthPayments = await db.select({
+    total: sql<string>`SUM(${payments.amount})`,
+    count: sql<number>`COUNT(*)`,
+  })
+    .from(payments)
+    .where(
+      and(
+        gte(payments.paymentDate, startDate as unknown as Date),
+        lte(payments.paymentDate, endDate as unknown as Date),
+      )
+    );
+
+  // العقود المتأخرة
+  const overdueContracts = await db.select({
+    count: sql<number>`COUNT(*)`,
+    total: sql<string>`SUM(${collections.contractAmount} - ${collections.collectedAmount})`,
+  })
+    .from(collections)
+    .where(eq(collections.status, "overdue"));
+
+  // الدفعات القادمة (خلال 7 أيام)
+  const nextWeek = new Date(today);
+  nextWeek.setDate(today.getDate() + 7);
+
+  const upcomingPayments = await db.select({
+    count: sql<number>`COUNT(*)`,
+    total: sql<string>`SUM(${paymentPromises.promiseAmount})`,
+  })
+    .from(paymentPromises)
+    .where(
+      and(
+        eq(paymentPromises.status, "pending"),
+        gte(paymentPromises.promiseDate, today as unknown as Date),
+        lte(paymentPromises.promiseDate, nextWeek as unknown as Date),
+      )
+    );
+
+  return {
+    today: {
+      collected: parseFloat(todayPayments[0]?.total ?? "0"),
+      count: todayPayments[0]?.count ?? 0,
+    },
+    month: {
+      collected: parseFloat(monthPayments[0]?.total ?? "0"),
+      count: monthPayments[0]?.count ?? 0,
+    },
+    overdue: {
+      count: overdueContracts[0]?.count ?? 0,
+      remaining: parseFloat(overdueContracts[0]?.total ?? "0"),
+    },
+    upcoming: {
+      count: upcomingPayments[0]?.count ?? 0,
+      total: parseFloat(upcomingPayments[0]?.total ?? "0"),
+    },
+  };
+}
+
+/** Alerts التحصيل (Due Today + Overdue + Upcoming) */
+export async function getCollectionAlerts() {
+  const db = await getDb();
+  if (!db) return [];
+
+  const today = new Date();
+  const todayStr = today.toISOString().split("T")[0];
+  const nextWeek = new Date(today);
+  nextWeek.setDate(today.getDate() + 7);
+
+  // جلب جميع الوعود المعلقة
+  const promises = await db.select({
+    id: paymentPromises.id,
+    collectionId: paymentPromises.collectionId,
+    clientName: paymentPromises.clientName,
+    amount: paymentPromises.promiseAmount,
+    date: paymentPromises.promiseDate,
+    status: paymentPromises.status,
+    engineerId: paymentPromises.engineerId,
+  })
+    .from(paymentPromises)
+    .where(eq(paymentPromises.status, "pending"))
+    .orderBy(paymentPromises.promiseDate);
+
+  const alerts: Array<{
+    type: "due_today" | "overdue" | "upcoming";
+    id: number;
+    collectionId: number;
+    clientName: string;
+    amount: number;
+    date: Date | null;
+    engineerId: number | null;
+  }> = [];
+
+  for (const p of promises) {
+    const promDate = p.date ? new Date(p.date as unknown as string) : null;
+    if (!promDate) continue;
+
+    const promDateStr = promDate.toISOString().split("T")[0];
+    if (promDateStr === todayStr) {
+      alerts.push({ type: "due_today", id: p.id, collectionId: p.collectionId, clientName: p.clientName, amount: parseFloat(p.amount), date: promDate, engineerId: p.engineerId ?? null });
+    } else if (promDate < today) {
+      alerts.push({ type: "overdue", id: p.id, collectionId: p.collectionId, clientName: p.clientName, amount: parseFloat(p.amount), date: promDate, engineerId: p.engineerId ?? null });
+    } else if (promDate <= nextWeek) {
+      alerts.push({ type: "upcoming", id: p.id, collectionId: p.collectionId, clientName: p.clientName, amount: parseFloat(p.amount), date: promDate, engineerId: p.engineerId ?? null });
+    }
+  }
+
+  return alerts;
+}
+
+/** جلب قائمة العقود مع بيانات المهندس والكومشن */
+export async function getCollectionsWithCommission(engineerId?: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const conditions = engineerId ? [eq(collections.engineerId, engineerId)] : [];
+
+  const rows = await db.select({
+    id: collections.id,
+    dealId: collections.dealId,
+    engineerId: collections.engineerId,
+    clientName: collections.clientName,
+    contractAmount: collections.contractAmount,
+    collectedAmount: collections.collectedAmount,
+    status: collections.status,
+    dueDate: collections.dueDate,
+    lastPaymentAt: collections.lastPaymentAt,
+    notes: collections.notes,
+    engineerName: engineers.name,
+    engineerDepartment: engineers.department,
+  })
+    .from(collections)
+    .leftJoin(engineers, eq(collections.engineerId, engineers.id))
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(desc(collections.createdAt));
+
+  return rows.map(r => {
+    const collected = parseFloat(r.collectedAmount ?? "0");
+    const contract = parseFloat(r.contractAmount ?? "0");
+    const rate = collected <= 1_000_000 ? 0.01
+      : collected <= 1_250_000 ? 0.0125
+      : collected <= 1_500_000 ? 0.015
+      : collected <= 2_000_000 ? 0.02
+      : 0.025;
+
+    return {
+      ...r,
+      contractAmount: contract,
+      collectedAmount: collected,
+      collectionRate: contract > 0 ? (collected / contract) * 100 : 0,
+      commissionEarned: collected * rate,
+      commissionRate: rate * 100,
+      remainingAmount: Math.max(0, contract - collected),
+    };
+  });
 }

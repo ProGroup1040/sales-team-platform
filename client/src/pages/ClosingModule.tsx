@@ -58,6 +58,8 @@ type UpdateDealState = {
   id: number; stage: string; nextAction: string; nextActionDate: string; notes: string;
   value: string; discountPercent: string; discountValue: string; discountNote: string;
   lostReason?: string; lostReasonNote?: string;
+  engineerId: string; // Assigned Engineer
+  isLocked?: number;  // 1 = locked after closed
 };
 type LostReasonState = {
   dealId: number;
@@ -90,6 +92,17 @@ export default function ClosingModule() {
   const { data: discountSummary } = trpc.closing.discountSummary.useQuery();
   const { data: engDiscounts } = trpc.closing.engineerDiscountSummary.useQuery();
   const { data: lostAnalysis } = trpc.closing.lostDealsAnalysis.useQuery();
+  const { data: salesEngineers } = trpc.closing.salesEngineers.useQuery();
+  const [changeEngineerWarn, setChangeEngineerWarn] = useState<{ dealId: number; newEngineerId: string } | null>(null);
+  const [timelineDealId, setTimelineDealId] = useState<number | null>(null);
+  const { data: timelineData } = trpc.closing.timeline.useQuery(
+    { dealId: timelineDealId! },
+    { enabled: !!timelineDealId }
+  );
+  const updateEngineerMutation = trpc.closing.updateEngineer.useMutation({
+    onSuccess: () => { toast.success('تم تغيير المهندس المسؤول'); setChangeEngineerWarn(null); invalidateAll(); },
+    onError: (e) => toast.error(e.message || 'حدث خطأ'),
+  });
 
   const invalidateAll = () => {
     utils.closing.list.invalidate();
@@ -350,7 +363,10 @@ export default function ClosingModule() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-semibold text-sm">{deal.clientName}</span>
                         <Badge className={`text-xs ${STAGE_COLORS[deal.stage]}`}>{STAGE_LABELS[deal.stage]}</Badge>
-                        <span className="text-sm font-bold text-indigo-400">{fmt(parseFloat(deal.value as string))} ج.م</span>
+                        <span className="text-sm font-bold text-indigo-400">{fmt(parseFloat((deal as any).netValue as string || deal.value as string))} ج.م صافي</span>
+                        {(deal as any).grossValue && parseFloat((deal as any).grossValue) !== parseFloat((deal as any).netValue ?? '0') && (
+                          <span className="text-xs text-muted-foreground line-through">{fmt(parseFloat((deal as any).grossValue as string))} إجمالي</span>
+                        )}
                         {parseFloat(deal.discountValue as string || '0') > 0 && (
                           <Badge variant="outline" className="text-xs text-amber-500 border-amber-500/40">
                             خصم {fmt(parseFloat(deal.discountValue as string))} ج.م ({parseFloat(deal.discountPercent as string || '0').toFixed(1)}%)
@@ -377,12 +393,14 @@ export default function ClosingModule() {
                         <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => setUpdateDeal({
                             id: deal.id, stage: deal.stage,
                             nextAction: deal.nextAction ?? '', nextActionDate: '',
-                            notes: deal.notes ?? '', value: deal.value as string,
+                            notes: deal.notes ?? '', value: (deal as any).grossValue as string || deal.value as string,
                             discountPercent: deal.discountPercent as string || '0',
                             discountValue: deal.discountValue as string || '0',
                             discountNote: deal.discountNote ?? '',
                             lostReason: (deal as any).lostReason ?? '',
                             lostReasonNote: (deal as any).lostReasonNote ?? '',
+                            engineerId: String(deal.engineerId),
+                            isLocked: (deal as any).isLocked ?? 0,
                           })}>تحديث</Button>
                         <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-600 hover:bg-red-50 h-7 w-7 p-0" onClick={() => setDeleteTarget(deal.id)}>
                           <Trash2 className="h-3.5 w-3.5" />
@@ -704,6 +722,7 @@ export default function ClosingModule() {
                           discountPercent: '0', discountValue: '0', discountNote: '',
                           lostReason: deal.lostReason ?? '',
                           lostReasonNote: deal.lostReasonNote ?? '',
+                          engineerId: String(deal.engineerId),
                         })}>تحديث</Button>
                       )}
                     </div>
@@ -732,7 +751,7 @@ export default function ClosingModule() {
             <div><Label>المهندس المسؤول *</Label>
               <Select value={newDeal.engineerId} onValueChange={v => setNewDeal(p => ({ ...p, engineerId: v }))}>
                 <SelectTrigger><SelectValue placeholder="اختر المهندس" /></SelectTrigger>
-                <SelectContent>{engineers?.map(e => <SelectItem key={e.id} value={String(e.id)}>{e.name}</SelectItem>)}</SelectContent>
+                <SelectContent>{(salesEngineers ?? engineers)?.map(e => <SelectItem key={e.id} value={String(e.id)}>{e.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div><Label>اسم العميل *</Label><Input value={newDeal.clientName} onChange={e => setNewDeal(p => ({ ...p, clientName: e.target.value }))} /></div>
@@ -773,6 +792,43 @@ export default function ClosingModule() {
         </DialogContent>
       </Dialog>
 
+      {/* ─── Change Engineer Warning Dialog ─── */}
+      <Dialog open={!!changeEngineerWarn} onOpenChange={() => setChangeEngineerWarn(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle className="flex items-center gap-2 text-amber-400">⚠️ تحذير: تغيير المهندس</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">هذه الصفقة مغلقة (WON). تغيير المهندس سيؤثر على الكومشن والـ KPI. هل أنت متأكد؟</p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setChangeEngineerWarn(null)}>إلغاء</Button>
+            <Button variant="destructive" onClick={() => {
+              if (!changeEngineerWarn) return;
+              updateEngineerMutation.mutate({
+                dealId: changeEngineerWarn.dealId,
+                newEngineerId: parseInt(changeEngineerWarn.newEngineerId),
+                forceIfWon: true,
+              });
+            }}>تأكيد التغيير</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* ─── Deal Timeline Dialog ─── */}
+      <Dialog open={!!timelineDealId} onOpenChange={() => setTimelineDealId(null)}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>سجل نشاطات الصفقة</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            {timelineData?.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">لا توجد نشاطات مسجلة</p>}
+            {timelineData?.map((entry, i) => (
+              <div key={i} className="flex gap-3 items-start border-b border-border/30 pb-3">
+                <div className="w-2 h-2 rounded-full bg-indigo-400 mt-1.5 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">{entry.description ?? entry.activityType}</p>
+                  {entry.netValue && <p className="text-xs text-emerald-400">صافي: {fmt(parseFloat(entry.netValue as string))} ج.م</p>}
+                  <p className="text-xs text-muted-foreground mt-0.5">{new Date(entry.createdAt).toLocaleString('ar-EG')}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
       {/* ─── Update Deal Dialog ─── */}
       <Dialog open={!!updateDeal} onOpenChange={() => setUpdateDeal(null)}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
@@ -803,7 +859,35 @@ export default function ClosingModule() {
                   </div>
                 )}
               </div>
-              <div><Label>قيمة الصفقة (ج.م)</Label><Input type="number" value={updateDeal.value} onChange={e => setUpdateDeal(d => d ? { ...d, value: e.target.value } : null)} /></div>
+              {/* Assigned Engineer */}
+              <div>
+                <Label>المهندس المسؤول</Label>
+                {updateDeal.isLocked ? (
+                  <p className="text-sm text-muted-foreground mt-1">🔒 الصفقة مغلقة — لا يمكن تعديل المهندس</p>
+                ) : (
+                  <Select value={updateDeal.engineerId} onValueChange={v => {
+                    // If deal is WON, show warning
+                    if (updateDeal.stage === 'closed_won' && v !== updateDeal.engineerId) {
+                      setChangeEngineerWarn({ dealId: updateDeal.id, newEngineerId: v });
+                    } else {
+                      setUpdateDeal(d => d ? { ...d, engineerId: v } : null);
+                    }
+                  }}>
+                    <SelectTrigger><SelectValue placeholder="اختر المهندس" /></SelectTrigger>
+                    <SelectContent>{(salesEngineers ?? engineers)?.map(e => <SelectItem key={e.id} value={String(e.id)}>{e.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                )}
+              </div>
+              {/* Gross Value */}
+              <div><Label>قيمة الصفقة الإجمالية (قبل الخصم) ج.م</Label>
+                <Input type="number" value={updateDeal.value}
+                  disabled={!!updateDeal.isLocked}
+                  onChange={e => {
+                    const gross = parseFloat(e.target.value) || 0;
+                    const disc = parseFloat(updateDeal.discountValue) || 0;
+                    setUpdateDeal(d => d ? { ...d, value: e.target.value } : null);
+                  }} />
+              </div>
               <div><Label>الخطوة التالية</Label><Input value={updateDeal.nextAction} onChange={e => setUpdateDeal(d => d ? { ...d, nextAction: e.target.value } : null)} /></div>
               <div><Label>تاريخ الخطوة التالية</Label><Input type="date" value={updateDeal.nextActionDate} onChange={e => setUpdateDeal(d => d ? { ...d, nextActionDate: e.target.value } : null)} /></div>
               <div><Label>ملاحظات</Label><Textarea value={updateDeal.notes} onChange={e => setUpdateDeal(d => d ? { ...d, notes: e.target.value } : null)} rows={2} /></div>

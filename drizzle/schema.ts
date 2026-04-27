@@ -24,8 +24,8 @@ export const engineers = mysqlTable("engineers", {
   name: varchar("name", { length: 120 }).notNull(),
   email: varchar("email", { length: 320 }),
   phone: varchar("phone", { length: 30 }),
-  department: varchar("department", { length: 80 }),
-  role: mysqlEnum("role", ["admin", "engineer", "admin_sales"]).default("engineer").notNull(),
+  department: mysqlEnum("department", ["sales_engineer", "sales_specialist", "interior_designer", "tele_sales", "site", "admin_sales", "manager"]).default("sales_engineer"),
+  role: mysqlEnum("role", ["admin", "engineer", "admin_sales", "sales_engineer", "tele_sales", "site_engineer", "system_user", "sales_specialist", "interior_designer", "manager"]).default("sales_engineer").notNull(),
   status: mysqlEnum("status", ["active", "inactive"]).default("active").notNull(),
   username: varchar("username", { length: 64 }).unique(),
   passwordHash: varchar("passwordHash", { length: 255 }),
@@ -182,6 +182,13 @@ export const deals = mysqlTable("deals", {
   engineerId: int("engineerId").notNull(),
   clientName: varchar("clientName", { length: 120 }).notNull(),
   value: decimal("value", { precision: 14, scale: 2 }).notNull(),
+  // ─── Gross / Net Value (CRITICAL: Revenue = netValue only) ─────────────────
+  grossValue: decimal("grossValue", { precision: 14, scale: 2 }).default("0").notNull(),
+  netValue: decimal("netValue", { precision: 14, scale: 2 }).default("0").notNull(),
+  // ─── Source Task (Auto-created from Task) ─────────────────────────────────
+  sourceTaskId: int("sourceTaskId"),
+  isAutoCreated: int("isAutoCreated").default(0).notNull(), // 1 = created from Task
+  isLocked: int("isLocked").default(0).notNull(),           // 1 = locked after closed
   stage: mysqlEnum("stage", ["proposal", "negotiation", "contract_sent", "closed_won", "closed_lost"]).default("proposal").notNull(),
   nextAction: text("nextAction"),
   nextActionDate: date("nextActionDate"),
@@ -228,6 +235,7 @@ export type MonthlyTarget = typeof monthlyTargets.$inferSelect;
 export const collections = mysqlTable("collections", {
   id: int("id").autoincrement().primaryKey(),
   dealId: int("dealId"),
+  engineerId: int("engineerId"),                          // المهندس المسؤول عن العقد
   clientName: varchar("clientName", { length: 120 }).notNull(),
   contractAmount: decimal("contractAmount", { precision: 14, scale: 2 }).notNull(),
   collectedAmount: decimal("collectedAmount", { precision: 14, scale: 2 }).default("0"),
@@ -361,6 +369,8 @@ export const payments = mysqlTable("payments", {
   paymentType: mysqlEnum("paymentType", ["initial", "installment", "final", "visit_fee"]).default("installment").notNull(),
   addedBy: mysqlEnum("addedBy", ["engineer", "admin"]).default("admin").notNull(),
   receiptNumber: varchar("receiptNumber", { length: 80 }),
+  receiptUrl: text("receiptUrl"),                          // رابط إيصال الدفع
+  nextPaymentDate: date("nextPaymentDate"),               // تاريخ الدفعة القادمة
   notes: text("notes"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
@@ -730,3 +740,30 @@ export const engineerCareerLevels = mysqlTable("engineer_career_levels", {
 });
 export type EngineerCareerLevel = typeof engineerCareerLevels.$inferSelect;
 export type InsertEngineerCareerLevel = typeof engineerCareerLevels.$inferInsert;
+
+// ─── Deal Timeline (Auto-logged from Tasks) ───────────────────────────────────
+export const dealTimeline = mysqlTable("deal_timeline", {
+  id: int("id").autoincrement().primaryKey(),
+  dealId: int("dealId").notNull(),
+  taskId: int("taskId"),
+  engineerId: int("engineerId").notNull(),
+  activityType: mysqlEnum("activityType", [
+    "deal_created",     // صفقة جديدة
+    "quotation",        // عرض سعر
+    "meeting_modeling", // ميتينج نمذجة
+    "meeting_presentation", // ميتينج عرض
+    "meeting_closing",  // ميتينج إغلاق
+    "stage_changed",    // تغيير المرحلة
+    "note_added",       // ملاحظة
+    "won",              // صفقة ناجحة
+    "lost",             // صفقة خسارة
+  ]).notNull(),
+  description: text("description"),
+  stageFrom: varchar("stageFrom", { length: 50 }),
+  stageTo: varchar("stageTo", { length: 50 }),
+  grossValue: decimal("grossValue", { precision: 14, scale: 2 }),
+  netValue: decimal("netValue", { precision: 14, scale: 2 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type DealTimeline = typeof dealTimeline.$inferSelect;
+export type InsertDealTimeline = typeof dealTimeline.$inferInsert;
