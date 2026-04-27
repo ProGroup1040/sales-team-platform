@@ -6171,3 +6171,327 @@ export async function getManagementDecisionDashboard() {
     },
   };
 }
+
+// ─── Promotion Progress per Engineer (كل تفاصيل الترقية لمهندس واحد) ──────────
+export async function getEngineerPromotionProgress(engineerId: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const now = new Date();
+  const currentMonth = now.getMonth() + 1;
+  const currentYear = now.getFullYear();
+  const monthStart = new Date(currentYear, currentMonth - 1, 1);
+
+  // جلب بيانات المهندس
+  const engList = await db.select().from(engineers)
+    .where(eq(engineers.id, engineerId)).limit(1);
+  const eng = engList[0];
+  if (!eng) return null;
+
+  // جلب Career Level
+  const careerLevelRec = await db.select().from(engineerCareerLevels)
+    .where(eq(engineerCareerLevels.engineerId, engineerId)).limit(1);
+  const careerLevel = (careerLevelRec[0]?.currentLevel ?? "sales_engineer") as
+    "sales_engineer" | "senior_sales_engineer" | "sales_consultant";
+
+  // جلب آخر 3 تقييمات شهرية
+  const recentEvals = await db.select().from(engineerEvaluations)
+    .where(eq(engineerEvaluations.engineerId, engineerId))
+    .orderBy(desc(engineerEvaluations.evaluationYear), desc(engineerEvaluations.evaluationMonth))
+    .limit(3);
+
+  const currentEval = recentEvals.find(
+    e => e.evaluationMonth === currentMonth && e.evaluationYear === currentYear
+  ) ?? recentEvals[0] ?? null;
+
+  // ─── Mandatory Conditions Check ───────────────────────────────────────────
+  const meetingTypes = ["meeting_2d", "meeting_3d", "meeting_quotation", "meeting_closing", "meeting_presentation"];
+  const engTasks = await db.select().from(dailyTasks)
+    .where(and(eq(dailyTasks.engineerId, engineerId), eq(dailyTasks.isDeleted, 0), gte(dailyTasks.createdAt, monthStart)));
+  const meetingTasks = engTasks.filter(t => meetingTypes.includes(t.taskType ?? ""));
+  const completedMeetings = meetingTasks.filter(t => t.status === "completed");
+  const meetingsWithRecording = completedMeetings.filter(t => t.meetingRecordingLink);
+  const engReviews = await db.select().from(meetingReviews)
+    .where(eq(meetingReviews.engineerId, engineerId));
+
+  const hasAllRecordings = completedMeetings.length === 0 || meetingsWithRecording.length === completedMeetings.length;
+  const hasAllReviews = completedMeetings.length === 0 || engReviews.length >= completedMeetings.length;
+  const playbookUsagePct = meetingTasks.length > 0
+    ? Math.round((engReviews.length / meetingTasks.length) * 100) : 0;
+  const hasPlaybookUsage = playbookUsagePct >= (careerLevel === "senior_sales_engineer" ? 85 : 70);
+
+  const mandatoryConditions = {
+    hasAllRecordings,
+    hasAllReviews,
+    hasPlaybookUsage,
+    recordingsStatus: `${meetingsWithRecording.length}/${completedMeetings.length} اجتماع مسجّل`,
+    reviewsStatus: `${engReviews.length}/${completedMeetings.length} اجتماع مراجَع`,
+    playbookStatus: `${playbookUsagePct}% استخدام Playbook`,
+    allMet: hasAllRecordings && hasAllReviews && hasPlaybookUsage,
+  };
+
+  // ─── Promotion Rules per Level ────────────────────────────────────────────
+  const consecutiveMonths = currentEval?.consecutiveMonthsMeetingTarget ?? 0;
+  const scores = {
+    salesAchievementScore: currentEval?.salesAchievementScore ?? 0,
+    closingRateScore: currentEval?.closingRateScore ?? 0,
+    meetingScore: currentEval?.meetingScore ?? 0,
+    playbookUsageScore: currentEval?.playbookUsageScore ?? 0,
+    taskDisciplineScore: currentEval?.taskDisciplineScore ?? 0,
+  };
+
+  let promotionRules: Array<{
+    criterion: string;
+    required: string;
+    current: string | number;
+    met: boolean;
+    weight: "critical" | "important" | "standard";
+  }> = [];
+
+  if (careerLevel === "sales_engineer") {
+    promotionRules = [
+      {
+        criterion: "Sales Target",
+        required: "≥ 80% لشهرين متتاليين",
+        current: `${scores.salesAchievementScore}% (${consecutiveMonths} شهر متتالي)`,
+        met: scores.salesAchievementScore >= 80 && consecutiveMonths >= 2,
+        weight: "critical",
+      },
+      {
+        criterion: "Meeting Score",
+        required: "≥ 70%",
+        current: `${scores.meetingScore}%`,
+        met: scores.meetingScore >= 70,
+        weight: "critical",
+      },
+      {
+        criterion: "Playbook Usage",
+        required: "≥ 70%",
+        current: `${scores.playbookUsageScore}%`,
+        met: scores.playbookUsageScore >= 70,
+        weight: "critical",
+      },
+      {
+        criterion: "Task Completion (Meeting + Recording)",
+        required: "100%",
+        current: `${scores.taskDisciplineScore}%`,
+        met: scores.taskDisciplineScore >= 100,
+        weight: "critical",
+      },
+      {
+        criterion: "لا يوجد تأخير في Tasks",
+        required: "صفر تأخيرات",
+        current: scores.taskDisciplineScore >= 90 ? "ملتزم" : "يوجد تأخيرات",
+        met: scores.taskDisciplineScore >= 90,
+        weight: "important",
+      },
+      {
+        criterion: "Meeting Recordings كاملة",
+        required: "100% مسجّلة",
+        current: mandatoryConditions.recordingsStatus,
+        met: hasAllRecordings,
+        weight: "critical",
+      },
+      {
+        criterion: "Meeting Reviews موجودة",
+        required: "كل اجتماع مراجَع",
+        current: mandatoryConditions.reviewsStatus,
+        met: hasAllReviews,
+        weight: "critical",
+      },
+    ];
+  } else if (careerLevel === "senior_sales_engineer") {
+    promotionRules = [
+      {
+        criterion: "Sales Target",
+        required: "≥ 100% لـ 3 شهور متتالية",
+        current: `${scores.salesAchievementScore}% (${consecutiveMonths} شهر متتالي)`,
+        met: scores.salesAchievementScore >= 100 && consecutiveMonths >= 3,
+        weight: "critical",
+      },
+      {
+        criterion: "Closing Rate",
+        required: "عالي (≥ 70%)",
+        current: `${scores.closingRateScore}%`,
+        met: scores.closingRateScore >= 70,
+        weight: "critical",
+      },
+      {
+        criterion: "Meeting Score",
+        required: "≥ 80%",
+        current: `${scores.meetingScore}%`,
+        met: scores.meetingScore >= 80,
+        weight: "critical",
+      },
+      {
+        criterion: "Playbook Usage",
+        required: "≥ 85%",
+        current: `${scores.playbookUsageScore}%`,
+        met: scores.playbookUsageScore >= 85,
+        weight: "critical",
+      },
+      {
+        criterion: "تقليل استخدام الخصومات",
+        required: "خصومات محدودة",
+        current: scores.closingRateScore >= 70 ? "ملتزم" : "يستخدم خصومات كثيرة",
+        met: scores.closingRateScore >= 70,
+        weight: "important",
+      },
+      {
+        criterion: "التعامل مع Clients High Value",
+        required: "قادر على التعامل",
+        current: scores.meetingScore >= 80 ? "مؤهل" : "يحتاج تطوير",
+        met: scores.meetingScore >= 80,
+        weight: "important",
+      },
+      {
+        criterion: "Meeting Recordings كاملة",
+        required: "100% مسجّلة",
+        current: mandatoryConditions.recordingsStatus,
+        met: hasAllRecordings,
+        weight: "critical",
+      },
+      {
+        criterion: "Meeting Reviews موجودة",
+        required: "كل اجتماع مراجَع",
+        current: mandatoryConditions.reviewsStatus,
+        met: hasAllReviews,
+        weight: "critical",
+      },
+      {
+        criterion: "استخدام Playbook فعلي",
+        required: "≥ 85%",
+        current: mandatoryConditions.playbookStatus,
+        met: hasPlaybookUsage,
+        weight: "critical",
+      },
+    ];
+  }
+
+  const metCount = promotionRules.filter(r => r.met).length;
+  const totalRules = promotionRules.length;
+  const overallReadiness = totalRules > 0 ? Math.round((metCount / totalRules) * 100) : 0;
+  const criticalMet = promotionRules.filter(r => r.weight === "critical" && r.met).length;
+  const criticalTotal = promotionRules.filter(r => r.weight === "critical").length;
+  const allCriticalMet = criticalMet === criticalTotal;
+  const promotionEligible = allCriticalMet && mandatoryConditions.allMet;
+
+  // ─── نقاط القوة والتحسين ──────────────────────────────────────────────────
+  const strengthPoints: string[] = [];
+  const improvementPoints: string[] = [];
+
+  if (scores.salesAchievementScore >= 80) strengthPoints.push(`Sales Achievement قوي (${scores.salesAchievementScore}%)`);
+  else improvementPoints.push(`تحسين Sales Achievement من ${scores.salesAchievementScore}% إلى ≥ 80%`);
+
+  if (scores.meetingScore >= 70) strengthPoints.push(`Meeting Score ممتاز (${scores.meetingScore}%)`);
+  else improvementPoints.push(`رفع Meeting Score من ${scores.meetingScore}% إلى ≥ 70%`);
+
+  if (scores.playbookUsageScore >= 70) strengthPoints.push(`Playbook Usage منتظم (${scores.playbookUsageScore}%)`);
+  else improvementPoints.push(`زيادة Playbook Usage من ${scores.playbookUsageScore}% إلى ≥ 70%`);
+
+  if (scores.closingRateScore >= 60) strengthPoints.push(`Closing Rate جيد (${scores.closingRateScore}%)`);
+  else improvementPoints.push(`تحسين Closing Rate من ${scores.closingRateScore}% إلى ≥ 60%`);
+
+  if (hasAllRecordings) strengthPoints.push("كل الاجتماعات مسجّلة");
+  else improvementPoints.push(`تسجيل الاجتماعات الناقصة (${mandatoryConditions.recordingsStatus})`);
+
+  if (hasAllReviews) strengthPoints.push("كل الاجتماعات مراجَعة");
+  else improvementPoints.push(`إضافة Reviews للاجتماعات (${mandatoryConditions.reviewsStatus})`);
+
+  if (consecutiveMonths >= 2) strengthPoints.push(`${consecutiveMonths} أشهر متتالية تحقيق الهدف`);
+  else improvementPoints.push(`الاستمرار في تحقيق الهدف (${consecutiveMonths} شهر حتى الآن)`);
+
+  // ─── Demotion / Warning Logic ─────────────────────────────────────────────
+  const consecutiveCMonths = currentEval?.consecutiveCMonths ?? 0;
+  const performanceLevel = currentEval?.performanceLevel ?? null;
+
+  let warningStatus: "none" | "warning" | "improvement_plan" | "firing_risk" = "none";
+  let warningMessage = "";
+  if (performanceLevel === "c_player") {
+    if (consecutiveCMonths >= 2) {
+      warningStatus = "firing_risk";
+      warningMessage = `⚠️ شهرين متتاليين C Player — يجب اتخاذ قرار إداري فوري`;
+    } else if (consecutiveCMonths === 1) {
+      warningStatus = "improvement_plan";
+      warningMessage = `تحذير: شهر C Player — خطة تحسين 30 يوم مطلوبة`;
+    } else {
+      warningStatus = "warning";
+      warningMessage = `تحذير: أداء ضعيف هذا الشهر — يجب التحسين`;
+    }
+  }
+
+  // ─── Benefits per Level ───────────────────────────────────────────────────
+  const BENEFITS_TABLE = {
+    sales_engineer: {
+      label: "Sales Engineer",
+      commission: "Commission أساسي (×1.0)",
+      discount: "Discount محدود (5%)",
+      leads: "Standard Leads",
+      clients: "عملاء عاديون",
+      extras: [],
+    },
+    senior_sales_engineer: {
+      label: "Senior Sales Engineer",
+      commission: "Commission أعلى (×1.15)",
+      discount: "Discount صلاحيات أعلى (10%)",
+      leads: "Premium Leads",
+      clients: "عملاء متميزون",
+      extras: ["أولوية في توزيع Leads الجديدة"],
+    },
+    sales_consultant: {
+      label: "Sales Consultant",
+      commission: "أعلى Commission (×1.30)",
+      discount: "أعلى Discount Range (15%)",
+      leads: "VIP Leads — أولوية قصوى",
+      clients: "Clients VIP فقط",
+      extras: ["Priority في كل Leads الجديدة", "صلاحية التفاوض المستقل", "Bonus إضافي على الصفقات الكبيرة"],
+    },
+  };
+
+  const nextLevel = careerLevel === "sales_engineer" ? "senior_sales_engineer" :
+    careerLevel === "senior_sales_engineer" ? "sales_consultant" : null;
+
+  return {
+    engineerId,
+    engineerName: eng.name,
+    careerLevel,
+    careerLevelLabel: careerLevel === "senior_sales_engineer" ? "Senior Sales Engineer" :
+      careerLevel === "sales_consultant" ? "Sales Consultant" : "Sales Engineer",
+    nextLevel,
+    nextLevelLabel: nextLevel === "senior_sales_engineer" ? "Senior Sales Engineer" :
+      nextLevel === "sales_consultant" ? "Sales Consultant" : null,
+    currentEval: currentEval ? {
+      overallScore: currentEval.overallScore,
+      performanceLevel: currentEval.performanceLevel,
+      salesAchievementScore: currentEval.salesAchievementScore,
+      closingRateScore: currentEval.closingRateScore,
+      meetingScore: currentEval.meetingScore,
+      playbookUsageScore: currentEval.playbookUsageScore,
+      taskDisciplineScore: currentEval.taskDisciplineScore,
+      consecutiveMonthsMeetingTarget: currentEval.consecutiveMonthsMeetingTarget,
+      consecutiveCMonths: currentEval.consecutiveCMonths,
+      decisionAction: currentEval.decisionAction,
+      coachingNotes: currentEval.coachingNotes,
+      improvementPlan: currentEval.improvementPlan,
+    } : null,
+    promotionRules,
+    overallReadiness,
+    criticalMet,
+    criticalTotal,
+    promotionEligible,
+    mandatoryConditions,
+    strengthPoints,
+    improvementPoints,
+    warningStatus,
+    warningMessage,
+    currentBenefits: BENEFITS_TABLE[careerLevel],
+    nextBenefits: nextLevel ? BENEFITS_TABLE[nextLevel] : null,
+    recentHistory: recentEvals.map(e => ({
+      month: e.evaluationMonth,
+      year: e.evaluationYear,
+      overallScore: e.overallScore,
+      performanceLevel: e.performanceLevel,
+      decisionAction: e.decisionAction,
+    })),
+  };
+}

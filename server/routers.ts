@@ -62,7 +62,7 @@ import {
   createOrUpdateMeetingReview, getMeetingReviewByTask, getEngineerMeetingReviewSummary,
   getMeetingTasksPendingReview, createOrUpdateMonthlyEvaluation, getEngineerEvaluationHistory,
   getAllEngineersEvaluationDashboard, promoteEngineer, getOrCreateEngineerCareerLevel,
-  getManagementDecisionDashboard,
+  getManagementDecisionDashboard, getEngineerPromotionProgress,
 } from "./db";
 
 // ─── Seed Data ────────────────────────────────────────────────────────────────
@@ -1279,6 +1279,10 @@ export const appRouter = router({
     // Management Decision Dashboard
     getManagementDashboard: publicProcedure
       .query(async () => getManagementDecisionDashboard()),
+    // Engineer Promotion Progress (تفاصيل الترقية لمهندس واحد)
+    getEngineerPromotionProgress: publicProcedure
+      .input(z.object({ engineerId: z.number() }))
+      .query(async ({ input }) => getEngineerPromotionProgress(input.engineerId)),
   }),
 
   // ── Funnel Analysis ───────────────────────────────────────────────────────
