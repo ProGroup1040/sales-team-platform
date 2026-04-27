@@ -8344,3 +8344,143 @@ export async function getCollectionsWithCommission(engineerId?: number) {
     };
   });
 }
+
+// ── Advanced Discount Distribution (Score-Based) ──────────────────────────
+export async function getAdvancedDiscountDistribution(month: number, year: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const { engineers, deals, dailyTasks } = await import("../drizzle/schema");
+  const { eq, and, gte, lte, sum, count, inArray } = await import("drizzle-orm");
+
+  const SALES_DEPTS = ["sales_engineer", "sales_specialist"];
+  const PERFORMANCE_THRESHOLD = 20; // minimum performance % to qualify for discount
+  const BOOST_TOP_N = 2; // top N engineers get +10% boost
+
+  const startDate = new Date(year, month - 1, 1);
+  const endDate = new Date(year, month, 0);
+  // 60-day window for performance
+  const sixtyDaysAgo = new Date();
+  sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+
+  // Get sales engineers
+  const salesEngineers = await db.select().from(engineers)
+    .where(inArray(engineers.department as any, SALES_DEPTS));
+  if (!salesEngineers.length) return [];
+
+  const engineerIds = salesEngineers.map((e: any) => e.id);
+
+  // Performance Score: actual sales last 60 days
+  const wonDeals = await db.select({
+    engineerId: deals.engineerId,
+    totalValue: sum(deals.netValue),
+    dealCount: count(deals.id),
+  }).from(deals)
+    .where(and(
+      inArray(deals.engineerId as any, engineerIds),
+      eq(deals.stage as any, "closed_won"),
+      gte(deals.updatedAt as any, sixtyDaysAgo),
+    ))
+    .groupBy(deals.engineerId);
+
+  // Pipeline Score: open deals in negotiation
+  const pipelineDeals = await db.select({
+    engineerId: deals.engineerId,
+    pipelineValue: sum(deals.netValue),
+  }).from(deals)
+    .where(and(
+      inArray(deals.engineerId as any, engineerIds),
+      inArray(deals.stage as any, ["negotiation", "proposal", "contract_sent"]),
+    ))
+    .groupBy(deals.engineerId);
+
+  // Closing Skill Score: closing rate (won / total)
+  const allDeals = await db.select({
+    engineerId: deals.engineerId,
+    totalDeals: count(deals.id),
+  }).from(deals)
+    .where(and(
+      inArray(deals.engineerId as any, engineerIds),
+      gte(deals.updatedAt as any, sixtyDaysAgo),
+    ))
+    .groupBy(deals.engineerId);
+
+  // Build maps
+  const wonMap = new Map(wonDeals.map((d: any) => [d.engineerId, { value: parseFloat(d.totalValue ?? "0"), count: d.dealCount }]));
+  const pipelineMap = new Map(pipelineDeals.map((d: any) => [d.engineerId, parseFloat(d.pipelineValue ?? "0")]));
+  const totalMap = new Map(allDeals.map((d: any) => [d.engineerId, d.totalDeals]));
+
+  // Normalize scores
+  const maxSales = Math.max(...salesEngineers.map((e: any) => wonMap.get(e.id)?.value ?? 0), 1);
+  const maxPipeline = Math.max(...salesEngineers.map((e: any) => pipelineMap.get(e.id) ?? 0), 1);
+
+  const engineerScores = salesEngineers.map((e: any) => {
+    const salesValue = wonMap.get(e.id)?.value ?? 0;
+    const pipelineValue = pipelineMap.get(e.id) ?? 0;
+    const totalDeals = totalMap.get(e.id) ?? 0;
+    const wonCount = wonMap.get(e.id)?.count ?? 0;
+    const closingRate = totalDeals > 0 ? (wonCount / totalDeals) * 100 : 0;
+
+    const performanceScore = (salesValue / maxSales) * 100;
+    const pipelineScore = (pipelineValue / maxPipeline) * 100;
+    const closingSkillScore = Math.min(closingRate * 1.5, 100); // scale closing rate
+
+    const totalScore = (performanceScore * 0.4) + (pipelineScore * 0.3) + (closingSkillScore * 0.3);
+
+    return {
+      engineerId: e.id,
+      engineerName: e.name,
+      department: e.department,
+      performanceScore: Math.round(performanceScore),
+      pipelineScore: Math.round(pipelineScore),
+      closingSkillScore: Math.round(closingSkillScore),
+      totalScore: Math.round(totalScore),
+      salesValue,
+      pipelineValue,
+      closingRate: Math.round(closingRate),
+      wonDeals: wonCount,
+      totalDeals,
+      qualifies: performanceScore >= PERFORMANCE_THRESHOLD,
+    };
+  });
+
+  // Sort by score
+  engineerScores.sort((a, b) => b.totalScore - a.totalScore);
+
+  // Assign ranks
+  engineerScores.forEach((e, i) => { (e as any).rank = i + 1; });
+
+  // Get total discount pool from discount tiers
+  const { discountTiers } = await import("../drizzle/schema");
+  const tiers = await db.select().from(discountTiers).orderBy(discountTiers.minSales);
+  const totalSales = wonDeals.reduce((s: number, d: any) => s + parseFloat(d.totalValue ?? "0"), 0);
+  const totalPipeline = pipelineDeals.reduce((s: number, d: any) => s + parseFloat(d.pipelineValue ?? "0"), 0);
+  const effectiveVolume = totalSales + totalPipeline;
+  const activeTier = tiers.filter((t: any) => effectiveVolume >= parseFloat(t.minSales ?? "0")).pop();
+  const discountRate = activeTier ? (activeTier.maxDiscountPct ?? 5) / 100 : 0.05;
+  const totalDiscountPool = effectiveVolume * discountRate;
+
+  // Distribute discount only to qualifying engineers
+  const qualifying = engineerScores.filter(e => e.qualifies);
+  const totalQualifyingScore = qualifying.reduce((s, e) => s + e.totalScore, 0) || 1;
+
+  return engineerScores.map((e, i) => {
+    if (!e.qualifies) {
+      return { ...e, discountShare: 0, discountBoost: 0, finalDiscountShare: 0, discountPool: totalDiscountPool, avgDiscountPerDeal: 0 };
+    }
+    const baseShare = (e.totalScore / totalQualifyingScore) * totalDiscountPool;
+    const isTopN = i < BOOST_TOP_N;
+    const boost = isTopN ? baseShare * 0.1 : 0;
+    const finalShare = baseShare + boost;
+    const avgPerDeal = e.wonDeals > 0 ? finalShare / e.wonDeals : 0;
+
+    return {
+      ...e,
+      discountShare: Math.round(baseShare),
+      discountBoost: Math.round(boost),
+      finalDiscountShare: Math.round(finalShare),
+      discountPool: Math.round(totalDiscountPool),
+      avgDiscountPerDeal: Math.round(avgPerDeal),
+      discountRate: Math.round(discountRate * 100),
+    };
+  });
+}

@@ -76,6 +76,7 @@ import {
   getTeleSalesKPI, getSiteEngineersKPI,
   // Company Closing KPI + Reward System + Lost Deals Impact
   getCompanyClosingKPI, getTeamRewardStatus, getLostDealsImpact,
+  getAdvancedDiscountDistribution, getAdminSalesKPI,
 } from "./db";
 
 // ─── Seed Data ────────────────────────────────────────────────────────────────
@@ -682,6 +683,14 @@ export const appRouter = router({
     scoreBasedDiscountDistribution: publicProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => calcScoreBasedDiscountDistribution(input.year, input.month)),
+    // ─── Advanced Discount Distribution (Performance + Pipeline + Closing Skill) ──
+    advancedDiscountDistribution: publicProcedure
+      .input(z.object({ year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getAdvancedDiscountDistribution(input.year, input.month)),
+    // ─── Admin Sales KPI ──────────────────────────────────────────────────────
+    adminSalesKPI: publicProcedure
+      .input(z.object({ year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getAdminSalesKPI(input.year, input.month)),
   }),
 
   // ── Collections ───────────────────────────────────────────────────────────
