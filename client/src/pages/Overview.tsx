@@ -270,6 +270,10 @@ export default function Overview() {
   const { data: salesTrend } = trpc.sales.trend.useQuery({ months: 6 });
   const { data: kpiData } = trpc.kpi.engineers.useQuery({ year: YEAR, month: MONTH });
   const { data: dealsList } = trpc.closing.list.useQuery({ limit: 5 });
+  const { data: missingRecordings } = trpc.tasks.missingRecordings.useQuery({});
+  const { data: pendingReviews } = trpc.tasks.pendingReviews.useQuery();
+  // Playbook insights: get per-engineer playbook usage from workDist
+  const { data: workDistAll } = trpc.workDist.allEngineers.useQuery({ year: YEAR, month: MONTH });
 
   const alerts = useMemo(() => {
     const list: { type: 'critical' | 'warning' | 'info'; text: string }[] = [];
@@ -285,8 +289,22 @@ export default function Overview() {
       const lowPerf = kpiData.filter(e => e.executionScore < 50);
       if (lowPerf.length > 0) list.push({ type: 'warning', text: `${lowPerf.length} مهندس أداؤهم ضعيف هذا الشهر` });
     }
+    // ─── Meeting Recording Alerts ───────────────────────────────────────────
+    if (missingRecordings && missingRecordings.length > 0) {
+      list.push({ type: 'critical', text: `📹 ${missingRecordings.length} ميتينج بدون تسجيل — يجب رفع الرابط فوراً` });
+    }
+    if (pendingReviews && pendingReviews.length > 0) {
+      list.push({ type: 'warning', text: `📋 ${pendingReviews.length} ميتينج يحتاج مراجعة وتقييم` });
+    }
+    // ─── Playbook Usage Alerts ──────────────────────────────────────────────
+    if (workDistAll) {
+      const lowPlaybook = (workDistAll as any[]).filter((e: any) => (e.playbookUsagePct ?? e.playbookScore ?? 0) < 50);
+      if (lowPlaybook.length > 0) {
+        list.push({ type: 'warning', text: `📚 ${lowPlaybook.length} مهندس لا يستخدم Playbook بشكل كافٍ (أقل من 50%)` });
+      }
+    }
     return list;
-  }, [taskStats, leadsStats, visitsStats, closingStats, salesStats, collectionsStats, kpiData]);
+  }, [taskStats, leadsStats, visitsStats, closingStats, salesStats, collectionsStats, kpiData, missingRecordings, pendingReviews, workDistAll]);
 
   const trendChartData = salesTrend?.map(t => ({
     name: t.label,

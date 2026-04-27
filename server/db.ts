@@ -5672,23 +5672,22 @@ export async function getMeetingTasksPendingReview() {
   if (!db) return [];
 
   const meetingTypes = ["meeting_2d", "meeting_3d", "meeting_quotation", "meeting_closing", "meeting_presentation"];
+    const dt = dailyTasks as any;
   const completedMeetings = await db.select().from(dailyTasks)
     .where(and(
       eq(dailyTasks.status, "completed"),
       eq(dailyTasks.isDeleted, 0),
-      inArray(dailyTasks.taskType as any, meetingTypes)
+      inArray(dt.taskType, meetingTypes)
     ));
-
   const reviewedTaskIds = new Set(
     (await db.select({ taskId: meetingReviews.taskId }).from(meetingReviews))
       .map(r => r.taskId)
   );
-
   return completedMeetings
     .filter(t => t.meetingRecordingLink && !reviewedTaskIds.has(t.id))
     .map(t => ({
       id: t.id, title: t.title, engineerId: t.engineerId,
-      taskType: t.taskType, recordingLink: t.meetingRecordingLink,
+      taskType: (t as any).taskType, recordingLink: t.meetingRecordingLink,
       completedAt: t.createdAt,
     }));
 }
@@ -6089,7 +6088,7 @@ export async function getManagementDecisionDashboard() {
     const closingRate = engDeals.length > 0 ? Math.round((closedWon.length / engDeals.length) * 100) : 0;
 
     const engTasks = allTasks.filter(t => t.engineerId === eng.id);
-    const meetingTasks = engTasks.filter(t => meetingTypes.includes(t.taskType ?? ""));
+    const meetingTasks = engTasks.filter(t => meetingTypes.includes((t as any).taskType ?? ""));
     const completedMeetings = meetingTasks.filter(t => t.status === "completed");
     const meetingsWithRecording = completedMeetings.filter(t => t.meetingRecordingLink);
     const missingRecordings = completedMeetings.filter(t => !t.meetingRecordingLink).length;

@@ -957,7 +957,7 @@ export const appRouter = router({
   // ── Work Distribution ─────────────────────────────────────────────────────────
   workDist: router({
     // تسجيل نشاط جديد
-    log: protectedProcedure
+    log: publicProcedure
       .input(z.object({
         engineerId: z.number(),
         logDate: z.string(),
@@ -988,7 +988,7 @@ export const appRouter = router({
       }),
 
     // توزيع مهندس واحد (MTD)
-    myDistribution: protectedProcedure
+    myDistribution: publicProcedure
       .input(z.object({
         engineerId: z.number(),
         year: z.number(),
@@ -997,12 +997,12 @@ export const appRouter = router({
       .query(async ({ input }) => getWorkDistribution(input.engineerId, input.year, input.month)),
 
     // توزيع كل المهندسين (admin فقط)
-    allEngineers: protectedProcedure
+    allEngineers: publicProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getAllEngineersDistribution(input.year, input.month)),
 
     // تحليل أسبوعي
-    weeklyAnalysis: protectedProcedure
+    weeklyAnalysis: publicProcedure
       .input(z.object({
         engineerId: z.number(),
         year: z.number(),
@@ -1011,12 +1011,12 @@ export const appRouter = router({
       .query(async ({ input }) => getWeeklyDistribution(input.engineerId, input.year, input.weekNumber)),
 
     // تحليل نقاط الضعف (Critical Insights)
-    criticalInsights: protectedProcedure
+    criticalInsights: publicProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getCriticalInsights(input.year, input.month)),
 
     // ترتيب شامل (Sales + Closing + Distribution)
-    fullRanking: protectedProcedure
+    fullRanking: publicProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getEngineerRankingFull(input.year, input.month)),
 
