@@ -171,16 +171,29 @@ export async function createTask(data: {
   engineerId: number; taskDate: string; title: string; description?: string;
   plannedHours?: number; priority?: string;
   category?: string; meetingRecordingLink?: string;
+  taskType?: string;
 }) {
   const db = await getDb();
   if (!db) return;
+  // Auto-set category from taskType if not provided
+  let category = data.category ?? null;
+  if (!category && data.taskType) {
+    if (['meeting_modeling', 'meeting_presentation', 'meeting_closing'].includes(data.taskType)) {
+      category = 'meeting';
+    } else if (data.taskType === 'meeting_closing') {
+      category = 'closing';
+    } else {
+      category = 'general';
+    }
+  }
   await db.insert(dailyTasks).values({
     engineerId: data.engineerId, taskDate: new Date(data.taskDate + 'T00:00:00'), title: data.title,
     description: data.description, plannedHours: data.plannedHours ?? 1,
     priority: (data.priority as any) ?? 'medium', status: 'planned',
     delayDays: 0, isClientDelay: 0, isRescheduled: 0, isCritical: 0,
-    category: data.category ?? null,
+    category: category,
     meetingRecordingLink: data.meetingRecordingLink ?? null,
+    taskType: (data.taskType as any) ?? null,
   });
 }
 
@@ -3677,15 +3690,18 @@ export function getDistributionCategory(taskType: string): keyof typeof STANDARD
 
 /** Task type labels (new + legacy) */
 export const TASK_TYPE_LABELS_V2: Record<string, string> = {
-  meeting_presentation: "ميتينج عرض",
-  meeting_closing:      "ميتينج إغلاق",
-  meeting_2d:           "ميتينج 2D",
-  meeting_3d:           "ميتينج 3D",
-  meeting_quotation:    "ميتينج عرض سعر",
-  design_2d:            "2D",
+  // 7 Standard Task Types
+  design_2d:            "2D Design",
   design_3d:            "3D Modeling",
   render:               "Render",
   quotation:            "Quotation",
+  meeting_modeling:     "Meeting Modeling",
+  meeting_presentation: "Meeting Presentation",
+  meeting_closing:      "Meeting Closing",
+  // Legacy
+  meeting_2d:           "ميتينج 2D (قديم)",
+  meeting_3d:           "ميتينج 3D (قديم)",
+  meeting_quotation:    "ميتينج عرض سعر (قديم)",
   closing:              "إغلاق بيع",
   negotiation:          "تفاوض",
   other:                "أخرى",
@@ -6580,7 +6596,7 @@ export async function getOperationalPerformance(year: number, month: number) {
     )
   );
 
-  const taskTypes = ['2d_design', '3d_modeling', 'render', 'quotation', 'meeting_modeling', 'meeting_presentation', 'meeting_closing'] as const;
+  const taskTypes = ['design_2d', 'design_3d', 'render', 'quotation', 'meeting_modeling', 'meeting_presentation', 'meeting_closing'] as const;
 
   const results = engList.map((eng: any) => {
     const engTasks = allTasks.filter((t: any) => t.engineerId === eng.id);
@@ -6597,8 +6613,8 @@ export async function getOperationalPerformance(year: number, month: number) {
 
     // Meeting types combined
     const totalMeetings = (typeCounts['meeting_modeling'] || 0) + (typeCounts['meeting_presentation'] || 0) + (typeCounts['meeting_closing'] || 0);
-    const total3DRender = (typeCounts['3d_modeling'] || 0) + (typeCounts['render'] || 0);
-    const total2D = typeCounts['2d_design'] || 0;
+    const total3DRender = (typeCounts['design_3d'] || 0) + (typeCounts['render'] || 0);
+    const total2D = typeCounts['design_2d'] || 0;
     const totalQuotations = typeCounts['quotation'] || 0;
 
     // Actual distribution percentages
@@ -6643,7 +6659,7 @@ export async function getOperationalPerformance(year: number, month: number) {
       plannedHours,
       // Task type counts
       count2D: total2D,
-      count3D: typeCounts['3d_modeling'] || 0,
+      count3D: typeCounts['design_3d'] || 0,
       countRender: typeCounts['render'] || 0,
       countQuotation: totalQuotations,
       countMeetingModeling: typeCounts['meeting_modeling'] || 0,
@@ -6673,10 +6689,10 @@ export async function getOperationalPerformance(year: number, month: number) {
   });
 
   // Ranking by task efficiency
-  const sorted = [...results].sort((a: any, b: any) => b.taskEfficiency - a.taskEfficiency);
-  return results.map((r: any) => ({
-    ...r,
-    efficiencyRank: sorted.findIndex((s: any) => s.engineerId === r.engineerId) + 1,
+  const sorted = [...results].sort((a, b) => (b as any).taskEfficiency - (a as any).taskEfficiency);
+  return results.map((r) => ({
+    ...(r as any),
+    efficiencyRank: sorted.findIndex((s) => (s as any).engineerId === (r as any).engineerId) + 1,
   }));
 }
 
@@ -6742,6 +6758,17 @@ export const DEPARTMENT_LABELS: Record<string, string> = {
   site: 'مهندس معاينات',
   admin_sales: 'أدمن مبيعات',
   manager: 'مدير',
+};
+
+/** أنواع المهام المسموحة لكل قسم */
+export const ALLOWED_TASK_TYPES_BY_DEPARTMENT: Record<string, string[]> = {
+  sales_engineer:    ['design_2d', 'design_3d', 'render', 'quotation', 'meeting_modeling', 'meeting_presentation', 'meeting_closing'],
+  sales_specialist:  ['design_2d', 'design_3d', 'render', 'quotation', 'meeting_modeling', 'meeting_presentation', 'meeting_closing'],
+  interior_designer: ['design_2d', 'design_3d', 'render'],
+  tele_sales:        ['quotation', 'meeting_modeling', 'meeting_presentation'],
+  site:              ['meeting_modeling', 'meeting_presentation', 'meeting_closing'],
+  admin_sales:       ['quotation', 'meeting_modeling'],
+  manager:           ['design_2d', 'design_3d', 'render', 'quotation', 'meeting_modeling', 'meeting_presentation', 'meeting_closing'],
 };
 
 /** فلترة المهندسين حسب الدور (legacy) */

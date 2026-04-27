@@ -224,10 +224,31 @@ function UpdateStatusDialog({ task, onDone }: { task: any; onDone: () => void })
 // ─── Add Task Dialog ──────────────────────────────────────────────────────────
 function AddTaskDialog({ engineers, dateStr, onDone }: { engineers: any[]; dateStr: string; onDone: () => void }) {
   const [open, setOpen] = useState(false);
-  const EMPTY_FORM = { engineerId: "", title: "", description: "", priority: "medium", plannedHours: "1", category: "general", meetingRecordingLink: "" };
+  const EMPTY_FORM = { engineerId: "", title: "", description: "", priority: "medium", plannedHours: "1", taskType: "", meetingRecordingLink: "" };
   const [form, setForm] = useState(EMPTY_FORM);
   const utils = trpc.useUtils();
-  const needsRecording = form.category === 'closing' || form.category === 'meeting';
+
+  // الـ 7 Task Types المطلوبة
+  const ALL_TASK_TYPES = [
+    { key: 'design_2d',            label: '2D Design',             color: 'bg-cyan-500/20 border-cyan-500/50 text-cyan-400',     icon: '📰' },
+    { key: 'design_3d',            label: '3D Modeling',           color: 'bg-purple-500/20 border-purple-500/50 text-purple-400', icon: '📱' },
+    { key: 'render',               label: 'Render',                color: 'bg-violet-500/20 border-violet-500/50 text-violet-400', icon: '🎨' },
+    { key: 'quotation',            label: 'Quotation',             color: 'bg-amber-500/20 border-amber-500/50 text-amber-400',   icon: '💰' },
+    { key: 'meeting_modeling',     label: 'Meeting Modeling',      color: 'bg-indigo-500/20 border-indigo-500/50 text-indigo-400', icon: '📌' },
+    { key: 'meeting_presentation', label: 'Meeting Presentation',  color: 'bg-blue-500/20 border-blue-500/50 text-blue-400',     icon: '📊' },
+    { key: 'meeting_closing',      label: 'Meeting Closing',       color: 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400', icon: '✅' },
+  ];
+
+  // Department Enforcement: جلب قسم المهندس المختار
+  const { data: allowedTypesMap } = trpc.kpi.allowedTaskTypes.useQuery();
+  const selectedEngineer = engineers.find(e => String(e.id) === form.engineerId);
+  const engineerDept = selectedEngineer?.department ?? selectedEngineer?.role ?? 'sales_engineer';
+  const allowedTypes: string[] = allowedTypesMap?.[engineerDept] ?? ALL_TASK_TYPES.map(t => t.key);
+  const availableTypes = ALL_TASK_TYPES.filter(t => allowedTypes.includes(t.key));
+
+  const isMeetingType = ['meeting_modeling', 'meeting_presentation', 'meeting_closing'].includes(form.taskType);
+  const needsRecording = isMeetingType;
+
   const createMut = trpc.tasks.create.useMutation({
     onSuccess: () => {
       utils.tasks.stats.invalidate(); utils.tasks.list.invalidate();
@@ -236,8 +257,18 @@ function AddTaskDialog({ engineers, dateStr, onDone }: { engineers: any[]; dateS
     },
     onError: () => toast.error("حدث خطأ أثناء الإضافة"),
   });
-  const isDisabled = createMut.isPending || !form.engineerId || !form.title
-    || (needsRecording && !form.meetingRecordingLink);
+
+  // عند تغيير المهندس: إعادة تعيين نوع المهمة إذا لم يكن مسموحاً
+  const handleEngineerChange = (v: string) => {
+    const eng = engineers.find(e => String(e.id) === v);
+    const dept = eng?.department ?? eng?.role ?? 'sales_engineer';
+    const allowed = allowedTypesMap?.[dept] ?? ALL_TASK_TYPES.map(t => t.key);
+    setForm(f => ({
+      ...f,
+      engineerId: v,
+      taskType: allowed.includes(f.taskType) ? f.taskType : '',
+    }));
+  };
 
   return (
     <>
@@ -245,40 +276,63 @@ function AddTaskDialog({ engineers, dateStr, onDone }: { engineers: any[]; dateS
         <Plus className="h-4 w-4" />إضافة مهمة
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="bg-slate-900 border-white/10 text-white max-w-md">
+        <DialogContent className="bg-slate-900 border-white/10 text-white max-w-lg">
           <DialogHeader><DialogTitle>إضافة مهمة جديدة</DialogTitle></DialogHeader>
           <div className="space-y-4 pt-2">
+            {/* المهندس */}
             <div className="space-y-2">
               <Label className="text-white/70">المهندس *</Label>
-              <Select value={form.engineerId} onValueChange={v => setForm(f => ({ ...f, engineerId: v }))}>
+              <Select value={form.engineerId} onValueChange={handleEngineerChange}>
                 <SelectTrigger className="bg-white/5 border-white/10 text-white"><SelectValue placeholder="اختر المهندس" /></SelectTrigger>
                 <SelectContent className="bg-slate-900 border-white/10">
-                  {engineers.map(e => <SelectItem key={e.id} value={String(e.id)} className="text-white hover:bg-white/10">{e.name}</SelectItem>)}
+                  {engineers.map(e => (
+                    <SelectItem key={e.id} value={String(e.id)} className="text-white hover:bg-white/10">
+                      {e.name}
+                      {e.department && <span className="text-white/40 text-xs ml-2">({e.department})</span>}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
+              {selectedEngineer && (
+                <p className="text-xs text-indigo-400/80">
+                  قسم: {engineerDept} — الأنواع المتاحة: {availableTypes.length}
+                </p>
+              )}
             </div>
+
+            {/* عنوان المهمة */}
             <div className="space-y-2">
               <Label className="text-white/70">عنوان المهمة *</Label>
               <Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
                 className="bg-white/5 border-white/10 text-white" placeholder="أدخل عنوان المهمة" />
             </div>
-            {/* Category */}
+
+            {/* نوع المهمة - 7 أنواع مع Department Enforcement */}
             <div className="space-y-2">
-              <Label className="text-white/70">نوع المهمة</Label>
-              <div className="grid grid-cols-3 gap-2">
-                {[{v:'general',l:'عامة'},{v:'meeting',l:'ميتينج'},{v:'closing',l:'إغلاق بيع'}].map(({v,l}) => (
-                  <button key={v} type="button" onClick={() => setForm(f => ({ ...f, category: v }))}
-                    className={`py-2 rounded-lg border text-xs font-medium transition-all ${
-                      form.category === v
-                        ? v === 'closing' ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400'
-                          : v === 'meeting' ? 'bg-blue-500/20 border-blue-500/50 text-blue-400'
-                          : 'bg-white/15 border-white/30 text-white'
+              <Label className="text-white/70">
+                نوع المهمة * 
+                {form.engineerId && <span className="text-white/40 text-xs mr-1">(مفلتر حسب قسم المهندس)</span>}
+              </Label>
+              <div className="grid grid-cols-2 gap-2">
+                {availableTypes.map(t => (
+                  <button key={t.key} type="button"
+                    onClick={() => setForm(f => ({ ...f, taskType: t.key }))}
+                    className={`py-2 px-3 rounded-lg border text-xs font-medium transition-all text-right flex items-center gap-2 ${
+                      form.taskType === t.key
+                        ? t.color
                         : 'border-white/10 bg-white/5 text-white/60 hover:bg-white/10'
-                    }`}>{l}</button>
+                    }`}>
+                    <span>{t.icon}</span>
+                    <span>{t.label}</span>
+                  </button>
                 ))}
               </div>
+              {!form.taskType && form.engineerId && (
+                <p className="text-xs text-red-400/80">يجب اختيار نوع المهمة</p>
+              )}
             </div>
-            {/* Recording Link - إجباري للـ Closing/Meeting */}
+
+            {/* Recording Link - إجباري للـ Meeting Types */}
             {needsRecording && (
               <div className="space-y-2">
                 <Label className="text-white/70 flex items-center gap-1">
@@ -288,9 +342,10 @@ function AddTaskDialog({ engineers, dateStr, onDone }: { engineers: any[]; dateS
                 <Input value={form.meetingRecordingLink}
                   onChange={e => setForm(f => ({ ...f, meetingRecordingLink: e.target.value }))}
                   className="bg-white/5 border-white/10 text-white" placeholder="https://..." />
-                <p className="text-xs text-amber-400/80">هذا الحقل إجباري لمهام الإغلاق والميتينج</p>
+                <p className="text-xs text-amber-400/80">إجباري لمهام الميتينج</p>
               </div>
             )}
+
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label className="text-white/70">الأولوية</Label>
@@ -314,12 +369,12 @@ function AddTaskDialog({ engineers, dateStr, onDone }: { engineers: any[]; dateS
                 className="bg-white/5 border-white/10 text-white resize-none h-20" placeholder="تفاصيل المهمة..." />
             </div>
             <Button className="w-full bg-indigo-600 hover:bg-indigo-700"
-              disabled={isDisabled}
+              disabled={createMut.isPending || !form.engineerId || !form.title || !form.taskType || (needsRecording && !form.meetingRecordingLink)}
               onClick={() => createMut.mutate({
                 engineerId: Number(form.engineerId), taskDate: dateStr, title: form.title,
                 description: form.description || undefined, priority: form.priority as any,
                 plannedHours: Number(form.plannedHours),
-                category: form.category,
+                taskType: form.taskType as any,
                 meetingRecordingLink: form.meetingRecordingLink || undefined,
               })}>
               {createMut.isPending ? "جاري الإضافة..." : "إضافة المهمة"}
@@ -1419,6 +1474,14 @@ export default function TasksModule() {
     onSuccess: () => { utils.tasks.stats.invalidate(); utils.tasks.list.invalidate(); filteredQ.refetch(); toast.success("تم حذف المهمة"); setDeleteTaskTarget(null); },
     onError: () => toast.error("حدث خطأ"),
   });
+  const autoCreateDealMut = trpc.closing.autoCreateFromTask.useMutation({
+    onSuccess: (res) => {
+      if (res.action === 'created') toast.success(`✅ تم إنشاء صفقة جديدة #${res.dealId}`);
+      else if (res.action === 'updated') toast.success(`🔄 تم تحديث الصفقة #${res.dealId}`);
+      else toast.info('لا يوجد اسم عميل - أضف اسم العميل في الوصف');
+    },
+    onError: (e) => toast.error(`خطأ: ${e.message}`),
+  });
   const [deleteTaskTarget, setDeleteTaskTarget] = useState<number | null>(null);
   const filteredTasks = useMemo(() => {
     let t = rawTasks;
@@ -1745,6 +1808,21 @@ export default function TasksModule() {
                     )}
                     {viewMode === "admin" && (
                       <>
+                        {/* Auto-create Deal button for deal-triggering task types */}
+                        {['quotation','meeting_presentation','meeting_closing'].includes(task.taskType) && (
+                          <Button size="sm" variant="outline"
+                            className="border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 h-7 text-xs px-2"
+                            disabled={autoCreateDealMut.isPending}
+                            onClick={() => autoCreateDealMut.mutate({
+                              taskId: task.id,
+                              engineerId: task.engineerId,
+                              taskType: task.taskType,
+                              clientName: task.description?.split('\n')[0] || task.notes || undefined,
+                              notes: task.description || undefined,
+                            })}>
+                            💼 صفقة
+                          </Button>
+                        )}
                         <UpdateStatusDialog task={task} onDone={() => { statsQ.refetch(); listQ.refetch(); criticalQ.refetch(); }} />
                         <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-300 hover:bg-red-500/10 h-7 w-7 p-0"
                           onClick={() => setDeleteTaskTarget(task.id)}>

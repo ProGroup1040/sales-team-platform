@@ -38,7 +38,7 @@ export default function CollectionsModule() {
   const [showAddPayment, setShowAddPayment] = useState<number | null>(null);
   const [showAddPromise, setShowAddPromise] = useState<number | null>(null);
   const [expandedContract, setExpandedContract] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState("contracts");
+  const [activeTab, setActiveTab] = useState("dashboard");
   const [newContract, setNewContract] = useState({ clientName: "", contractAmount: "", dueDate: "", notes: "" });
   const [newPayment, setNewPayment] = useState<{ amount: string; paymentDate: string; paymentType: "initial" | "installment" | "final" | "visit_fee"; receiptNumber: string; notes: string; engineerId: string }>({ amount: "", paymentDate: new Date().toISOString().split("T")[0], paymentType: "installment", receiptNumber: "", notes: "", engineerId: "" });
   const [newPromise, setNewPromise] = useState({ promiseAmount: "", promiseDate: "", notes: "" });

@@ -839,3 +839,73 @@
 - [x] Frontend: CollectionsModule - Alerts Section (Due Today + Overdue + Upcoming)
 - [x] Frontend: CollectionsModule - فلترة Engineers (Sales + Admin Sales فقط)
 - [x] Frontend: ClosingModule - Auto-trigger Contract عند تغيير Status إلى WON
+
+## Feature-by-Feature Implementation (Session 3)
+
+### Feature 1: Tasks - 7 Types + Department Enforcement
+- [x] إضافة meeting_modeling لـ taskType enum في DB
+- [x] تحديث schema.ts ليطابق الـ 7 أنواع الصحيحة (design_2d→2d_design alias, design_3d→3d_modeling alias)
+- [x] إضافة ALLOWED_TASK_TYPES_BY_DEPARTMENT constant في db.ts
+- [x] تحديث AddTaskDialog: إضافة Task Type dropdown بالـ 7 أنواع
+- [x] تحديث AddTaskDialog: Department Enforcement (فلترة الأنواع حسب قسم المهندس المختار)
+- [x] تحديث tasks.create router ليقبل taskType
+- [x] تحديث createTask في db.ts ليحفظ taskType
+- [x] التحقق من Work Distribution Tab يعرض بيانات صحيحة
+
+### Feature 2: Deals Automation
+- [x] التحقق من autoCreateOrUpdateDealFromTask مربوطة بـ tasks.create
+- [x] إضافة Engineer dropdown يعرض Sales Engineers فقط في ClosingModule
+- [x] التحقق من Gross/Net/Discount fields موجودة وتعمل
+- [x] التحقق من Deal Lock بعد WON/CLOSED
+
+### Feature 3: Discount System
+- [x] التحقق من Realized/Potential Discount في ClosingModule
+- [x] التحقق من Score-Based Distribution يعمل
+- [x] التحقق من Bonus 50% للمهندس من الخصم الموفَّر
+
+### Feature 4: KPI Integration
+- [x] التحقق من Progressive Commission يعمل صح
+- [x] التحقق من Role Tabs (Tele/Site/Admin/Company)
+- [x] التحقق من Operational Performance يسحب من Tasks
+
+### Feature 5: Collection Module
+- [x] التحقق من Dashboard يعرض البيانات
+- [x] التحقق من Alerts للمتأخرين
+- [x] التحقق من Commission على المحصَّل
+
+## Full Implementation Session - All Features
+
+### Feature 1: Tasks (تم جزئياً - إكمال)
+- [x] meeting_modeling في DB enum
+- [x] TASK_TYPE_LABELS_V2 محدثة
+- [x] ALLOWED_TASK_TYPES_BY_DEPARTMENT constant
+- [x] tasks.create router يقبل taskType
+- [x] createTask يحفظ taskType
+- [x] AddTaskDialog: 7 Task Types + Department Enforcement
+- [ ] Work Distribution Tab: تحديث ليعرض 7 أنواع بشكل صحيح مع الأسماء الجديدة
+
+### Feature 2: Deals Automation
+- [x] autoCreateOrUpdateDealFromTask موجودة وتعمل
+- [x] Gross/Net حسابات موجودة
+- [x] Deal Lock موجود
+- [x] Engineer Filter في ClosingModule: يعرض Sales Engineers فقط
+- [x] إضافة زر "Auto-create Deal" في Task list عند meeting_closing/quotation
+- [x] التحقق من Lock يمنع التعديل بعد WON
+
+### Feature 3: Discount System
+- [x] التحقق من Realized/Potential Discount في ClosingModule
+- [x] التحقق من Score-Based Distribution يعمل
+- [x] التحقق من Bonus 50% للمهندس من الخصم الموفَّر
+- [x] إضافة Discount Summary section في ClosingModule
+
+### Feature 4: KPI Integration
+- [x] التحقق من Progressive Commission يعمل صح
+- [x] التحقق من Role Tabs (Tele/Site/Admin/Company) موجودة
+- [x] التحقق من Operational Performance يسحب من Tasks بالأسماء الجديدة
+- [x] إصلاح أي مشكلة في KPIModule
+
+### Feature 5: Collection Module
+- [x] التحقق من Dashboard يعرض البيانات
+- [x] التحقق من Alerts للمتأخرين
+- [x] التحقق من Commission على المحصَّل
+- [x] إصلاح أي مشكلة في CollectionsModule

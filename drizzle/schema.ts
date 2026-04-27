@@ -66,21 +66,18 @@ export const dailyTasks = mysqlTable("daily_tasks", {
   startTime: varchar("startTime", { length: 5 }),  // HH:MM e.g. '09:00'
   endTime: varchar("endTime", { length: 5 }),      // HH:MM e.g. '10:30'
   taskType: mysqlEnum("taskType", [
-    // Meetings
-    "meeting_presentation",  // ميتينج عرض
-    "meeting_closing",       // ميتينج إغلاق
-    // Legacy (keep for backward compat)
-    "meeting_2d", "meeting_3d", "meeting_quotation",
-    // Design
-    "design_2d",             // 2D
+    // 7 Standard Task Types
+    "design_2d",             // 2D Design
     "design_3d",             // 3D Modeling
     "render",                // Render
-    // Sales
-    "quotation",             // عرض سعر
-    "closing",               // إغلاق بيع
+    "quotation",             // Quotation
+    "meeting_modeling",      // Meeting Modeling
+    "meeting_presentation",  // Meeting Presentation
+    "meeting_closing",       // Meeting Closing
+    // Legacy (keep for backward compat)
+    "meeting_2d", "meeting_3d", "meeting_quotation",
     // Legacy
-    "negotiation",
-    "other"
+    "closing", "negotiation", "other"
   ]).default("other"),
   // ─── Meeting Recording ─────────────────────────────────────────────────────
   category: varchar("category", { length: 80 }), // e.g. 'closing', 'meeting', 'general'

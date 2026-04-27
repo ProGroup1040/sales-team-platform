@@ -69,7 +69,7 @@ import {
   autoCreateOrUpdateDealFromTask, addDealTimelineEntry, getDealTimeline,
   updateDealEngineer, getSalesEngineers,
   // Department & Advanced Discount System
-  DEPARTMENT_LABELS, SALES_DEPARTMENTS, filterByDepartment, isSalesDepartment,
+  DEPARTMENT_LABELS, SALES_DEPARTMENTS, ALLOWED_TASK_TYPES_BY_DEPARTMENT, filterByDepartment, isSalesDepartment,
   getAdvancedDiscountSummary, validateAdvancedDealDiscount, calcDealSavingBonus,
   calcScoreBasedDiscountDistribution,
   // Tele Sales & Site Engineer KPI
@@ -328,6 +328,7 @@ export const appRouter = router({
       priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
       category: z.string().optional(), // 'closing' | 'meeting' | 'general'
       meetingRecordingLink: z.string().optional(),
+      taskType: z.enum(['design_2d','design_3d','render','quotation','meeting_modeling','meeting_presentation','meeting_closing','other']).optional(),
     })).mutation(async ({ input }) => { await createTask(input); return { success: true }; }),
     updateStatus: publicProcedure.input(z.object({
       id: z.number(), status: z.enum(['planned', 'completed', 'delayed', 'not_done', 'client_delay']),
@@ -415,7 +416,7 @@ export const appRouter = router({
       meetingRecordingLink: z.string().optional(),
       startTime: z.string().optional(),
       endTime: z.string().optional(),
-      taskType: z.enum(['meeting_2d','meeting_3d','meeting_quotation','meeting_closing','design_3d','design_2d','quotation','negotiation','other','meeting_presentation']).optional(),
+      taskType: z.enum(['design_2d','design_3d','render','quotation','meeting_modeling','meeting_presentation','meeting_closing','meeting_2d','meeting_3d','meeting_quotation','closing','negotiation','other']).optional(),
     })).mutation(async ({ input }) => {
       const { startTime, endTime, taskType, ...rest } = input;
       // Check overlap if times provided
@@ -668,6 +669,7 @@ export const appRouter = router({
     // ─── Department Labels ─────────────────────────────────────────────────────
     departmentLabels: publicProcedure.query(async () => DEPARTMENT_LABELS),
     salesDepartments: publicProcedure.query(async () => SALES_DEPARTMENTS),
+    allowedTaskTypes: publicProcedure.query(async () => ALLOWED_TASK_TYPES_BY_DEPARTMENT),
     // ─── Company Closing KPI + Reward System ──────────────────────────────────
     companyClosingKPI: publicProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
