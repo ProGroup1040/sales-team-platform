@@ -91,26 +91,26 @@
 - [x] كتابة اختبارات للـ KPI calculations
 
 ## KPI & Commission Module المستقل (الطلب الجديد)
-- [ ] تحديث schema: إضافة جدول design_reviews (تقييم التصميم الأسبوعي)
-- [ ] تحديث schema: إضافة جدول incentive_tiers (شرائح الحوافز)
-- [ ] تطبيق migration SQL الجديد
-- [ ] تحديث Backend: حساب KPI بالأوزان الثلاثة (Tasks 55% + Response 20% + CRM 25%)
-- [ ] تحديث Backend: Efficiency Score (عدد الاجتماعات لكل صفقة)
-- [ ] تحديث Backend: Commission Status (Available/Partial/Blocked) بناءً على KPI
-- [ ] تحديث Backend: Incentive System (KPI < 70% → محجوب، KPI ≥ 70% → مصروف)
-- [ ] تحديث Backend: Design KPI Weekly (من design_reviews)
-- [ ] تحديث Backend: KPI Alerts (سبب الانخفاض)
-- [ ] تحديث Backend: Ranking بناءً على KPI فقط
-- [ ] إعادة بناء KPIModule.tsx: 8 أقسام كاملة
-- [ ] قسم 1: KPI System (Breakdown + Alerts)
-- [ ] قسم 2: Efficiency داخل Tasks
-- [ ] قسم 3: Commission System (Available/Partial/Blocked)
-- [ ] قسم 4: Incentive System
-- [ ] قسم 5: Engineer View (KPI + Commission + Incentive + Ranking)
-- [ ] قسم 6: Ranking System (بناءً على KPI)
-- [ ] قسم 7: Real-time Updates indicators
-- [ ] قسم 8: Design KPI Weekly
-- [ ] كتابة اختبارات للـ KPI الجديد
+- [x] تحديث schema: إضافة جدول design_reviews (تقييم التصميم الأسبوعي)
+- [x] تحديث schema: إضافة جدول incentive_tiers (شرائح الحوافز)
+- [x] تطبيق migration SQL الجديد
+- [x] تحديث Backend: حساب KPI بالأوزان الثلاثة (Tasks 55% + Response 20% + CRM 25%)
+- [x] تحديث Backend: Efficiency Score (عدد الاجتماعات لكل صفقة)
+- [x] تحديث Backend: Commission Status (Available/Partial/Blocked) بناءً على KPI
+- [x] تحديث Backend: Incentive System (KPI < 70% → محجوب، KPI ≥ 70% → مصروف)
+- [x] تحديث Backend: Design KPI Weekly (من design_reviews)
+- [x] تحديث Backend: KPI Alerts (سبب الانخفاض)
+- [x] تحديث Backend: Ranking بناءً على KPI فقط
+- [x] إعادة بناء KPIModule.tsx: 8 أقسام كاملة
+- [x] قسم 1: KPI System (Breakdown + Alerts)
+- [x] قسم 2: Efficiency داخل Tasks
+- [x] قسم 3: Commission System (Available/Partial/Blocked)
+- [x] قسم 4: Incentive System
+- [x] قسم 5: Engineer View (KPI + Commission + Incentive + Ranking)
+- [x] قسم 6: Ranking System (بناءً على KPI)
+- [x] قسم 7: Real-time Updates indicators
+- [x] قسم 8: Design KPI Weekly
+- [x] كتابة اختبارات للـ KPI الجديد
 
 ## شرائح الحوافز والكوميشن المحددة (الطلب الجديد)
 - [x] تطبيق Incentive Tiers: <500K=0, 500K=2500, 1M=5000, 1.25M=6500, 1.5M=7500, 1.75M=8750, 2M+=10000
@@ -123,30 +123,30 @@
 - [x] تحديث KPIModule.tsx لعرض الشرائح والحالة بوضوح
 
 ## Financial Module (التحصيل + الكوميشن)
-- [ ] جدول payments: client_id, contract_id, amount, payment_date, payment_type, added_by
-- [ ] جدول payment_promises: client_id, promise_amount, promise_date, status (pending/paid/overdue)
-- [ ] جدول commission_payments: engineer_id, contract_id, stage (1/2), amount, status (paid/pending)
-- [ ] تحديث جدول contracts: إضافة حقول total_paid, collection_status, delivery_date
-- [ ] Backend: payment.create + payment.list + payment.byClient
-- [ ] Backend: promise.create + promise.list + promise.updateStatus
-- [ ] Backend: financial.clientProfile (contract value + paid + remaining + %)
-- [ ] Backend: financial.followUpToday (دفعات مستحقة اليوم + متأخرة)
-- [ ] Backend: financial.commissionByEngineer (Progressive + Split Stage 1/2)
-- [ ] Backend: financial.collectionVsCommission (overview)
-- [ ] Backend: visit payment tracking (1000/2000 ج.م خصم من التعاقد)
-- [ ] FinancialModule.tsx: Client Financial Profile (contract + paid + remaining + %)
-- [ ] FinancialModule.tsx: Payment Tracking (تسجيل دفعة جديدة)
-- [ ] FinancialModule.tsx: Payment Promise Tracking (وعد بالدفع)
-- [ ] FinancialModule.tsx: Daily Follow-up List (اليوم + متأخرة + تنبيهات)
-- [ ] FinancialModule.tsx: Responsibility Tracking (مهندس + admin)
-- [ ] FinancialModule.tsx: Visit Collection Tracking (1000/2000)
-- [ ] FinancialModule.tsx: Commission System (Progressive Tiers على التحصيل)
-- [ ] FinancialModule.tsx: Commission Split (Stage 1: 50% عند 75% تحصيل | Stage 2: 50% عند الاستلام)
-- [ ] FinancialModule.tsx: Commission Tracking (Earned + Paid + Pending لكل مهندس)
-- [ ] FinancialModule.tsx: Collection vs Commission Dashboard
-- [ ] تسجيل route /financial في App.tsx وإضافة للـ sidebar
-- [ ] Seed data للـ Financial Module
-- [ ] اختبارات Vitest للـ Commission Progressive + Split Logic
+- [x] جدول payments: client_id, contract_id, amount, payment_date, payment_type, added_by
+- [x] جدول payment_promises: client_id, promise_amount, promise_date, status (pending/paid/overdue)
+- [x] جدول commission_payments: engineer_id, contract_id, stage (1/2), amount, status (paid/pending)
+- [x] تحديث جدول contracts: إضافة حقول total_paid, collection_status, delivery_date
+- [x] Backend: payment.create + payment.list + payment.byClient
+- [x] Backend: promise.create + promise.list + promise.updateStatus
+- [x] Backend: financial.clientProfile (contract value + paid + remaining + %)
+- [x] Backend: financial.followUpToday (دفعات مستحقة اليوم + متأخرة)
+- [x] Backend: financial.commissionByEngineer (Progressive + Split Stage 1/2)
+- [x] Backend: financial.collectionVsCommission (overview)
+- [x] Backend: visit payment tracking (1000/2000 ج.م خصم من التعاقد)
+- [x] FinancialModule.tsx: Client Financial Profile (contract + paid + remaining + %)
+- [x] FinancialModule.tsx: Payment Tracking (تسجيل دفعة جديدة)
+- [x] FinancialModule.tsx: Payment Promise Tracking (وعد بالدفع)
+- [x] FinancialModule.tsx: Daily Follow-up List (اليوم + متأخرة + تنبيهات)
+- [x] FinancialModule.tsx: Responsibility Tracking (مهندس + admin)
+- [x] FinancialModule.tsx: Visit Collection Tracking (1000/2000)
+- [x] FinancialModule.tsx: Commission System (Progressive Tiers على التحصيل)
+- [x] FinancialModule.tsx: Commission Split (Stage 1: 50% عند 75% تحصيل | Stage 2: 50% عند الاستلام)
+- [x] FinancialModule.tsx: Commission Tracking (Earned + Paid + Pending لكل مهندس)
+- [x] FinancialModule.tsx: Collection vs Commission Dashboard
+- [x] تسجيل route /financial في App.tsx وإضافة للـ sidebar
+- [x] Seed data للـ Financial Module
+- [x] اختبارات Vitest للـ Commission Progressive + Split Logic
 
 ## Financial Module - الحالة الفعلية (مكتمل)
 - [x] جداول payments + payment_promises + commission_payments في قاعدة البيانات
@@ -159,26 +159,26 @@
 - [x] اختبارات Vitest: 100 اختبار ناجح (17 جديد للـ Financial Module)
 
 ## تحديث KPI + Commission + Incentive Rules (Final Version)
-- [ ] تحديث db.ts: Commission ثابت دائماً (لا يتأثر بـ KPI)
-- [ ] تحديث db.ts: KPI Bonus يُصرف عند KPI ≥ 60% فقط
-- [ ] تحديث db.ts: Incentive يُصرف عند KPI ≥ 75% فقط
-- [ ] تحديث db.ts: High Performance Level عند KPI ≥ 90%
-- [ ] تحديث KPIModule.tsx: عرض Commission دائماً بدون حجب
-- [ ] تحديث KPIModule.tsx: KPI Bonus (Available/Blocked) مع رسالة واضحة
-- [ ] تحديث KPIModule.tsx: Incentive (Available/Blocked) مع رسالة واضحة
-- [ ] تحديث KPIModule.tsx: Status Messages ("الحافز متوقف بسبب KPI أقل من 75%"...)
-- [ ] تحديث الاختبارات لتعكس القواعد الجديدة
+- [x] تحديث db.ts: Commission ثابت دائماً (لا يتأثر بـ KPI)
+- [x] تحديث db.ts: KPI Bonus يُصرف عند KPI ≥ 60% فقط
+- [x] تحديث db.ts: Incentive يُصرف عند KPI ≥ 75% فقط
+- [x] تحديث db.ts: High Performance Level عند KPI ≥ 90%
+- [x] تحديث KPIModule.tsx: عرض Commission دائماً بدون حجب
+- [x] تحديث KPIModule.tsx: KPI Bonus (Available/Blocked) مع رسالة واضحة
+- [x] تحديث KPIModule.tsx: Incentive (Available/Blocked) مع رسالة واضحة
+- [x] تحديث KPIModule.tsx: Status Messages ("الحافز متوقف بسبب KPI أقل من 75%"...)
+- [x] تحديث الاختبارات لتعكس القواعد الجديدة
 
 ## Test Data Setup (Dummy Engineers)
-- [ ] إصلاح خطأ db.ts (totalPayout مكسور)
+- [x] إصلاح خطأ db.ts (totalPayout مكسور)
 - [x] تحديث KPI Rules: Commission ثابت دائماً
 - [x] إضافة 6 مهندسين افتراضيين بمبيعات مختلفة (300K → 2M)
-- [ ] إضافة KPI مختلف لكل مهندس (45% → 92%)
-- [ ] إضافة مهام يومية (Completed + Delayed + Not Done) لكل مهندس
-- [ ] إضافة بيانات تحصيل مالي لكل مهندس
+- [x] إضافة KPI مختلف لكل مهندس (45% → 92%)
+- [x] إضافة مهام يومية (Completed + Delayed + Not Done) لكل مهندس
+- [x] إضافة بيانات تحصيل مالي لكل مهندس
 - [x] إضافة زر "Reset Test Data" في الواجهة
-- [ ] تحديث KPIModule.tsx بالقواعد الجديدة + Status Messages
-- [ ] اختبار Commission ثابت + KPI Bonus ≥60% + Incentive ≥75%
+- [x] تحديث KPIModule.tsx بالقواعد الجديدة + Status Messages
+- [x] اختبار Commission ثابت + KPI Bonus ≥60% + Incentive ≥75%
 
 ## Dark Theme System
 - [x] تحديث index.css بـ Dark Theme CSS Variables الكاملة
@@ -187,45 +187,45 @@
 - [x] تطبيق Dark Theme على كل الـ Modules
 
 ## Admin Sales Tasks Module (تطوير موديول المهام)
-- [ ] إضافة جدول admin_sales_tasks في schema.ts (daily/weekly/monthly + meetings)
-- [ ] تحديث engineers role ليشمل admin_sales
-- [ ] تطبيق migration SQL
-- [ ] Backend API: CRUD للـ Admin Sales Tasks
-- [ ] Backend API: Weekly Templates (الاثنين+الخميس / الأربعاء / الخميس / السبت+الثلاثاء)
-- [ ] Backend API: Monthly Templates (يوم 15 / 22 / 28)
-- [ ] Backend API: Meetings Tracking (Weekly Team / Management / Report)
-- [ ] Backend API: إحصائيات للمدير (نسبة تنفيذ + متأخرات)
-- [ ] TasksModule.tsx: إضافة Tab خاص بـ Admin Sales
-- [ ] TasksModule.tsx: Daily Tasks Section بالـ 7 مهام
-- [ ] TasksModule.tsx: Weekly Tasks Section بالتقسيم حسب الأيام
-- [ ] TasksModule.tsx: Monthly Tasks Section (15/22/28)
-- [ ] TasksModule.tsx: Meetings Tracking Section
-- [ ] TasksModule.tsx: Manager View (نسبة تنفيذ + متأخرات)
-- [ ] Visibility Control: Admin Sales يرى مهامه فقط، Manager يرى الكل
+- [x] إضافة جدول admin_sales_tasks في schema.ts (daily/weekly/monthly + meetings)
+- [x] تحديث engineers role ليشمل admin_sales
+- [x] تطبيق migration SQL
+- [x] Backend API: CRUD للـ Admin Sales Tasks
+- [x] Backend API: Weekly Templates (الاثنين+الخميس / الأربعاء / الخميس / السبت+الثلاثاء)
+- [x] Backend API: Monthly Templates (يوم 15 / 22 / 28)
+- [x] Backend API: Meetings Tracking (Weekly Team / Management / Report)
+- [x] Backend API: إحصائيات للمدير (نسبة تنفيذ + متأخرات)
+- [x] TasksModule.tsx: إضافة Tab خاص بـ Admin Sales
+- [x] TasksModule.tsx: Daily Tasks Section بالـ 7 مهام
+- [x] TasksModule.tsx: Weekly Tasks Section بالتقسيم حسب الأيام
+- [x] TasksModule.tsx: Monthly Tasks Section (15/22/28)
+- [x] TasksModule.tsx: Meetings Tracking Section
+- [x] TasksModule.tsx: Manager View (نسبة تنفيذ + متأخرات)
+- [x] Visibility Control: Admin Sales يرى مهامه فقط، Manager يرى الكل
 
 ## Management Focus Section (للإدارة فقط)
-- [ ] إضافة getManagementFocus endpoint في routers.ts يجمع بيانات Admin Sales + Leads + Alerts
-- [ ] بناء ManagementFocusSection component في Overview.tsx
-- [ ] عرض Admin Sales Performance (KPI + أخطاء + تأخيرات + Status)
-- [ ] عرض Campaign Performance (Leads count + quality + Status)
-- [ ] عرض Alerts الذكية (تأخير تحصيل + انخفاض KPI + ضعف Leads + مشاكل مهام)
-- [ ] تقييد الـ section للإدارة فقط (admin role)
+- [x] إضافة getManagementFocus endpoint في routers.ts يجمع بيانات Admin Sales + Leads + Alerts
+- [x] بناء ManagementFocusSection component في Overview.tsx
+- [x] عرض Admin Sales Performance (KPI + أخطاء + تأخيرات + Status)
+- [x] عرض Campaign Performance (Leads count + quality + Status)
+- [x] عرض Alerts الذكية (تأخير تحصيل + انخفاض KPI + ضعف Leads + مشاكل مهام)
+- [x] تقييد الـ section للإدارة فقط (admin role)
 
 ## Meeting Recording + Review System (داخل موديول المهام)
-- [ ] تحديث schema: إضافة meetingRecordingLink + recordingSubmittedAt لجدول daily_tasks
-- [ ] تحديث schema: إضافة جدول meeting_reviews (تقييم الميتينج)
-- [ ] تطبيق migration SQL
-- [ ] Backend: submitRecordingLink (task_id + link) + Notification لـ Admin Sales
-- [ ] Backend: createMeetingReview (5 أبعاد + totalScore + comments)
-- [ ] Backend: getMeetingReview (by taskId)
-- [ ] Backend: شرط إغلاق Closing task: لا يمكن done بدون recordingLink
-- [ ] Backend: تعليق الكوميشن عند غياب recordingLink في حساب KPI
-- [ ] Backend: إضافة closingQualityScore لـ KPI المهندس
-- [ ] TasksModule: حقل Recording Link إجباري عند إنشاء Closing/Meeting task
-- [ ] TasksModule: شرط إغلاق المهمة (تنبيه عند محاولة done بدون لينك)
-- [ ] TasksModule: Review Panel للـ Admin (تقييم 5 أبعاد + تعليق)
-- [ ] TasksModule: عرض Total Score + حالة الكوميشن على بطاقة المهمة
-- [ ] كتابة اختبارات Vitest للـ Review Scoring Logic
+- [x] تحديث schema: إضافة meetingRecordingLink + recordingSubmittedAt لجدول daily_tasks
+- [x] تحديث schema: إضافة جدول meeting_reviews (تقييم الميتينج)
+- [x] تطبيق migration SQL
+- [x] Backend: submitRecordingLink (task_id + link) + Notification لـ Admin Sales
+- [x] Backend: createMeetingReview (5 أبعاد + totalScore + comments)
+- [x] Backend: getMeetingReview (by taskId)
+- [x] Backend: شرط إغلاق Closing task: لا يمكن done بدون recordingLink
+- [x] Backend: تعليق الكوميشن عند غياب recordingLink في حساب KPI
+- [x] Backend: إضافة closingQualityScore لـ KPI المهندس
+- [x] TasksModule: حقل Recording Link إجباري عند إنشاء Closing/Meeting task
+- [x] TasksModule: شرط إغلاق المهمة (تنبيه عند محاولة done بدون لينك)
+- [x] TasksModule: Review Panel للـ Admin (تقييم 5 أبعاد + تعليق)
+- [x] TasksModule: عرض Total Score + حالة الكوميشن على بطاقة المهمة
+- [x] كتابة اختبارات Vitest للـ Review Scoring Logic
 
 ## Lead Followup Tracking System (Admin Sales + Tele-sales KPI)
 - [x] تحديث schema: إضافة جدول lead_followup_logs (date, adminSalesId, telesalesId, followupStatus, responseDelay, notes)
@@ -242,31 +242,31 @@
 - [x] كتابة اختبارات Vitest لـ Lead Followup scoring logic (13 اختبار ناجح)
 
 ## Visits Module - نظام تشغيل يومي إلزامي (الطلب الجديد)
-- [ ] تحديث schema: إضافة paymentScreenshotUrl, paymentDate, bookingStatus, distributionStatus لجدول visits
-- [ ] تحديث schema: إضافة deleteReason, deletedAt, isDeleted (Soft Delete) لجدول visits
-- [ ] تحديث schema: إضافة adminSalesId (من يتابع) لجدول visits
-- [ ] تطبيق migration SQL
-- [ ] Backend: softDeleteVisit (حذف ناعم مع سبب)
-- [ ] Backend: getVisitsDebt (المديونية = تمت ولم يتم التحصيل)
-- [ ] Backend: getVisitsDailyTracking (تتبع يومي إلزامي)
-- [ ] Backend: getVisitsAlerts (تنبيهات: لم يتأكد / لم يُرفع / مديونية)
-- [ ] Backend: تحديث createVisit لإضافة adminSalesId + bookingStatus + distributionStatus
-- [ ] Backend: تحديث updateVisitFull لإضافة paymentScreenshotUrl + paymentDate
-- [ ] Backend: getAdminSalesVisitsKPI (خصم KPI لعدم التحديث اليومي + عدم متابعة التحصيل + مديونية بدون متابعة + تأخير التوزيع)
-- [ ] Backend: تحديث getEngineersKPI لإضافة خصم KPI المعاينات (عدم التأكيد + تأخير + عدم الرفع)
-- [ ] VisitsModule.tsx: إعادة بناء كاملة مع 7 أقسام
-- [ ] VisitsModule.tsx: قسم Daily Tracking (تتبع يومي إلزامي مع تحذير عند غياب التحديث)
-- [ ] VisitsModule.tsx: قسم الحجز والتوزيع (محجوزة/موزعة/تأخير توزيع)
-- [ ] VisitsModule.tsx: قسم التأكيد (نفس اليوم/متأخر/لم يتم)
-- [ ] VisitsModule.tsx: قسم التنفيذ (تمت/متأخرة/ملغية/مؤجلة)
-- [ ] VisitsModule.tsx: قسم الرفع والتسليم (نفس اليوم/متأخر/لم يتم)
-- [ ] VisitsModule.tsx: قسم الجودة (ناجحة/بها مشاكل/مكررة/مرفوضة)
-- [ ] VisitsModule.tsx: قسم المالية (تم الدفع/لم يتم + Screenshot إجباري + تاريخ الدفع)
-- [ ] VisitsModule.tsx: قسم المديونية (حساب تلقائي للمعاينات التي تمت ولم يُحصَّل)
-- [ ] VisitsModule.tsx: زر حذف ناعم مع سبب (العميل ألغى/تأجيل/خطأ إدخال)
-- [ ] VisitsModule.tsx: قسم Alerts (لم يتأكد/لم يُرفع/مديونية)
-- [ ] VisitsModule.tsx: KPI Impact panel (تأثير على KPI المهندس وAdmin Sales)
-- [ ] كتابة اختبارات Vitest لـ Debt Calculation وKPI Deduction Logic
+- [x] تحديث schema: إضافة paymentScreenshotUrl, paymentDate, bookingStatus, distributionStatus لجدول visits
+- [x] تحديث schema: إضافة deleteReason, deletedAt, isDeleted (Soft Delete) لجدول visits
+- [x] تحديث schema: إضافة adminSalesId (من يتابع) لجدول visits
+- [x] تطبيق migration SQL
+- [x] Backend: softDeleteVisit (حذف ناعم مع سبب)
+- [x] Backend: getVisitsDebt (المديونية = تمت ولم يتم التحصيل)
+- [x] Backend: getVisitsDailyTracking (تتبع يومي إلزامي)
+- [x] Backend: getVisitsAlerts (تنبيهات: لم يتأكد / لم يُرفع / مديونية)
+- [x] Backend: تحديث createVisit لإضافة adminSalesId + bookingStatus + distributionStatus
+- [x] Backend: تحديث updateVisitFull لإضافة paymentScreenshotUrl + paymentDate
+- [x] Backend: getAdminSalesVisitsKPI (خصم KPI لعدم التحديث اليومي + عدم متابعة التحصيل + مديونية بدون متابعة + تأخير التوزيع)
+- [x] Backend: تحديث getEngineersKPI لإضافة خصم KPI المعاينات (عدم التأكيد + تأخير + عدم الرفع)
+- [x] VisitsModule.tsx: إعادة بناء كاملة مع 7 أقسام
+- [x] VisitsModule.tsx: قسم Daily Tracking (تتبع يومي إلزامي مع تحذير عند غياب التحديث)
+- [x] VisitsModule.tsx: قسم الحجز والتوزيع (محجوزة/موزعة/تأخير توزيع)
+- [x] VisitsModule.tsx: قسم التأكيد (نفس اليوم/متأخر/لم يتم)
+- [x] VisitsModule.tsx: قسم التنفيذ (تمت/متأخرة/ملغية/مؤجلة)
+- [x] VisitsModule.tsx: قسم الرفع والتسليم (نفس اليوم/متأخر/لم يتم)
+- [x] VisitsModule.tsx: قسم الجودة (ناجحة/بها مشاكل/مكررة/مرفوضة)
+- [x] VisitsModule.tsx: قسم المالية (تم الدفع/لم يتم + Screenshot إجباري + تاريخ الدفع)
+- [x] VisitsModule.tsx: قسم المديونية (حساب تلقائي للمعاينات التي تمت ولم يُحصَّل)
+- [x] VisitsModule.tsx: زر حذف ناعم مع سبب (العميل ألغى/تأجيل/خطأ إدخال)
+- [x] VisitsModule.tsx: قسم Alerts (لم يتأكد/لم يُرفع/مديونية)
+- [x] VisitsModule.tsx: KPI Impact panel (تأثير على KPI المهندس وAdmin Sales)
+- [x] كتابة اختبارات Vitest لـ Debt Calculation وKPI Deduction Logic
 
 ## Delete System + Fake Data Cleanup
 - [x] حذف جميع البيانات الافتراضية من DB (leads, visits, deals, engineers, daily_tasks, sales, customers, collections)
@@ -339,17 +339,17 @@
 - [x] اختبارات Vitest لمنطق تحليل الخسائر (28 اختبار جديد - 215 إجمالي)
 
 ## TasksModule - Engineer View + MTD Scope (الطلب الجديد)
-- [ ] Backend: تحديث getEngineerTasks ليقبل engineerId + MTD (من بداية الشهر حتى اليوم)
-- [ ] Backend: تحديث getTasksStats ليدعم MTD وفلترة بالمهندس
-- [ ] Backend: إضافة getEngineerRanking (ترتيب المهندس بدون تفاصيل الآخرين)
-- [ ] Backend: إضافة getEngineerCriticalTasks (مهام متأخرة >48h أو Priority=High ولم تنفذ)
-- [ ] Frontend: Engineer View يرى 4 أقسام فقط (Task List + Overview + Ranking + Critical)
-- [ ] Frontend: Task List يعرض مهام المهندس الحالي فقط (حسب session)
-- [ ] Frontend: Overview يعرض إحصائيات المهندس الحالي فقط (MTD)
-- [ ] Frontend: Ranking يعرض ترتيب المهندس فقط (#X من Y) بدون تفاصيل الآخرين
-- [ ] Frontend: Critical Tasks يعرض مهام المهندس الحرجة فقط
-- [ ] Frontend: Admin يرى كل الأقسام كما هي
-- [ ] اختبارات Vitest للـ MTD وEngineer Ranking logic
+- [x] Backend: تحديث getEngineerTasks ليقبل engineerId + MTD (من بداية الشهر حتى اليوم)
+- [x] Backend: تحديث getTasksStats ليدعم MTD وفلترة بالمهندس
+- [x] Backend: إضافة getEngineerRanking (ترتيب المهندس بدون تفاصيل الآخرين)
+- [x] Backend: إضافة getEngineerCriticalTasks (مهام متأخرة >48h أو Priority=High ولم تنفذ)
+- [x] Frontend: Engineer View يرى 4 أقسام فقط (Task List + Overview + Ranking + Critical)
+- [x] Frontend: Task List يعرض مهام المهندس الحالي فقط (حسب session)
+- [x] Frontend: Overview يعرض إحصائيات المهندس الحالي فقط (MTD)
+- [x] Frontend: Ranking يعرض ترتيب المهندس فقط (#X من Y) بدون تفاصيل الآخرين
+- [x] Frontend: Critical Tasks يعرض مهام المهندس الحرجة فقط
+- [x] Frontend: Admin يرى كل الأقسام كما هي
+- [x] اختبارات Vitest للـ MTD وEngineer Ranking logic
 
 ## Calendar View - تقويم زمني للمهام (الطلب الجديد)
 - [x] Backend: إضافة tasks.calendarView endpoint يجلب مهام MTD مجمعة حسب اليوم
@@ -410,47 +410,47 @@
 ## Work Distribution + KPI Analysis System (25 أبريل)
 
 ### Database
-- [ ] جدول work_logs: (id, engineer_id, activity_type, duration_minutes, log_date, week_number, month, year, notes)
-- [ ] activity_type enum: meeting_2d, meeting_quotation, meeting_3d, meeting_closing, design_3d, design_2d, quotation
-- [ ] Migration SQL لجدول work_logs
+- [x] جدول work_logs: (id, engineer_id, activity_type, duration_minutes, log_date, week_number, month, year, notes)
+- [x] activity_type enum: meeting_2d, meeting_quotation, meeting_3d, meeting_closing, design_3d, design_2d, quotation
+- [x] Migration SQL لجدول work_logs
 
 ### Backend - db.ts
-- [ ] logWorkActivity() - تسجيل نشاط جديد
-- [ ] getWorkDistribution(engineerId, year, month) - توزيع الوقت لمهندس
-- [ ] getAllEngineersDistribution(year, month) - توزيع كل المهندسين
-- [ ] calculateDistributionScore(distribution) - حساب Distribution Score
-- [ ] getWeeklyDistribution(engineerId, year, week) - توزيع أسبوعي
-- [ ] getCriticalInsights(year, month) - تحليل نقاط الضعف تلقائياً
-- [ ] getEngineerRankingFull(year, month) - ترتيب شامل (Sales + Closing + Distribution)
+- [x] logWorkActivity() - تسجيل نشاط جديد
+- [x] getWorkDistribution(engineerId, year, month) - توزيع الوقت لمهندس
+- [x] getAllEngineersDistribution(year, month) - توزيع كل المهندسين
+- [x] calculateDistributionScore(distribution) - حساب Distribution Score
+- [x] getWeeklyDistribution(engineerId, year, week) - توزيع أسبوعي
+- [x] getCriticalInsights(year, month) - تحليل نقاط الضعف تلقائياً
+- [x] getEngineerRankingFull(year, month) - ترتيب شامل (Sales + Closing + Distribution)
 
 ### Backend - routers.ts
-- [ ] workDist.log - تسجيل نشاط (protected)
-- [ ] workDist.myDistribution - توزيع المهندس الحالي
-- [ ] workDist.allEngineers - توزيع كل المهندسين (admin فقط)
-- [ ] workDist.criticalInsights - تحليل نقاط الضعف (admin فقط)
-- [ ] workDist.weeklyAnalysis - تحليل أسبوعي
-- [ ] workDist.fullRanking - ترتيب شامل
+- [x] workDist.log - تسجيل نشاط (protected)
+- [x] workDist.myDistribution - توزيع المهندس الحالي
+- [x] workDist.allEngineers - توزيع كل المهندسين (admin فقط)
+- [x] workDist.criticalInsights - تحليل نقاط الضعف (admin فقط)
+- [x] workDist.weeklyAnalysis - تحليل أسبوعي
+- [x] workDist.fullRanking - ترتيب شامل
 
 ### Frontend - WorkDistribution.tsx
-- [ ] صفحة رئيسية بـ 2 views: Engineer View + Manager View
-- [ ] Engineer View: Donut Chart للتوزيع الفعلي vs المستهدف
-- [ ] Engineer View: Distribution Score مع تفسير
-- [ ] Engineer View: Weekly Feedback (متوازن؟ مركّز؟ ضعيف في Closing؟)
-- [ ] Engineer View: نموذج تسجيل نشاط جديد
-- [ ] Manager View: جدول مقارنة كل المهندسين
-- [ ] Manager View: Critical Insights تلقائية
-- [ ] Manager View: Ranking شامل (Sales + Closing + Distribution)
-- [ ] إضافة WorkDistribution في sidebar وroutes
+- [x] صفحة رئيسية بـ 2 views: Engineer View + Manager View
+- [x] Engineer View: Donut Chart للتوزيع الفعلي vs المستهدف
+- [x] Engineer View: Distribution Score مع تفسير
+- [x] Engineer View: Weekly Feedback (متوازن؟ مركّز؟ ضعيف في Closing؟)
+- [x] Engineer View: نموذج تسجيل نشاط جديد
+- [x] Manager View: جدول مقارنة كل المهندسين
+- [x] Manager View: Critical Insights تلقائية
+- [x] Manager View: Ranking شامل (Sales + Closing + Distribution)
+- [x] إضافة WorkDistribution في sidebar وroutes
 
 ### تحديث KPIModule
-- [ ] إضافة Distribution Score في بطاقة كل مهندس
-- [ ] إضافة Critical Insights section
-- [ ] تحديث Ranking ليشمل Distribution Score
+- [x] إضافة Distribution Score في بطاقة كل مهندس
+- [x] إضافة Critical Insights section
+- [x] تحديث Ranking ليشمل Distribution Score
 
 ### اختبارات
-- [ ] Vitest لـ calculateDistributionScore
-- [ ] Vitest لـ getCriticalInsights
-- [ ] Vitest لـ getEngineerRankingFull
+- [x] Vitest لـ calculateDistributionScore
+- [x] Vitest لـ getCriticalInsights
+- [x] Vitest لـ getEngineerRankingFull
 
 ## Time-based Calendar في موديول المهام (الطلب الجديد)
 - [x] تحديث schema: إضافة startTime, endTime, taskType لجدول daily_tasks
@@ -474,193 +474,193 @@
 - [x] Summary Bar (إجمالي الوقت + توزيع % لكل نشاط)
 
 ## Performance Analysis System - التقرير الأسبوعي (الطلب الجديد)
-- [ ] تحديث schema: إضافة operational_targets (target_meetings, target_designs, target_closings)
-- [ ] تحديث taskType enum: 2d, 3d_modeling, render, quotation, meeting_presentation, meeting_closing, closing
-- [ ] تطبيق migration SQL الجديد
-- [ ] Backend: getWeeklyPerformance (Activity Breakdown لكل مهندس)
-- [ ] Backend: getTargetAchievement (مبيعات + صفقات + Designs + Meetings)
-- [ ] Backend: getCriticalInsights (Meeting عالي + Closing قليل، إلخ)
-- [ ] Backend: getBehaviorAlerts (مهندس Meeting عالي بدون Sales، Activity ضعيف)
-- [ ] Backend: getActivityBalance (توزيع الأنشطة مقارنة بالهدف)
-- [ ] إعادة بناء WeeklyReport.tsx: Target Achievement Section
-- [ ] إعادة بناء WeeklyReport.tsx: Activity Breakdown Section (عدد كل نشاط)
-- [ ] إعادة بناء WeeklyReport.tsx: Critical Insights Section (تحليل ذكي)
-- [ ] إعادة بناء WeeklyReport.tsx: Behavior Alerts Section
-- [ ] إعادة بناء WeeklyReport.tsx: Smart Summary لكل مهندس
-- [ ] إعادة بناء WeeklyReport.tsx: Ranking بناءً على مبيعات + Closing Rate + Activity Balance
-- [ ] تحديث AddTask Dialog: أنواع المهام الجديدة (حذف "عام")
-- [ ] اختبارات Vitest للـ Activity Breakdown + Target Achievement
+- [x] تحديث schema: إضافة operational_targets (target_meetings, target_designs, target_closings)
+- [x] تحديث taskType enum: 2d, 3d_modeling, render, quotation, meeting_presentation, meeting_closing, closing
+- [x] تطبيق migration SQL الجديد
+- [x] Backend: getWeeklyPerformance (Activity Breakdown لكل مهندس)
+- [x] Backend: getTargetAchievement (مبيعات + صفقات + Designs + Meetings)
+- [x] Backend: getCriticalInsights (Meeting عالي + Closing قليل، إلخ)
+- [x] Backend: getBehaviorAlerts (مهندس Meeting عالي بدون Sales، Activity ضعيف)
+- [x] Backend: getActivityBalance (توزيع الأنشطة مقارنة بالهدف)
+- [x] إعادة بناء WeeklyReport.tsx: Target Achievement Section
+- [x] إعادة بناء WeeklyReport.tsx: Activity Breakdown Section (عدد كل نشاط)
+- [x] إعادة بناء WeeklyReport.tsx: Critical Insights Section (تحليل ذكي)
+- [x] إعادة بناء WeeklyReport.tsx: Behavior Alerts Section
+- [x] إعادة بناء WeeklyReport.tsx: Smart Summary لكل مهندس
+- [x] إعادة بناء WeeklyReport.tsx: Ranking بناءً على مبيعات + Closing Rate + Activity Balance
+- [x] تحديث AddTask Dialog: أنواع المهام الجديدة (حذف "عام")
+- [x] اختبارات Vitest للـ Activity Breakdown + Target Achievement
 
 ## Time Distribution Analysis System (الطلب الجديد)
-- [ ] Backend: getTimeDistributionAnalysis (Actual vs Target % لكل مهندس)
-- [ ] Backend: calcDistributionScore (نقاط الالتزام بالتوزيع المثالي)
-- [ ] Backend: getEngineerPerformanceReport (MTD: مبيعات + أنشطة + توزيع وقت)
-- [ ] WeeklyReport: Pie Chart لتوزيع الوقت الفعلي
-- [ ] WeeklyReport: Bar Chart مقارنة Actual vs Target Distribution
-- [ ] WeeklyReport: Distribution Score لكل مهندس
-- [ ] WeeklyReport: Behavior Alerts (Meeting عالي بدون Sales، 3D عالي بدون تحويل)
-- [ ] WeeklyReport: Smart Summary لكل مهندس
-- [ ] TasksModule: AddTask Dialog يجعل Duration إلزامي
-- [ ] TasksModule: AddTask Dialog يجعل TaskType إلزامي (لا يوجد Task بدون Type)
-- [ ] TasksModule: تحديث أنواع المهام: 2D, 3D Modeling, Render, Quotation, Meeting Modeling, Meeting Closing
+- [x] Backend: getTimeDistributionAnalysis (Actual vs Target % لكل مهندس)
+- [x] Backend: calcDistributionScore (نقاط الالتزام بالتوزيع المثالي)
+- [x] Backend: getEngineerPerformanceReport (MTD: مبيعات + أنشطة + توزيع وقت)
+- [x] WeeklyReport: Pie Chart لتوزيع الوقت الفعلي
+- [x] WeeklyReport: Bar Chart مقارنة Actual vs Target Distribution
+- [x] WeeklyReport: Distribution Score لكل مهندس
+- [x] WeeklyReport: Behavior Alerts (Meeting عالي بدون Sales، 3D عالي بدون تحويل)
+- [x] WeeklyReport: Smart Summary لكل مهندس
+- [x] TasksModule: AddTask Dialog يجعل Duration إلزامي
+- [x] TasksModule: AddTask Dialog يجعل TaskType إلزامي (لا يوجد Task بدون Type)
+- [x] TasksModule: تحديث أنواع المهام: 2D, 3D Modeling, Render, Quotation, Meeting Modeling, Meeting Closing
 
 ## Closing & Discount Management System (الطلب الجديد)
-- [ ] إضافة engineerId إجباري في deals schema
-- [ ] إضافة حقول: maxDiscountPct, usedDiscountPct, savedDiscountBonus في deals
-- [ ] إضافة جدول discount_config لإعدادات الخصومات
-- [ ] Backend: حساب Discount Pool لكل مهندس (Actual Sales + Negotiation)
-- [ ] Backend: حساب Saved Discount Bonus بعد الإغلاق (50% للمهندس)
-- [ ] Backend: Pipeline Stats (Closed/Negotiation/Quotation/Lost) لكل مهندس
-- [ ] Backend: Performance-Based Discount (Closing Rate → Discount %)
-- [ ] Backend: استبعاد admin_sales وgroup_admin من Ranking وKPI
-- [ ] Frontend: Pipeline View احترافي بألوان (أخضر/أزرق/رمادي/أحمر)
-- [ ] Frontend: Discount Dashboard لكل مهندس (Pool/Used/Saved/Bonus)
-- [ ] Frontend: عرض Max/Used/Remaining Discount داخل الصفقة
-- [ ] Frontend: Admin Control Panel للخصومات والموافقات
-- [ ] Frontend: Bonus Summary لكل مهندس
-- [ ] Frontend: Total Pipeline Value (Quotations + Negotiation)
+- [x] إضافة engineerId إجباري في deals schema
+- [x] إضافة حقول: maxDiscountPct, usedDiscountPct, savedDiscountBonus في deals
+- [x] إضافة جدول discount_config لإعدادات الخصومات
+- [x] Backend: حساب Discount Pool لكل مهندس (Actual Sales + Negotiation)
+- [x] Backend: حساب Saved Discount Bonus بعد الإغلاق (50% للمهندس)
+- [x] Backend: Pipeline Stats (Closed/Negotiation/Quotation/Lost) لكل مهندس
+- [x] Backend: Performance-Based Discount (Closing Rate → Discount %)
+- [x] Backend: استبعاد admin_sales وgroup_admin من Ranking وKPI
+- [x] Frontend: Pipeline View احترافي بألوان (أخضر/أزرق/رمادي/أحمر)
+- [x] Frontend: Discount Dashboard لكل مهندس (Pool/Used/Saved/Bonus)
+- [x] Frontend: عرض Max/Used/Remaining Discount داخل الصفقة
+- [x] Frontend: Admin Control Panel للخصومات والموافقات
+- [x] Frontend: Bonus Summary لكل مهندس
+- [x] Frontend: Total Pipeline Value (Quotations + Negotiation)
 
 ## Output-Based KPI System (Tasks + KPI + Goals + Weekly Report)
-- [ ] Backend: calcDistributionScore (50% Meetings, 30% 3D, 10% 2D, 10% Quotation)
-- [ ] Backend: getOutputBasedKPI (Closed Deals + Designs + Meetings Closing)
-- [ ] Backend: getTargetAchievement (Sales % + Designs % + Meetings %)
-- [ ] Backend: getBehaviorAlerts (High Meetings/Low Closing, High Designs/Low Sales, etc.)
-- [ ] Backend: getSmartRanking (Sales + Closing Rate + Distribution + Output)
-- [ ] Backend: getCriticalInsights (Time Waste Control + Behavior Patterns)
-- [ ] Backend: getWeeklyPerformanceFull (Activity Breakdown + Distribution + Targets)
-- [ ] Frontend: WeeklyReport - Distribution Score Chart (Actual vs Target)
-- [ ] Frontend: WeeklyReport - Target Achievement Progress Bars
-- [ ] Frontend: WeeklyReport - Activity Breakdown (count + hours per type)
-- [ ] Frontend: WeeklyReport - Behavior Alerts + Critical Insights
-- [ ] Frontend: KPIModule - Output-Based KPI (not task count)
-- [ ] Frontend: KPIModule - Smart Ranking (4 factors)
-- [ ] Frontend: KPIModule - Progress Tracking (Sales/Design/Meetings %)
+- [x] Backend: calcDistributionScore (50% Meetings, 30% 3D, 10% 2D, 10% Quotation)
+- [x] Backend: getOutputBasedKPI (Closed Deals + Designs + Meetings Closing)
+- [x] Backend: getTargetAchievement (Sales % + Designs % + Meetings %)
+- [x] Backend: getBehaviorAlerts (High Meetings/Low Closing, High Designs/Low Sales, etc.)
+- [x] Backend: getSmartRanking (Sales + Closing Rate + Distribution + Output)
+- [x] Backend: getCriticalInsights (Time Waste Control + Behavior Patterns)
+- [x] Backend: getWeeklyPerformanceFull (Activity Breakdown + Distribution + Targets)
+- [x] Frontend: WeeklyReport - Distribution Score Chart (Actual vs Target)
+- [x] Frontend: WeeklyReport - Target Achievement Progress Bars
+- [x] Frontend: WeeklyReport - Activity Breakdown (count + hours per type)
+- [x] Frontend: WeeklyReport - Behavior Alerts + Critical Insights
+- [x] Frontend: KPIModule - Output-Based KPI (not task count)
+- [x] Frontend: KPIModule - Smart Ranking (4 factors)
+- [x] Frontend: KPIModule - Progress Tracking (Sales/Design/Meetings %)
 
 ## Admin Sales System
-- [ ] Admin Task Types: CRM Update, Task Distribution, Task Follow-up, Collection Follow-up, Inspection Management, Reporting, Meeting Management
-- [ ] Admin KPI: Data Accuracy + Task Completion + Delay Rate + Team Performance
-- [ ] Time Waste Detection: Alert when client consumes time without stage progress
-- [ ] Admin Dashboard: Team Performance + CRM Status + Task Completion + Alerts
-- [ ] Closing Task Type added to engineer task types
+- [x] Admin Task Types: CRM Update, Task Distribution, Task Follow-up, Collection Follow-up, Inspection Management, Reporting, Meeting Management
+- [x] Admin KPI: Data Accuracy + Task Completion + Delay Rate + Team Performance
+- [x] Time Waste Detection: Alert when client consumes time without stage progress
+- [x] Admin Dashboard: Team Performance + CRM Status + Task Completion + Alerts
+- [x] Closing Task Type added to engineer task types
 
 ## Reports Module (Weekly / Monthly / Quarterly)
-- [ ] Reports Module page with 3 tabs: Weekly / Monthly / Quarterly
-- [ ] Weekly Report: Sales Achievement + Activity Breakdown + Distribution Score + Output + KPI Score + Insights
-- [ ] Monthly Report: Total Sales + Target % + Closing Rate + Designs + Meetings + Distribution + Trend + Ranking + Bonus
-- [ ] Quarterly Report: Sales Growth + Performance Trend + Top/Bottom Engineers
-- [ ] Custom Dashboard: Engineer filter + Date Range + Report Type selector
-- [ ] Alerts inside report: weak performance, unbalanced distribution, delay, weak closing
-- [ ] Auto-generate Weekly Report every Thursday (scheduled task)
-- [ ] Add Reports link in sidebar navigation
+- [x] Reports Module page with 3 tabs: Weekly / Monthly / Quarterly
+- [x] Weekly Report: Sales Achievement + Activity Breakdown + Distribution Score + Output + KPI Score + Insights
+- [x] Monthly Report: Total Sales + Target % + Closing Rate + Designs + Meetings + Distribution + Trend + Ranking + Bonus
+- [x] Quarterly Report: Sales Growth + Performance Trend + Top/Bottom Engineers
+- [x] Custom Dashboard: Engineer filter + Date Range + Report Type selector
+- [x] Alerts inside report: weak performance, unbalanced distribution, delay, weak closing
+- [x] Auto-generate Weekly Report every Thursday (scheduled task)
+- [x] Add Reports link in sidebar navigation
 
 ## Sales Execution System (Module جديد)
-- [ ] Schema: جدول meeting_reviews (recording_link, score, notes, manager_rating, strengths, improvements)
-- [ ] Schema: جدول playbook_sessions (engineer_id, task_id, steps_completed, started_at)
-- [ ] Migration SQL وتطبيق على قاعدة البيانات
-- [ ] Backend: Funnel stats (Lead→Meeting→Quotation→Closing conversion rates)
-- [ ] Backend: Lost deals analysis (سعر/تأخير/منافس/عدم جدية)
-- [ ] Backend: Meeting review CRUD (create/list/update)
-- [ ] Backend: Playbook session tracking
-- [ ] SalesExecutionSystem.tsx: Tab 1 - Playbook (Quotation + Product Cards + 6-Step Sales Flow)
-- [ ] SalesExecutionSystem.tsx: Tab 2 - Meeting Review (Recording + Rating + Weekly Coaching)
-- [ ] SalesExecutionSystem.tsx: Tab 3 - Funnel Analysis (Conversion Rates + Lost Deals)
-- [ ] App.tsx: تسجيل route /sales-execution
-- [ ] DashboardLayout: إضافة Sales Execution System للـ sidebar
-- [ ] ReportsModule: تسجيل route /reports في App.tsx + sidebar
-- [ ] إصلاح WorkDistribution.tsx: workDist router error
+- [x] Schema: جدول meeting_reviews (recording_link, score, notes, manager_rating, strengths, improvements)
+- [x] Schema: جدول playbook_sessions (engineer_id, task_id, steps_completed, started_at)
+- [x] Migration SQL وتطبيق على قاعدة البيانات
+- [x] Backend: Funnel stats (Lead→Meeting→Quotation→Closing conversion rates)
+- [x] Backend: Lost deals analysis (سعر/تأخير/منافس/عدم جدية)
+- [x] Backend: Meeting review CRUD (create/list/update)
+- [x] Backend: Playbook session tracking
+- [x] SalesExecutionSystem.tsx: Tab 1 - Playbook (Quotation + Product Cards + 6-Step Sales Flow)
+- [x] SalesExecutionSystem.tsx: Tab 2 - Meeting Review (Recording + Rating + Weekly Coaching)
+- [x] SalesExecutionSystem.tsx: Tab 3 - Funnel Analysis (Conversion Rates + Lost Deals)
+- [x] App.tsx: تسجيل route /sales-execution
+- [x] DashboardLayout: إضافة Sales Execution System للـ sidebar
+- [x] ReportsModule: تسجيل route /reports في App.tsx + sidebar
+- [x] إصلاح WorkDistribution.tsx: workDist router error
 
 ## Playbook Live Presentation Tool
-- [ ] Schema: جدول playbook_items (name, category, price, description, script, media_urls, alternatives, spec_data)
-- [ ] Schema: جدول playbook_quotations (deal_id, items_json, created_by, recording_link)
-- [ ] Migration SQL وتطبيق على قاعدة البيانات
-- [ ] Backend: Excel Import → playbook_items (parse XLSX/CSV)
-- [ ] Backend: CRUD playbook_items (create/list/update/delete)
-- [ ] Backend: getPlaybookByDeal (جلب Items مرتبطة بصفقة)
-- [ ] Backend: saveRecordingLink (حفظ رابط التسجيل داخل الصفقة)
-- [ ] Playbook Tab: Excel Upload → Import Items
-- [ ] Playbook Tab: Items Library (بطاقات تفاعلية)
-- [ ] Presentation Mode: 5 شاشات (Render / Quotation / Excel Data / Media / Script)
-- [ ] Presentation Mode: Next/Previous Navigation + Full Screen
-- [ ] Presentation Mode: Meeting Recording Link Input
-- [ ] Presentation Mode: Item Validation (لا عرض بدون Media + Script + Data)
+- [x] Schema: جدول playbook_items (name, category, price, description, script, media_urls, alternatives, spec_data)
+- [x] Schema: جدول playbook_quotations (deal_id, items_json, created_by, recording_link)
+- [x] Migration SQL وتطبيق على قاعدة البيانات
+- [x] Backend: Excel Import → playbook_items (parse XLSX/CSV)
+- [x] Backend: CRUD playbook_items (create/list/update/delete)
+- [x] Backend: getPlaybookByDeal (جلب Items مرتبطة بصفقة)
+- [x] Backend: saveRecordingLink (حفظ رابط التسجيل داخل الصفقة)
+- [x] Playbook Tab: Excel Upload → Import Items
+- [x] Playbook Tab: Items Library (بطاقات تفاعلية)
+- [x] Presentation Mode: 5 شاشات (Render / Quotation / Excel Data / Media / Script)
+- [x] Presentation Mode: Next/Previous Navigation + Full Screen
+- [x] Presentation Mode: Meeting Recording Link Input
+- [x] Presentation Mode: Item Validation (لا عرض بدون Media + Script + Data)
 
 ## Sales Execution Tracking System
-- [ ] Schema: جدول meeting_sessions (engineerId, startTime, endTime, recordingLink, quotationId, score)
-- [ ] Schema: جدول session_actions (sessionId, itemId, actionType, durationSeconds, timestamp)
-- [ ] Migration SQL وتطبيق على قاعدة البيانات
-- [ ] Backend: createMeetingSession + endMeetingSession + logSessionAction
-- [ ] Backend: calculateMeetingScore (Video + Script + Render + Price scoring)
-- [ ] Backend: getEngineerMeetingStats (avg score, playbook usage %)
-- [ ] Backend: getSessionDetails (للـ Admin Review)
-- [ ] Presentation Mode: تسجيل action عند فتح Video/Script/Render/Price
-- [ ] Presentation Mode: Visual Indicators (Viewed ✅ / Not Viewed ❌ / Time Spent)
-- [ ] Presentation Mode: Item validation قبل الانتقال للتالي
-- [ ] Dashboard: Meeting Score + Playbook Usage % لكل مهندس
-- [ ] Admin Review: Recording + Tracking Data معاً
-- [ ] Alerts: "Meeting بدون Playbook" + "لم يُشغَّل الفيديو"
+- [x] Schema: جدول meeting_sessions (engineerId, startTime, endTime, recordingLink, quotationId, score)
+- [x] Schema: جدول session_actions (sessionId, itemId, actionType, durationSeconds, timestamp)
+- [x] Migration SQL وتطبيق على قاعدة البيانات
+- [x] Backend: createMeetingSession + endMeetingSession + logSessionAction
+- [x] Backend: calculateMeetingScore (Video + Script + Render + Price scoring)
+- [x] Backend: getEngineerMeetingStats (avg score, playbook usage %)
+- [x] Backend: getSessionDetails (للـ Admin Review)
+- [x] Presentation Mode: تسجيل action عند فتح Video/Script/Render/Price
+- [x] Presentation Mode: Visual Indicators (Viewed ✅ / Not Viewed ❌ / Time Spent)
+- [x] Presentation Mode: Item validation قبل الانتقال للتالي
+- [x] Dashboard: Meeting Score + Playbook Usage % لكل مهندس
+- [x] Admin Review: Recording + Tracking Data معاً
+- [x] Alerts: "Meeting بدون Playbook" + "لم يُشغَّل الفيديو"
 
 ## Meeting Review Auto-Task System
-- [ ] Auto-create admin task when meeting session ends with recording
-- [ ] SLA: 24-hour review deadline tracking
-- [ ] Alert for delayed reviews in Admin KPI
-- [ ] Admin notification on new meeting recording
-- [ ] Admin dashboard: Pending/Completed/Delayed reviews
-- [ ] Meeting score input from admin review
-- [ ] Score feeds into engineer KPI
+- [x] Auto-create admin task when meeting session ends with recording
+- [x] SLA: 24-hour review deadline tracking
+- [x] Alert for delayed reviews in Admin KPI
+- [x] Admin notification on new meeting recording
+- [x] Admin dashboard: Pending/Completed/Delayed reviews
+- [x] Meeting score input from admin review
+- [x] Score feeds into engineer KPI
 
 ## Meeting Recording Mandatory Rule
-- [ ] Backend: Block task completion if meetingRecordingLink is missing for meeting-type tasks
-- [ ] Backend: Task status logic: pending (no meeting link) → in_progress (meeting done, no recording) → completed (both links present)
-- [ ] Backend: KPI excludes meeting tasks without recording from score calculation
-- [ ] Backend: Auto-create admin review task when recording is submitted
-- [ ] Backend: SLA 24h tracking for review tasks
-- [ ] Backend: Admin alert for tasks missing recording > 24h after meeting
-- [ ] UI: Meeting Recording Status indicators (✅/❌) in task list
-- [ ] UI: Block "Complete" button if recording missing for meeting tasks
-- [ ] UI: Recording Link input field in task edit dialog
-- [ ] UI: Admin view: filter tasks with missing recordings
-- [ ] UI: Alert badge for "Meeting without Recording"
+- [x] Backend: Block task completion if meetingRecordingLink is missing for meeting-type tasks
+- [x] Backend: Task status logic: pending (no meeting link) → in_progress (meeting done, no recording) → completed (both links present)
+- [x] Backend: KPI excludes meeting tasks without recording from score calculation
+- [x] Backend: Auto-create admin review task when recording is submitted
+- [x] Backend: SLA 24h tracking for review tasks
+- [x] Backend: Admin alert for tasks missing recording > 24h after meeting
+- [x] UI: Meeting Recording Status indicators (✅/❌) in task list
+- [x] UI: Block "Complete" button if recording missing for meeting tasks
+- [x] UI: Recording Link input field in task edit dialog
+- [x] UI: Admin view: filter tasks with missing recordings
+- [x] UI: Alert badge for "Meeting without Recording"
 
 ## Meeting Review System (أداة تقييم حقيقية)
-- [ ] تحديث جدول meeting_reviews بحقول: playbookUsageScore, presentationQualityScore, controlScore, closingAttemptScore, decisionTag, strengthPoint, improvementPoint
-- [ ] شرط أساسي: لا Review إلا إذا Recording موجود + Task مكتملة
-- [ ] 4 عناصر تقييم (من 10 كل عنصر) → إجمالي من 40 → %
-- [ ] Decision Tag: Strong Performer / يحتاج تحسين / ضعيف
-- [ ] Mandatory Feedback: نقطة قوة + نقطة تحسين
-- [ ] ربط Meeting Score بـ KPI (عدم Review = خصم)
-- [ ] Weekly Summary لكل مهندس: Average Score + عدد Reviews + Trend
+- [x] تحديث جدول meeting_reviews بحقول: playbookUsageScore, presentationQualityScore, controlScore, closingAttemptScore, decisionTag, strengthPoint, improvementPoint
+- [x] شرط أساسي: لا Review إلا إذا Recording موجود + Task مكتملة
+- [x] 4 عناصر تقييم (من 10 كل عنصر) → إجمالي من 40 → %
+- [x] Decision Tag: Strong Performer / يحتاج تحسين / ضعيف
+- [x] Mandatory Feedback: نقطة قوة + نقطة تحسين
+- [x] ربط Meeting Score بـ KPI (عدم Review = خصم)
+- [x] Weekly Summary لكل مهندس: Average Score + عدد Reviews + Trend
 
 ## Promotion & Evaluation System
-- [ ] إنشاء جدول engineer_evaluations في Schema
-- [ ] 5 عناصر تقييم: Sales Achievement + Closing Rate + Meeting Score + Playbook Usage + Distribution Score
-- [ ] Performance Levels: A Player / B Player / C Player
-- [ ] Rules: A→ترقية+Bonus, B→Coaching إجباري, C→Warning+Plan 30 يوم
-- [ ] Firing Logic: شهرين C Player → قرار إداري
-- [ ] Dashboard: تقييم حالي + تاريخ + اتجاه (Up/Down)
-- [ ] Backend دوال: calculateMonthlyEvaluation, getEngineerEvaluationHistory, checkFiringLogic
-- [ ] tRPC endpoints للـ Promotion System
-- [ ] PromotionSystem.tsx: A/B/C Player Dashboard + History + Trend
+- [x] إنشاء جدول engineer_evaluations في Schema
+- [x] 5 عناصر تقييم: Sales Achievement + Closing Rate + Meeting Score + Playbook Usage + Distribution Score
+- [x] Performance Levels: A Player / B Player / C Player
+- [x] Rules: A→ترقية+Bonus, B→Coaching إجباري, C→Warning+Plan 30 يوم
+- [x] Firing Logic: شهرين C Player → قرار إداري
+- [x] Dashboard: تقييم حالي + تاريخ + اتجاه (Up/Down)
+- [x] Backend دوال: calculateMonthlyEvaluation, getEngineerEvaluationHistory, checkFiringLogic
+- [x] tRPC endpoints للـ Promotion System
+- [x] PromotionSystem.tsx: A/B/C Player Dashboard + History + Trend
 
 ## SalesExecutionSystem
-- [ ] إنشاء SalesExecutionSystem.tsx (4 Tabs)
-- [ ] Tab 1 - Playbook: عرض Items + Presentation Mode + Excel Import + Session Tracking
-- [ ] Tab 2 - Meeting Review: نموذج تقييم 4 عناصر + Decision Tag + Mandatory Feedback
-- [ ] Tab 3 - Funnel Analysis: Funnel مراحل + Conversion Rates + Lost Deals + Insights
-- [ ] Tab 4 - Coaching Dashboard: Weekly Summary + Average Score + Performance Trend
+- [x] إنشاء SalesExecutionSystem.tsx (4 Tabs)
+- [x] Tab 1 - Playbook: عرض Items + Presentation Mode + Excel Import + Session Tracking
+- [x] Tab 2 - Meeting Review: نموذج تقييم 4 عناصر + Decision Tag + Mandatory Feedback
+- [x] Tab 3 - Funnel Analysis: Funnel مراحل + Conversion Rates + Lost Deals + Insights
+- [x] Tab 4 - Coaching Dashboard: Weekly Summary + Average Score + Performance Trend
 
 ## Navigation & Registration
-- [ ] إصلاح WorkDistribution.tsx (trpc.workDist error)
-- [ ] تسجيل SalesExecutionSystem في App.tsx + Sidebar
-- [ ] تسجيل ReportsModule في App.tsx + Sidebar
-- [ ] تسجيل PromotionSystem في App.tsx + Sidebar
+- [x] إصلاح WorkDistribution.tsx (trpc.workDist error)
+- [x] تسجيل SalesExecutionSystem في App.tsx + Sidebar
+- [x] تسجيل ReportsModule في App.tsx + Sidebar
+- [x] تسجيل PromotionSystem في App.tsx + Sidebar
 
 ## Dashboard كأداة قرار (Management Decision Tool)
-- [ ] Performance Section: Sales Target vs Actual + Closing Rate + Meeting Score + Ranking
-- [ ] Execution Section: عدد Meetings + % Playbook Usage + Task Completion % + Missing Recordings
-- [ ] Decision Section: Performance Level (A/B/C) + Promotion Status (Eligible/يحتاج تحسين/At Risk)
-- [ ] Alerts System: Meetings بدون Recording + Tasks غير مكتملة + أداء ضعيف + عدم استخدام Playbook
-- [ ] Engineer Cards: صورة/اسم + Sales + Meeting Score + Ranking + Status (A/B/C)
-- [ ] تحويل Overview.tsx إلى Management Decision Dashboard
+- [x] Performance Section: Sales Target vs Actual + Closing Rate + Meeting Score + Ranking
+- [x] Execution Section: عدد Meetings + % Playbook Usage + Task Completion % + Missing Recordings
+- [x] Decision Section: Performance Level (A/B/C) + Promotion Status (Eligible/يحتاج تحسين/At Risk)
+- [x] Alerts System: Meetings بدون Recording + Tasks غير مكتملة + أداء ضعيف + عدم استخدام Playbook
+- [x] Engineer Cards: صورة/اسم + Sales + Meeting Score + Ranking + Status (A/B/C)
+- [x] تحويل Overview.tsx إلى Management Decision Dashboard
 
 ## Promotion & Evaluation System (مكتمل)
 - [x] Schema: engineer_evaluations جدول (A/B/C Player + Career Path + Firing Logic)
