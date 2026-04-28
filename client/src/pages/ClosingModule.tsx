@@ -466,6 +466,30 @@ export default function ClosingModule() {
             </Card>
           </div>
 
+          {/* Realized vs Potential Discount */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Card className="bg-emerald-950/20 border-emerald-700/40">
+              <CardContent className="pt-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <CheckCircle className="h-4 w-4 text-emerald-400" />
+                  <span className="text-xs text-muted-foreground">خصم محقق (Realized)</span>
+                </div>
+                <div className="text-xl font-bold text-emerald-400">{fmt((discountSummary as any)?.realizedDiscount ?? 0)} ج.م</div>
+                <div className="text-xs text-muted-foreground">خصم مستخدم فعلياً على صفقات مغلقة</div>
+              </CardContent>
+            </Card>
+            <Card className="bg-blue-950/20 border-blue-700/40">
+              <CardContent className="pt-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <TrendingUp className="h-4 w-4 text-blue-400" />
+                  <span className="text-xs text-muted-foreground">خصم محتمل (Potential)</span>
+                </div>
+                <div className="text-xl font-bold text-blue-400">{fmt((discountSummary as any)?.potentialDiscount ?? 0)} ج.م</div>
+                <div className="text-xs text-muted-foreground">خصم على صفقات Pipeline الحالية</div>
+              </CardContent>
+            </Card>
+          </div>
+
           {/* Progress Bar */}
           <Card>
             <CardContent className="pt-4">
@@ -544,7 +568,7 @@ export default function ClosingModule() {
                         <span className="font-medium text-sm">{eng.engineerName}</span>
                         <Badge variant="outline" className="text-xs">{fmt(eng.pipeline)} ج.م Pipeline</Badge>
                       </div>
-                      <div className="grid grid-cols-3 gap-2 text-xs">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
                         <div className="text-center p-2 bg-emerald-950/30 rounded">
                           <div className="text-emerald-400 font-bold">{fmt(eng.actualSales)}</div>
                           <div className="text-muted-foreground">مبيعات فعلية</div>
@@ -557,7 +581,16 @@ export default function ClosingModule() {
                           <div className="text-blue-400 font-bold">{fmt(eng.allocatedDiscount)}</div>
                           <div className="text-muted-foreground">خصم متاح</div>
                         </div>
+                        <div className="text-center p-2 bg-amber-950/30 rounded border border-amber-700/40">
+                          <div className="text-amber-400 font-bold">{fmt((eng as any).engineerBonus ?? 0)}</div>
+                          <div className="text-amber-300/70">مكافأة 50% خصم موفّر</div>
+                        </div>
                       </div>
+                      {((eng as any).savedDiscount ?? 0) > 0 && (
+                        <div className="mt-2 text-xs text-amber-400/80 bg-amber-950/20 rounded p-2 text-center">
+                          ✨ خصم موفَّر: {fmt((eng as any).savedDiscount)} ج.م → مكافأة المهندس: {fmt((eng as any).engineerBonus)} ج.م
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

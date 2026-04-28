@@ -3,9 +3,10 @@ import { COOKIE_NAME, LOCAL_AUTH_COOKIE } from "@shared/const";
 import { localLogin, getLocalSessionFromRequest } from "./localAuth";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
+import { TRPCError } from "@trpc/server";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import {
-  getEngineers, createEngineer,
+  getEngineers, getEngineerById, createEngineer,
   getDailyTasksStats, getTasksList, createTask, updateTaskStatus, deleteTask, rescheduleTask,
   getCriticalTasks, getEngineersWithRole, createEngineerWithRole, deleteEngineer,
   getLeadsStats, getLeadsList, createLead, updateLeadStatus,
@@ -329,7 +330,20 @@ export const appRouter = router({
       category: z.string().optional(), // 'closing' | 'meeting' | 'general'
       meetingRecordingLink: z.string().optional(),
       taskType: z.enum(['design_2d','design_3d','render','quotation','meeting_modeling','meeting_presentation','meeting_closing','other']).optional(),
-    })).mutation(async ({ input }) => { await createTask(input); return { success: true }; }),
+    })).mutation(async ({ input }) => {
+      // باككند Department Enforcement: التحقق من أن الـ taskType مسموح للقسم
+      if (input.taskType && input.taskType !== 'other') {
+        const eng = await getEngineerById(input.engineerId);
+        if (eng) {
+          const dept = eng.role ?? 'sales_engineer';
+          const allowed = ALLOWED_TASK_TYPES_BY_DEPARTMENT[dept as keyof typeof ALLOWED_TASK_TYPES_BY_DEPARTMENT];
+          if (allowed && !allowed.includes(input.taskType)) {
+            throw new TRPCError({ code: 'BAD_REQUEST', message: `نوع المهمة غير مسموح لقسم ${dept}` });
+          }
+        }
+      }
+      await createTask(input); return { success: true };
+    }),
     updateStatus: publicProcedure.input(z.object({
       id: z.number(), status: z.enum(['planned', 'completed', 'delayed', 'not_done', 'client_delay']),
       delayDays: z.number().optional(), notes: z.string().optional(),

@@ -74,6 +74,12 @@ export async function getEngineers() {
   return db.select().from(engineers).where(eq(engineers.status, 'active')).orderBy(engineers.name);
 }
 
+export async function getEngineerById(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [eng] = await db.select().from(engineers).where(eq(engineers.id, id));
+  return eng ?? null;
+}
 export async function createEngineer(data: { name: string; email?: string; phone?: string; department?: string; role?: string }) {
   const db = await getDb();
   if (!db) return;
@@ -751,10 +757,9 @@ export async function getEngineersKPI(year: number, month: number) {
      let incentiveStatusReason = '';
      let kpiBonusStatusReason = '';
 
-     // Commission ثابت دائماً (100% في جميع الحالات)
-     const commissionStatus: 'full' = 'full';
-     const commissionMultiplier = 1.0;
-
+     // Commission: كامل عند KPI ≥ 60%، ينخفض 50% عند KPI < 60%
+     const commissionStatus: 'full' | 'half' = kpiScore >= 60 ? 'full' : 'half';
+     const commissionMultiplier = kpiScore >= 60 ? 1.0 : 0.5;
      if (kpiScore >= 90) {
        kpiStatus = 'available'; kpiBonusStatus = 'available'; incentiveStatus = 'available';
        performanceLevel = 'high';
@@ -776,11 +781,10 @@ export async function getEngineersKPI(year: number, month: number) {
      } else {
        kpiStatus = 'blocked'; kpiBonusStatus = 'blocked'; incentiveStatus = 'blocked';
        performanceLevel = 'low';
-       kpiStatusReason = 'KPI أقل من 60% — أداء منخفض';
+       kpiStatusReason = 'KPI أقل من 60% — أداء منخفض — الكوميشن 50% فقط';
        kpiBonusStatusReason = 'KPI أقل من 60% — لا يوجد KPI Bonus';
        incentiveStatusReason = 'الحافز متوقف — KPI أقل من 75%';
      }
-
      const effectiveCommissionPct = baseCommissionPct * commissionMultiplier;
      const commissionValue = Math.round(totalDealValue * (effectiveCommissionPct / 100));
      const incentiveValue = incentiveStatus === 'available' ? baseIncentiveAmount : 0;
@@ -819,7 +823,7 @@ export async function getEngineersKPI(year: number, month: number) {
       closedWon, totalDealValue, achievementPct: Math.round(achievementPct * 10) / 10,
       targetAmount,
       baseCommissionPct, commissionMultiplier, effectiveCommissionPct: Math.round(effectiveCommissionPct * 100) / 100,
-      commissionValue: progressiveCommissionValue, commissionStatus,
+      commissionValue: commissionValue, commissionStatus,
       commissionBreakdown, progressiveCommissionValue,
       baseIncentiveAmount, incentiveValue, incentiveStatus,
       totalPayout,
@@ -2555,7 +2559,12 @@ export async function getDiscountSummary() {
     .reduce((s, d) => s + parseFloat(d.discountValue as string || '0'), 0);
 
   const remainingDiscount = Math.max(0, allowedDiscount - usedDiscount);
-
+  // Realized Discount = خصم مستخدم فعلياً على صفقات closed_won
+  const realizedDiscount = usedDiscount;
+  // Potential Discount = خصم محتمل على الـ Pipeline الحالي
+  const potentialDiscount = allDeals
+    .filter(d => !['closed_won', 'closed_lost'].includes(d.stage))
+    .reduce((s, d) => s + parseFloat(d.discountValue as string || '0'), 0);
   return {
     actualSales,
     pipeline,
@@ -2565,9 +2574,10 @@ export async function getDiscountSummary() {
     allowedDiscount,
     usedDiscount,
     remainingDiscount,
+    realizedDiscount,
+    potentialDiscount,
   };
 }
-
 /** التحقق من أن خصم صفقة جديدة لا يتجاوز الحد المتبقي */
 export async function validateDealDiscount(dealId: number | undefined, discountValue: number): Promise<{ valid: boolean; remaining: number; message?: string }> {
   const summary = await getDiscountSummary();
@@ -2708,7 +2718,11 @@ export async function getEngineerDiscountSummary() {
     // نسبة المهندس من الـ Pipeline الكلي
     const pipelineShare = summary.totalVolume > 0 ? engPipeline / summary.totalVolume : 0;
     const allocatedDiscount = summary.remainingDiscount * pipelineShare;
-
+    // Saved Discount = الخصم المتاح - الخصم المستخدم
+    const savedDiscount = Math.max(0, allocatedDiscount - engUsedDiscount);
+    // Bonus 50% للمهندس من الخصم الموفَّر
+    const engineerBonus = Math.round(savedDiscount * 0.5);
+    const companyProfit = Math.round(savedDiscount * 0.5);
     return {
       engineerId: eng.id,
       engineerName: eng.name,
@@ -2716,6 +2730,9 @@ export async function getEngineerDiscountSummary() {
       actualSales: engActual,
       usedDiscount: engUsedDiscount,
       allocatedDiscount,
+      savedDiscount,
+      engineerBonus,
+      companyProfit,
     };
   });
 }

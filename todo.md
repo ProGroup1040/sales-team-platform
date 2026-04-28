@@ -909,3 +909,10 @@
 - [x] التحقق من Alerts للمتأخرين
 - [x] التحقق من Commission على المحصَّل
 - [x] إصلاح أي مشكلة في CollectionsModule
+
+## Gaps Fix Session - Apr 28 2026
+
+- [x] Fix 1: KPI Commission Multiplier = 0.5 عند KPI < 60% (حالياً ثابت 1.0)
+- [x] Fix 2: Discount Bonus 50% يظهر في UI لكل مهندس في ClosingModule
+- [x] Fix 3: Realized vs Potential Discount يظهر في UI بشكل منفصل في ClosingModule
+- [x] Fix 4: Backend Department Enforcement في tasks.create (يرفض taskType غير مسموح)
