@@ -46,6 +46,8 @@ const OPERATIONAL_ITEMS = [
   { key: 'quotations',    label: 'عروض الأسعار',         targetKey: 'targetQuotations',    icon: '📋' },
   { key: 'presentations', label: 'العروض التقديمية',     targetKey: 'targetPresentations', icon: '📊' },
   { key: 'closings',      label: 'الإغلاقات',            targetKey: 'targetClosings',      icon: '🔒' },
+  { key: 'contract',      label: 'Contract (عقد)',      targetKey: 'targetContract',      icon: '📝' },
+  { key: 'work_order',    label: 'Work Order (أمر شغل)', targetKey: 'targetWorkOrder',     icon: '🔧' },
 ];
 
 // ─── Tab 1: Company Goals ──────────────────────────────────────────────────────

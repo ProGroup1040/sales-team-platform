@@ -246,6 +246,20 @@
       "when": 1777425851405,
       "tag": "0034_early_carlie_cooper",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "5",
+      "when": 1777465595515,
+      "tag": "0035_short_mandroid",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "5",
+      "when": 1777465862351,
+      "tag": "0036_curious_sleepwalker",
+      "breakpoints": true
     }
   ]
 }

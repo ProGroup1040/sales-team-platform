@@ -74,11 +74,25 @@ export const dailyTasks = mysqlTable("daily_tasks", {
     "meeting_modeling",      // Meeting Modeling
     "meeting_presentation",  // Meeting Presentation
     "meeting_closing",       // Meeting Closing
+    // New Task Types
+    "contract",              // Contract Preparation (إعداد العقد)
+    "work_order",            // Work Order Preparation (إعداد أمر الشغل)
     // Legacy (keep for backward compat)
     "meeting_2d", "meeting_3d", "meeting_quotation",
     // Legacy
     "closing", "negotiation", "other"
   ]).default("other"),
+  // ─── Goal Linking ─────────────────────────────────────────────────────────
+  goalType: mysqlEnum("goalType", [
+    "design_2d", "design_3d", "render", "quotation",
+    "meeting", "closing", "contract", "work_order"
+  ]),
+  // ─── Actual vs Planned ────────────────────────────────────────────────────
+  actualHours: float("actualHours"),
+  completionDate: date("completionDate"),
+  // ─── Client / Deal Linking ────────────────────────────────────────────────
+  clientName: varchar("clientName", { length: 120 }),
+  dealId: int("dealId"),
   // ─── Meeting Recording ─────────────────────────────────────────────────────
   category: varchar("category", { length: 80 }), // e.g. 'closing', 'meeting', 'general'
   meetingRecordingLink: varchar("meetingRecordingLink", { length: 500 }),
@@ -263,6 +277,8 @@ export const engineerTargets = mysqlTable("engineer_targets", {
   target2D: int("target2D").default(0),          // هدف 2D Design
   target3D: int("target3D").default(0),          // هدف 3D Modeling
   targetRender: int("targetRender").default(0),  // هدف Render
+  targetContract: int("targetContract").default(0),   // هدف إعداد العقود
+  targetWorkOrder: int("targetWorkOrder").default(0), // هدف أوامر الشغل
   notes: text("notes"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });

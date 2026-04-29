@@ -29,6 +29,7 @@ import {
   engineerPersonalGoals, EngineerPersonalGoal, InsertEngineerPersonalGoal
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
+import { TASK_TYPE_TO_ACTIVITY, ACTIVITY_KEYS, ACTIVITY_WEIGHTS, type ActivityKey } from '../shared/activityTypes';
 import { notifyOwner } from './_core/notification';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -195,6 +196,12 @@ export async function createTask(data: {
   plannedHours?: number; priority?: string;
   category?: string; meetingRecordingLink?: string;
   taskType?: string;
+  // New fields
+  goalType?: string;
+  actualHours?: number;
+  completionDate?: string;
+  clientName?: string;
+  dealId?: number;
 }) {
   const db = await getDb();
   if (!db) return;
@@ -217,6 +224,11 @@ export async function createTask(data: {
     category: category,
     meetingRecordingLink: data.meetingRecordingLink ?? null,
     taskType: (data.taskType as any) ?? null,
+    goalType: (data.goalType as any) ?? null,
+    actualHours: data.actualHours ?? null,
+    completionDate: data.completionDate ? new Date(data.completionDate + 'T00:00:00') : null,
+    clientName: data.clientName ?? null,
+    dealId: data.dealId ?? null,
   });
 }
 
@@ -1335,6 +1347,7 @@ export async function upsertEngineerOperationalTargets(data: {
   targetMeetings?: number; target2D?: number; target3D?: number;
   targetRender?: number; targetQuotations?: number;
   targetPresentations?: number; targetClosings?: number; targetDeals?: number;
+  targetContract?: number; targetWorkOrder?: number;
 }) {
   const db = await getDb();
   if (!db) return;
@@ -1353,6 +1366,8 @@ export async function upsertEngineerOperationalTargets(data: {
   if (data.targetPresentations !== undefined) updateData.targetPresentations = data.targetPresentations;
   if (data.targetClosings !== undefined) updateData.targetClosings = data.targetClosings;
   if (data.targetDeals !== undefined) updateData.targetDeals = data.targetDeals;
+  if (data.targetContract !== undefined) updateData.targetContract = data.targetContract;
+  if (data.targetWorkOrder !== undefined) updateData.targetWorkOrder = data.targetWorkOrder;
   if (existing.length > 0) {
     await db.update(engineerTargets).set(updateData).where(eq(engineerTargets.id, existing[0].id));
   } else {
@@ -10114,4 +10129,161 @@ export async function getAllEngineersPerformanceScores(year: number, month: numb
   }));
 
   return results.sort((a, b) => b.totalScore - a.totalScore);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Activity Types Integration - Unified Tasks → Goals → KPI
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * حساب Actual Count لكل نوع نشاط من Tasks المكتملة لمهندس في شهر/سنة محددة
+ * يُستخدم لربط Tasks → Goals → KPI تلقائياً
+ */
+export async function getEngineerActualCounts(
+  engineerId: number,
+  year: number,
+  month: number
+): Promise<Partial<Record<ActivityKey, number>>> {
+  const db = await getDb();
+  if (!db) return {};
+
+  const startDate = new Date(year, month - 1, 1);
+  const endDate = new Date(year, month, 0, 23, 59, 59);
+
+  // جلب كل المهام المكتملة للمهندس في الشهر المحدد
+  const tasks = await db
+    .select({ taskType: dailyTasks.taskType, status: dailyTasks.status })
+    .from(dailyTasks)
+    .where(
+      and(
+        eq(dailyTasks.engineerId, engineerId),
+        eq(dailyTasks.status, 'completed'),
+        between(dailyTasks.createdAt, startDate, endDate)
+      )
+    );
+
+  // تجميع العدد لكل نوع نشاط
+  const counts: Partial<Record<ActivityKey, number>> = {};
+  for (const task of tasks) {
+    const activityKey = TASK_TYPE_TO_ACTIVITY[task.taskType ?? ''];
+    if (activityKey) {
+      counts[activityKey] = (counts[activityKey] ?? 0) + 1;
+    }
+  }
+  return counts;
+}
+
+/**
+ * حساب Operational Score لمهندس بناءً على Tasks المكتملة مقارنةً بالأهداف
+ * يُستخدم في KPI Module
+ */
+export async function calcOperationalScoreFromTasks(
+  engineerId: number,
+  year: number,
+  month: number
+): Promise<{
+  score: number;
+  actuals: Partial<Record<ActivityKey, number>>;
+  targets: Partial<Record<ActivityKey, number>>;
+  breakdown: Array<{
+    key: ActivityKey;
+    label: string;
+    target: number;
+    actual: number;
+    achievementPct: number;
+    weight: number;
+    weightedScore: number;
+  }>;
+}> {
+  const db = await getDb();
+  if (!db) return { score: 0, actuals: {}, targets: {}, breakdown: [] };
+
+  // جلب الأهداف التشغيلية للمهندس
+  const targetRows = await db
+    .select()
+    .from(engineerTargets)
+    .where(
+      and(
+        eq(engineerTargets.engineerId, engineerId),
+        eq(engineerTargets.year, year),
+        eq(engineerTargets.month, month)
+      )
+    )
+    .limit(1);
+
+  const targetRow = targetRows[0];
+  const targets: Partial<Record<ActivityKey, number>> = targetRow ? {
+    meeting:      targetRow.targetMeetings ?? 0,
+    presentation: targetRow.targetPresentations ?? 0,
+    closing:      targetRow.targetClosings ?? 0,
+    design_3d:    targetRow.target3D ?? 0,
+    render:       targetRow.targetRender ?? 0,
+    design_2d:    targetRow.target2D ?? 0,
+    quotation:    targetRow.targetQuotations ?? 0,
+    work_order:   targetRow.targetWorkOrder ?? 0,
+    contract:     targetRow.targetContract ?? 0,
+  } : {};
+
+  // جلب Actual Counts من Tasks
+  const actuals = await getEngineerActualCounts(engineerId, year, month);
+
+  // حساب Breakdown
+  const breakdown = ACTIVITY_KEYS.map(key => {
+    const target = targets[key] ?? 0;
+    const actual = actuals[key] ?? 0;
+    const weight = ACTIVITY_WEIGHTS[key];
+    const achievementPct = target > 0 ? Math.min(Math.round((actual / target) * 100), 100) : 0;
+    const weightedScore = target > 0 ? (achievementPct / 100) * weight : 0;
+    return { key, label: key, target, actual, achievementPct, weight, weightedScore };
+  });
+
+  // حساب الـ Score الكلي (فقط للأنشطة التي لها target > 0)
+  const activeBreakdown = breakdown.filter(b => b.target > 0);
+  const totalWeight = activeBreakdown.reduce((sum, b) => sum + b.weight, 0);
+  const weightedSum = activeBreakdown.reduce((sum, b) => sum + b.weightedScore, 0);
+  const score = totalWeight > 0 ? Math.round((weightedSum / totalWeight) * 100) : 0;
+
+  return { score, actuals, targets, breakdown };
+}
+
+/**
+ * جلب ملخص أداء مهندس لكل الأنشطة (للعرض في KPI + Planning)
+ */
+export async function getEngineerActivitySummary(
+  engineerId: number,
+  year: number,
+  month: number
+): Promise<{
+  engineerId: number;
+  year: number;
+  month: number;
+  operationalScore: number;
+  topActivity: ActivityKey | null;
+  bottomActivity: ActivityKey | null;
+  breakdown: Array<{
+    key: ActivityKey;
+    label: string;
+    target: number;
+    actual: number;
+    achievementPct: number;
+    weight: number;
+  }>;
+}> {
+  const result = await calcOperationalScoreFromTasks(engineerId, year, month);
+  const activeBreakdown = result.breakdown.filter(b => b.target > 0 || b.actual > 0);
+
+  // أعلى وأقل نشاط
+  const sorted = [...activeBreakdown].sort((a, b) => b.achievementPct - a.achievementPct);
+  const topActivity = sorted[0]?.key ?? null;
+  const bottomActivity = sorted[sorted.length - 1]?.key ?? null;
+
+  return {
+    engineerId,
+    year,
+    month,
+    operationalScore: result.score,
+    topActivity,
+    bottomActivity,
+    breakdown: result.breakdown,
+  };
 }

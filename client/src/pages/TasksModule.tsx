@@ -228,7 +228,7 @@ function AddTaskDialog({ engineers, dateStr, onDone }: { engineers: any[]; dateS
   const [form, setForm] = useState(EMPTY_FORM);
   const utils = trpc.useUtils();
 
-  // الـ 7 Task Types المطلوبة
+  // الـ 9 Task Types الموحدة (مع Contract و Work Order)
   const ALL_TASK_TYPES = [
     { key: 'design_2d',            label: '2D Design',             color: 'bg-cyan-500/20 border-cyan-500/50 text-cyan-400',     icon: '📰' },
     { key: 'design_3d',            label: '3D Modeling',           color: 'bg-purple-500/20 border-purple-500/50 text-purple-400', icon: '📱' },
@@ -237,6 +237,8 @@ function AddTaskDialog({ engineers, dateStr, onDone }: { engineers: any[]; dateS
     { key: 'meeting_modeling',     label: 'Meeting Modeling',      color: 'bg-indigo-500/20 border-indigo-500/50 text-indigo-400', icon: '📌' },
     { key: 'meeting_presentation', label: 'Meeting Presentation',  color: 'bg-blue-500/20 border-blue-500/50 text-blue-400',     icon: '📊' },
     { key: 'meeting_closing',      label: 'Meeting Closing',       color: 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400', icon: '✅' },
+    { key: 'contract',             label: 'Contract (إعداد عقد)',   color: 'bg-rose-500/20 border-rose-500/50 text-rose-400',     icon: '📝' },
+    { key: 'work_order',           label: 'Work Order (أمر شغل)',  color: 'bg-orange-500/20 border-orange-500/50 text-orange-400', icon: '🔧' },
   ];
 
   // Department Enforcement: جلب قسم المهندس المختار
@@ -768,15 +770,17 @@ function WorkDistributionTab({ engineers, currentDate }: { engineers: any[]; cur
 
   const { data: opData, isLoading } = trpc.kpi.operationalPerformance.useQuery({ year, month });
 
-  // Mapping from old schema values to new 7 types
+  // 9 Task Types الموحدة (مع Contract و Work Order)
   const TASK_TYPE_DISPLAY = [
-    { key: '2d_design',            label: '2D Design',             color: '#06b6d4', target: 10 },
-    { key: '3d_modeling',          label: '3D Modeling',           color: '#8b5cf6', target: 15 },
+    { key: 'design_2d',            label: '2D Design',             color: '#06b6d4', target: 10 },
+    { key: 'design_3d',            label: '3D Modeling',           color: '#8b5cf6', target: 15 },
     { key: 'render',               label: 'Render',                color: '#a78bfa', target: 15 },
     { key: 'quotation',            label: 'Quotation',             color: '#f59e0b', target: 10 },
     { key: 'meeting_modeling',     label: 'Meeting Modeling',      color: '#6366f1', target: 17 },
     { key: 'meeting_presentation', label: 'Meeting Presentation',  color: '#3b82f6', target: 17 },
     { key: 'meeting_closing',      label: 'Meeting Closing',       color: '#10b981', target: 16 },
+    { key: 'contract',             label: 'Contract',              color: '#f43f5e', target: 4  },
+    { key: 'work_order',           label: 'Work Order',            color: '#f97316', target: 6  },
   ];
 
   return (

@@ -108,8 +108,14 @@ export default function KPIModule() {
   const { data: discountDist } = trpc.kpi.scoreBasedDiscountDistribution.useQuery({ year, month });
   const { data: allEarnings } = trpc.kpi.allEngineersEarnings.useQuery({ year, month, teamKPIPool: 2000 });
   const { data: companyClosingBonus } = trpc.kpi.companyClosingBonus.useQuery({ year, month });
-  const [kpiTab, setKpiTab] = useState<'sales'|'tele'|'site'|'closing'|'earnings'|'rewards'|'lost'|'performance'>('sales');
+  const [kpiTab, setKpiTab] = useState<'sales'|'tele'|'site'|'closing'|'earnings'|'rewards'|'lost'|'performance'|'activities'>('sales');
+  const [activityEngId, setActivityEngId] = useState<number | null>(null);
   const { data: allPerfScores } = trpc.planning.allEngineersPerformanceScores.useQuery({ year, month });
+  const { data: activityBreakdown } = trpc.planning.getOperationalBreakdown.useQuery(
+    { engineerId: activityEngId ?? 0, year, month },
+    { enabled: !!activityEngId }
+  );
+  const { data: engineersList } = trpc.engineers.list.useQuery();
 
   const sorted = kpiData ? [...kpiData].sort((a, b) => b.kpiScore - a.kpiScore) : [];
   const topPerformer = sorted[0];
@@ -797,6 +803,7 @@ export default function KPIModule() {
           { id: 'rewards', label: 'نظام المكافآت' },
           { id: 'lost', label: 'تأثير الصفقات الخاسرة' },
           { id: 'performance', label: '🎯 التقييم الشامل' },
+          { id: 'activities', label: '📊 تحليل الأنشطة' },
         ] as const).map(tab => (
           <button key={tab.id} onClick={() => setKpiTab(tab.id)}
             className={`px-3 py-1.5 text-xs font-semibold rounded-full border transition-colors ${
@@ -1422,6 +1429,151 @@ export default function KPIModule() {
                     <span className="text-amber-600 font-medium">C ≥ 40%</span>
                     <span className="text-red-600 font-medium">D &lt; 40%</span>
                   </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* ─── TAB: تحليل الأنشطة ─── */}
+      {kpiTab === 'activities' && (
+        <div className="space-y-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <BarChart2 className="w-4 h-4 text-indigo-500" />
+                تحليل الأنشطة التشغيلية — {MONTHS[month - 1]} {year}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="mb-4">
+                <label className="text-xs text-muted-foreground mb-1 block">اختر مهندساً لعرض تحليل أنشطته:</label>
+                <Select
+                  value={activityEngId ? String(activityEngId) : ''}
+                  onValueChange={v => setActivityEngId(Number(v))}
+                >
+                  <SelectTrigger className="w-64 h-8 text-sm"><SelectValue placeholder="اختر مهندساً..." /></SelectTrigger>
+                  <SelectContent>
+                    {(engineersList ?? []).map((eng: any) => (
+                      <SelectItem key={eng.id} value={String(eng.id)}>{eng.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {activityEngId && activityBreakdown ? (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-4 p-3 rounded-lg bg-muted/40">
+                    <div className="text-center">
+                      <div className="text-3xl font-black" style={{ color: getScoreColor(activityBreakdown.score) }}>
+                        {activityBreakdown.score}%
+                      </div>
+                      <div className="text-xs text-muted-foreground">Operational Score</div>
+                    </div>
+                    <div className="flex-1">
+                      <div className="h-3 bg-muted rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-700"
+                          style={{ width: `${activityBreakdown.score}%`, backgroundColor: getScoreColor(activityBreakdown.score) }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-xs text-muted-foreground">
+                          <th className="text-right py-2 pr-2">النشاط</th>
+                          <th className="text-center py-2">الوزن</th>
+                          <th className="text-center py-2">الهدف</th>
+                          <th className="text-center py-2">الفعلي</th>
+                          <th className="text-center py-2">الإنجاز</th>
+                          <th className="text-center py-2">التقدم</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(activityBreakdown.breakdown ?? []).map((item: any) => (
+                          <tr key={item.key} className="border-b hover:bg-muted/30">
+                            <td className="py-2 pr-2 font-medium">
+                              <span className="mr-1">
+                                {item.key === 'design_2d' ? '📐' :
+                                 item.key === 'design_3d' ? '🧊' :
+                                 item.key === 'render' ? '🎨' :
+                                 item.key === 'quotation' ? '💰' :
+                                 item.key === 'meeting' ? '🤝' :
+                                 item.key === 'presentation' ? '📊' :
+                                 item.key === 'closing' ? '✅' :
+                                 item.key === 'contract' ? '📄' :
+                                 item.key === 'work_order' ? '🔧' : '•'}
+                              </span>
+                              {item.key === 'design_2d' ? '2D Design' :
+                               item.key === 'design_3d' ? '3D Modeling' :
+                               item.key === 'render' ? 'Render' :
+                               item.key === 'quotation' ? 'Quotation' :
+                               item.key === 'meeting' ? 'Meeting' :
+                               item.key === 'presentation' ? 'Presentation' :
+                               item.key === 'closing' ? 'Closing' :
+                               item.key === 'contract' ? 'Contract' :
+                               item.key === 'work_order' ? 'Work Order' : item.key}
+                            </td>
+                            <td className="text-center py-2">
+                              <span className="text-xs bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full font-bold">{item.weight}%</span>
+                            </td>
+                            <td className="text-center py-2 font-medium">{item.target}</td>
+                            <td className="text-center py-2">
+                              <span className={`font-bold ${
+                                item.actual >= item.target && item.target > 0 ? 'text-emerald-600' :
+                                item.actual > 0 ? 'text-amber-600' : 'text-muted-foreground'
+                              }`}>{item.actual}</span>
+                            </td>
+                            <td className="text-center py-2">
+                              {item.target > 0 ? (
+                                <span className={`font-bold text-sm ${
+                                  item.achievementPct >= 80 ? 'text-emerald-600' :
+                                  item.achievementPct >= 60 ? 'text-indigo-600' :
+                                  item.achievementPct >= 40 ? 'text-amber-600' : 'text-red-600'
+                                }`}>{item.achievementPct}%</span>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">لا هدف</span>
+                              )}
+                            </td>
+                            <td className="py-2 px-2" style={{ minWidth: '80px' }}>
+                              {item.target > 0 ? (
+                                <div className="h-2 bg-muted rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full rounded-full transition-all duration-500"
+                                    style={{
+                                      width: `${Math.min(item.achievementPct, 100)}%`,
+                                      backgroundColor:
+                                        item.achievementPct >= 80 ? '#10b981' :
+                                        item.achievementPct >= 60 ? '#6366f1' :
+                                        item.achievementPct >= 40 ? '#f59e0b' : '#ef4444'
+                                    }}
+                                  />
+                                </div>
+                              ) : null}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-xs text-muted-foreground border-t pt-3">
+                    <span className="font-medium">توزيع الأوزان:</span>
+                    <span className="text-emerald-600">Meeting+Presentation+Closing 40%</span>
+                    <span className="text-purple-600">3D Modeling 15%</span>
+                    <span className="text-pink-600">Render 10%</span>
+                    <span className="text-indigo-600">2D Design 10%</span>
+                    <span className="text-amber-600">Quotation 10%</span>
+                    <span className="text-teal-600">Work Order 10%</span>
+                    <span className="text-orange-600">Contract 5%</span>
+                  </div>
+                </div>
+              ) : activityEngId ? (
+                <div className="text-center py-8 text-muted-foreground text-sm">جاري التحميل...</div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground text-sm">
+                  اختر مهندساً من القائمة أعلاه لعرض تحليل أنشطته التشغيلية
                 </div>
               )}
             </CardContent>

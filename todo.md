@@ -1029,3 +1029,44 @@
 
 ## بحث في المعاينات
 - [x] إضافة حقل بحث باسم العميل في قائمة المعاينات (VisitsModule) مماثل للتعاقدات
+
+## تطوير موديول المهام - نظام قياس الأداء
+- [ ] إضافة نوعي مهمة جديدين: Contract (إعداد العقد) و Work Order (أمر الشغل)
+- [ ] إضافة حقل goalType لربط المهمة بالهدف التشغيلي (2D/3D/Render/Quotation/Meeting/Closing/Contract/WorkOrder)
+- [ ] إضافة حقل actualHours (الساعات الفعلية) و completionDate (تاريخ الإنجاز)
+- [ ] إضافة حقل clientName/dealId لربط المهمة بالعميل أو الصفقة
+- [ ] تطبيق migration SQL للحقول الجديدة
+- [ ] تحديث Backend: حساب نسبة الالتزام بالوقت وكفاءة التنفيذ
+- [ ] تحديث Backend: ربط المهام المكتملة بالـ Operational Score في KPI
+- [ ] تحديث TasksModule.tsx: إضافة Contract و Work Order في قائمة الأنواع
+- [ ] تحديث TasksModule.tsx: إضافة حقول Actual Hours + Completion Date في نموذج الإضافة
+- [ ] تحديث TasksModule.tsx: إضافة حقل Client/Deal في نموذج الإضافة
+- [ ] تحديث TasksModule.tsx: Dashboard لكل مهندس (مطلوب/منفذ/متأخر/نسبة الإنجاز)
+- [ ] تحديث KPIModule.tsx: ربط المهام بالـ Operational Score وعرض تحليل الأداء
+
+## توحيد أنواع الأنشطة وتوزيع الأوزان
+- [ ] إنشاء shared/activityTypes.ts بقائمة موحدة للأنشطة التسعة
+- [ ] تحديث Schema: إضافة contract + work_order لـ taskType enum + goalType + actualHours + completionDate + clientName + dealId
+- [ ] تطبيق Migration SQL للحقول الجديدة
+- [ ] تحديث db.ts: createTask يقبل الحقول الجديدة
+- [ ] تحديث db.ts: حساب Actual Count تلقائياً من Tasks المكتملة
+- [ ] تحديث db.ts: حساب Operational Score بالأوزان الجديدة (Meetings 40%, 3D 15%, Render 10%, 2D 10%, Quotation 10%, WorkOrder 10%, Contract 5%)
+- [ ] تحديث routers.ts: tasks.create يقبل goalType + actualHours + completionDate + clientName + dealId
+- [ ] تحديث PlanningModule.tsx: عرض Target vs Actual لكل نشاط من التسعة
+- [ ] تحديث KPIModule.tsx: عرض توزيع وقت المهندس + أعلى/أقل نشاط + Operational Score بالأوزان الجديدة
+- [ ] تحديث TasksModule.tsx: إضافة Contract + Work Order في قائمة الأنواع + حقول جديدة
+
+## نظام Users & Permissions الداخلي (Internal Auth)
+- [ ] حفظ checkpoint للتغييرات الحالية (Tasks + Goals + KPI)
+- [ ] إضافة جداول: app_users, user_permissions, activity_logs في schema
+- [ ] migration SQL للجداول الجديدة
+- [ ] دوال db.ts: createAppUser, loginAppUser, getUserPermissions, updatePermissions
+- [ ] routers.ts: appUsers router (login, me, list, create, update, deactivate)
+- [ ] صفحة Login.tsx داخلية (username/password) مستقلة عن OAuth
+- [ ] صفحة UserManagement.tsx (Admin Panel) لإدارة المستخدمين والصلاحيات
+- [ ] PermissionsEditor component لتعديل صلاحيات كل user
+- [ ] تطبيق الصلاحيات فعلياً على الـ Sidebar (إخفاء/إظهار الـ Modules)
+- [ ] Data Access Control: كل user يرى بياناته فقط (إلا Manager/Admin)
+- [ ] ربط app_users بـ engineers table
+- [ ] Activity Logs: تسجيل كل العمليات
+- [ ] Template Permissions لكل Role

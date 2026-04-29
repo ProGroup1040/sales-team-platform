@@ -91,7 +91,10 @@ import {
   getCompanyGoal, setCompanyGoal, getCompanyGoalProgress,
   getEngineerPersonalGoals, setPersonalGoal, calcPersonalScore,
   calcTotalPerformanceScore, getAllEngineersPerformanceScores,
+  // Activity Types Integration
+  getEngineerActualCounts, calcOperationalScoreFromTasks, getEngineerActivitySummary,
 } from "./db";
+import { ACTIVITY_KEYS, ACTIVITY_LABELS as ACT_LABELS_EN, ACTIVITY_LABELS_AR, ACTIVITY_WEIGHTS, ACTIVITY_ICONS, ACTIVITY_COLORS } from '../shared/activityTypes';
 
 // ─── Seed Data ────────────────────────────────────────────────────────────────
 async function seedData() {
@@ -688,6 +691,7 @@ export const appRouter = router({
       target3D: z.number().optional(), targetRender: z.number().optional(),
       targetQuotations: z.number().optional(), targetPresentations: z.number().optional(),
       targetClosings: z.number().optional(), targetDeals: z.number().optional(),
+      targetContract: z.number().optional(), targetWorkOrder: z.number().optional(),
     })).mutation(async ({ input }) => { await upsertEngineerOperationalTargets(input); return { success: true }; }),
     // شرائح الخصم
     discountTiers: publicProcedure.query(async () => getDiscountTiers()),
@@ -871,6 +875,22 @@ export const appRouter = router({
     allEngineersPerformanceScores: publicProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getAllEngineersPerformanceScores(input.year, input.month)),
+    // ── Operational Breakdown (Tasks → Goals → KPI) ────────────────────────
+    getOperationalBreakdown: publicProcedure
+      .input(z.object({ engineerId: z.number(), year: z.number(), month: z.number() }))
+      .query(async ({ input }) => calcOperationalScoreFromTasks(input.engineerId, input.year, input.month)),
+    getActivitySummary: publicProcedure
+      .input(z.object({ engineerId: z.number(), year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getEngineerActivitySummary(input.engineerId, input.year, input.month)),
+    getActivityTypes: publicProcedure
+      .query(() => ({
+        keys: ACTIVITY_KEYS,
+        labelsEn: ACT_LABELS_EN,
+        labelsAr: ACTIVITY_LABELS_AR,
+        weights: ACTIVITY_WEIGHTS,
+        icons: ACTIVITY_ICONS,
+        colors: ACTIVITY_COLORS,
+      })),
   }),
 
   // ── Financial Module ───────────────────────────────────────────────────────────────────────────────
