@@ -84,6 +84,8 @@ import {
   calcProgressiveCommissionDetails,
   calcClosingRateIncentive, calcKPIShare, calcSalesIncentive,
   getEngineerEarningsBreakdown, getAllEngineersEarningsBreakdown,
+  // Company Closing Incentive
+  calcCompanyClosingBonus, getCompanyClosingBonusForAllEngineers,
 } from "./db";
 
 // ─── Seed Data ────────────────────────────────────────────────────────────────
@@ -774,6 +776,12 @@ export const appRouter = router({
         commission: calcProgressiveCommission(input.salesAmount),
         details: calcProgressiveCommissionDetails(input.salesAmount),
       })),
+    companyClosingBonus: publicProcedure
+      .input(z.object({ year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getCompanyClosingBonusForAllEngineers(input.year, input.month)),
+    closingBonusTiers: publicProcedure
+      .input(z.object({ rate: z.number() }))
+      .query(async ({ input }) => calcCompanyClosingBonus(input.rate)),
   }),
 
   // ── Collections ───────────────────────────────────────────────────────────

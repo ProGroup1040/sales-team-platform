@@ -107,6 +107,7 @@ export default function KPIModule() {
   const { data: lostImpact } = trpc.kpi.lostDealsImpact.useQuery({ year, month });
   const { data: discountDist } = trpc.kpi.scoreBasedDiscountDistribution.useQuery({ year, month });
   const { data: allEarnings } = trpc.kpi.allEngineersEarnings.useQuery({ year, month, teamKPIPool: 2000 });
+  const { data: companyClosingBonus } = trpc.kpi.companyClosingBonus.useQuery({ year, month });
   const [kpiTab, setKpiTab] = useState<'sales'|'tele'|'site'|'closing'|'earnings'|'rewards'|'lost'>('sales');
 
   const sorted = kpiData ? [...kpiData].sort((a, b) => b.kpiScore - a.kpiScore) : [];
@@ -911,12 +912,13 @@ export default function KPIModule() {
       {/* ─── TAB: Company Closing KPI ─── */}
       {kpiTab === 'closing' && companyClosingKPI && (
         <div className="space-y-4">
+          {/* Summary Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
               { label: 'إجمالي الصفقات', value: companyClosingKPI.totalDeals, color: 'text-indigo-600', bg: 'bg-indigo-50' },
               { label: 'صفقات ناجحة (WON)', value: companyClosingKPI.wonDeals, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-              { label: 'نسبة الإغلاق', value: `${companyClosingKPI.currentRate}%`, color: (companyClosingKPI.currentRate ?? 0) >= 60 ? 'text-emerald-600' : 'text-red-500', bg: (companyClosingKPI.currentRate ?? 0) >= 60 ? 'bg-emerald-50' : 'bg-red-50' },
-              { label: 'الهدف الشهري', value: `${companyClosingKPI.target ?? 60}%`, color: 'text-green-600', bg: 'bg-green-50' },
+              { label: 'نسبة الإغلاق الحالية', value: `${companyClosingKPI.currentRate}%`, color: (companyClosingKPI.currentRate ?? 0) >= 60 ? 'text-emerald-600' : (companyClosingKPI.currentRate ?? 0) >= 40 ? 'text-amber-600' : 'text-red-500', bg: (companyClosingKPI.currentRate ?? 0) >= 60 ? 'bg-emerald-50' : (companyClosingKPI.currentRate ?? 0) >= 40 ? 'bg-amber-50' : 'bg-red-50' },
+              { label: 'الهدف المطلوب', value: `${companyClosingKPI.target ?? 60}%`, color: 'text-green-600', bg: 'bg-green-50' },
             ].map((item, i) => (
               <Card key={i}><CardContent className={`p-4 ${item.bg} rounded-lg`}>
                 <p className="text-xs text-muted-foreground">{item.label}</p>
@@ -924,6 +926,130 @@ export default function KPIModule() {
               </CardContent></Card>
             ))}
           </div>
+
+          {/* Company Closing Bonus Tier */}
+          {companyClosingBonus && (
+            <Card className="border-2 border-indigo-200">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-indigo-500" />
+                  بونص الإغلاق الجماعي — Company Closing Incentive
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Current Tier */}
+                <div className={`rounded-lg p-4 border-2 ${
+                  companyClosingBonus.companyBonus.bonusPct > 0 ? 'bg-emerald-50 border-emerald-300' : 'bg-red-50 border-red-200'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-bold">الشريحة الحالية: {companyClosingBonus.companyBonus.tier}</div>
+                      <div className="text-lg font-bold mt-1" style={{ color: companyClosingBonus.companyBonus.bonusPct > 0 ? '#059669' : '#dc2626' }}>
+                        {companyClosingBonus.companyBonus.label}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-3xl font-bold text-indigo-600">{companyClosingBonus.companyClosingRate}%</div>
+                      <div className="text-xs text-muted-foreground">نسبة الإغلاق</div>
+                    </div>
+                  </div>
+                  {companyClosingBonus.companyBonus.nextTier && (
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      للوصول لـ {companyClosingBonus.companyBonus.nextTier} (+{companyClosingBonus.companyBonus.nextTierPct}%): الفريق يحتاج إغلاق مزيد من الصفقات
+                    </div>
+                  )}
+                </div>
+
+                {/* Bonus Tiers Reference */}
+                <div>
+                  <div className="text-xs font-semibold text-muted-foreground mb-2">جدول شرائح بونص الإغلاق:</div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {[
+                      { range: '< 40%', bonus: 'لا بونص', color: 'bg-red-50 border-red-200 text-red-700' },
+                      { range: '40-50%', bonus: '+15%', color: 'bg-orange-50 border-orange-200 text-orange-700' },
+                      { range: '50-60%', bonus: '+30%', color: 'bg-amber-50 border-amber-200 text-amber-700' },
+                      { range: '60-70%', bonus: '+50%', color: 'bg-lime-50 border-lime-200 text-lime-700' },
+                      { range: '70-80%', bonus: '+75%', color: 'bg-green-50 border-green-200 text-green-700' },
+                      { range: '> 80%', bonus: '+100%', color: 'bg-emerald-50 border-emerald-200 text-emerald-700' },
+                    ].map((tier, i) => (
+                      <div key={i} className={`border rounded p-2 text-center text-xs font-semibold ${tier.color} ${
+                        companyClosingBonus.companyBonus.tier === tier.range ? 'ring-2 ring-indigo-400' : ''
+                      }`}>
+                        <div>{tier.range}</div>
+                        <div className="text-base font-bold">{tier.bonus}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Per-Engineer Eligibility */}
+                {companyClosingBonus.engineers && companyClosingBonus.engineers.length > 0 && (
+                  <div>
+                    <div className="text-xs font-semibold text-muted-foreground mb-2">تأهيل كل مهندس للبونص:</div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead><tr className="border-b text-muted-foreground">
+                          <th className="text-right py-2 px-3">المهندس</th>
+                          <th className="text-right py-2 px-3">المبيعات</th>
+                          <th className="text-right py-2 px-3">تحقيق الهدف</th>
+                          <th className="text-right py-2 px-3">كوميشن أساسي</th>
+                          <th className="text-right py-2 px-3">قيمة البونص</th>
+                          <th className="text-right py-2 px-3">كوميشن نهائي</th>
+                          <th className="text-right py-2 px-3">التأهيل</th>
+                        </tr></thead>
+                        <tbody>
+                          {companyClosingBonus.engineers.map((eng: any) => (
+                            <tr key={eng.engineerId} className="border-b hover:bg-muted/30">
+                              <td className="py-2 px-3 font-semibold">{eng.engineerName}</td>
+                              <td className="py-2 px-3">{fmtFull(eng.actualSales ?? 0)}</td>
+                              <td className="py-2 px-3">
+                                <span className={`font-bold ${ (eng.achievementPct ?? 0) >= 70 ? 'text-emerald-600' : 'text-amber-600' }`}>
+                                  {eng.achievementPct ?? 0}%
+                                </span>
+                              </td>
+                              <td className="py-2 px-3">{fmtFull(eng.baseCommission ?? 0)}</td>
+                              <td className="py-2 px-3 text-indigo-600 font-bold">+{fmtFull(eng.bonusAmount ?? 0)}</td>
+                              <td className="py-2 px-3 text-emerald-600 font-bold">{fmtFull(eng.finalCommission ?? 0)}</td>
+                              <td className="py-2 px-3">
+                                <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                                  eng.eligible ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                                }`}>
+                                  {eng.eligible ? 'بونص كامل' : 'نصف بونص'}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* 3 Scenarios Test */}
+                {companyClosingBonus.scenarios && (
+                  <div>
+                    <div className="text-xs font-semibold text-muted-foreground mb-2">اختبار 3 سيناريوهات:</div>
+                    <div className="grid grid-cols-3 gap-3">
+                      {companyClosingBonus.scenarios.map((sc: any, i: number) => (
+                        <div key={i} className={`border rounded-lg p-3 text-center ${
+                          sc.rate < 40 ? 'bg-red-50 border-red-200' :
+                          sc.rate < 60 ? 'bg-amber-50 border-amber-200' :
+                          'bg-emerald-50 border-emerald-200'
+                        }`}>
+                          <div className="text-lg font-bold">{sc.rate}%</div>
+                          <div className="text-xs text-muted-foreground">نسبة إغلاق</div>
+                          <div className="text-sm font-bold mt-1">{sc.bonus.label}</div>
+                          <div className="text-xs">مضاعف: ×{sc.bonus.multiplier.toFixed(2)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Funnel */}
           <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Funnel الإغلاق</CardTitle></CardHeader>
             <CardContent>
               <div className="grid grid-cols-3 gap-3">

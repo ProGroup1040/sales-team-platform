@@ -9606,3 +9606,153 @@ export async function getAllEngineersEarningsBreakdown(year: number, month: numb
   );
   return results.filter(Boolean);
 }
+
+// ─── Company Closing Incentive System ────────────────────────────────────────
+/**
+ * حساب Bonus Multiplier بناءً على Company Closing Rate
+ * الشرائح:
+ * < 40%   → 0% (لا بونص)
+ * 40-50%  → +15%
+ * 50-60%  → +30%
+ * 60-70%  → +50%
+ * 70-80%  → +75%
+ * > 80%   → +100%
+ */
+export function calcCompanyClosingBonus(companyClosingRate: number): {
+  multiplier: number;
+  bonusPct: number;
+  tier: string;
+  label: string;
+  nextTier: string | null;
+  nextTierPct: number | null;
+} {
+  if (companyClosingRate >= 80) return {
+    multiplier: 2.0, bonusPct: 100,
+    tier: '> 80%', label: 'بونص استثنائي +100%',
+    nextTier: null, nextTierPct: null,
+  };
+  if (companyClosingRate >= 70) return {
+    multiplier: 1.75, bonusPct: 75,
+    tier: '70-80%', label: 'بونص ممتاز +75%',
+    nextTier: '> 80%', nextTierPct: 100,
+  };
+  if (companyClosingRate >= 60) return {
+    multiplier: 1.5, bonusPct: 50,
+    tier: '60-70%', label: 'بونص عالي +50%',
+    nextTier: '70-80%', nextTierPct: 75,
+  };
+  if (companyClosingRate >= 50) return {
+    multiplier: 1.3, bonusPct: 30,
+    tier: '50-60%', label: 'بونص جيد +30%',
+    nextTier: '60-70%', nextTierPct: 50,
+  };
+  if (companyClosingRate >= 40) return {
+    multiplier: 1.15, bonusPct: 15,
+    tier: '40-50%', label: 'بونص أساسي +15%',
+    nextTier: '50-60%', nextTierPct: 30,
+  };
+  return {
+    multiplier: 1.0, bonusPct: 0,
+    tier: '< 40%', label: 'لا يوجد بونص',
+    nextTier: '40-50%', nextTierPct: 15,
+  };
+}
+
+/**
+ * تحديد تأهيل المهندس الفردي للبونص الكامل
+ * Gate Condition:
+ * - تحقيق ≥ 70% من Target → بونص كامل
+ * - أقل من 70% → 50% من البونص فقط
+ */
+export function calcEngineerBonusEligibility(
+  achievementPct: number
+): { eligible: boolean; bonusMultiplier: number; label: string } {
+  if (achievementPct >= 70) {
+    return { eligible: true, bonusMultiplier: 1.0, label: 'مؤهل للبونص الكامل' };
+  }
+  return { eligible: false, bonusMultiplier: 0.5, label: 'مؤهل لنصف البونص فقط (أقل من 70% من الهدف)' };
+}
+
+/**
+ * حساب Company Closing Bonus لكل المهندسين
+ * يجمع Company Closing Rate + Gate Condition فردي
+ */
+export async function getCompanyClosingBonusForAllEngineers(year: number, month: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  // 1. حساب Company Closing Rate
+  const closingKPI = await getCompanyClosingKPI(year, month);
+  if (!closingKPI) return null;
+  const companyRate = closingKPI.currentRate;
+  const companyBonus = calcCompanyClosingBonus(companyRate);
+
+  // 2. قائمة المهندسين البيعيين
+  const allEngList = await getEngineers();
+  const salesEngList = allEngList.filter(isSalesDepartment);
+
+  // 3. لكل مهندس: حساب نسبة تحقيق الهدف + تأهيل البونص
+  const startDate = new Date(year, month - 1, 1);
+  const endDate = new Date(year, month, 0, 23, 59, 59);
+
+  const engineerBonuses = await Promise.all(salesEngList.map(async (eng) => {
+    // جلب target
+    const [target] = await db.select().from(engineerTargets)
+      .where(and(eq(engineerTargets.engineerId, eng.id), eq(engineerTargets.year, year), eq(engineerTargets.month, month)))
+      .limit(1);
+     const targetSales = target?.targetAmount ? parseFloat(target.targetAmount) : 0;
+    // جلب مبيعات فعلية
+    const engDeals = await db.select().from(deals).where(
+      and(
+        eq(deals.engineerId, eng.id),
+        eq(deals.stage, 'closed_won'),
+        eq(deals.isDeleted, 0),
+        gte(deals.updatedAt, startDate),
+        lte(deals.updatedAt, endDate)
+      )
+    );
+    const actualSales = engDeals.reduce((sum, d) => sum + parseFloat(d.grossValue ?? '0'), 0);
+    const achievementPct = targetSales > 0 ? Math.round((actualSales / targetSales) * 100) : 0;
+
+    // Progressive Commission
+    const baseCommission = calcProgressiveCommission(actualSales);
+
+    // Gate Condition
+    const eligibility = calcEngineerBonusEligibility(achievementPct);
+
+    // حساب البونص الفعلي
+    const effectiveMultiplier = companyBonus.multiplier === 1.0
+      ? 1.0  // لا بونص
+      : 1 + ((companyBonus.multiplier - 1) * eligibility.bonusMultiplier);
+    const bonusAmount = Math.round(baseCommission * (effectiveMultiplier - 1));
+    const finalCommission = Math.round(baseCommission * effectiveMultiplier);
+
+    return {
+      engineerId: eng.id,
+      engineerName: eng.name,
+      actualSales,
+      targetSales,
+      achievementPct,
+      baseCommission,
+      bonusAmount,
+      finalCommission,
+      eligible: eligibility.eligible,
+      eligibilityLabel: eligibility.label,
+      bonusMultiplier: effectiveMultiplier,
+    };
+  }));
+
+  return {
+    companyClosingRate: companyRate,
+    companyBonus,
+    target: closingKPI.target,
+    totalDeals: closingKPI.totalDeals,
+    wonDeals: closingKPI.wonDeals,
+    engineers: engineerBonuses,
+    // 3 سيناريوهات للاختبار
+    scenarios: [35, 50, 65].map(rate => ({
+      rate,
+      bonus: calcCompanyClosingBonus(rate),
+    })),
+  };
+}

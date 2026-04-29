@@ -989,3 +989,11 @@
 - [ ] KPI Role Filter: عرض Sales Engineer + Sales Specialist فقط في الترتيب
 - [ ] Frontend: تحديث KPIModule لعرض Commission + KPI Share + Incentive بشكل صحيح
 - [ ] Frontend: تحديث SalesModule لعرض Progressive Commission details
+
+## Company Closing Incentive System
+- [ ] calcCompanyClosingBonus: Company-Based tiers (<40%=0, 40-50%=+15%, 50-60%=+30%, 60-70%=+50%, 70-80%=+75%, >80%=+100%)
+- [ ] Gate Condition: >=70% target = full bonus, <70% = 50% bonus
+- [x] getCompanyClosingBonusForAllEngineers: company rate + per-engineer eligibility
+- [ ] companyClosingBonus endpoint in routers.ts
+- [ ] Company Closing KPI Tab update: Tier + Bonus Multiplier + per-engineer eligibility
+- [ ] Test 3 scenarios: 35%, 50%, 65% closing rate
