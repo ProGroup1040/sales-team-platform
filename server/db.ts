@@ -10105,10 +10105,8 @@ export async function getAllEngineersPerformanceScores(year: number, month: numb
   if (!db) return [];
   const salesEngineers = await db.select({ id: engineers.id, name: engineers.name, role: engineers.role })
     .from(engineers)
-    .where(and(
-      inArray(engineers.role, ['sales_engineer', 'sales_specialist']),
-      eq(engineers.status, 'active')
-    ));
+    .where(eq(engineers.status, 'active'))
+    .orderBy(engineers.name);
 
   const results = await Promise.all(salesEngineers.map(async (eng) => {
     const score = await calcTotalPerformanceScore(eng.id, year, month);
