@@ -26,9 +26,12 @@ import {
   dealDiscountAllocations, DealDiscountAllocation, InsertDealDiscountAllocation,
   discountBonusCaps, DiscountBonusCap, InsertDiscountBonusCap,
   companyGoals, CompanyGoal, InsertCompanyGoal,
-  engineerPersonalGoals, EngineerPersonalGoal, InsertEngineerPersonalGoal
+  engineerPersonalGoals, EngineerPersonalGoal, InsertEngineerPersonalGoal,
+  appUsers, userPermissions, activityLogs,
+  type AppUser, type InsertAppUser, type UserPermission
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
+import bcrypt from "bcryptjs";
 import { TASK_TYPE_TO_ACTIVITY, ACTIVITY_KEYS, ACTIVITY_WEIGHTS, type ActivityKey } from '../shared/activityTypes';
 import { notifyOwner } from './_core/notification';
 
@@ -10286,4 +10289,285 @@ export async function getEngineerActivitySummary(
     bottomActivity,
     breakdown: result.breakdown,
   };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Internal App Users System (نظام المستخدمين الداخلي)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── Default Permissions per Role ────────────────────────────────────────────
+export const DEFAULT_ROLE_PERMISSIONS: Record<string, Record<string, {
+  canView: number; canAdd: number; canEdit: number; canDelete: number; dataScope: "own" | "all";
+}>> = {
+  sales_engineer: {
+    crm:         { canView: 1, canAdd: 1, canEdit: 1, canDelete: 0, dataScope: "own" },
+    visits:      { canView: 1, canAdd: 1, canEdit: 1, canDelete: 0, dataScope: "own" },
+    deals:       { canView: 1, canAdd: 1, canEdit: 1, canDelete: 0, dataScope: "own" },
+    kpi:         { canView: 1, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "own" },
+    planning:    { canView: 1, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "own" },
+    discounts:   { canView: 1, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "own" },
+    reports:     { canView: 1, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "own" },
+    tasks:       { canView: 1, canAdd: 1, canEdit: 1, canDelete: 0, dataScope: "own" },
+    collections: { canView: 1, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "own" },
+    users:       { canView: 0, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "own" },
+  },
+  sales_specialist: {
+    crm:         { canView: 1, canAdd: 1, canEdit: 1, canDelete: 0, dataScope: "own" },
+    visits:      { canView: 1, canAdd: 1, canEdit: 1, canDelete: 0, dataScope: "own" },
+    deals:       { canView: 1, canAdd: 1, canEdit: 1, canDelete: 0, dataScope: "own" },
+    kpi:         { canView: 1, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "own" },
+    planning:    { canView: 1, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "own" },
+    discounts:   { canView: 1, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "own" },
+    reports:     { canView: 1, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "own" },
+    tasks:       { canView: 1, canAdd: 1, canEdit: 1, canDelete: 0, dataScope: "own" },
+    collections: { canView: 1, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "own" },
+    users:       { canView: 0, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "own" },
+  },
+  admin_sales: {
+    crm:         { canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
+    visits:      { canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
+    deals:       { canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
+    kpi:         { canView: 0, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "all" }, // KPI مخفي لـ Admin Sales
+    planning:    { canView: 1, canAdd: 1, canEdit: 1, canDelete: 0, dataScope: "all" },
+    discounts:   { canView: 1, canAdd: 1, canEdit: 1, canDelete: 0, dataScope: "all" },
+    reports:     { canView: 1, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "all" },
+    tasks:       { canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
+    collections: { canView: 1, canAdd: 1, canEdit: 1, canDelete: 0, dataScope: "all" },
+    users:       { canView: 0, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "own" },
+  },
+  manager: {
+    crm:         { canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
+    visits:      { canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
+    deals:       { canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
+    kpi:         { canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
+    planning:    { canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
+    discounts:   { canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
+    reports:     { canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
+    tasks:       { canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
+    collections: { canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
+    users:       { canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
+  },
+};
+
+// ─── Create App User ──────────────────────────────────────────────────────────
+export async function createAppUser(data: {
+  name: string;
+  username: string;
+  password: string;
+  role: "sales_engineer" | "sales_specialist" | "admin_sales" | "manager";
+  engineerId?: number;
+}): Promise<AppUser> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const passwordHash = await bcrypt.hash(data.password, 10);
+  const [result] = await db.insert(appUsers).values({
+    name: data.name,
+    username: data.username.toLowerCase().trim(),
+    passwordHash,
+    role: data.role,
+    engineerId: data.engineerId ?? null,
+    status: "active",
+  });
+  const userId = (result as any).insertId as number;
+  // إنشاء الصلاحيات الافتراضية حسب الدور
+  await createDefaultPermissions(userId, data.role);
+  const [user] = await db.select().from(appUsers).where(eq(appUsers.id, userId));
+  return user;
+}
+
+// ─── Create Default Permissions ──────────────────────────────────────────────
+export async function createDefaultPermissions(
+  userId: number,
+  role: string
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  const defaults = DEFAULT_ROLE_PERMISSIONS[role] ?? DEFAULT_ROLE_PERMISSIONS.sales_engineer;
+  const modules = Object.keys(defaults) as Array<keyof typeof defaults>;
+  for (const module of modules) {
+    const perm = defaults[module];
+    await db.insert(userPermissions).values({
+      userId,
+      module: module as any,
+      canView: perm.canView,
+      canAdd: perm.canAdd,
+      canEdit: perm.canEdit,
+      canDelete: perm.canDelete,
+      dataScope: perm.dataScope,
+    });
+  }
+}
+// ─── Login App User ────────────────────────────────────────────────────────────────
+export async function loginAppUser(
+  username: string,
+  password: string
+): Promise<{ user: AppUser; token: string } | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const [user] = await db
+    .select()
+    .from(appUsers)
+    .where(and(
+      eq(appUsers.username, username.toLowerCase().trim()),
+      eq(appUsers.status, "active")
+    ));
+  if (!user) return null;
+  const valid = await bcrypt.compare(password, user.passwordHash);
+  if (!valid) return null;
+  // تحديث lastLoginAt
+  await db.update(appUsers).set({ lastLoginAt: new Date() }).where(eq(appUsers.id, user.id));  // إنشاء JWT token
+  const { SignJWT } = await import("jose");
+  const secret = new TextEncoder().encode(process.env.JWT_SECRET ?? "fallback-secret");
+  const token = await new SignJWT({
+    sub: String(user.id),
+    username: user.username,
+    role: user.role,
+    name: user.name,
+    engineerId: user.engineerId,
+  })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("7d")
+    .sign(secret);
+  return { user, token };
+}
+
+// ─── Verify JWT Token ─────────────────────────────────────────────────────────
+export async function verifyAppUserToken(token: string): Promise<{
+  id: number;
+  username: string;
+  role: string;
+  name: string;
+  engineerId: number | null;
+} | null> {
+  try {
+    const { jwtVerify } = await import("jose");
+    const secret = new TextEncoder().encode(process.env.JWT_SECRET ?? "fallback-secret");
+    const { payload } = await jwtVerify(token, secret);
+    return {
+      id: parseInt(payload.sub as string),
+      username: payload.username as string,
+      role: payload.role as string,
+      name: payload.name as string,
+      engineerId: payload.engineerId as number | null,
+    };
+  } catch {
+    return null;
+  }
+}
+// ─── Get App Users List ────────────────────────────────────────────────────────────────
+export async function getAppUsers(): Promise<AppUser[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(appUsers)
+    .where(eq(appUsers.status, "active"))
+    .orderBy(appUsers.createdAt);
+}
+// ─── Get User Permissions ────────────────────────────────────────────────────────────────
+export async function getUserPermissions(userId: number): Promise<UserPermission[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(userPermissions)
+    .where(eq(userPermissions.userId, userId));
+}
+// ─── Update User Permissions ──────────────────────────────────────────────────
+export async function updateUserPermissions(
+  userId: number,
+  permissions: Array<{
+    module: string;
+    canView: number;
+    canAdd: number;
+    canEdit: number;
+    canDelete: number;
+    dataScope: "own" | "all";
+  }>
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  // حذف الصلاحيات القديمة وإعادة إنشائها
+  await db.delete(userPermissions).where(eq(userPermissions.userId, userId));
+  for (const perm of permissions) {
+    await db.insert(userPermissions).values({
+      userId,
+      module: perm.module as any,
+      canView: perm.canView,
+      canAdd: perm.canAdd,
+      canEdit: perm.canEdit,
+      canDelete: perm.canDelete,
+      dataScope: perm.dataScope,
+    });
+  }
+}
+
+// ─── Update App User ──────────────────────────────────────────────────────────
+export async function updateAppUser(
+  userId: number,
+  data: Partial<{
+    name: string;
+    role: "sales_engineer" | "sales_specialist" | "admin_sales" | "manager";
+    engineerId: number | null;
+    status: "active" | "inactive";
+    password: string;
+  }>
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  const updateData: Partial<InsertAppUser> = {};
+  if (data.name !== undefined) updateData.name = data.name;
+  if (data.role !== undefined) updateData.role = data.role;
+  if (data.engineerId !== undefined) updateData.engineerId = data.engineerId;
+  if (data.status !== undefined) updateData.status = data.status;
+  if (data.password !== undefined) {
+    updateData.passwordHash = await bcrypt.hash(data.password, 10);
+  }
+  if (Object.keys(updateData).length > 0) {
+    await db.update(appUsers).set(updateData).where(eq(appUsers.id, userId));
+  }
+}
+
+// ─── Log Activity ─────────────────────────────────────────────────────────────
+export async function logActivity(data: {
+  userId: number;
+  action: "login" | "logout" | "create" | "update" | "delete" | "view" | "export" | "permission_change";
+  module?: string;
+  recordId?: number;
+  details?: string;
+  ipAddress?: string;
+}): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(activityLogs).values({
+    userId: data.userId,
+    action: data.action,
+    module: data.module,
+    recordId: data.recordId,
+    details: data.details,
+    ipAddress: data.ipAddress,
+  });
+}
+
+// ─── Get Activity Logs ────────────────────────────────────────────────────────
+export async function getActivityLogs(filters?: {
+  userId?: number;
+  module?: string;
+  limit?: number;
+}): Promise<typeof activityLogs.$inferSelect[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [];
+  if (filters?.userId) conditions.push(eq(activityLogs.userId, filters.userId));
+  if (filters?.module) conditions.push(eq(activityLogs.module, filters.module));
+  const query = db
+    .select()
+    .from(activityLogs)
+    .orderBy(desc(activityLogs.createdAt))
+    .limit(filters?.limit ?? 100);
+  if (conditions.length > 0) {
+    return query.where(and(...conditions));
+  }
+  return query;
 }

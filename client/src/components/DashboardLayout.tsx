@@ -15,7 +15,7 @@ import {
 import { useIsMobile } from "@/hooks/useMobile";
 import { useLocalAuth } from "@/hooks/useLocalAuth";
 import { useRoleAccess } from "@/hooks/useRoleAccess";
-import { LayoutDashboard, PanelLeft, BarChart2, CheckSquare, UserPlus, MapPin, Handshake, TrendingUp, Award, DollarSign, Target, LogOut, Crown, Zap, FileBarChart } from "lucide-react";
+import { LayoutDashboard, PanelLeft, BarChart2, CheckSquare, UserPlus, MapPin, Handshake, TrendingUp, Award, DollarSign, Target, LogOut, Crown, Zap, FileBarChart, Users } from "lucide-react";
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
@@ -61,6 +61,7 @@ const menuGroupsConfig = [
     label: 'إدارة الفريق',
     items: [
       { icon: Crown, label: 'التقييم والترقية', path: '/promotion-system', accessKey: 'canSeePromotion' as const },
+      { icon: Users, label: 'إدارة المستخدمين', path: '/user-management', accessKey: 'canSeePromotion' as const },
     ]
   },
 ];

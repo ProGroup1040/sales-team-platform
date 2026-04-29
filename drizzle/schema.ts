@@ -892,3 +892,96 @@ export const engineerPersonalGoals = mysqlTable("engineer_personal_goals", {
 });
 export type EngineerPersonalGoal = typeof engineerPersonalGoals.$inferSelect;
 export type InsertEngineerPersonalGoal = typeof engineerPersonalGoals.$inferInsert;
+
+// ═══════════════════════════════════════════════════════════════════════
+// Internal App Users (نظام المستخدمين الداخلي - مستقل عن Manus OAuth)
+// ═══════════════════════════════════════════════════════════════════════
+export const appUsers = mysqlTable("app_users", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 120 }).notNull(),
+  username: varchar("username", { length: 64 }).notNull().unique(),
+  passwordHash: varchar("passwordHash", { length: 255 }).notNull(),
+  role: mysqlEnum("role", [
+    "sales_engineer",    // مهندس مبيعات
+    "sales_specialist",  // أخصائي مبيعات
+    "admin_sales",       // مدير مبيعات إداري
+    "manager",           // مدير / CEO
+  ]).notNull().default("sales_engineer"),
+  // ربط بجدول engineers (اختياري - لربط المستخدم بمهندس موجود)
+  engineerId: int("engineerId"),
+  status: mysqlEnum("status", ["active", "inactive"]).notNull().default("active"),
+  // آخر دخول
+  lastLoginAt: timestamp("lastLoginAt"),
+  // رمز إعادة تعيين كلمة المرور
+  resetToken: varchar("resetToken", { length: 255 }),
+  resetTokenExpiresAt: timestamp("resetTokenExpiresAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type AppUser = typeof appUsers.$inferSelect;
+export type InsertAppUser = typeof appUsers.$inferInsert;
+
+// ═══════════════════════════════════════════════════════════════════════
+// User Permissions (صلاحيات المستخدمين لكل Module)
+// ═══════════════════════════════════════════════════════════════════════
+export const userPermissions = mysqlTable("user_permissions", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  // اسم الـ Module
+  module: mysqlEnum("module", [
+    "crm",        // العملاء المحتملون (CRM / Leads)
+    "visits",     // المعاينات
+    "deals",      // الإغلاق والتفاوض
+    "kpi",        // مؤشرات الأداء
+    "planning",   // تخطيط الأهداف
+    "discounts",  // الخصومات
+    "reports",    // التقارير
+    "tasks",      // المهام اليومية
+    "collections",// التحصيل المالي
+    "users",      // إدارة المستخدمين (Admin only)
+  ]).notNull(),
+  // صلاحيات CRUD
+  canView: int("canView").default(1).notNull(),    // 1 = يمكن المشاهدة
+  canAdd: int("canAdd").default(0).notNull(),      // 1 = يمكن الإضافة
+  canEdit: int("canEdit").default(0).notNull(),    // 1 = يمكن التعديل
+  canDelete: int("canDelete").default(0).notNull(),// 1 = يمكن الحذف
+  // نطاق البيانات
+  dataScope: mysqlEnum("dataScope", [
+    "own",  // يرى بياناته فقط
+    "all",  // يرى كل البيانات
+  ]).notNull().default("own"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type UserPermission = typeof userPermissions.$inferSelect;
+export type InsertUserPermission = typeof userPermissions.$inferInsert;
+
+// ═══════════════════════════════════════════════════════════════════════
+// Activity Logs (سجل العمليات)
+// ═══════════════════════════════════════════════════════════════════════
+export const activityLogs = mysqlTable("activity_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  // نوع العملية
+  action: mysqlEnum("action", [
+    "login",        // تسجيل دخول
+    "logout",       // تسجيل خروج
+    "create",       // إنشاء سجل
+    "update",       // تعديل سجل
+    "delete",       // حذف سجل
+    "view",         // مشاهدة
+    "export",       // تصدير
+    "permission_change", // تغيير صلاحية
+  ]).notNull(),
+  // الـ Module المتأثر
+  module: varchar("module", { length: 50 }),
+  // معرف السجل المتأثر (اختياري)
+  recordId: int("recordId"),
+  // تفاصيل العملية (JSON)
+  details: text("details"),
+  // عنوان IP
+  ipAddress: varchar("ipAddress", { length: 45 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type ActivityLog = typeof activityLogs.$inferSelect;
+export type InsertActivityLog = typeof activityLogs.$inferInsert;

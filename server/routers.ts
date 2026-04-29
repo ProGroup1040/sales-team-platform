@@ -93,6 +93,10 @@ import {
   calcTotalPerformanceScore, getAllEngineersPerformanceScores,
   // Activity Types Integration
   getEngineerActualCounts, calcOperationalScoreFromTasks, getEngineerActivitySummary,
+  // Internal App Users System
+  createAppUser, loginAppUser, verifyAppUserToken, getAppUsers, getUserPermissions,
+  updateUserPermissions, updateAppUser, logActivity, getActivityLogs,
+  DEFAULT_ROLE_PERMISSIONS,
 } from "./db";
 import { ACTIVITY_KEYS, ACTIVITY_LABELS as ACT_LABELS_EN, ACTIVITY_LABELS_AR, ACTIVITY_WEIGHTS, ACTIVITY_ICONS, ACTIVITY_COLORS } from '../shared/activityTypes';
 
@@ -1587,6 +1591,152 @@ export const appRouter = router({
     playbookInsights: publicProcedure
       .input(z.object({ engineerId: z.number() }))
       .query(async ({ input }) => getEngineerFunnelPlaybookInsights(input.engineerId)),
+  }),
+  // ── Internal Users System (نظام المستخدمين الداخلي) ───────────────────────
+  appUsers: router({
+    // Login
+    login: publicProcedure
+      .input(z.object({
+        username: z.string().min(1),
+        password: z.string().min(1),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const result = await loginAppUser(input.username, input.password);
+        if (!result) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
+        // تسجيل النشاط
+        await logActivity({ userId: result.user.id, action: 'login', details: 'تسجيل دخول ناجح' });
+        // حفظ token في cookie
+        const res = (ctx as any).res;
+        if (res) {
+          res.cookie('app_user_token', result.token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            maxAge: 7 * 24 * 60 * 60 * 1000,
+          });
+        }
+        return { success: true, user: { id: result.user.id, name: result.user.name, username: result.user.username, role: result.user.role, engineerId: result.user.engineerId } };
+      }),
+    // Logout
+    logout: publicProcedure
+      .mutation(async ({ ctx }) => {
+        const res = (ctx as any).res;
+        if (res) res.clearCookie('app_user_token');
+        return { success: true };
+      }),
+    // Get current user from token
+    me: publicProcedure
+      .query(async ({ ctx }) => {
+        const req = (ctx as any).req;
+        const token = req?.cookies?.app_user_token;
+        if (!token) return null;
+        const user = await verifyAppUserToken(token);
+        if (!user) return null;
+        const permissions = await getUserPermissions(user.id);
+        return { ...user, permissions };
+      }),
+    // List all users (manager only)
+    list: publicProcedure
+      .query(async ({ ctx }) => {
+        const req = (ctx as any).req;
+        const token = req?.cookies?.app_user_token;
+        if (!token) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        const user = await verifyAppUserToken(token);
+        if (!user || user.role !== 'manager') throw new TRPCError({ code: 'FORBIDDEN' });
+        return getAppUsers();
+      }),
+    // Create user (manager only)
+    create: publicProcedure
+      .input(z.object({
+        name: z.string().min(2),
+        username: z.string().min(3),
+        password: z.string().min(6),
+        role: z.enum(['sales_engineer', 'sales_specialist', 'admin_sales', 'manager']),
+        engineerId: z.number().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const req = (ctx as any).req;
+        const token = req?.cookies?.app_user_token;
+        if (!token) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        const caller = await verifyAppUserToken(token);
+        if (!caller || caller.role !== 'manager') throw new TRPCError({ code: 'FORBIDDEN' });
+        const newUser = await createAppUser(input);
+        await logActivity({ userId: caller.id, action: 'create', module: 'users', details: `إنشاء مستخدم: ${input.username}` });
+        return newUser;
+      }),
+    // Update user (manager only)
+    update: publicProcedure
+      .input(z.object({
+        userId: z.number(),
+        name: z.string().optional(),
+        role: z.enum(['sales_engineer', 'sales_specialist', 'admin_sales', 'manager']).optional(),
+        engineerId: z.number().nullable().optional(),
+        status: z.enum(['active', 'inactive']).optional(),
+        password: z.string().min(6).optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const req = (ctx as any).req;
+        const token = req?.cookies?.app_user_token;
+        if (!token) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        const caller = await verifyAppUserToken(token);
+        if (!caller || caller.role !== 'manager') throw new TRPCError({ code: 'FORBIDDEN' });
+        const { userId, ...data } = input;
+        await updateAppUser(userId, data);
+        await logActivity({ userId: caller.id, action: 'update', module: 'users', recordId: userId, details: `تحديث مستخدم #${userId}` });
+        return { success: true };
+      }),
+    // Get permissions for a user
+    getPermissions: publicProcedure
+      .input(z.object({ userId: z.number() }))
+      .query(async ({ input, ctx }) => {
+        const req = (ctx as any).req;
+        const token = req?.cookies?.app_user_token;
+        if (!token) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        const caller = await verifyAppUserToken(token);
+        if (!caller || caller.role !== 'manager') throw new TRPCError({ code: 'FORBIDDEN' });
+        return getUserPermissions(input.userId);
+      }),
+    // Update permissions for a user
+    updatePermissions: publicProcedure
+      .input(z.object({
+        userId: z.number(),
+        permissions: z.array(z.object({
+          module: z.string(),
+          canView: z.number(),
+          canAdd: z.number(),
+          canEdit: z.number(),
+          canDelete: z.number(),
+          dataScope: z.enum(['own', 'all']),
+        })),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const req = (ctx as any).req;
+        const token = req?.cookies?.app_user_token;
+        if (!token) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        const caller = await verifyAppUserToken(token);
+        if (!caller || caller.role !== 'manager') throw new TRPCError({ code: 'FORBIDDEN' });
+        await updateUserPermissions(input.userId, input.permissions);
+        await logActivity({ userId: caller.id, action: 'permission_change', module: 'users', recordId: input.userId, details: `تحديث صلاحيات مستخدم #${input.userId}` });
+        return { success: true };
+      }),
+    // Activity Logs
+    activityLogs: publicProcedure
+      .input(z.object({
+        userId: z.number().optional(),
+        module: z.string().optional(),
+        limit: z.number().optional(),
+      }).optional())
+      .query(async ({ input, ctx }) => {
+        const req = (ctx as any).req;
+        const token = req?.cookies?.app_user_token;
+        if (!token) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        const caller = await verifyAppUserToken(token);
+        if (!caller || caller.role !== 'manager') throw new TRPCError({ code: 'FORBIDDEN' });
+        return getActivityLogs(input);
+      }),
+    // Default permissions per role
+    defaultPermissions: publicProcedure
+      .query(async () => DEFAULT_ROLE_PERMISSIONS),
   }),
 });
 export type AppRouter = typeof appRouter;

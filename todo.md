@@ -1070,3 +1070,29 @@
 - [ ] ربط app_users بـ engineers table
 - [ ] Activity Logs: تسجيل كل العمليات
 - [ ] Template Permissions لكل Role
+
+## ✅ نظام Users & Permissions الداخلي - المكتمل (29 أبريل 2026)
+- [x] إضافة جداول: app_users, user_permissions, activity_logs في schema
+- [x] migration SQL للجداول الجديدة
+- [x] دوال db.ts: createAppUser, loginAppUser, verifyAppUserToken, getUserPermissions, updateUserPermissions, updateAppUser, logActivity, getActivityLogs, DEFAULT_ROLE_PERMISSIONS
+- [x] routers.ts: appUsers router (login, logout, me, list, create, update, getPermissions, updatePermissions, activityLogs, defaultPermissions)
+- [x] صفحة UserManagement.tsx: إنشاء مستخدمين + تعديل + إدارة صلاحيات + سجل النشاط
+- [x] PermissionsEditor component: تعديل صلاحيات كل module (view/add/edit/delete + dataScope)
+- [x] إضافة "إدارة المستخدمين" في Sidebar (تحت إدارة الفريق)
+- [x] Route /user-management في App.tsx
+- [x] hook useAppAuth.ts: useAppAuth, usePermission, useRequireAppAuth
+- [x] إنشاء مستخدم Manager افتراضي (admin/admin123)
+- [x] Vitest tests: 11 tests لنظام Users (جميعها اجتازت)
+
+## نظام Users & Permissions الداخلي - المكتمل (29 أبريل 2026)
+- [x] إضافة جداول: app_users, user_permissions, activity_logs في schema
+- [x] migration SQL للجداول الجديدة
+- [x] دوال db.ts: createAppUser, loginAppUser, verifyAppUserToken, getUserPermissions, updateUserPermissions, updateAppUser, logActivity, getActivityLogs, DEFAULT_ROLE_PERMISSIONS
+- [x] routers.ts: appUsers router (login, logout, me, list, create, update, getPermissions, updatePermissions, activityLogs, defaultPermissions)
+- [x] صفحة UserManagement.tsx: إنشاء مستخدمين + تعديل + إدارة صلاحيات + سجل النشاط
+- [x] PermissionsEditor component: تعديل صلاحيات كل module (view/add/edit/delete + dataScope)
+- [x] إضافة "إدارة المستخدمين" في Sidebar (تحت إدارة الفريق)
+- [x] Route /user-management في App.tsx
+- [x] hook useAppAuth.ts: useAppAuth, usePermission, useRequireAppAuth
+- [x] إنشاء مستخدم Manager افتراضي (admin/admin123)
+- [x] Vitest tests: 11 tests لنظام Users (جميعها اجتازت - 244 test إجمالاً)
