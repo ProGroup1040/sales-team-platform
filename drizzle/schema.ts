@@ -259,6 +259,10 @@ export const engineerTargets = mysqlTable("engineer_targets", {
   targetDesigns: int("targetDesigns").default(0),     // هدف عدد التصاميم (2D+3D+Render)
   targetClosings: int("targetClosings").default(0),   // هدف عدد الإغلاقات
   targetQuotations: int("targetQuotations").default(0), // هدف عروض السعر
+  targetPresentations: int("targetPresentations").default(0), // هدف عدد العروض التقديمية
+  target2D: int("target2D").default(0),          // هدف 2D Design
+  target3D: int("target3D").default(0),          // هدف 3D Modeling
+  targetRender: int("targetRender").default(0),  // هدف Render
   notes: text("notes"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });

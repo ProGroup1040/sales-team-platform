@@ -79,6 +79,11 @@ import {
   // Company Closing KPI + Reward System + Lost Deals Impact
   getCompanyClosingKPI, getTeamRewardStatus, getLostDealsImpact,
   getAdvancedDiscountDistribution, getAdminSalesKPI, getAdminSalesCategoryAnalysis,
+  getEngineerOperationalTargets, getTeamPerformanceRanking,
+  // Progressive Commission + KPI Share + Closing Rate Incentive
+  calcProgressiveCommissionDetails,
+  calcClosingRateIncentive, calcKPIShare, calcSalesIncentive,
+  getEngineerEarningsBreakdown, getAllEngineersEarningsBreakdown,
 } from "./db";
 
 // ─── Seed Data ────────────────────────────────────────────────────────────────
@@ -748,6 +753,27 @@ export const appRouter = router({
     adminSalesCategoryAnalysis: publicProcedure
       .input(z.object({ engineerId: z.number(), year: z.number(), month: z.number() }))
       .query(async ({ input }) => getAdminSalesCategoryAnalysis(input.engineerId, input.year, input.month)),
+    // الأهداف التشغيلية لمهندس محدد
+    engineerOperationalTargets: publicProcedure
+      .input(z.object({ engineerId: z.number(), year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getEngineerOperationalTargets(input.engineerId, input.year, input.month)),
+    // ترتيب الفريق (Sales Engineer + Sales Specialist فقط)
+    teamPerformanceRanking: publicProcedure
+      .input(z.object({ year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getTeamPerformanceRanking(input.year, input.month)),
+    // Progressive Commission + KPI Share + Closing Rate Incentive
+    engineerEarnings: publicProcedure
+      .input(z.object({ engineerId: z.number(), year: z.number(), month: z.number(), teamKPIPool: z.number().optional() }))
+      .query(async ({ input }) => getEngineerEarningsBreakdown(input.engineerId, input.year, input.month, input.teamKPIPool ?? 2_000)),
+    allEngineersEarnings: publicProcedure
+      .input(z.object({ year: z.number(), month: z.number(), teamKPIPool: z.number().optional() }))
+      .query(async ({ input }) => getAllEngineersEarningsBreakdown(input.year, input.month, input.teamKPIPool ?? 2_000)),
+    commissionDetails: publicProcedure
+      .input(z.object({ salesAmount: z.number() }))
+      .query(async ({ input }) => ({
+        commission: calcProgressiveCommission(input.salesAmount),
+        details: calcProgressiveCommissionDetails(input.salesAmount),
+      })),
   }),
 
   // ── Collections ───────────────────────────────────────────────────────────

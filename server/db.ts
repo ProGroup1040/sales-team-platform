@@ -1332,28 +1332,86 @@ export async function upsertEngineerTarget(data: { engineerId: number; year: num
 // ════════════════════════════════════════════════════════════════════════════
 
 /** حساب الكوميشن التصاعدي على المبلغ المحصّل */
+/**
+ * Progressive Commission System:
+ * 0 → 1,000,000         = 1%   (على كل المبلغ)
+ * 1,000,000 → 1,250,000  = 1.25% (على الجزء فقط)
+ * 1,250,000 → 1,500,000  = 1.5%
+ * 1,500,000 → 1,750,000  = 1.75%
+ * 1,750,000 → 2,000,000  = 2%
+ * بعد 2,000,000: +0.25% لكل 250K زيادة (على كل المبلغ فوق 2M)
+ */
 export function calcProgressiveCommission(collected: number): number {
-  if (collected < 1_000_000) return 0;
+  if (collected <= 0) return 0;
   let commission = 0;
+  // الشرائح التدريجية
   const tiers = [
-    { from: 1_000_000, to: 1_250_000, rate: 0.01 },
-    { from: 1_250_000, to: 1_500_000, rate: 0.0125 },
-    { from: 1_500_000, to: 1_750_000, rate: 0.015 },
-    { from: 1_750_000, to: 2_000_000, rate: 0.0175 },
-    { from: 2_000_000, to: Infinity,  rate: 0.02 },
+    { from: 0,         to: 1_000_000, rate: 0.01   },
+    { from: 1_000_000, to: 1_250_000, rate: 0.0125 },
+    { from: 1_250_000, to: 1_500_000, rate: 0.015  },
+    { from: 1_500_000, to: 1_750_000, rate: 0.0175 },
+    { from: 1_750_000, to: 2_000_000, rate: 0.02   },
   ];
   for (const tier of tiers) {
     if (collected <= tier.from) break;
     const taxable = Math.min(collected, tier.to) - tier.from;
     commission += taxable * tier.rate;
   }
-  // +0.25% لكل 250K فوق 2M
+  // بعد 2M: كل 250K زيادة تضيف 0.25% على الجزء فوق 2M
   if (collected > 2_000_000) {
-    const extra = Math.floor((collected - 2_000_000) / 250_000);
-    const extraRate = extra * 0.0025;
-    commission += (collected - 2_000_000) * extraRate;
+    const above2M = collected - 2_000_000;
+    const extraSteps = Math.floor(above2M / 250_000);
+    // لكل شريحة 250K فوق 2M يزداد المعدل 0.25%
+    let remaining = above2M;
+    for (let step = 0; step < extraSteps; step++) {
+      const stepRate = 0.02 + (step + 1) * 0.0025;
+      const stepAmount = Math.min(250_000, remaining);
+      commission += stepAmount * stepRate;
+      remaining -= stepAmount;
+    }
+    // الكسر المتبقي بعد آخر 250K كاملة
+    if (remaining > 0) {
+      const lastRate = 0.02 + (extraSteps + 1) * 0.0025;
+      commission += remaining * lastRate;
+    }
   }
-  return Math.round(commission * 100) / 100;
+  return Math.round(commission);
+}
+
+/**
+ * تفاصيل حساب Progressive Commission (للعرض في الواجهة)
+ */
+export function calcProgressiveCommissionDetails(collected: number): Array<{ label: string; amount: number; rate: number; commission: number }> {
+  if (collected <= 0) return [];
+  const details: Array<{ label: string; amount: number; rate: number; commission: number }> = [];
+  const tiers = [
+    { from: 0,         to: 1_000_000, rate: 0.01,   label: 'أول 1,000,000' },
+    { from: 1_000_000, to: 1_250_000, rate: 0.0125, label: '1,000,000 → 1,250,000' },
+    { from: 1_250_000, to: 1_500_000, rate: 0.015,  label: '1,250,000 → 1,500,000' },
+    { from: 1_500_000, to: 1_750_000, rate: 0.0175, label: '1,500,000 → 1,750,000' },
+    { from: 1_750_000, to: 2_000_000, rate: 0.02,   label: '1,750,000 → 2,000,000' },
+  ];
+  for (const tier of tiers) {
+    if (collected <= tier.from) break;
+    const taxable = Math.min(collected, tier.to) - tier.from;
+    details.push({ label: tier.label, amount: Math.round(taxable), rate: tier.rate * 100, commission: Math.round(taxable * tier.rate) });
+  }
+  if (collected > 2_000_000) {
+    const above2M = collected - 2_000_000;
+    const extraSteps = Math.floor(above2M / 250_000);
+    let remaining = above2M;
+    for (let step = 0; step < extraSteps; step++) {
+      const stepRate = 0.02 + (step + 1) * 0.0025;
+      const stepAmount = Math.min(250_000, remaining);
+      details.push({ label: `فوق 2M - شريحة ${step + 1}`, amount: Math.round(stepAmount), rate: stepRate * 100, commission: Math.round(stepAmount * stepRate) });
+      remaining -= stepAmount;
+    }
+    if (remaining > 0) {
+      const lastRate = 0.02 + (extraSteps + 1) * 0.0025;
+      details.push({ label: `فوق 2M - كسر`, amount: Math.round(remaining), rate: lastRate * 100, commission: Math.round(remaining * lastRate) });
+    }
+  }
+  return details;
 }
 
 /** جلب ملف العميل المالي الكامل (Client Financial Profile) */
@@ -9153,4 +9211,398 @@ export async function setDiscountBonusCap(engineerId: number, year: number, mont
       earnedBonus: '0',
     });
   }
+}
+
+// ─── Operational Targets Performance (الأهداف التشغيلية لمهندس محدد) ──────────────────
+export async function getEngineerOperationalTargets(engineerId: number, year: number, month: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  // جلب الأهداف التشغيلية
+  const targetRows = await db.select().from(engineerTargets)
+    .where(and(eq(engineerTargets.engineerId, engineerId), eq(engineerTargets.year, year), eq(engineerTargets.month, month)))
+    .limit(1);
+  const target = targetRows[0];
+
+  // تحديد نطاق الشهر
+  const startDate = new Date(year, month - 1, 1);
+  const endDate = new Date(year, month, 0, 23, 59, 59);
+
+  // عدد الاجتماعات الفعلية
+  const meetingRows = await db.select({ cnt: sql<number>`COUNT(*)` })
+    .from(dailyTasks)
+    .where(and(
+      eq(dailyTasks.engineerId, engineerId),
+      sql`${dailyTasks.taskType} IN ('meeting_modeling','meeting_presentation','meeting_closing','meeting_2d','meeting_3d','meeting_quotation')`,
+      eq(dailyTasks.status, 'completed'),
+      sql`${dailyTasks.taskDate} >= ${startDate.toISOString().slice(0,10)}`,
+      sql`${dailyTasks.taskDate} <= ${endDate.toISOString().slice(0,10)}`,
+    ));
+  const actualMeetings = Number(meetingRows[0]?.cnt ?? 0);
+
+  // عدد الـ 2D Design الفعلي
+  const design2DRows = await db.select({ cnt: sql<number>`COUNT(*)` })
+    .from(dailyTasks)
+    .where(and(
+      eq(dailyTasks.engineerId, engineerId),
+      eq(dailyTasks.taskType, 'design_2d'),
+      eq(dailyTasks.status, 'completed'),
+      sql`${dailyTasks.taskDate} >= ${startDate.toISOString().slice(0,10)}`,
+      sql`${dailyTasks.taskDate} <= ${endDate.toISOString().slice(0,10)}`,
+    ));
+  const actual2D = Number(design2DRows[0]?.cnt ?? 0);
+
+  // عدد الـ 3D Modeling الفعلي
+  const design3DRows = await db.select({ cnt: sql<number>`COUNT(*)` })
+    .from(dailyTasks)
+    .where(and(
+      eq(dailyTasks.engineerId, engineerId),
+      eq(dailyTasks.taskType, 'design_3d'),
+      eq(dailyTasks.status, 'completed'),
+      sql`${dailyTasks.taskDate} >= ${startDate.toISOString().slice(0,10)}`,
+      sql`${dailyTasks.taskDate} <= ${endDate.toISOString().slice(0,10)}`,
+    ));
+  const actual3D = Number(design3DRows[0]?.cnt ?? 0);
+
+  // عدد الـ Render الفعلي
+  const renderRows = await db.select({ cnt: sql<number>`COUNT(*)` })
+    .from(dailyTasks)
+    .where(and(
+      eq(dailyTasks.engineerId, engineerId),
+      eq(dailyTasks.taskType, 'render'),
+      eq(dailyTasks.status, 'completed'),
+      sql`${dailyTasks.taskDate} >= ${startDate.toISOString().slice(0,10)}`,
+      sql`${dailyTasks.taskDate} <= ${endDate.toISOString().slice(0,10)}`,
+    ));
+  const actualRender = Number(renderRows[0]?.cnt ?? 0);
+
+  // عدد الـ Quotation الفعلي
+  const quotationRows = await db.select({ cnt: sql<number>`COUNT(*)` })
+    .from(dailyTasks)
+    .where(and(
+      eq(dailyTasks.engineerId, engineerId),
+      eq(dailyTasks.taskType, 'quotation'),
+      eq(dailyTasks.status, 'completed'),
+      sql`${dailyTasks.taskDate} >= ${startDate.toISOString().slice(0,10)}`,
+      sql`${dailyTasks.taskDate} <= ${endDate.toISOString().slice(0,10)}`,
+    ));
+  const actualQuotations = Number(quotationRows[0]?.cnt ?? 0);
+
+  // عدد الـ Presentation الفعلي
+  const presentationRows = await db.select({ cnt: sql<number>`COUNT(*)` })
+    .from(dailyTasks)
+    .where(and(
+      eq(dailyTasks.engineerId, engineerId),
+      eq(dailyTasks.taskType, 'meeting_presentation'),
+      eq(dailyTasks.status, 'completed'),
+      sql`${dailyTasks.taskDate} >= ${startDate.toISOString().slice(0,10)}`,
+      sql`${dailyTasks.taskDate} <= ${endDate.toISOString().slice(0,10)}`,
+    ));
+  const actualPresentations = Number(presentationRows[0]?.cnt ?? 0);
+
+  // عدد الـ Closing الفعلي (صفقات مغلقة)
+  const closingRows = await db.select({ cnt: sql<number>`COUNT(*)` })
+    .from(deals)
+    .where(and(
+      eq(deals.engineerId, engineerId),
+      eq(deals.stage, 'closed_won'),
+      eq(deals.isDeleted, 0),
+      gte(deals.createdAt, startDate),
+      lte(deals.createdAt, endDate),
+    ));
+  const actualClosings = Number(closingRows[0]?.cnt ?? 0);
+
+  // حساب نسبة الإنجاز لكل عنصر
+  const calcPct = (actual: number, target: number) => target > 0 ? Math.round((actual / target) * 100) : null;
+
+  // تحديد المشكلة: هل في النشاط أم في الإغلاق؟
+  const meetingPct = calcPct(actualMeetings, target?.targetMeetings ?? 0);
+  const closingPct = calcPct(actualClosings, target?.targetClosings ?? 0);
+  let diagnosis: 'activity' | 'closing' | 'both' | 'on_track' | 'no_data' = 'no_data';
+  if (meetingPct !== null && closingPct !== null) {
+    if (meetingPct >= 80 && closingPct < 60) diagnosis = 'closing'; // النشاط كافٍ لكن الإغلاق ضعيف
+    else if (meetingPct < 60 && closingPct < 60) diagnosis = 'both';
+    else if (meetingPct < 60) diagnosis = 'activity';
+    else diagnosis = 'on_track';
+  }
+
+  return {
+    engineerId,
+    year,
+    month,
+    targets: {
+      meetings: target?.targetMeetings ?? 0,
+      design2D: target?.target2D ?? 0,
+      design3D: target?.target3D ?? 0,
+      render: target?.targetRender ?? 0,
+      quotations: target?.targetQuotations ?? 0,
+      presentations: target?.targetPresentations ?? 0,
+      closings: target?.targetClosings ?? 0,
+      deals: target?.targetDeals ?? 0,
+    },
+    actuals: {
+      meetings: actualMeetings,
+      design2D: actual2D,
+      design3D: actual3D,
+      render: actualRender,
+      quotations: actualQuotations,
+      presentations: actualPresentations,
+      closings: actualClosings,
+    },
+    percentages: {
+      meetings: calcPct(actualMeetings, target?.targetMeetings ?? 0),
+      design2D: calcPct(actual2D, target?.target2D ?? 0),
+      design3D: calcPct(actual3D, target?.target3D ?? 0),
+      render: calcPct(actualRender, target?.targetRender ?? 0),
+      quotations: calcPct(actualQuotations, target?.targetQuotations ?? 0),
+      presentations: calcPct(actualPresentations, target?.targetPresentations ?? 0),
+      closings: calcPct(actualClosings, target?.targetClosings ?? 0),
+    },
+    diagnosis, // 'activity' | 'closing' | 'both' | 'on_track' | 'no_data'
+  };
+}
+
+// ─── Team Performance Ranking (Sales Engineer + Sales Specialist فقط) ─────────
+export async function getTeamPerformanceRanking(year: number, month: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  // جلب المهندسين من نوع sales_engineer و sales_specialist فقط
+  const salesEngineers = await db.select({ id: engineers.id, name: engineers.name, role: engineers.role })
+    .from(engineers)
+    .where(and(
+      sql`${engineers.role} IN ('sales_engineer', 'sales_specialist')`,
+      eq(engineers.status, 'active'),
+      eq(engineers.isDeleted, 0),
+    ));
+
+  if (salesEngineers.length === 0) return [];
+
+  const startDate = new Date(year, month - 1, 1);
+  const endDate = new Date(year, month, 0, 23, 59, 59);
+
+  const results = await Promise.all(salesEngineers.map(async (eng) => {
+    // الهدف الشهري
+    const targetRows = await db.select().from(engineerTargets)
+      .where(and(eq(engineerTargets.engineerId, eng.id), eq(engineerTargets.year, year), eq(engineerTargets.month, month)))
+      .limit(1);
+    const target = targetRows[0];
+
+    // المبيعات الفعلية
+    const salesRows = await db.select({ total: sql<string>`SUM(${deals.netValue})`, cnt: sql<number>`COUNT(*)`, won: sql<number>`SUM(CASE WHEN ${deals.stage}='closed_won' THEN 1 ELSE 0 END)` })
+      .from(deals)
+      .where(and(
+        eq(deals.engineerId, eng.id),
+        sql`${deals.stage} IN ('closed_won','closed_lost')`,
+        eq(deals.isDeleted, 0),
+        gte(deals.createdAt, startDate),
+        lte(deals.createdAt, endDate),
+      ));
+    const actualSales = parseFloat(salesRows[0]?.total ?? '0');
+    const totalDeals = Number(salesRows[0]?.cnt ?? 0);
+    const closedWon = Number(salesRows[0]?.won ?? 0);
+    const closingRate = totalDeals > 0 ? Math.round((closedWon / totalDeals) * 100) : 0;
+
+    // عدد الاجتماعات
+    const meetingRows = await db.select({ cnt: sql<number>`COUNT(*)` })
+      .from(dailyTasks)
+      .where(and(
+        eq(dailyTasks.engineerId, eng.id),
+        sql`${dailyTasks.taskType} IN ('meeting_modeling','meeting_presentation','meeting_closing','meeting_2d','meeting_3d','meeting_quotation')`,
+        eq(dailyTasks.status, 'completed'),
+        gte(dailyTasks.taskDate, startDate as unknown as Date),
+        lte(dailyTasks.taskDate, endDate as unknown as Date),
+      ));
+    const actualMeetings = Number(meetingRows[0]?.cnt ?? 0);
+
+    const targetAmount = parseFloat(target?.targetAmount ?? '0');
+    const achievementPct = targetAmount > 0 ? Math.round((actualSales / targetAmount) * 100) : 0;
+    const targetMeetings = target?.targetMeetings ?? 0;
+    const meetingPct = targetMeetings > 0 ? Math.round((actualMeetings / targetMeetings) * 100) : 0;
+
+    // حساب Performance Score (مجمّع)
+    // 50% مبيعات + 30% نشاط (اجتماعات) + 20% Closing Rate
+    const salesScore = Math.min(achievementPct, 150); // max 150
+    const activityScore = Math.min(meetingPct, 150);
+    const closingScore = closingRate;
+    const compositeScore = Math.round(salesScore * 0.5 + activityScore * 0.3 + closingScore * 0.2);
+
+    // تحديد المستوى
+    let level: 'A' | 'B' | 'C' = 'C';
+    if (compositeScore >= 80) level = 'A';
+    else if (compositeScore >= 50) level = 'B';
+
+    // تحديد الحالة
+    let performanceGroup: 'top' | 'needs_support' = 'needs_support';
+    if (compositeScore >= 70) performanceGroup = 'top';
+
+    return {
+      engineerId: eng.id,
+      engineerName: eng.name,
+      role: eng.role,
+      targetAmount,
+      actualSales,
+      achievementPct,
+      closingRate,
+      actualMeetings,
+      targetMeetings,
+      meetingPct,
+      totalDeals,
+      closedWon,
+      compositeScore,
+      level,
+      performanceGroup,
+    };
+  }));
+
+  // ترتيب تنازلي حسب compositeScore
+  return results.sort((a, b) => b.compositeScore - a.compositeScore);
+}
+
+// ─── Progressive Commission + KPI Share + Closing Rate Incentive ─────────────
+
+/**
+ * حساب حافز Closing Rate لمهندس واحد
+ * الشرائح:
+ * < 40%  → لا حافز
+ * 40-50% → 2,000 ج.م
+ * 50-60% → 4,000 ج.م
+ * ≥ 60%  → 6,000 ج.م
+ */
+export function calcClosingRateIncentive(closingRate: number): { amount: number; label: string; threshold: string } {
+  if (closingRate >= 60) return { amount: 6_000, label: 'حافز ممتاز', threshold: '≥ 60%' };
+  if (closingRate >= 50) return { amount: 4_000, label: 'حافز جيد جداً', threshold: '50-60%' };
+  if (closingRate >= 40) return { amount: 2_000, label: 'حافز جيد', threshold: '40-50%' };
+  return { amount: 0, label: 'لا يوجد حافز', threshold: '< 40%' };
+}
+
+/**
+ * حساب KPI Share لمهندس واحد بناءً على نسبة تحقيقه من إجمالي KPI الفريق
+ * @param achievementPct نسبة تحقيق المهندس (0-100+)
+ * @param teamKPIPool إجمالي قيمة KPI المتاحة للفريق
+ */
+export function calcKPIShare(achievementPct: number, teamKPIPool: number): number {
+  if (achievementPct <= 0 || teamKPIPool <= 0) return 0;
+  // KPI Share = نسبة التحقيق × قيمة KPI الفريق
+  // مثال: 94% تحقيق × 2000 = 1880 ج.م
+  const share = (Math.min(achievementPct, 100) / 100) * teamKPIPool;
+  return Math.round(share);
+}
+
+/**
+ * حساب الحافز التشغيلي (Incentive) بناءً على حجم المبيعات
+ * الشرائح:
+ * < 500,000   → لا حافز
+ * 500k-750k   → 2,500
+ * 750k-1M     → 5,000
+ * 1M-1.25M    → 7,500
+ * 1.25M-1.5M  → 10,000
+ * 1.5M-1.75M  → 12,500
+ * 1.75M-2M    → 15,000
+ * ≥ 2M        → 20,000
+ */
+export function calcSalesIncentive(salesAmount: number): { amount: number; label: string } {
+  if (salesAmount >= 2_000_000) return { amount: 20_000, label: 'حافز استثنائي' };
+  if (salesAmount >= 1_750_000) return { amount: 15_000, label: 'حافز ممتاز' };
+  if (salesAmount >= 1_500_000) return { amount: 12_500, label: 'حافز عالي' };
+  if (salesAmount >= 1_250_000) return { amount: 10_000, label: 'حافز جيد جداً' };
+  if (salesAmount >= 1_000_000) return { amount: 7_500, label: 'حافز جيد' };
+  if (salesAmount >= 750_000)   return { amount: 5_000, label: 'حافز متوسط' };
+  if (salesAmount >= 500_000)   return { amount: 2_500, label: 'حافز أساسي' };
+  return { amount: 0, label: 'لا يوجد حافز' };
+}
+
+/**
+ * تفاصيل استحقاقات مهندس واحد (Commission + KPI Share + Incentive)
+ * يعرض فقط Sales Engineer + Sales Specialist
+ */
+export async function getEngineerEarningsBreakdown(engineerId: number, year: number, month: number, teamKPIPool: number = 2_000) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const [eng] = await db.select().from(engineers).where(eq(engineers.id, engineerId)).limit(1);
+  if (!eng) return null;
+
+  // فلترة الأدوار البيعية فقط
+  const salesRoles = ['sales_engineer', 'sales_specialist'];
+  if (!salesRoles.includes(eng.role ?? '')) return null;
+
+  const startDate = new Date(year, month - 1, 1);
+  const endDate = new Date(year, month, 0, 23, 59, 59);
+
+  // المبيعات الفعلية (closed_won)
+  const wonDeals = await db.select().from(deals)
+    .where(and(
+      eq(deals.engineerId, engineerId),
+      eq(deals.stage, 'closed_won'),
+      eq(deals.isDeleted, 0),
+      between(deals.closedAt as any, startDate, endDate)
+    ));
+  const actualSales = wonDeals.reduce((s, d) => s + parseFloat(d.value as string || '0'), 0);
+
+  // الهدف
+  const [targetRow] = await db.select().from(engineerTargets)
+    .where(and(eq(engineerTargets.engineerId, engineerId), eq(engineerTargets.year, year), eq(engineerTargets.month, month)))
+    .limit(1);
+  const targetAmount = targetRow ? parseFloat(targetRow.targetAmount) : 0;
+  const achievementPct = targetAmount > 0 ? Math.round((actualSales / targetAmount) * 100) : 0;
+
+  // Closing Rate
+  const allDeals = await db.select().from(deals)
+    .where(and(eq(deals.engineerId, engineerId), eq(deals.isDeleted, 0)));
+  const closedDeals = allDeals.filter(d => d.stage === 'closed_won' || d.stage === 'closed_lost');
+  const closingRate = closedDeals.length > 0
+    ? Math.round((allDeals.filter(d => d.stage === 'closed_won').length / closedDeals.length) * 100)
+    : 0;
+
+  // حساب الاستحقاقات
+  const commission = calcProgressiveCommission(actualSales);
+  const commissionDetails = calcProgressiveCommissionDetails(actualSales);
+  const kpiShare = calcKPIShare(achievementPct, teamKPIPool);
+  const incentive = calcSalesIncentive(actualSales);
+  const closingIncentive = calcClosingRateIncentive(closingRate);
+  const totalEarned = commission + kpiShare + incentive.amount + closingIncentive.amount;
+
+  return {
+    engineerId: eng.id,
+    engineerName: eng.name,
+    role: eng.role,
+    actualSales: Math.round(actualSales),
+    targetAmount: Math.round(targetAmount),
+    achievementPct,
+    closingRate,
+    // Commission
+    commission,
+    commissionDetails,
+    commissionStatus: commission > 0 ? 'متاح' : 'غير مستحق',
+    // KPI Share
+    kpiShare,
+    kpiShareStatus: achievementPct > 0 ? 'متاح' : 'غير مستحق',
+    teamKPIPool,
+    // Sales Incentive
+    incentive: incentive.amount,
+    incentiveLabel: incentive.label,
+    incentiveStatus: incentive.amount > 0 ? 'متاح' : 'غير مستحق',
+    // Closing Rate Incentive
+    closingIncentive: closingIncentive.amount,
+    closingIncentiveLabel: closingIncentive.label,
+    closingIncentiveThreshold: closingIncentive.threshold,
+    closingIncentiveStatus: closingIncentive.amount > 0 ? 'متاح' : 'غير مستحق',
+    // Total
+    totalEarned,
+  };
+}
+
+/**
+ * تفاصيل استحقاقات كل الفريق البيعي (Sales Engineer + Sales Specialist فقط)
+ */
+export async function getAllEngineersEarningsBreakdown(year: number, month: number, teamKPIPool: number = 2_000) {
+  const allEngineers = await getEngineers();
+  const salesRoles = ['sales_engineer', 'sales_specialist'];
+  const salesEngList = allEngineers.filter(e => salesRoles.includes(e.role ?? ''));
+
+  const results = await Promise.all(
+    salesEngList.map(eng => getEngineerEarningsBreakdown(eng.id, year, month, teamKPIPool))
+  );
+  return results.filter(Boolean);
 }

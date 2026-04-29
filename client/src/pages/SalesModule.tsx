@@ -96,6 +96,17 @@ export default function SalesModule() {
     onSuccess: () => { utils.sales.commissionTiers.invalidate(); toast.success("تم حذف الشريحة"); },
   });
 
+  const [selectedOpEngineerId, setSelectedOpEngineerId] = useState<number | null>(null);
+  // الأهداف التشغيلية لمهندس محدد
+  const opTargetsQ = trpc.kpi.engineerOperationalTargets.useQuery(
+    { engineerId: selectedOpEngineerId ?? 0, year, month },
+    { enabled: selectedOpEngineerId !== null && selectedOpEngineerId > 0 }
+  );
+  // ترتيب الفريق
+  const teamRankingQ = trpc.kpi.teamPerformanceRanking.useQuery({ year, month });
+  const teamRanking = teamRankingQ.data ?? [];
+  const topPerformers = teamRanking.filter(e => e.performanceGroup === 'top');
+  const needsSupport = teamRanking.filter(e => e.performanceGroup === 'needs_support');
   const sortedEngineers = useMemo(() => [...engPerf].sort((a, b) => b.achievementPct - a.achievementPct), [engPerf]);
   const top3 = sortedEngineers.slice(0, 3);
   const bottom3 = sortedEngineers.slice(-3).reverse();
@@ -171,9 +182,10 @@ export default function SalesModule() {
       )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid grid-cols-4 w-full max-w-2xl">
+        <TabsList className="grid grid-cols-5 w-full max-w-3xl">
           <TabsTrigger value="overview">نظرة عامة</TabsTrigger>
           <TabsTrigger value="engineers">الفريق والترتيب</TabsTrigger>
+          <TabsTrigger value="operational">الأهداف التشغيلية</TabsTrigger>
           <TabsTrigger value="pipeline">خط الصفقات</TabsTrigger>
           <TabsTrigger value="settings">الإعدادات</TabsTrigger>
         </TabsList>
@@ -404,6 +416,156 @@ export default function SalesModule() {
                     <Bar dataKey="remaining" fill="#f87171" opacity={0.7} radius={[4,4,0,0]} />
                   </BarChart>
                 </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* TAB: الأهداف التشغيلية */}
+        <TabsContent value="operational" className="space-y-6 mt-6">
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <h2 className="text-xl font-bold flex items-center gap-2">
+              <Activity className="w-5 h-5 text-primary" /> الأهداف التشغيلية لكل مهندس
+            </h2>
+            <Select value={selectedOpEngineerId ? String(selectedOpEngineerId) : ""} onValueChange={(v) => setSelectedOpEngineerId(Number(v))}>
+              <SelectTrigger className="w-48"><SelectValue placeholder="اختر مهندس" /></SelectTrigger>
+              <SelectContent>
+                {engineers.filter((e: any) => ['sales_engineer','sales_specialist'].includes(e.role ?? '')).map((e: any) => (
+                  <SelectItem key={e.id} value={String(e.id)}>{e.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* ترتيب الفريق */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card className="border-green-200 dark:border-green-800">
+              <CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2 text-green-700 dark:text-green-400"><Trophy className="w-4 h-4" /> Top Performance ({topPerformers.length})</CardTitle></CardHeader>
+              <CardContent>
+                {teamRankingQ.isLoading ? <p className="text-muted-foreground text-sm">جاري التحميل...</p> : topPerformers.length === 0 ? (
+                  <p className="text-muted-foreground text-sm text-center py-4">لا يوجد بيانات</p>
+                ) : (
+                  <div className="space-y-3">
+                    {topPerformers.map((e, i) => (
+                      <div key={e.engineerId} className="flex items-center justify-between p-2 rounded-lg bg-green-50 dark:bg-green-950/20 border border-green-100 dark:border-green-900">
+                        <div className="flex items-center gap-2">
+                          <RankBadge rank={i+1} />
+                          <div>
+                            <p className="font-semibold text-sm">{e.engineerName}</p>
+                            <p className="text-xs text-muted-foreground">{e.role === 'sales_engineer' ? 'مهندس مبيعات' : 'متخصص مبيعات'}</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <Badge className="bg-green-100 text-green-700 border-green-300 mb-1">{e.level}</Badge>
+                          <p className="text-xs text-muted-foreground">نسبة: {e.achievementPct}% | إغلاق: {e.closingRate}%</p>
+                          <p className="text-xs text-muted-foreground">اجتماعات: {e.actualMeetings}/{e.targetMeetings}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+            <Card className="border-orange-200 dark:border-orange-800">
+              <CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2 text-orange-700 dark:text-orange-400"><AlertTriangle className="w-4 h-4" /> Needs Support ({needsSupport.length})</CardTitle></CardHeader>
+              <CardContent>
+                {teamRankingQ.isLoading ? <p className="text-muted-foreground text-sm">جاري التحميل...</p> : needsSupport.length === 0 ? (
+                  <p className="text-muted-foreground text-sm text-center py-4">لا يوجد بيانات</p>
+                ) : (
+                  <div className="space-y-3">
+                    {needsSupport.map((e, i) => (
+                      <div key={e.engineerId} className="flex items-center justify-between p-2 rounded-lg bg-orange-50 dark:bg-orange-950/20 border border-orange-100 dark:border-orange-900">
+                        <div className="flex items-center gap-2">
+                          <span className="text-gray-500 text-sm font-bold">#{topPerformers.length + i + 1}</span>
+                          <div>
+                            <p className="font-semibold text-sm">{e.engineerName}</p>
+                            <p className="text-xs text-muted-foreground">{e.role === 'sales_engineer' ? 'مهندس مبيعات' : 'متخصص مبيعات'}</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <Badge variant="outline" className="text-orange-600 border-orange-300 mb-1">{e.level}</Badge>
+                          <p className="text-xs text-muted-foreground">نسبة: {e.achievementPct}% | إغلاق: {e.closingRate}%</p>
+                          <p className="text-xs text-muted-foreground">اجتماعات: {e.actualMeetings}/{e.targetMeetings}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* الأهداف التشغيلية لمهندس محدد */}
+          {selectedOpEngineerId && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Target className="w-4 h-4 text-primary" />
+                  تفاصيل الأهداف التشغيلية - {engineers.find((e: any) => e.id === selectedOpEngineerId)?.name}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {opTargetsQ.isLoading ? (
+                  <p className="text-muted-foreground text-sm">جاري التحميل...</p>
+                ) : !opTargetsQ.data ? (
+                  <p className="text-muted-foreground text-sm text-center py-4">لا توجد أهداف محددة لهذا الشهر</p>
+                ) : (
+                  <div className="space-y-4">
+                    {/* تشخيص المشكلة */}
+                    {opTargetsQ.data.diagnosis !== 'no_data' && (
+                      <div className={`p-3 rounded-lg border text-sm font-medium ${
+                        opTargetsQ.data.diagnosis === 'on_track' ? 'bg-green-50 border-green-200 text-green-700 dark:bg-green-950/20 dark:border-green-800 dark:text-green-400' :
+                        opTargetsQ.data.diagnosis === 'closing' ? 'bg-yellow-50 border-yellow-200 text-yellow-700 dark:bg-yellow-950/20 dark:border-yellow-800 dark:text-yellow-400' :
+                        'bg-red-50 border-red-200 text-red-700 dark:bg-red-950/20 dark:border-red-800 dark:text-red-400'
+                      }`}>
+                        {opTargetsQ.data.diagnosis === 'on_track' && '✅ الأداء في المسار الصحيح'}
+                        {opTargetsQ.data.diagnosis === 'closing' && '⚠️ النشاط كافي لكن المشكلة في الإغلاق - يحتاج تدريب على إغلاق الصفقات'}
+                        {opTargetsQ.data.diagnosis === 'activity' && '⚠️ النشاط ضعيف - يحتاج زيادة عدد الاجتماعات والتصاميم'}
+                        {opTargetsQ.data.diagnosis === 'both' && '❌ النشاط والإغلاق ضعيفان - يحتاج دعم شامل'}
+                      </div>
+                    )}
+                    {/* جدول الأهداف */}
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b text-muted-foreground">
+                            <th className="text-right py-2 px-3">العنصر</th>
+                            <th className="text-right py-2 px-3">المطلوب</th>
+                            <th className="text-right py-2 px-3">المنفذ</th>
+                            <th className="text-right py-2 px-3">نسبة الإنجاز</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {([
+                            { label: 'اجتماعات', target: opTargetsQ.data.targets.meetings, actual: opTargetsQ.data.actuals.meetings, pct: opTargetsQ.data.percentages.meetings },
+                            { label: '2D Design', target: opTargetsQ.data.targets.design2D, actual: opTargetsQ.data.actuals.design2D, pct: opTargetsQ.data.percentages.design2D },
+                            { label: '3D Modeling', target: opTargetsQ.data.targets.design3D, actual: opTargetsQ.data.actuals.design3D, pct: opTargetsQ.data.percentages.design3D },
+                            { label: 'Render', target: opTargetsQ.data.targets.render, actual: opTargetsQ.data.actuals.render, pct: opTargetsQ.data.percentages.render },
+                            { label: 'Quotation', target: opTargetsQ.data.targets.quotations, actual: opTargetsQ.data.actuals.quotations, pct: opTargetsQ.data.percentages.quotations },
+                            { label: 'Presentation', target: opTargetsQ.data.targets.presentations, actual: opTargetsQ.data.actuals.presentations, pct: opTargetsQ.data.percentages.presentations },
+                            { label: 'Closing', target: opTargetsQ.data.targets.closings, actual: opTargetsQ.data.actuals.closings, pct: opTargetsQ.data.percentages.closings },
+                          ] as const).map((row) => (
+                            <tr key={row.label} className="border-b hover:bg-muted/30">
+                              <td className="py-2 px-3 font-medium">{row.label}</td>
+                              <td className="py-2 px-3 text-muted-foreground">{row.target > 0 ? row.target : <span className="text-xs text-muted-foreground">غير محدد</span>}</td>
+                              <td className="py-2 px-3 font-bold">{row.actual}</td>
+                              <td className="py-2 px-3">
+                                {row.target > 0 && row.pct !== null ? (
+                                  <div className="flex items-center gap-2">
+                                    <Progress value={Math.min(row.pct, 100)} className="w-16 h-2" />
+                                    <span className={`text-xs font-bold ${
+                                      row.pct >= 100 ? 'text-green-600' : row.pct >= 70 ? 'text-blue-600' : row.pct >= 50 ? 'text-yellow-600' : 'text-red-600'
+                                    }`}>{row.pct}%</span>
+                                  </div>
+                                ) : <span className="text-xs text-muted-foreground">—</span>}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}

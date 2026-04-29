@@ -232,6 +232,13 @@
       "when": 1777423440802,
       "tag": "0032_confused_chat",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "5",
+      "when": 1777424228208,
+      "tag": "0033_giant_risque",
+      "breakpoints": true
     }
   ]
 }

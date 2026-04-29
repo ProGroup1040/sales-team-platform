@@ -970,3 +970,22 @@
 - [ ] Frontend: بيانات كل صفقة (قبل/بعد الخصم + صافي + نسبة)
 - [ ] Frontend: Bonus Panel (شروط + حساب + Cap)
 - [ ] Frontend: إخفاء Pro Group Admin من الصفقات/الخصومات/التقارير
+
+## Operational Targets + KPI Activity-Based + Team Performance
+- [ ] Schema: إضافة operationalTargets table (2D Design, 3D Modeling, Render, Quotation, Meeting, Presentation, Closing)
+- [ ] db.ts: getOperationalTargets + setOperationalTargets + getOperationalPerformance
+- [ ] db.ts: getTeamPerformanceRanking (Sales Engineer + Sales Specialist فقط)
+- [ ] routers.ts: endpoints للأهداف التشغيلية + Team Performance
+- [ ] Frontend: Operational Targets Panel في SalesModule - المطلوب/المنفذ/نسبة الإنجاز
+- [ ] Frontend: تحديث KPI في SalesModule (مبيعات فعلية + نسبة التحقيق + كومشن + حوافز فقط)
+- [ ] Frontend: Team Performance (Sales فقط - Top/Needs Support) بناءً على النشاط + Closing Rate
+- [ ] فصل Rules/شرائح الكومشن إلى الإعدادات فقط (إخفاء من KPI display)
+
+## KPI + Commission + Incentives Overhaul
+- [ ] Progressive Commission: 0-1M=1%, 1M-1.25M=1.25%, 1.25M-1.5M=1.5%, 1.5M-1.75M=1.75%, 1.75M-2M=2%, +0.25% per 250k after 2M
+- [ ] KPI Share: نسبة تحقيق × قيمة KPI الكلية للفريق
+- [x] Closing Rate Incentive: ربط الحوافز بتحسين Closing Rate (40%/50%/60%)
+- [ ] حذف Discount Bonus System (استُبدل بمنظومة الأداء)
+- [ ] KPI Role Filter: عرض Sales Engineer + Sales Specialist فقط في الترتيب
+- [ ] Frontend: تحديث KPIModule لعرض Commission + KPI Share + Incentive بشكل صحيح
+- [ ] Frontend: تحديث SalesModule لعرض Progressive Commission details
