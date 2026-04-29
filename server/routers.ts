@@ -6,7 +6,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { TRPCError } from "@trpc/server";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import {
-  getEngineers, getEngineerById, createEngineer,
+  getEngineers, getEngineerById, updateEngineerProfile, createEngineer,
   getDailyTasksStats, getTasksList, createTask, updateTaskStatus, deleteTask, rescheduleTask,
   getCriticalTasks, getEngineersWithRole, createEngineerWithRole, deleteEngineer,
   getLeadsStats, getLeadsList, createLead, updateLeadStatus,
@@ -34,7 +34,7 @@ import {
   getClientFinancialProfile,
   getManagementFocus,
   submitMeetingRecordingLink, upsertMeetingReview, getMeetingReview, getEngineerClosingQualityScore,
-  softDeleteVisit, getVisitsDebt, getVisitsAlerts, getVisitsDailyTracking,
+  softDeleteVisit, getVisitsDebt, getVisitsAlerts, getVisitsDailyTracking, getVisitsNeedingAction,
   updateVisitWithAdminTracking, getAdminSalesVisitsKPI, getEngineerVisitsKPI,
   softDeleteEngineer, softDeleteTask, softDeleteLead, softDeleteVisitFull, softDeleteDeal,
   getAuditLogs,
@@ -77,7 +77,7 @@ import {
   getTeleSalesKPI, getSiteEngineersKPI,
   // Company Closing KPI + Reward System + Lost Deals Impact
   getCompanyClosingKPI, getTeamRewardStatus, getLostDealsImpact,
-  getAdvancedDiscountDistribution, getAdminSalesKPI,
+  getAdvancedDiscountDistribution, getAdminSalesKPI, getAdminSalesCategoryAnalysis,
 } from "./db";
 
 // ─── Seed Data ────────────────────────────────────────────────────────────────
@@ -362,6 +362,18 @@ export const appRouter = router({
     })).mutation(async ({ input }) => { await createEngineerWithRole(input); return { success: true }; }),
     deleteEngineer: publicProcedure.input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => { await deleteEngineer(input.id); return { success: true }; }),
+    updateEngineerProfile: publicProcedure.input(z.object({
+      id: z.number(),
+      name: z.string().optional(),
+      department: z.string().optional(),
+      role: z.string().optional(),
+      phone: z.string().optional(),
+      email: z.string().optional(),
+    })).mutation(async ({ input }) => {
+      const { id, ...data } = input;
+      await updateEngineerProfile(id, data);
+      return { success: true };
+    }),
     // ── New time-based endpoints ──
     filtered: publicProcedure.input(z.object({
       dateRange: z.enum(['today', 'yesterday', 'week', 'month', 'custom']),
@@ -524,6 +536,7 @@ export const appRouter = router({
       .query(async ({ input }) => getAdminSalesVisitsKPI(input.year, input.month)),
     engineerKPI: publicProcedure.input(z.object({ engineerId: z.number(), year: z.number(), month: z.number() }))
       .query(async ({ input }) => getEngineerVisitsKPI(input.engineerId, input.year, input.month)),
+    needingAction: publicProcedure.query(async () => getVisitsNeedingAction()),
   }),
 
   // ── Closing / Deals ───────────────────────────────────────────────────────
@@ -703,10 +716,14 @@ export const appRouter = router({
     advancedDiscountDistribution: publicProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getAdvancedDiscountDistribution(input.year, input.month)),
-    // ─── Admin Sales KPI ──────────────────────────────────────────────────────
+      // ─── Admin Sales KPI ──────────────────────────────────────────
     adminSalesKPI: publicProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getAdminSalesKPI(input.year, input.month)),
+    // ─── Admin Sales Category Analysis ──────────────────────────────
+    adminSalesCategoryAnalysis: publicProcedure
+      .input(z.object({ engineerId: z.number(), year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getAdminSalesCategoryAnalysis(input.engineerId, input.year, input.month)),
   }),
 
   // ── Collections ───────────────────────────────────────────────────────────

@@ -9,11 +9,181 @@ import { Badge } from "@/components/ui/badge";
 import {
   Users, TrendingUp, Clock, CheckCircle2, XCircle,
   AlertTriangle, BarChart3, CalendarDays, Plus, Save,
-  Phone, Star, ArrowUpRight
+  Phone, Star, ArrowUpRight, ChevronDown, X, Calendar
 } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { toast } from "sonner";
 
+// ─── Date Helpers ─────────────────────────────────────────────────────────────
+function toDateStr(d: Date) { return d.toISOString().split("T")[0]; }
+function addDays(d: Date, n: number) { const r = new Date(d); r.setDate(r.getDate() + n); return r; }
+function startOfWeek(d: Date) {
+  const day = d.getDay(); // 0=Sun
+  const r = new Date(d); r.setDate(d.getDate() - day); return r;
+}
+function startOfMonth(d: Date) { return new Date(d.getFullYear(), d.getMonth(), 1); }
+function startOfLastMonth(d: Date) { return new Date(d.getFullYear(), d.getMonth() - 1, 1); }
+function endOfLastMonth(d: Date) { return new Date(d.getFullYear(), d.getMonth(), 0); }
+function startOfLastWeek(d: Date) { const sw = startOfWeek(d); return addDays(sw, -7); }
+function endOfLastWeek(d: Date) { const sw = startOfWeek(d); return addDays(sw, -1); }
+
+// ─── Presets ──────────────────────────────────────────────────────────────────
+type PresetKey = "today" | "yesterday" | "last7" | "last14" | "last30" | "thisWeek" | "lastWeek" | "thisMonth" | "lastMonth" | "custom";
+
+const PRESETS: Array<{ key: PresetKey; label: string }> = [
+  { key: "today",     label: "اليوم" },
+  { key: "yesterday", label: "أمس" },
+  { key: "last7",     label: "آخر 7 أيام" },
+  { key: "last14",    label: "آخر 14 يوم" },
+  { key: "last30",    label: "آخر 30 يوم" },
+  { key: "thisWeek",  label: "هذا الأسبوع" },
+  { key: "lastWeek",  label: "الأسبوع الماضي" },
+  { key: "thisMonth", label: "هذا الشهر" },
+  { key: "lastMonth", label: "الشهر الماضي" },
+  { key: "custom",    label: "نطاق مخصص" },
+];
+
+function computeRange(preset: PresetKey, customFrom: string, customTo: string): { from: string; to: string } {
+  const now = new Date();
+  switch (preset) {
+    case "today":     return { from: toDateStr(now), to: toDateStr(now) };
+    case "yesterday": { const y = addDays(now, -1); return { from: toDateStr(y), to: toDateStr(y) }; }
+    case "last7":     return { from: toDateStr(addDays(now, -6)), to: toDateStr(now) };
+    case "last14":    return { from: toDateStr(addDays(now, -13)), to: toDateStr(now) };
+    case "last30":    return { from: toDateStr(addDays(now, -29)), to: toDateStr(now) };
+    case "thisWeek":  return { from: toDateStr(startOfWeek(now)), to: toDateStr(now) };
+    case "lastWeek":  return { from: toDateStr(startOfLastWeek(now)), to: toDateStr(endOfLastWeek(now)) };
+    case "thisMonth": return { from: toDateStr(startOfMonth(now)), to: toDateStr(now) };
+    case "lastMonth": return { from: toDateStr(startOfLastMonth(now)), to: toDateStr(endOfLastMonth(now)) };
+    case "custom":    return { from: customFrom || toDateStr(addDays(now, -6)), to: customTo || toDateStr(now) };
+    default:          return { from: toDateStr(addDays(now, -6)), to: toDateStr(now) };
+  }
+}
+
+// ─── Advanced Date Filter Component ──────────────────────────────────────────
+function AdvancedDateFilter({
+  preset, onPresetChange,
+  customFrom, onCustomFromChange,
+  customTo, onCustomToChange,
+  onReset,
+}: {
+  preset: PresetKey;
+  onPresetChange: (p: PresetKey) => void;
+  customFrom: string;
+  onCustomFromChange: (v: string) => void;
+  customTo: string;
+  onCustomToChange: (v: string) => void;
+  onReset: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const { from, to } = computeRange(preset, customFrom, customTo);
+  const selectedLabel = PRESETS.find(p => p.key === preset)?.label ?? "اليوم";
+
+  return (
+    <div className="relative">
+      {/* Trigger Button */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <button
+          onClick={() => setOpen(!open)}
+          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm hover:bg-white/10 transition-all"
+        >
+          <Calendar className="h-4 w-4 text-blue-400" />
+          <span>{selectedLabel}</span>
+          {preset !== "today" && (
+            <span className="text-white/40 text-xs">({from} → {to})</span>
+          )}
+          <ChevronDown className={`h-3.5 w-3.5 text-white/50 transition-transform ${open ? "rotate-180" : ""}`} />
+        </button>
+        {preset !== "last7" && (
+          <button
+            onClick={onReset}
+            className="flex items-center gap-1 px-2 py-2 rounded-lg bg-white/5 border border-white/10 text-white/50 text-xs hover:bg-white/10 hover:text-white transition-all"
+          >
+            <X className="h-3 w-3" />
+            إعادة تعيين
+          </button>
+        )}
+      </div>
+
+      {/* Dropdown Panel */}
+      {open && (
+        <div className="absolute top-full mt-2 right-0 z-50 w-80 rounded-xl border border-white/10 bg-slate-900 shadow-2xl p-4 space-y-3">
+          <p className="text-white/60 text-xs font-medium">اختر الفترة الزمنية</p>
+
+          {/* Presets Grid */}
+          <div className="grid grid-cols-3 gap-1.5">
+            {PRESETS.filter(p => p.key !== "custom").map(p => (
+              <button
+                key={p.key}
+                onClick={() => { onPresetChange(p.key); if (p.key !== "custom") setOpen(false); }}
+                className={`px-2 py-1.5 rounded-lg text-xs font-medium transition-all text-center ${
+                  preset === p.key
+                    ? "bg-blue-600 text-white"
+                    : "bg-white/5 text-white/60 hover:bg-white/10 hover:text-white border border-white/10"
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Divider */}
+          <div className="border-t border-white/10" />
+
+          {/* Custom Range */}
+          <div className="space-y-2">
+            <button
+              onClick={() => onPresetChange("custom")}
+              className={`w-full px-3 py-2 rounded-lg text-xs font-medium transition-all flex items-center gap-2 ${
+                preset === "custom"
+                  ? "bg-blue-600 text-white"
+                  : "bg-white/5 text-white/60 hover:bg-white/10 border border-white/10"
+              }`}
+            >
+              <Calendar className="h-3.5 w-3.5" />
+              نطاق مخصص (From → To)
+            </button>
+
+            {preset === "custom" && (
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label className="text-white/50 text-xs">من</Label>
+                  <Input
+                    type="date"
+                    value={customFrom}
+                    onChange={e => onCustomFromChange(e.target.value)}
+                    className="h-8 text-xs bg-white/5 border-white/10 text-white"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-white/50 text-xs">إلى</Label>
+                  <Input
+                    type="date"
+                    value={customTo}
+                    onChange={e => onCustomToChange(e.target.value)}
+                    className="h-8 text-xs bg-white/5 border-white/10 text-white"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {preset === "custom" && (
+            <Button
+              size="sm"
+              className="w-full bg-blue-600 hover:bg-blue-700 text-xs"
+              onClick={() => setOpen(false)}
+            >
+              تطبيق الفلتر
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── DailyInputForm ───────────────────────────────────────────────────────────
 function DailyInputForm({ onSuccess }: { onSuccess: () => void }) {
   const today = new Date().toISOString().split("T")[0];
   const [date, setDate] = useState(today);
@@ -111,15 +281,16 @@ function DailyInputForm({ onSuccess }: { onSuccess: () => void }) {
   );
 }
 
+// ─── SummaryCards ─────────────────────────────────────────────────────────────
 function SummaryCards({ from, to }: { from: string; to: string }) {
   const { data: summary } = trpc.leadDailyStats.summary.useQuery({ from, to });
   const cards = [
-    { label: "إجمالي الـ Leads", value: summary?.totalLeads ?? 0, icon: <Users className="h-5 w-5" />, color: "text-blue-400", bg: "bg-blue-500/10" },
-    { label: "تم التواصل", value: summary?.contacted ?? 0, sub: summary ? summary.contactRate + "%" : undefined, icon: <CheckCircle2 className="h-5 w-5" />, color: "text-green-400", bg: "bg-green-500/10" },
-    { label: "تأخير في الرد", value: summary?.delayed ?? 0, sub: summary ? summary.delayRate + "%" : undefined, icon: <Clock className="h-5 w-5" />, color: "text-yellow-400", bg: "bg-yellow-500/10" },
-    { label: "لم يتم التواصل", value: summary?.notContacted ?? 0, icon: <XCircle className="h-5 w-5" />, color: "text-red-400", bg: "bg-red-500/10" },
-    { label: "مؤهلة", value: summary?.qualified ?? 0, icon: <Star className="h-5 w-5" />, color: "text-blue-300", bg: "bg-blue-500/10" },
-    { label: "تحولت لصفقة", value: summary?.converted ?? 0, sub: summary ? summary.conversionRate + "%" : undefined, icon: <ArrowUpRight className="h-5 w-5" />, color: "text-purple-400", bg: "bg-purple-500/10" },
+    { label: "إجمالي الـ Leads",  value: summary?.totalLeads ?? 0,  sub: undefined,                                        icon: <Users className="h-5 w-5" />,       color: "text-blue-400",   bg: "bg-blue-500/10" },
+    { label: "تم التواصل",        value: summary?.contacted ?? 0,   sub: summary ? summary.contactRate + "%" : undefined,  icon: <CheckCircle2 className="h-5 w-5" />, color: "text-green-400",  bg: "bg-green-500/10" },
+    { label: "تأخير في الرد",     value: summary?.delayed ?? 0,     sub: summary ? summary.delayRate + "%" : undefined,    icon: <Clock className="h-5 w-5" />,        color: "text-yellow-400", bg: "bg-yellow-500/10" },
+    { label: "لم يتم التواصل",    value: summary?.notContacted ?? 0, sub: undefined,                                       icon: <XCircle className="h-5 w-5" />,      color: "text-red-400",    bg: "bg-red-500/10" },
+    { label: "مؤهلة",             value: summary?.qualified ?? 0,   sub: undefined,                                        icon: <Star className="h-5 w-5" />,         color: "text-blue-300",   bg: "bg-blue-500/10" },
+    { label: "تحولت لصفقة",       value: summary?.converted ?? 0,   sub: summary ? summary.conversionRate + "%" : undefined, icon: <ArrowUpRight className="h-5 w-5" />, color: "text-purple-400", bg: "bg-purple-500/10" },
   ];
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -139,6 +310,7 @@ function SummaryCards({ from, to }: { from: string; to: string }) {
   );
 }
 
+// ─── PerformanceAlerts ────────────────────────────────────────────────────────
 function PerformanceAlerts({ summary }: { summary?: { delayRate: number; contactRate: number; conversionRate: number } | null }) {
   if (!summary) return null;
   const alerts: Array<{ type: string; msg: string }> = [];
@@ -161,8 +333,9 @@ function PerformanceAlerts({ summary }: { summary?: { delayRate: number; contact
   );
 }
 
+// ─── DailyLogTable ────────────────────────────────────────────────────────────
 function DailyLogTable({ from, to }: { from: string; to: string }) {
-  const { data: rows = [] } = trpc.leadDailyStats.list.useQuery({ from, to, limit: 30 });
+  const { data: rows = [] } = trpc.leadDailyStats.list.useQuery({ from, to, limit: 60 });
   if (rows.length === 0) {
     return (
       <Card className="border-border/50">
@@ -224,22 +397,18 @@ function DailyLogTable({ from, to }: { from: string; to: string }) {
   );
 }
 
+// ─── Main LeadsModule ─────────────────────────────────────────────────────────
 export default function LeadsModule() {
-  const [period, setPeriod] = useState<"today" | "week" | "month">("week");
+  const [preset, setPreset] = useState<PresetKey>("last7");
+  const [customFrom, setCustomFrom] = useState(() => toDateStr(new Date(new Date().setDate(new Date().getDate() - 6))));
+  const [customTo, setCustomTo] = useState(() => toDateStr(new Date()));
   const [showForm, setShowForm] = useState(false);
   const utils = trpc.useUtils();
 
-  const { from, to } = useMemo(() => {
-    const now = new Date();
-    const toStr = now.toISOString().split("T")[0];
-    if (period === "today") return { from: toStr, to: toStr };
-    if (period === "week") {
-      const d = new Date(now); d.setDate(d.getDate() - 6);
-      return { from: d.toISOString().split("T")[0], to: toStr };
-    }
-    const d = new Date(now.getFullYear(), now.getMonth(), 1);
-    return { from: d.toISOString().split("T")[0], to: toStr };
-  }, [period]);
+  const { from, to } = useMemo(
+    () => computeRange(preset, customFrom, customTo),
+    [preset, customFrom, customTo]
+  );
 
   const { data: summary } = trpc.leadDailyStats.summary.useQuery({ from, to });
 
@@ -249,8 +418,15 @@ export default function LeadsModule() {
     setShowForm(false);
   };
 
+  const handleReset = () => {
+    setPreset("last7");
+    setCustomFrom(toDateStr(new Date(new Date().setDate(new Date().getDate() - 6))));
+    setCustomTo(toDateStr(new Date()));
+  };
+
   return (
     <div className="p-4 sm:p-6 space-y-5 max-w-5xl mx-auto">
+      {/* Header */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-xl font-bold flex items-center gap-2">
@@ -266,10 +442,24 @@ export default function LeadsModule() {
 
       {showForm && <DailyInputForm onSuccess={handleSuccess} />}
 
-      <div className="flex gap-2">
-        {([{ key: "today", label: "اليوم" }, { key: "week", label: "7 أيام" }, { key: "month", label: "الشهر" }] as const).map(({ key, label }) => (
-          <Button key={key} variant={period === key ? "default" : "outline"} size="sm" onClick={() => setPeriod(key)} className="text-xs">{label}</Button>
-        ))}
+      {/* Advanced Date Filter */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        <AdvancedDateFilter
+          preset={preset}
+          onPresetChange={setPreset}
+          customFrom={customFrom}
+          onCustomFromChange={setCustomFrom}
+          customTo={customTo}
+          onCustomToChange={setCustomTo}
+          onReset={handleReset}
+        />
+        {/* Date Range Display */}
+        <div className="text-xs text-muted-foreground flex items-center gap-1">
+          <Calendar className="h-3.5 w-3.5" />
+          <span>{from}</span>
+          <span>→</span>
+          <span>{to}</span>
+        </div>
       </div>
 
       <PerformanceAlerts summary={summary} />

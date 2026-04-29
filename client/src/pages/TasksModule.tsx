@@ -18,7 +18,7 @@ import {
 import TaskCalendarView from "@/components/TaskCalendarView";
 import TimeFilterBar, { type TimeFilterValue } from "@/components/TimeFilterBar";
 import DailyTimeline from "@/components/DailyTimeline";
-import { LayoutList, LayoutGrid, Filter, X } from "lucide-react";
+import { LayoutList, LayoutGrid, Filter, X, Pencil } from "lucide-react";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 function toDateStr(d: Date) { return d.toISOString().split("T")[0]; }
@@ -391,6 +391,8 @@ function ManageEngineersDialog({ engineers, onDone }: { engineers: any[]; onDone
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: "", phone: "", department: "", role: "engineer" });
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
+  const [editTarget, setEditTarget] = useState<any | null>(null);
+  const [editForm, setEditForm] = useState({ name: "", department: "", role: "", phone: "" });
   const utils = trpc.useUtils();
   const createMut = trpc.tasks.createEngineer.useMutation({
     onSuccess: () => {
@@ -399,10 +401,26 @@ function ManageEngineersDialog({ engineers, onDone }: { engineers: any[]; onDone
     },
     onError: () => toast.error("حدث خطأ"),
   });
+  const updateMut = trpc.tasks.updateEngineerProfile.useMutation({
+    onSuccess: () => {
+      utils.tasks.engineers.invalidate(); toast.success("تم تحديث بيانات المهندس");
+      setEditTarget(null); onDone();
+    },
+    onError: () => toast.error("حدث خطأ في التحديث"),
+  });
   const softDeleteMut = trpc.softDelete.engineer.useMutation({
     onSuccess: () => { utils.tasks.engineers.invalidate(); toast.success("تم حذف المهندس"); setDeleteTarget(null); onDone(); },
     onError: () => toast.error("حدث خطأ في الحذف"),
   });
+  const DEPT_OPTIONS = [
+    { value: 'sales_engineer', label: 'مهندس مبيعات (Sales Engineer)' },
+    { value: 'sales_specialist', label: 'أخصائي مبيعات (Sales Specialist)' },
+    { value: 'interior_designer', label: 'مصمم داخلي (Interior Designer)' },
+    { value: 'tele_sales', label: 'تيلي سيلز (Tele Sales)' },
+    { value: 'site_engineer', label: 'مهندس معاينات (Site Engineer)' },
+    { value: 'admin_sales', label: 'إداري مبيعات (Admin Sales)' },
+    { value: 'manager', label: 'مدير (Manager)' },
+  ];
   return (
     <>
       <Button variant="outline" className="border-white/20 bg-white/5 hover:bg-white/10 gap-2" onClick={() => setOpen(true)}>
@@ -474,10 +492,16 @@ function ManageEngineersDialog({ engineers, onDone }: { engineers: any[]; onDone
                       </Badge>
                     </div>
                   </div>
-                  <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-300 hover:bg-red-500/10 h-8 w-8 p-0"
-                    onClick={() => setDeleteTarget(eng.id)}>
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button size="sm" variant="ghost" className="text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 h-8 w-8 p-0"
+                      onClick={() => { setEditTarget(eng); setEditForm({ name: eng.name, department: eng.department ?? '', role: eng.role ?? '', phone: eng.phone ?? '' }); }}>
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-300 hover:bg-red-500/10 h-8 w-8 p-0"
+                      onClick={() => setDeleteTarget(eng.id)}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -494,6 +518,41 @@ function ManageEngineersDialog({ engineers, onDone }: { engineers: any[]; onDone
         description="هل أنت متأكد من حذف هذا المهندس؟ سيتم إخفاؤه من القوائم مع الاحتفاظ ببياناته."
         isLoading={softDeleteMut.isPending}
       />
+      {/* Edit Engineer Dialog */}
+      <Dialog open={editTarget !== null} onOpenChange={v => { if (!v) setEditTarget(null); }}>
+        <DialogContent className="bg-slate-900 border-white/10 text-white max-w-md">
+          <DialogHeader><DialogTitle>تعديل بيانات المهندس</DialogTitle></DialogHeader>
+          <div className="space-y-3 pt-2">
+            <Input value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
+              className="bg-white/5 border-white/10 text-white" placeholder="الاسم *" />
+            <Input value={editForm.phone} onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))}
+              className="bg-white/5 border-white/10 text-white" placeholder="رقم الهاتف" />
+            <Select value={editForm.department} onValueChange={v => setEditForm(f => ({ ...f, department: v }))}>
+              <SelectTrigger className="bg-white/5 border-white/10 text-white"><SelectValue placeholder="اختر القسم" /></SelectTrigger>
+              <SelectContent className="bg-slate-900 border-white/10">
+                {DEPT_OPTIONS.map(d => <SelectItem key={d.value} value={d.value} className="text-white hover:bg-white/10">{d.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={editForm.role} onValueChange={v => setEditForm(f => ({ ...f, role: v }))}>
+              <SelectTrigger className="bg-white/5 border-white/10 text-white"><SelectValue placeholder="نوع المهندس" /></SelectTrigger>
+              <SelectContent className="bg-slate-900 border-white/10">
+                <SelectItem value="engineer" className="text-white hover:bg-white/10">مهندس</SelectItem>
+                <SelectItem value="admin" className="text-white hover:bg-white/10">مدير</SelectItem>
+                <SelectItem value="sales_engineer" className="text-white hover:bg-white/10">مهندس مبيعات</SelectItem>
+                <SelectItem value="tele_sales" className="text-white hover:bg-white/10">تيلي سيلز</SelectItem>
+                <SelectItem value="site_engineer" className="text-white hover:bg-white/10">مهندس معاينات</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="flex gap-2 pt-2">
+              <Button className="flex-1 bg-indigo-600 hover:bg-indigo-700" disabled={!editForm.name || updateMut.isPending}
+                onClick={() => editTarget && updateMut.mutate({ id: editTarget.id, name: editForm.name, department: editForm.department || undefined, role: editForm.role || undefined, phone: editForm.phone || undefined })}>
+                {updateMut.isPending ? 'جاري الحفظ...' : 'حفظ التعديلات'}
+              </Button>
+              <Button variant="outline" className="border-white/20" onClick={() => setEditTarget(null)}>إلغاء</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -857,10 +916,13 @@ function WorkDistributionTab({ engineers, currentDate }: { engineers: any[]; cur
 // ─── Admin Sales Tab ──────────────────────────────────────────────────────────
 function AdminSalesTab({ engineers, currentDate }: { engineers: any[]; currentDate: Date }) {
   const [selectedEngId, setSelectedEngId] = useState<string>("");
-  const [subTab, setSubTab] = useState<"daily" | "weekly" | "monthly" | "meetings">("daily");
+  const [subTab, setSubTab] = useState<"daily" | "weekly" | "monthly" | "meetings" | "kpi_analysis">("daily");
   const dateStr = toDateStr(currentDate);
   const weekStart = getWeekStart(currentDate);
   const monthStr = getMonthStr(currentDate);
+  const now = currentDate;
+  const kpiYear = now.getFullYear();
+  const kpiMonth = now.getMonth() + 1;
 
   // اختيار أول مهندس إذا لم يُختر
   const engId = selectedEngId ? Number(selectedEngId) : (engineers[0]?.id ?? 0);
@@ -877,6 +939,14 @@ function AdminSalesTab({ engineers, currentDate }: { engineers: any[]; currentDa
     { engineerId: engId, month: monthStr },
     { enabled: engId > 0 }
   );
+  const kpiQ = trpc.kpi.adminSalesKPI.useQuery(
+    { year: kpiYear, month: kpiMonth },
+    { enabled: subTab === 'kpi_analysis' }
+  );
+  const categoryQ = trpc.kpi.adminSalesCategoryAnalysis.useQuery(
+    { engineerId: engId, year: kpiYear, month: kpiMonth },
+    { enabled: subTab === 'kpi_analysis' && engId > 0 }
+  );
   const utils = trpc.useUtils();
 
   const updateMeetingMut = trpc.adminSalesTasks.updateWeekMeeting.useMutation({
@@ -887,6 +957,10 @@ function AdminSalesTab({ engineers, currentDate }: { engineers: any[]; currentDa
   const tasks = tasksQ.data ?? { daily: [], weekly: [], monthly: [] };
   const meeting = meetingQ.data;
   const stats = statsQ.data;
+  const kpiData = kpiQ.data;
+  const catData = categoryQ.data;
+  // بيانات KPI للمهندس المختار
+  const engKPI = kpiData?.find((k: any) => k.engineerId === engId);
 
   const refetchAll = () => {
     tasksQ.refetch();
@@ -942,13 +1016,18 @@ function AdminSalesTab({ engineers, currentDate }: { engineers: any[]; currentDa
       {/* Sub Tabs */}
       <div className="flex gap-1 p-1 bg-white/5 rounded-xl border border-white/10 w-fit flex-wrap">
         {[
-          { key: "daily",    label: "يومية",    icon: <Calendar className="h-3.5 w-3.5" />,    count: tasks.daily.length },
-          { key: "weekly",   label: "أسبوعية",  icon: <CalendarDays className="h-3.5 w-3.5" />, count: tasks.weekly.length },
-          { key: "monthly",  label: "شهرية",    icon: <BarChart2 className="h-3.5 w-3.5" />,   count: tasks.monthly.length },
-          { key: "meetings", label: "الاجتماعات", icon: <Video className="h-3.5 w-3.5" />,     count: null },
+          { key: "daily",        label: "يومية",       icon: <Calendar className="h-3.5 w-3.5" />,    count: tasks.daily.length },
+          { key: "weekly",       label: "أسبوعية",     icon: <CalendarDays className="h-3.5 w-3.5" />, count: tasks.weekly.length },
+          { key: "monthly",      label: "شهرية",       icon: <BarChart2 className="h-3.5 w-3.5" />,   count: tasks.monthly.length },
+          { key: "meetings",     label: "الاجتماعات",  icon: <Video className="h-3.5 w-3.5" />,     count: null },
+          { key: "kpi_analysis", label: "تحليل KPI",   icon: <Target className="h-3.5 w-3.5" />,    count: null },
         ].map(tab => (
           <button key={tab.key} onClick={() => setSubTab(tab.key as any)}
-            className={`px-3 py-2 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${subTab === tab.key ? "bg-indigo-600 text-white" : "text-white/60 hover:text-white hover:bg-white/5"}`}>
+            className={`px-3 py-2 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
+              subTab === tab.key
+                ? tab.key === 'kpi_analysis' ? 'bg-purple-600 text-white' : 'bg-indigo-600 text-white'
+                : 'text-white/60 hover:text-white hover:bg-white/5'
+            }`}>
             {tab.icon}
             {tab.label}
             {tab.count !== null && tab.count > 0 && (
@@ -959,7 +1038,7 @@ function AdminSalesTab({ engineers, currentDate }: { engineers: any[]; currentDa
       </div>
 
       {/* Daily / Weekly / Monthly Tasks */}
-      {subTab !== "meetings" && (
+      {subTab !== "meetings" && subTab !== "kpi_analysis" && (
         <div className="space-y-3">
           {tasksQ.isLoading ? (
             <div className="text-center py-10 text-white/30">
@@ -995,6 +1074,106 @@ function AdminSalesTab({ engineers, currentDate }: { engineers: any[]; currentDa
               ))}
             </>
           )}
+        </div>
+      )}
+
+      {/* KPI Analysis Tab */}
+      {subTab === "kpi_analysis" && (
+        <div className="space-y-4">
+          {/* Header */}
+          <div className="p-3 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-300 text-sm flex items-center gap-2">
+            <Target className="h-4 w-4 shrink-0" />
+            تحليل KPI Admin Sales — {kpiYear}/{String(kpiMonth).padStart(2,'0')}
+          </div>
+
+          {/* KPI Score Cards: 40/30/20/10 */}
+          {kpiQ.isLoading ? (
+            <div className="text-center py-10 text-white/30"><Clock className="h-8 w-8 mx-auto mb-2 opacity-30 animate-spin" /></div>
+          ) : !engKPI ? (
+            <div className="text-center py-10 text-white/30">لا توجد بيانات KPI لهذا الشهر</div>
+          ) : (
+            <>
+              {/* KPI Score */}
+              <div className="flex items-center justify-between gap-3 p-4 rounded-xl border border-purple-500/30 bg-purple-500/10">
+                <div>
+                  <p className="text-white/60 text-xs">نتيجة KPI الشهرية</p>
+                  <p className={`text-3xl font-bold mt-1 ${
+                    engKPI.kpiScore >= 90 ? 'text-emerald-400' :
+                    engKPI.kpiScore >= 75 ? 'text-blue-400' :
+                    engKPI.kpiScore >= 60 ? 'text-amber-400' : 'text-red-400'
+                  }`}>{engKPI.kpiScore}%</p>
+                  <p className="text-white/40 text-xs mt-1">تقييم: {engKPI.kpiStatus === 'excellent' ? 'ممتاز' : engKPI.kpiStatus === 'good' ? 'جيد' : engKPI.kpiStatus === 'average' ? 'متوسط' : 'ضعيف'}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-white/40 text-xs">معادلة حساب KPI</p>
+                  <p className="text-white/60 text-xs mt-1">40% يومي + 30% أسبوعي + 20% شهري + 10% اجتماعات</p>
+                </div>
+              </div>
+
+              {/* 4 KPI Components */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {[
+                  { label: 'يومية (40%)', done: engKPI.dailyDone, total: engKPI.dailyTotal, rate: engKPI.dailyRate, color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/20' },
+                  { label: 'أسبوعية (30%)', done: engKPI.weeklyDone, total: engKPI.weeklyTotal, rate: engKPI.weeklyRate, color: 'text-indigo-400', bg: 'bg-indigo-500/10 border-indigo-500/20' },
+                  { label: 'شهرية (20%)', done: engKPI.monthlyDone, total: engKPI.monthlyTotal, rate: engKPI.monthlyRate, color: 'text-purple-400', bg: 'bg-purple-500/10 border-purple-500/20' },
+                  { label: 'اجتماعات (10%)', done: engKPI.meetingsDone, total: engKPI.meetingsTotal, rate: engKPI.meetingsRate, color: 'text-pink-400', bg: 'bg-pink-500/10 border-pink-500/20' },
+                ].map((item, i) => (
+                  <Card key={i} className={`border ${item.bg} bg-transparent`}>
+                    <CardContent className="p-3 text-center">
+                      <p className={`text-2xl font-bold ${item.color}`}>{item.rate}%</p>
+                      <p className="text-white/50 text-xs mt-1">{item.label}</p>
+                      <p className="text-white/30 text-[10px] mt-0.5">{item.done}/{item.total} مهمة</p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* Category Breakdown */}
+          {categoryQ.isLoading ? (
+            <div className="text-center py-6 text-white/30"><Clock className="h-6 w-6 mx-auto animate-spin" /></div>
+          ) : catData ? (
+            <Card className="border-white/10 bg-white/3">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-white text-sm flex items-center gap-2">
+                  <BarChart2 className="h-4 w-4 text-purple-400" />
+                  توزيع الأداء حسب Category
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {/* Weak Point Alert */}
+                {catData.weakestCategory && catData.weakestCategory.rate < 70 && (
+                  <div className="p-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-300 text-xs flex items-center gap-2">
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                    نقطة ضعف: <span className="font-semibold">{catData.weakestCategory.label}</span> — نسبة تنفيذ {catData.weakestCategory.rate}%
+                  </div>
+                )}
+                {/* Category Bars */}
+                {catData.breakdown.map((cat: any) => (
+                  <div key={cat.category} className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-white/70">{cat.label}</span>
+                      <span className={`font-semibold ${
+                        cat.rate >= 80 ? 'text-emerald-400' : cat.rate >= 60 ? 'text-amber-400' : 'text-red-400'
+                      }`}>{cat.rate}% ({cat.done}/{cat.total})</span>
+                    </div>
+                    <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${
+                          cat.rate >= 80 ? 'bg-emerald-500' : cat.rate >= 60 ? 'bg-amber-500' : 'bg-red-500'
+                        }`}
+                        style={{ width: `${cat.rate}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+                {catData.breakdown.length === 0 && (
+                  <p className="text-white/30 text-xs text-center py-4">لا توجد بيانات لهذا الشهر</p>
+                )}
+              </CardContent>
+            </Card>
+          ) : null}
         </div>
       )}
 

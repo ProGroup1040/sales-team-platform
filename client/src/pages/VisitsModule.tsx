@@ -351,6 +351,7 @@ export default function VisitsModule() {
   const { data: debtVisits } = trpc.visits.debt.useQuery();
   const { data: dailyTracking } = trpc.visits.dailyTracking.useQuery({ date: TODAY });
   const { data: adminKPI } = trpc.visits.adminSalesKPI.useQuery({ year: YEAR, month: MONTH });
+  const { data: needingAction } = trpc.visits.needingAction.useQuery();
 
   const invalidateAll = () => {
     utils.visits.list.invalidate();
@@ -359,6 +360,7 @@ export default function VisitsModule() {
     utils.visits.debt.invalidate();
     utils.visits.dailyTracking.invalidate();
     utils.visits.adminSalesKPI.invalidate();
+    utils.visits.needingAction.invalidate();
   };
 
   const createMutation = trpc.visits.create.useMutation({
@@ -418,32 +420,58 @@ export default function VisitsModule() {
         </div>
       </div>
 
-      {/* Daily Tracking Banner */}
-      {dailyTracking && (
-        <div className={`flex items-center gap-3 p-4 rounded-xl border ${
-          dailyTracking.missingUpdate
-            ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
-            : 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800'
-        }`}>
-          <div className={`p-2 rounded-lg ${dailyTracking.missingUpdate ? 'bg-red-100 dark:bg-red-900/40' : 'bg-emerald-100 dark:bg-emerald-900/40'}`}>
-            {dailyTracking.missingUpdate
-              ? <AlertCircle className="w-5 h-5 text-red-600" />
-              : <CheckCircle className="w-5 h-5 text-emerald-600" />
-            }
-          </div>
-          <div className="flex-1">
-            <p className={`text-sm font-semibold ${dailyTracking.missingUpdate ? 'text-red-800 dark:text-red-300' : 'text-emerald-800 dark:text-emerald-300'}`}>
-              {dailyTracking.missingUpdate
-                ? `⚠ يوجد ${dailyTracking.pendingUpdate} معاينة لم يتم تحديثها اليوم — التحديث اليومي إلزامي`
-                : `✓ تم تحديث جميع المعاينات اليوم (${dailyTracking.updatedToday}/${dailyTracking.totalActive})`
-              }
-            </p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              إجمالي المعاينات النشطة: {dailyTracking.totalActive} | محدّث اليوم: {dailyTracking.updatedToday}
-            </p>
+      {/* Stage-Based Smart Notifications */}
+      {needingAction && needingAction.summary.total > 0 ? (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
+            <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
+            تنبيهات المرحلة النشطة ({needingAction.summary.total} معاينة تحتاج إجراء)
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {needingAction.summary.needUpload > 0 && (
+              <div className="flex items-center gap-2 p-3 rounded-xl bg-orange-500/10 border border-orange-500/20">
+                <AlertTriangle className="w-4 h-4 text-orange-500 shrink-0" />
+                <div>
+                  <p className="text-xs font-semibold text-orange-600 dark:text-orange-400">{needingAction.summary.needUpload} معاينة</p>
+                  <p className="text-[11px] text-muted-foreground">مطلوب رفع</p>
+                </div>
+              </div>
+            )}
+            {needingAction.summary.needConfirmation > 0 && (
+              <div className="flex items-center gap-2 p-3 rounded-xl bg-yellow-500/10 border border-yellow-500/20">
+                <Clock className="w-4 h-4 text-yellow-500 shrink-0" />
+                <div>
+                  <p className="text-xs font-semibold text-yellow-600 dark:text-yellow-400">{needingAction.summary.needConfirmation} معاينة</p>
+                  <p className="text-[11px] text-muted-foreground">لم يتم تأكيدها</p>
+                </div>
+              </div>
+            )}
+            {needingAction.summary.needExecution > 0 && (
+              <div className="flex items-center gap-2 p-3 rounded-xl bg-blue-500/10 border border-blue-500/20">
+                <Activity className="w-4 h-4 text-blue-500 shrink-0" />
+                <div>
+                  <p className="text-xs font-semibold text-blue-600 dark:text-blue-400">{needingAction.summary.needExecution} معاينة</p>
+                  <p className="text-[11px] text-muted-foreground">في انتظار التنفيذ</p>
+                </div>
+              </div>
+            )}
+            {needingAction.summary.needCollection > 0 && (
+              <div className="flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20">
+                <DollarSign className="w-4 h-4 text-red-500 shrink-0" />
+                <div>
+                  <p className="text-xs font-semibold text-red-600 dark:text-red-400">{needingAction.summary.needCollection} معاينة</p>
+                  <p className="text-[11px] text-muted-foreground">مطلوب تحصيل</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
-      )}
+      ) : needingAction && needingAction.summary.total === 0 ? (
+        <div className="flex items-center gap-3 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+          <CheckCircle className="w-5 h-5 text-emerald-500" />
+          <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">✓ جميع المعاينات النشطة مكتملة المراحل — لا يوجد إجراء مطلوب</p>
+        </div>
+      ) : null}
 
       {/* KPI Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">

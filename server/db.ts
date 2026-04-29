@@ -80,6 +80,19 @@ export async function getEngineerById(id: number) {
   const [eng] = await db.select().from(engineers).where(eq(engineers.id, id));
   return eng ?? null;
 }
+export async function updateEngineerProfile(id: number, data: { name?: string; department?: string; role?: string; phone?: string; email?: string }) {
+  const db = await getDb();
+  if (!db) return;
+  const updates: Record<string, any> = {};
+  if (data.name !== undefined) updates.name = data.name;
+  if (data.department !== undefined) updates.department = data.department as any;
+  if (data.role !== undefined) updates.role = data.role as any;
+  if (data.phone !== undefined) updates.phone = data.phone;
+  if (data.email !== undefined) updates.email = data.email;
+  if (Object.keys(updates).length > 0) {
+    await db.update(engineers).set(updates).where(eq(engineers.id, id));
+  }
+}
 export async function createEngineer(data: { name: string; email?: string; phone?: string; department?: string; role?: string }) {
   const db = await getDb();
   if (!db) return;
@@ -1526,35 +1539,55 @@ export async function updateCollectionStatus(id: number, status: "on_track" | "d
 // ═══════════════════════════════════════════════════════════════════════
 
 /** تعريف قوالب المهام اليومية لـ Admin Sales */
-export const DAILY_TASK_TEMPLATES = [
-  { key: 'crm_update',         title: 'متابعة تحديث CRM' },
-  { key: 'task_distribution',  title: 'توزيع المهام اليومية على المهندسين' },
-  { key: 'task_review',        title: 'مراجعة تنفيذ المهام' },
-  { key: 'visit_data',         title: 'إدخال ومتابعة بيانات المعاينات' },
-  { key: 'visit_collection',   title: 'متابعة تحصيلات المعاينات' },
-  { key: 'lead_activity',      title: 'متابعة نشاط Lead Module' },
-  { key: 'daily_target',       title: 'متابعة تحقيق Target المبيعات اليومي' },
+// Admin Sales Task Categories & KPI Weights
+export const ADMIN_TASK_CATEGORY_LABELS: Record<string, string> = {
+  crm_data:             'CRM & Data',
+  financial_collection: 'Financial & Collection',
+  operations:           'Operations',
+  reporting:            'Reporting',
+  coordination:         'Coordination',
+};
+export const ADMIN_TASK_CATEGORY_OBJECTIVES: Record<string, string> = {
+  crm_data:             'دقة البيانات + تحسين Pipeline',
+  financial_collection: 'زيادة التحصيل وتقليل التأخير',
+  operations:           'رفع إنتاجية المهندسين',
+  reporting:            'وضوح الأداء واتخاذ القرار',
+  coordination:         'تقليل المشاكل التشغيلية',
+};
+export const DAILY_TASK_TEMPLATES: { key: string; title: string; category: 'crm_data'|'financial_collection'|'operations'|'reporting'|'coordination'; kpiWeight: number; kpiImpact: string }[] = [
+  { key: 'crm_update',         title: 'متابعة تحديث CRM',                          category: 'crm_data',             kpiWeight: 15, kpiImpact: 'Pipeline Accuracy' },
+  { key: 'task_distribution',  title: 'توزيع المهام اليومية على المهندسين',         category: 'operations',           kpiWeight: 20, kpiImpact: 'Execution Rate' },
+  { key: 'task_review',        title: 'مراجعة تنفيذ المهام',                        category: 'operations',           kpiWeight: 20, kpiImpact: 'Execution Rate' },
+  { key: 'visit_data',         title: 'إدخال ومتابعة بيانات المعاينات',             category: 'crm_data',             kpiWeight: 15, kpiImpact: 'Pipeline Accuracy' },
+  { key: 'visit_collection',   title: 'متابعة تحصيلات المعاينات',                  category: 'financial_collection', kpiWeight: 25, kpiImpact: 'Cash Flow' },
+  { key: 'lead_activity',      title: 'متابعة نشاط Lead Module',                   category: 'crm_data',             kpiWeight: 15, kpiImpact: 'Pipeline Accuracy' },
+  { key: 'daily_target',       title: 'متابعة تحقيق Target المبيعات اليومي',       category: 'reporting',            kpiWeight: 15, kpiImpact: 'Performance Tracking' },
 ];
 
 /** قوالب المهام الأسبوعية حسب اليوم */
-export const WEEKLY_TASK_TEMPLATES: { key: string; title: string; days: number[] }[] = [
-  { key: 'lead_quality',         title: 'Testing جودة الـ Leads',                    days: [1, 4] }, // Mon, Thu
-  { key: 'visit_collection_wed', title: 'متابعة تحصيلات المعاينات',                  days: [3] },    // Wed
-  { key: 'contract_collection',  title: 'متابعة تحصيلات التعاقدات',                  days: [4] },    // Thu
-  { key: 'delay_review',         title: 'مراجعة التأخيرات مع المهندسين',             days: [4] },    // Thu
-  { key: 'accounting_coord',     title: 'التنسيق مع المحاسبة',                       days: [4] },    // Thu
-  { key: 'timeline_update',      title: 'تحديث Timeline المشاريع',                   days: [6, 2] }, // Sat, Tue
-  { key: 'delivery_review',      title: 'مراجعة مواعيد التسليم مع الإنتاج',         days: [6, 2] }, // Sat, Tue
+export const WEEKLY_TASK_TEMPLATES: { key: string; title: string; days: number[]; category: 'crm_data'|'financial_collection'|'operations'|'reporting'|'coordination'|'meetings'; kpiWeight: number; kpiImpact: string }[] = [
+  { key: 'lead_quality',         title: 'متابعة جودة الـ Leads',                     days: [1, 4], category: 'crm_data',             kpiWeight: 20, kpiImpact: 'Pipeline Quality' },    // Mon, Thu
+  { key: 'visit_collection_wed', title: 'متابعة تحصيلات المعاينات',                  days: [3],    category: 'financial_collection', kpiWeight: 25, kpiImpact: 'Cash Flow' },              // Wed
+  { key: 'contract_collection',  title: 'متابعة تحصيلات التعاقدات',                  days: [4],    category: 'financial_collection', kpiWeight: 25, kpiImpact: 'Cash Flow' },              // Thu
+  { key: 'delay_review',         title: 'مراجعة التأخيرات مع المهندسين',             days: [4],    category: 'operations',           kpiWeight: 20, kpiImpact: 'Execution Rate' },         // Thu
+  { key: 'management_meeting',   title: 'اجتماع إدارة أسبوعي',                       days: [4],    category: 'meetings',             kpiWeight: 30, kpiImpact: 'Team Alignment' },         // Thu
+  { key: 'team_meeting',         title: 'اجتماع فريق أسبوعي',                        days: [4],    category: 'meetings',             kpiWeight: 30, kpiImpact: 'Team Alignment' },         // Thu
+  { key: 'weekly_report',        title: 'تقرير أسبوعي للإدارة',                      days: [4],    category: 'reporting',            kpiWeight: 20, kpiImpact: 'Performance Tracking' },   // Thu
+  { key: 'performance_notes',    title: 'تسجيل ملاحظات الأداء الأسبوعية',           days: [4],    category: 'reporting',            kpiWeight: 15, kpiImpact: 'Performance Tracking' },   // Thu
+  { key: 'timeline_update',      title: 'تحديث Timeline المشاريع',                   days: [6, 2], category: 'operations',           kpiWeight: 20, kpiImpact: 'Execution Rate' },         // Sat, Tue
+  { key: 'delivery_review',      title: 'مراجعة مواعيد التسليم مع الإنتاج',         days: [6, 2], category: 'coordination',         kpiWeight: 15, kpiImpact: 'Delivery Compliance' },   // Sat, Tue
 ];
 
 /** قوالب المهام الشهرية حسب اليوم من الشهر */
-export const MONTHLY_TASK_TEMPLATES: { key: string; title: string; dayOfMonth: number }[] = [
-  { key: 'contract_review',   title: 'مراجعة العقود الورقية ورفعها على السيرفر', dayOfMonth: 15 },
-  { key: 'market_share',      title: 'تحليل Market Share ومتابعة أسعار المنافسين', dayOfMonth: 22 },
-  { key: 'kpi_export',        title: 'Export KPI Report من النظام',              dayOfMonth: 28 },
-  { key: 'kpi_send',          title: 'إرسال التقرير للحسابات',                   dayOfMonth: 28 },
-  { key: 'commission_review', title: 'مراجعة الكوميشن والحوافز',                dayOfMonth: 28 },
-  { key: 'performance_notes', title: 'إضافة ملاحظات الأداء',                    dayOfMonth: 28 },
+export const MONTHLY_TASK_TEMPLATES: { key: string; title: string; dayOfMonth: number; category: 'crm_data'|'financial_collection'|'operations'|'reporting'|'coordination'|'meetings'; kpiWeight: number; kpiImpact: string }[] = [
+  { key: 'contract_review',     title: 'مراجعة العقود الورقية ورفعها على السيرفر',    dayOfMonth: 15, category: 'financial_collection', kpiWeight: 25, kpiImpact: 'Cash Flow' },
+  { key: 'photo_data_prep',     title: 'تجهيز Data التصوير للمشاريع المنتهية',        dayOfMonth: 16, category: 'operations',           kpiWeight: 15, kpiImpact: 'Execution Rate' },
+  { key: 'market_survey',       title: 'Market Survey لتحديث قاعدة البيانات',         dayOfMonth: 22, category: 'coordination',         kpiWeight: 20, kpiImpact: 'Market Intelligence' },
+  { key: 'competitor_prices',   title: 'متابعة أسعار المنافسين',                      dayOfMonth: 22, category: 'coordination',         kpiWeight: 15, kpiImpact: 'Market Intelligence' },
+  { key: 'kpi_export',          title: 'Export KPI Report من النظام',                 dayOfMonth: 28, category: 'reporting',            kpiWeight: 20, kpiImpact: 'Performance Tracking' },
+  { key: 'kpi_send',            title: 'إرسال التقرير للحسابات',                      dayOfMonth: 28, category: 'reporting',            kpiWeight: 20, kpiImpact: 'Performance Tracking' },
+  { key: 'commission_review',   title: 'مراجعة الكوميشن والحوافز',                   dayOfMonth: 28, category: 'financial_collection', kpiWeight: 20, kpiImpact: 'Cash Flow' },
+  { key: 'monthly_performance', title: 'إضافة ملاحظات الأداء الشهرية',               dayOfMonth: 28, category: 'reporting',            kpiWeight: 15, kpiImpact: 'Performance Tracking' },
 ];
 
 /** توليد مهام اليوم لـ Admin Sales */
@@ -1569,6 +1602,7 @@ export async function generateAdminSalesDailyTasks(engineerId: number, date: str
   const toInsert: InsertAdminSalesTask[] = DAILY_TASK_TEMPLATES.map(t => ({
     engineerId, taskType: 'daily' as const, taskKey: t.key,
     taskTitle: t.title, taskDate: new Date(date + 'T00:00:00'), status: 'pending' as const,
+    category: t.category, kpiWeight: t.kpiWeight, kpiImpact: t.kpiImpact,
   }));
   await db.insert(adminSalesTasks).values(toInsert);
   return db.select().from(adminSalesTasks)
@@ -1588,6 +1622,7 @@ export async function generateAdminSalesWeeklyTasks(engineerId: number, date: st
   const toInsert: InsertAdminSalesTask[] = templates.map(t => ({
     engineerId, taskType: 'weekly' as const, taskKey: t.key,
     taskTitle: t.title, taskDate: new Date(date + 'T00:00:00'), dayOfWeek, status: 'pending' as const,
+    category: t.category, kpiWeight: t.kpiWeight, kpiImpact: t.kpiImpact,
   }));
   await db.insert(adminSalesTasks).values(toInsert);
   return db.select().from(adminSalesTasks)
@@ -1607,6 +1642,7 @@ export async function generateAdminSalesMonthlyTasks(engineerId: number, date: s
   const toInsert: InsertAdminSalesTask[] = templates.map(t => ({
     engineerId, taskType: 'monthly' as const, taskKey: t.key,
     taskTitle: t.title, taskDate: new Date(date + 'T00:00:00'), dayOfMonth, status: 'pending' as const,
+    category: t.category, kpiWeight: t.kpiWeight, kpiImpact: t.kpiImpact,
   }));
   await db.insert(adminSalesTasks).values(toInsert);
   return db.select().from(adminSalesTasks)
@@ -2162,10 +2198,104 @@ export async function getVisitsAlerts() {
   return { notConfirmed, notUploaded, debt };
 }
 
-/** Get daily tracking status: visits updated today vs total active */
+/**
+ * Stage-Based Visit Tracking:
+ * تحديد المرحلة الحالية لكل معاينة وما يحتاج تحديث فعلاً
+ * لا يتم إجبار التحديث على المعاينات المكتملة
+ */
+export function getVisitActiveStage(v: any): { stage: string; nextAction: string | null; isComplete: boolean; isDelayed: boolean } {
+  // معاينة ملغاة أو مكتملة بالكامل
+  if (v.isDeleted === 1) return { stage: 'deleted', nextAction: null, isComplete: true, isDelayed: false };
+  if (v.status === 'cancelled') return { stage: 'cancelled', nextAction: null, isComplete: true, isDelayed: false };
+
+  // مرحلة 1: الحجز والتوزيع
+  if (v.bookingStatus === 'booked') return { stage: 'booking', nextAction: 'توزيع المعاينة على مهندس', isComplete: false, isDelayed: false };
+
+  // مرحلة 2: التأكيد
+  if (v.confirmationStatus === 'not_confirmed') return { stage: 'confirmation', nextAction: 'تأكيد الموعد مع العميل', isComplete: false, isDelayed: false };
+
+  // مرحلة 3: التنفيذ
+  if (v.status === 'scheduled' || v.status === 'rescheduled') {
+    const now = new Date();
+    const scheduled = new Date(v.scheduledAt);
+    const isDelayed = scheduled < now;
+    return { stage: 'execution', nextAction: 'تنفيذ المعاينة', isComplete: false, isDelayed };
+  }
+  if (v.status === 'delayed') return { stage: 'execution', nextAction: 'تحديث حالة التأخير', isComplete: false, isDelayed: true };
+
+  // مرحلة 4: الرفع (بعد التنفيذ)
+  if (v.status === 'completed' && v.uploadStatus === 'not_uploaded') {
+    return { stage: 'upload', nextAction: 'رفع المعاينة', isComplete: false, isDelayed: false };
+  }
+
+  // مرحلة 5: الجودة
+  if (v.status === 'completed' && v.uploadStatus !== 'not_uploaded' && v.quality === 'pending') {
+    return { stage: 'quality', nextAction: 'تقييم جودة المعاينة', isComplete: false, isDelayed: false };
+  }
+
+  // مرحلة 6: التحصيل (إذا كان هناك رسوم)
+  if (v.status === 'completed' && v.uploadStatus !== 'not_uploaded' && v.quality !== 'pending') {
+    const hasFee = parseFloat(v.feeAmount ?? '0') > 0;
+    if (hasFee && !v.feeCollected) {
+      return { stage: 'financial', nextAction: 'تحصيل رسوم المعاينة', isComplete: false, isDelayed: false };
+    }
+  }
+
+  // مكتملة بالكامل
+  return { stage: 'complete', nextAction: null, isComplete: true, isDelayed: false };
+}
+
+/**
+ * Stage-Based: جلب المعاينات التي تحتاج تحديث فعلي (Active Stage فقط)
+ */
+export async function getVisitsNeedingAction() {
+  const db = await getDb();
+  if (!db) return {
+    needUpload: [], needConfirmation: [], needExecution: [], needCollection: [], needQuality: [],
+    summary: { needUpload: 0, needConfirmation: 0, needExecution: 0, needCollection: 0, needQuality: 0, total: 0 }
+  };
+
+  const allVisits = await db.select().from(visits).where(
+    and(eq(visits.isDeleted, 0), ne(visits.status, 'cancelled'))
+  );
+
+  const needUpload: any[] = [];
+  const needConfirmation: any[] = [];
+  const needExecution: any[] = [];
+  const needCollection: any[] = [];
+  const needQuality: any[] = [];
+
+  for (const v of allVisits) {
+    const { stage, isComplete } = getVisitActiveStage(v);
+    if (isComplete) continue; // مكتملة — لا تحتاج تحديث
+    if (stage === 'upload')       needUpload.push({ id: v.id, clientName: v.clientName, scheduledAt: v.scheduledAt });
+    if (stage === 'confirmation') needConfirmation.push({ id: v.id, clientName: v.clientName, scheduledAt: v.scheduledAt });
+    if (stage === 'execution')    needExecution.push({ id: v.id, clientName: v.clientName, scheduledAt: v.scheduledAt, isDelayed: new Date(v.scheduledAt) < new Date() });
+    if (stage === 'financial')    needCollection.push({ id: v.id, clientName: v.clientName, feeAmount: v.feeAmount });
+    if (stage === 'quality')      needQuality.push({ id: v.id, clientName: v.clientName });
+  }
+
+  return {
+    needUpload,
+    needConfirmation,
+    needExecution,
+    needCollection,
+    needQuality,
+    summary: {
+      needUpload: needUpload.length,
+      needConfirmation: needConfirmation.length,
+      needExecution: needExecution.length,
+      needCollection: needCollection.length,
+      needQuality: needQuality.length,
+      total: needUpload.length + needConfirmation.length + needExecution.length + needCollection.length + needQuality.length,
+    }
+  };
+}
+
+/** Get daily tracking status: visits updated today vs total active (legacy - kept for backward compat) */
 export async function getVisitsDailyTracking(date: string) {
   const db = await getDb();
-  if (!db) return { totalActive: 0, updatedToday: 0, pendingUpdate: 0, missingUpdate: false };
+  if (!db) return { totalActive: 0, updatedToday: 0, pendingUpdate: 0, missingUpdate: false, stageAlerts: null };
   const dayStart = new Date(date + 'T00:00:00');
   const dayEnd = new Date(date + 'T23:59:59');
   const allActive = await db.select().from(visits).where(
@@ -2175,8 +2305,29 @@ export async function getVisitsDailyTracking(date: string) {
     v.lastUpdatedByAdminAt && v.lastUpdatedByAdminAt >= dayStart && v.lastUpdatedByAdminAt <= dayEnd
   ).length;
   const totalActive = allActive.length;
-  const pendingUpdate = totalActive - updatedToday;
-  return { totalActive, updatedToday, pendingUpdate, missingUpdate: pendingUpdate > 0 };
+  // Stage-based counts
+  let stageNeedUpload = 0, stageNeedConfirmation = 0, stageNeedExecution = 0, stageNeedCollection = 0;
+  for (const v of allActive) {
+    const { stage, isComplete } = getVisitActiveStage(v);
+    if (isComplete) continue;
+    if (stage === 'upload') stageNeedUpload++;
+    if (stage === 'confirmation') stageNeedConfirmation++;
+    if (stage === 'execution') stageNeedExecution++;
+    if (stage === 'financial') stageNeedCollection++;
+  }
+  const stageTotal = stageNeedUpload + stageNeedConfirmation + stageNeedExecution + stageNeedCollection;
+  return {
+    totalActive,
+    updatedToday,
+    pendingUpdate: stageTotal,
+    missingUpdate: stageTotal > 0,
+    stageAlerts: {
+      needUpload: stageNeedUpload,
+      needConfirmation: stageNeedConfirmation,
+      needExecution: stageNeedExecution,
+      needCollection: stageNeedCollection,
+    }
+  };
 }
 
 /** Update visit with admin tracking timestamp */
@@ -6597,7 +6748,10 @@ export async function getOperationalPerformance(year: number, month: number) {
   const startDate = new Date(year, month - 1, 1);
   const endDate = new Date(year, month, 0, 23, 59, 59);
 
-  const engList = await db.select().from(engineers).where(and(eq(engineers.isDeleted, 0), eq(engineers.status, 'active')));
+  const allEngineers = await db.select().from(engineers).where(and(eq(engineers.isDeleted, 0), eq(engineers.status, 'active')));
+  // فلترة: Sales Engineers فقط (بدون admin_sales, group_admin, pro_group, tele_sales, site_engineer)
+  const EXCLUDED_ROLES = ['admin_sales', 'group_admin', 'pro_group', 'admin', 'tele_sales', 'site_engineer', 'system_user'];
+  const engList = allEngineers.filter((e: any) => !EXCLUDED_ROLES.includes(e.role ?? '') && !EXCLUDED_ROLES.includes(e.department ?? ''));
   const allTasks = await db.select().from(dailyTasks).where(
     and(
       gte(dailyTasks.taskDate, startDate),
@@ -6940,11 +7094,12 @@ export async function getSiteEngineersKPI(year: number, month: number) {
 
 // ─── Admin Sales KPI ──────────────────────────────────────────────────────────
 /**
- * KPI خاص بـ Admin Sales:
- * - توزيع المهام (Task Distribution)
- * - متابعة CRM
- * - متابعة التنفيذ
- * - الالتزام بالـ Process
+ * KPI خاص بـ Admin Sales من admin_sales_tasks:
+ * - 40% Daily Tasks Completion Rate
+ * - 30% Weekly Tasks Completion Rate
+ * - 20% Monthly Tasks Completion Rate
+ * - 10% Meetings Completion Rate
+ * Task بدون category لا تدخل في KPI
  */
 export async function getAdminSalesKPI(year: number, month: number) {
   const db = await getDb();
@@ -6954,56 +7109,147 @@ export async function getAdminSalesKPI(year: number, month: number) {
   const allEngineers = await getEngineers();
   const adminSalesEngineers = allEngineers.filter(e => e.role === 'admin_sales');
   if (adminSalesEngineers.length === 0) return [];
-  const allTasks = await db.select().from(dailyTasks)
-    .where(and(gte(dailyTasks.taskDate, startDate), lte(dailyTasks.taskDate, endDate)));
-  const allLeads = await db.select().from(leads)
-    .where(between(leads.createdAt, startDate, endDate));
-  const allVisits = await db.select().from(visits)
-    .where(between(visits.scheduledAt, startDate, endDate));
+
+  // جلب admin_sales_tasks للشهر
+  const allAdminTasks = await db.select().from(adminSalesTasks)
+    .where(and(
+      gte(adminSalesTasks.taskDate, startDate),
+      lte(adminSalesTasks.taskDate, endDate)
+    ));
+
+  // جلب admin_sales_meetings للشهر
+  const allMeetings = await db.select().from(adminSalesMeetings)
+    .where(and(
+      gte(adminSalesMeetings.weekStartDate, startDate),
+      lte(adminSalesMeetings.weekStartDate, endDate)
+    ));
+
   return adminSalesEngineers.map(eng => {
-    const engTasks = allTasks.filter(t => t.engineerId === eng.id);
-    const totalTasks = engTasks.length;
-    const completedTasks = engTasks.filter(t => t.status === 'completed').length;
-    const delayedTasks = engTasks.filter(t => t.status === 'delayed').length;
-    const taskCompletionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-    // متابعة CRM: Leads تمت متابعتها
-    const followedLeads = allLeads.filter(l => l.assignedEngineerId === eng.id && l.status !== 'new').length;
-    const totalLeads = allLeads.filter(l => l.assignedEngineerId === eng.id).length;
-    const crmFollowupRate = totalLeads > 0 ? Math.round((followedLeads / totalLeads) * 100) : 0;
-    // متابعة التنفيذ: Visits تم توزيعها وتأكيدها
-    const distributedVisits = allVisits.filter(v => (v as any).distributionStatus === 'distributed').length;
-    const totalVisits = allVisits.length;
-    const distributionRate = totalVisits > 0 ? Math.round((distributedVisits / totalVisits) * 100) : 0;
-    // الالتزام بالـ Process: نسبة المهام المكتملة في وقتها
-    const onTimeCompleted = engTasks.filter(t => t.status === 'completed' && (t.delayDays ?? 0) === 0).length;
-    const processComplianceRate = completedTasks > 0 ? Math.round((onTimeCompleted / completedTasks) * 100) : 0;
-    // KPI Score: Tasks 30% + CRM 25% + Distribution 25% + Process 20%
+    const engTasks = allAdminTasks.filter(t => t.engineerId === eng.id);
+    // فقط Tasks ذات category (Tasks بدون category لا تدخل KPI)
+    const kpiTasks = engTasks.filter(t => t.category !== null && t.category !== undefined);
+
+    // Daily Tasks
+    const dailyTasks_ = kpiTasks.filter(t => t.taskType === 'daily');
+    const dailyDone = dailyTasks_.filter(t => t.status === 'done').length;
+    const dailyRate = dailyTasks_.length > 0 ? Math.round((dailyDone / dailyTasks_.length) * 100) : 0;
+
+    // Weekly Tasks
+    const weeklyTasks_ = kpiTasks.filter(t => t.taskType === 'weekly');
+    const weeklyDone = weeklyTasks_.filter(t => t.status === 'done').length;
+    const weeklyRate = weeklyTasks_.length > 0 ? Math.round((weeklyDone / weeklyTasks_.length) * 100) : 0;
+
+    // Monthly Tasks
+    const monthlyTasks_ = kpiTasks.filter(t => t.taskType === 'monthly');
+    const monthlyDone = monthlyTasks_.filter(t => t.status === 'done').length;
+    const monthlyRate = monthlyTasks_.length > 0 ? Math.round((monthlyDone / monthlyTasks_.length) * 100) : 0;
+
+    // Meetings (from adminSalesMeetings)
+    const engMeetings = allMeetings.filter(m => m.engineerId === eng.id);
+    const totalMeetingSlots = engMeetings.length * 2; // weeklyTeam + management per week
+    const doneMeetings = engMeetings.reduce((acc, m) => {
+      if (m.weeklyTeamMeeting === 'done') acc++;
+      if (m.managementMeeting === 'done') acc++;
+      return acc;
+    }, 0);
+    const meetingsRate = totalMeetingSlots > 0 ? Math.round((doneMeetings / totalMeetingSlots) * 100) : 0;
+
+    // KPI = 40% Daily + 30% Weekly + 20% Monthly + 10% Meetings
     const kpiScore = Math.round(
-      taskCompletionRate * 0.30 +
-      crmFollowupRate * 0.25 +
-      distributionRate * 0.25 +
-      processComplianceRate * 0.20
+      dailyRate * 0.40 +
+      weeklyRate * 0.30 +
+      monthlyRate * 0.20 +
+      meetingsRate * 0.10
     );
+
     return {
       engineerId: eng.id,
       engineerName: eng.name,
       role: eng.role,
-      totalTasks,
-      completedTasks,
-      delayedTasks,
-      taskCompletionRate,
-      totalLeads,
-      followedLeads,
-      crmFollowupRate,
-      totalVisits,
-      distributedVisits,
-      distributionRate,
-      onTimeCompleted,
-      processComplianceRate,
+      totalKpiTasks: kpiTasks.length,
+      dailyTotal: dailyTasks_.length,
+      dailyDone,
+      dailyRate,
+      weeklyTotal: weeklyTasks_.length,
+      weeklyDone,
+      weeklyRate,
+      monthlyTotal: monthlyTasks_.length,
+      monthlyDone,
+      monthlyRate,
+      meetingsTotal: totalMeetingSlots,
+      meetingsDone: doneMeetings,
+      meetingsRate,
       kpiScore,
       kpiStatus: kpiScore >= 90 ? 'excellent' : kpiScore >= 75 ? 'good' : kpiScore >= 60 ? 'average' : 'poor',
     };
   });
+}
+
+/**
+ * تحليل Admin Sales حسب Category:
+ * - نسبة تنفيذ كل category
+ * - Weak Point (Category الأضعف)
+ * - Overall Score
+ */
+export async function getAdminSalesCategoryAnalysis(engineerId: number, year: number, month: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const startDate = new Date(year, month - 1, 1);
+  const endDate = new Date(year, month, 0, 23, 59, 59);
+
+  const tasks = await db.select().from(adminSalesTasks)
+    .where(and(
+      eq(adminSalesTasks.engineerId, engineerId),
+      gte(adminSalesTasks.taskDate, startDate),
+      lte(adminSalesTasks.taskDate, endDate)
+    ));
+
+  // فقط Tasks ذات category
+  const kpiTasks = tasks.filter(t => t.category !== null && t.category !== undefined);
+
+  const CATEGORY_LABELS: Record<string, string> = {
+    crm_data: 'CRM & Data',
+    financial_collection: 'Financial & Collection',
+    operations: 'Operations',
+    reporting: 'Reporting',
+    coordination: 'Coordination',
+    meetings: 'Meetings',
+  };
+
+  const categories = ['crm_data', 'financial_collection', 'operations', 'reporting', 'coordination', 'meetings'] as const;
+  const breakdown = categories.map(cat => {
+    const catTasks = kpiTasks.filter(t => t.category === cat);
+    const done = catTasks.filter(t => t.status === 'done').length;
+    const total = catTasks.length;
+    const rate = total > 0 ? Math.round((done / total) * 100) : 0;
+    const avgWeight = total > 0 ? Math.round(catTasks.reduce((s, t) => s + (t.kpiWeight ?? 0), 0) / total) : 0;
+    return { category: cat, label: CATEGORY_LABELS[cat], total, done, rate, avgWeight };
+  }).filter(c => c.total > 0);
+
+  const daily = kpiTasks.filter(t => t.taskType === 'daily');
+  const weekly = kpiTasks.filter(t => t.taskType === 'weekly');
+  const monthly = kpiTasks.filter(t => t.taskType === 'monthly');
+
+  const dailyRate = daily.length > 0 ? Math.round((daily.filter(t => t.status === 'done').length / daily.length) * 100) : 0;
+  const weeklyRate = weekly.length > 0 ? Math.round((weekly.filter(t => t.status === 'done').length / weekly.length) * 100) : 0;
+  const monthlyRate = monthly.length > 0 ? Math.round((monthly.filter(t => t.status === 'done').length / monthly.length) * 100) : 0;
+
+  const overallScore = Math.round(dailyRate * 0.40 + weeklyRate * 0.30 + monthlyRate * 0.20);
+
+  const weakestCategory = breakdown.length > 0
+    ? breakdown.reduce((min, c) => c.rate < min.rate ? c : min, breakdown[0])
+    : null;
+
+  return {
+    breakdown,
+    dailyRate,
+    weeklyRate,
+    monthlyRate,
+    overallScore,
+    weakestCategory: weakestCategory ? { category: weakestCategory.category, label: weakestCategory.label, rate: weakestCategory.rate } : null,
+    totalKpiTasks: kpiTasks.length,
+    totalDone: kpiTasks.filter(t => t.status === 'done').length,
+  };
 }
 
 /** تحديث getEngineersKPI لفلترة Sales Engineers فقط (استثناء Non-Sales Roles) */

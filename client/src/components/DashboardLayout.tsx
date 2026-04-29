@@ -14,57 +14,56 @@ import {
 } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/useMobile";
 import { useLocalAuth } from "@/hooks/useLocalAuth";
+import { useRoleAccess } from "@/hooks/useRoleAccess";
 import { LayoutDashboard, PanelLeft, BarChart2, CheckSquare, UserPlus, MapPin, Handshake, TrendingUp, Award, DollarSign, Target, LogOut, Crown, Zap, FileBarChart } from "lucide-react";
-import { CSSProperties, useEffect, useRef, useState } from "react";
+import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 
-const menuGroups = [
+const menuGroupsConfig = [
   {
     label: 'لوحة التحكم',
     items: [
-      { icon: LayoutDashboard, label: 'نظرة عامة', path: '/overview' },
+      { icon: LayoutDashboard, label: 'نظرة عامة', path: '/overview', accessKey: 'canSeeOverview' as const },
     ]
   },
   {
     label: 'التشغيل',
     items: [
-      { icon: CheckSquare, label: 'المهام اليومية', path: '/tasks' },
-      { icon: UserPlus, label: 'العملاء المحتملون', path: '/leads' },
-      { icon: MapPin, label: 'المعاينات', path: '/visits' },
-      { icon: Handshake, label: 'الإغلاق والتفاوض', path: '/closing' },
+      { icon: CheckSquare, label: 'المهام اليومية', path: '/tasks', accessKey: 'canSeeTasks' as const },
+      { icon: UserPlus, label: 'العملاء المحتملون', path: '/leads', accessKey: 'canSeeLeads' as const },
+      { icon: MapPin, label: 'المعاينات', path: '/visits', accessKey: 'canSeeVisits' as const },
+      { icon: Handshake, label: 'الإغلاق والتفاوض', path: '/closing', accessKey: 'canSeeClosing' as const },
     ]
   },
   {
     label: 'الأداء والمالية',
     items: [
-      { icon: TrendingUp, label: 'المبيعات', path: '/sales-module' },
-      { icon: Award, label: 'مؤشرات الأداء', path: '/kpi' },
-      { icon: DollarSign, label: 'التحصيل المالي', path: '/collections' },
-      { icon: Target, label: 'تخطيط الأهداف', path: '/planning' },
+      { icon: TrendingUp, label: 'المبيعات', path: '/sales-module', accessKey: 'canSeeSalesModule' as const },
+      { icon: Award, label: 'مؤشرات الأداء', path: '/kpi', accessKey: 'canSeeKPI' as const },
+      { icon: DollarSign, label: 'التحصيل المالي', path: '/collections', accessKey: 'canSeeCollections' as const },
+      { icon: Target, label: 'تخطيط الأهداف', path: '/planning', accessKey: 'canSeePlanning' as const },
     ]
   },
   {
     label: 'تحليل وتقارير',
     items: [
-      { icon: FileBarChart, label: 'التقارير', path: '/reports' },
+      { icon: FileBarChart, label: 'التقارير', path: '/reports', accessKey: 'canSeeReports' as const },
     ]
   },
   {
     label: 'تنفيذ المبيعات',
     items: [
-      { icon: Zap, label: 'Sales Execution', path: '/sales-execution' },
+      { icon: Zap, label: 'Sales Execution', path: '/sales-execution', accessKey: 'canSeeSalesExecution' as const },
     ]
   },
   {
     label: 'إدارة الفريق',
     items: [
-      { icon: Crown, label: 'التقييم والترقية', path: '/promotion-system' },
+      { icon: Crown, label: 'التقييم والترقية', path: '/promotion-system', accessKey: 'canSeePromotion' as const },
     ]
   },
 ];
-
-const menuItems = menuGroups.flatMap(g => g.items);
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
 const DEFAULT_WIDTH = 280;
@@ -110,6 +109,7 @@ function DashboardLayoutContent({
 }: DashboardLayoutContentProps) {
   const [location, setLocation] = useLocation();
   const { session, isLoading } = useLocalAuth();
+  const access = useRoleAccess(session?.role);
   const utils = trpc.useUtils();
   const logoutMut = trpc.localAuth.logout.useMutation({
     onSuccess: () => {
@@ -124,6 +124,18 @@ function DashboardLayoutContent({
   //     setLocation("/login");
   //   }
   // }, [isLoading, session, setLocation]);
+
+  // Filter menuGroups based on role access
+  const menuGroups = useMemo(() => {
+    return menuGroupsConfig
+      .map(group => ({
+        ...group,
+        items: group.items.filter(item => access[item.accessKey]),
+      }))
+      .filter(group => group.items.length > 0);
+  }, [access]);
+
+  const menuItems = useMemo(() => menuGroups.flatMap(g => g.items), [menuGroups]);
 
   const { state, toggleSidebar } = useSidebar();
   const isCollapsed = state === "collapsed";
@@ -240,7 +252,16 @@ function DashboardLayoutContent({
                   {session?.name ?? "Pro Group"}
                 </p>
                 <p className="text-xs text-muted-foreground truncate mt-1.5">
-                  {session?.role === "admin" ? "مدير النظام" : session?.role === "admin_sales" ? "Admin Sales" : "مستخدم"}
+                  {session?.role === "admin" ? "مدير النظام" :
+                   session?.role === "manager" ? "مدير" :
+                   session?.role === "admin_sales" ? "Admin Sales" :
+                   session?.role === "sales_engineer" ? "مهندس مبيعات" :
+                   session?.role === "engineer" ? "مهندس" :
+                   session?.role === "sales_specialist" ? "أخصائي مبيعات" :
+                   session?.role === "tele_sales" ? "Tele Sales" :
+                   session?.role === "interior_designer" ? "مصمم داخلي" :
+                   session?.role === "site_engineer" ? "مهندس موقع" :
+                   session?.role === "system_user" ? "مستخدم النظام" : "مستخدم"}
                 </p>
               </div>
             </div>

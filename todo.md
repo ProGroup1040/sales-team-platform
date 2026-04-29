@@ -916,3 +916,42 @@
 - [x] Fix 2: Discount Bonus 50% يظهر في UI لكل مهندس في ClosingModule
 - [x] Fix 3: Realized vs Potential Discount يظهر في UI بشكل منفصل في ClosingModule
 - [x] Fix 4: Backend Department Enforcement في tasks.create (يرفض taskType غير مسموح)
+
+## Tasks Distribution Module Fixes - Apr 29 2026
+
+- [ ] Fix 1: إضافة زر "تعديل" بجانب كل مهندس (تغيير القسم + نوع المهندس)
+- [ ] Fix 2: فلترة المهندسين في توزيع المهام - Sales Engineers فقط (بدون Pro Group Admin / Admin Sales)
+- [ ] Fix 3: ربط توزيع المهام بنوع المهندس (Sales Engineer = 7 أنواع، باقي الأنواع لا تظهر)
+- [ ] Fix 4: Target vs Actual بالنسب (2D=10%, 3D+Render=30%, Quotation=10%, Meetings=50%)
+- [ ] Fix 5: دمج توزيع العمل داخل تبويب في المهام اليومية (مش Module منفصل)
+- [ ] Fix 6: ربط بيانات التوزيع بالـ KPI والتقارير
+
+## Admin Sales Tasks Restructure - Apr 29 2026
+- [ ] إضافة adminTaskCategory enum في DB (crm_data, financial_collection, operations, reporting, coordination)
+- [ ] إضافة adminTaskWeight و adminTaskObjective في admin_sales_tasks schema
+- [ ] تحديث Admin Tasks UI لعرض Category dropdown + Objective
+- [ ] حساب KPI Admin = 40% تنفيذ + 30% تأثير فريق + 30% جودة
+- [ ] Dashboard جديد لـ Admin Sales: توزيع الوقت + نسبة تنفيذ + Score + Weak Points
+- [ ] ربط Admin KPI بنفس بيانات Tasks في KPI Module
+- [ ] منع Task بدون Category من الدخول في KPI
+
+## Leads Module - Advanced Date Filter - Apr 29 2026
+- [ ] إضافة Custom Range (From Date + To Date) في LeadsModule
+- [ ] إضافة 9 Presets: اليوم/أمس/آخر 7 أيام/آخر 14 يوم/آخر 30 يوم/هذا الأسبوع/الأسبوع الماضي/هذا الشهر/الشهر الماضي
+- [ ] ربط الفلتر بكل البيانات: إجمالي Leads + تم التواصل + لم يتم التواصل + المؤهل + المتحول لصفقات
+- [ ] تحسين UI: Dropdown واضح + عرض التاريخ المختار + زر Reset
+- [ ] تجهيز للـ CRM Integration: Date Field حقيقي + Dynamic Filter
+
+## Visits Module - Stage-Based Updates - Apr 29 2026
+- [ ] إلغاء التحديث الإلزامي اليومي الكامل للمعاينات
+- [ ] إضافة getVisitsNeedingAction في db.ts: Next Action + Missing Action + Delay Detection
+- [ ] تعديل التنبيهات: "5 معاينات تحتاج رفع" بدلاً من "29 معاينة لم يتم تحديثها"
+- [ ] تعديل KPI Logic: نسبة التنفيذ + نسبة الرفع في نفس اليوم + نسبة التأخير + نسبة التحصيل
+- [ ] Stage-Based Notifications في VisitsModule.tsx
+
+## Visits Module - Stage-Based Updates - Apr 29 2026
+- [ ] Stage-Based Updates Logic in db.ts
+- [ ] Stage-Based Notifications in VisitsModule.tsx
+- [x] Role-Based Access Control: useRoleAccess hook
+- [ ] RBAC: إخفاء Sales Modules عن Admin/Tele/Visits/Interior
+- [ ] RBAC: Manager يرى كل الأقسام

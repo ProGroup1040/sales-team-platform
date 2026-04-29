@@ -1,0 +1,9 @@
+{
+  "query": "ALTER TABLE `admin_sales_tasks` ADD `category` enum('crm_data','financial_collection','operations','reporting','coordination');\nALTER TABLE `admin_sales_tasks` ADD `kpiWeight` int DEFAULT 0;\nALTER TABLE `admin_sales_tasks` ADD `kpiImpact` varchar(100);",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user fZydmv6Jueen1GW.d1ac4e774f80 --database 9B5dXFSohC6AundZRCEr3i --execute ALTER TABLE `admin_sales_tasks` ADD `category` enum('crm_data','financial_collection','operations','reporting','coordination');\nALTER TABLE `admin_sales_tasks` ADD `kpiWeight` int DEFAULT 0;\nALTER TABLE `admin_sales_tasks` ADD `kpiImpact` varchar(100);",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 2823
+}

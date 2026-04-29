@@ -413,6 +413,10 @@ export const adminSalesTasks = mysqlTable("admin_sales_tasks", {
   taskType: mysqlEnum("taskType", ["daily", "weekly", "monthly", "meeting"]).notNull(),
   taskKey: varchar("taskKey", { length: 80 }).notNull(),  // unique key like 'crm_update', 'lead_quality_mon_thu'
   taskTitle: varchar("taskTitle", { length: 255 }).notNull(),
+  // Admin Sales Category System
+  category: mysqlEnum("category", ["crm_data", "financial_collection", "operations", "reporting", "coordination", "meetings"]),
+  kpiWeight: int("kpiWeight").default(0),  // weight percentage (0-100)
+  kpiImpact: varchar("kpiImpact", { length: 100 }),  // e.g. 'Pipeline Accuracy', 'Cash Flow'
   taskDate: date("taskDate").notNull(),
   dayOfWeek: int("dayOfWeek"),  // 0=Sun, 1=Mon, ... 6=Sat (for weekly)
   dayOfMonth: int("dayOfMonth"),  // 15, 22, 28 (for monthly)

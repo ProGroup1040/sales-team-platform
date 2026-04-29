@@ -1,0 +1,1 @@
+ALTER TABLE `admin_sales_tasks` MODIFY COLUMN `category` enum('crm_data','financial_collection','operations','reporting','coordination','meetings');
