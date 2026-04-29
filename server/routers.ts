@@ -22,6 +22,7 @@ import {
   getDiscountTiers, upsertDiscountTier, deleteDiscountTier,
   getCommissionTiers, upsertCommissionTier, deleteCommissionTier,
   upsertEngineerTarget,
+  upsertEngineerOperationalTargets,
   isSeeded,
   getCustomers, getCustomerById, createCustomer, updateCustomer, deleteCustomer,
   getProducts, getProductById, createProduct, updateProduct, deleteProduct, getProductCategories,
@@ -86,6 +87,10 @@ import {
   getEngineerEarningsBreakdown, getAllEngineersEarningsBreakdown,
   // Company Closing Incentive
   calcCompanyClosingBonus, getCompanyClosingBonusForAllEngineers,
+  // Planning Module
+  getCompanyGoal, setCompanyGoal, getCompanyGoalProgress,
+  getEngineerPersonalGoals, setPersonalGoal, calcPersonalScore,
+  calcTotalPerformanceScore, getAllEngineersPerformanceScores,
 } from "./db";
 
 // ─── Seed Data ────────────────────────────────────────────────────────────────
@@ -677,6 +682,13 @@ export const appRouter = router({
       engineerId: z.number(), year: z.number(), month: z.number(),
       targetAmount: z.number().positive(), manpower: z.number().optional(), notes: z.string().optional(),
     })).mutation(async ({ input }) => { await upsertEngineerTarget(input); return { success: true }; }),
+    setOperationalTargets: publicProcedure.input(z.object({
+      engineerId: z.number(), year: z.number(), month: z.number(),
+      targetMeetings: z.number().optional(), target2D: z.number().optional(),
+      target3D: z.number().optional(), targetRender: z.number().optional(),
+      targetQuotations: z.number().optional(), targetPresentations: z.number().optional(),
+      targetClosings: z.number().optional(), targetDeals: z.number().optional(),
+    })).mutation(async ({ input }) => { await upsertEngineerOperationalTargets(input); return { success: true }; }),
     // شرائح الخصم
     discountTiers: publicProcedure.query(async () => getDiscountTiers()),
     upsertDiscountTier: publicProcedure.input(z.object({
@@ -817,6 +829,48 @@ export const appRouter = router({
       const leadsNeeded = Math.ceil(visitsNeeded / visitToClosingRate);
       return { dealsNeeded, visitsNeeded, leadsNeeded, avgDealValue, closingRate, visitToClosingRate };
     }),
+    // ── Company Goals ──────────────────────────────────────────────────────
+    getCompanyGoal: publicProcedure
+      .input(z.object({ year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getCompanyGoal(input.year, input.month)),
+    setCompanyGoal: protectedProcedure
+      .input(z.object({
+        year: z.number(), month: z.number(),
+        revenueTarget: z.number().positive(),
+        avgDealValue: z.number().positive(),
+        closingRateTarget: z.number().min(1).max(100),
+        periodFrom: z.string().optional(),
+        periodTo: z.string().optional(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => setCompanyGoal(input)),
+    getCompanyGoalProgress: publicProcedure
+      .input(z.object({ year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getCompanyGoalProgress(input.year, input.month)),
+    // ── Personal Goals ─────────────────────────────────────────────────────
+    getPersonalGoals: publicProcedure
+      .input(z.object({ engineerId: z.number(), year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getEngineerPersonalGoals(input.engineerId, input.year, input.month)),
+    setPersonalGoal: protectedProcedure
+      .input(z.object({
+        id: z.number().optional(),
+        engineerId: z.number(),
+        year: z.number(), month: z.number(),
+        objective: z.string().min(1),
+        developmentArea: z.enum(['closing','negotiation','render_quality','presentation','design_quality','client_communication','time_management','other']),
+        evaluationMethod: z.enum(['meeting_review','design_review','render_review','manager_review','self_review']),
+        reviewerRole: z.enum(['admin','manager']),
+        score: z.number().min(0).max(100).optional(),
+        reviewNotes: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => setPersonalGoal(input)),
+    // ── Total Performance Score ────────────────────────────────────────────
+    engineerPerformanceScore: publicProcedure
+      .input(z.object({ engineerId: z.number(), year: z.number(), month: z.number() }))
+      .query(async ({ input }) => calcTotalPerformanceScore(input.engineerId, input.year, input.month)),
+    allEngineersPerformanceScores: publicProcedure
+      .input(z.object({ year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getAllEngineersPerformanceScores(input.year, input.month)),
   }),
 
   // ── Financial Module ───────────────────────────────────────────────────────────────────────────────

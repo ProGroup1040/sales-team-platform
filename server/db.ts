@@ -24,7 +24,9 @@ import {
   engineerCareerLevels, EngineerCareerLevel, InsertEngineerCareerLevel,
   dealTimeline, DealTimeline, InsertDealTimeline,
   dealDiscountAllocations, DealDiscountAllocation, InsertDealDiscountAllocation,
-  discountBonusCaps, DiscountBonusCap, InsertDiscountBonusCap
+  discountBonusCaps, DiscountBonusCap, InsertDiscountBonusCap,
+  companyGoals, CompanyGoal, InsertCompanyGoal,
+  engineerPersonalGoals, EngineerPersonalGoal, InsertEngineerPersonalGoal
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { notifyOwner } from './_core/notification';
@@ -1323,6 +1325,41 @@ export async function upsertEngineerTarget(data: { engineerId: number; year: num
       targetAmount: data.targetAmount.toString(),
       manpower: data.manpower ?? 1,
       notes: data.notes,
+    });
+  }
+}
+
+/** تحديث الأهداف التشغيلية لمهندس */
+export async function upsertEngineerOperationalTargets(data: {
+  engineerId: number; year: number; month: number;
+  targetMeetings?: number; target2D?: number; target3D?: number;
+  targetRender?: number; targetQuotations?: number;
+  targetPresentations?: number; targetClosings?: number; targetDeals?: number;
+}) {
+  const db = await getDb();
+  if (!db) return;
+  const existing = await db.select().from(engineerTargets)
+    .where(and(
+      eq(engineerTargets.engineerId, data.engineerId),
+      eq(engineerTargets.year, data.year),
+      eq(engineerTargets.month, data.month)
+    )).limit(1);
+  const updateData: Record<string, number> = {};
+  if (data.targetMeetings !== undefined) updateData.targetMeetings = data.targetMeetings;
+  if (data.target2D !== undefined) updateData.target2D = data.target2D;
+  if (data.target3D !== undefined) updateData.target3D = data.target3D;
+  if (data.targetRender !== undefined) updateData.targetRender = data.targetRender;
+  if (data.targetQuotations !== undefined) updateData.targetQuotations = data.targetQuotations;
+  if (data.targetPresentations !== undefined) updateData.targetPresentations = data.targetPresentations;
+  if (data.targetClosings !== undefined) updateData.targetClosings = data.targetClosings;
+  if (data.targetDeals !== undefined) updateData.targetDeals = data.targetDeals;
+  if (existing.length > 0) {
+    await db.update(engineerTargets).set(updateData).where(eq(engineerTargets.id, existing[0].id));
+  } else {
+    await db.insert(engineerTargets).values({
+      engineerId: data.engineerId, year: data.year, month: data.month,
+      targetAmount: '0',
+      ...updateData,
     });
   }
 }
@@ -9755,4 +9792,328 @@ export async function getCompanyClosingBonusForAllEngineers(year: number, month:
       bonus: calcCompanyClosingBonus(rate),
     })),
   };
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════
+// Planning Module - Company Goals
+// ═══════════════════════════════════════════════════════════════════════
+
+/** جلب هدف الشركة لشهر معين */
+export async function getCompanyGoal(year: number, month: number): Promise<CompanyGoal | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(companyGoals)
+    .where(and(eq(companyGoals.year, year), eq(companyGoals.month, month)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/** حفظ / تحديث هدف الشركة مع الحساب التلقائي */
+export async function setCompanyGoal(data: {
+  year: number;
+  month: number;
+  revenueTarget: number;
+  avgDealValue: number;
+  closingRateTarget: number;
+  periodFrom?: string;
+  periodTo?: string;
+  notes?: string;
+}): Promise<{ id: number }> {
+  const db = await getDb();
+  if (!db) return { id: 0 };
+
+  // الحساب التلقائي
+  const closingRate = data.closingRateTarget / 100;
+  const requiredDeals = closingRate > 0 ? Math.ceil(data.revenueTarget / data.avgDealValue) : 0;
+  const requiredVisits = closingRate > 0 ? Math.ceil(requiredDeals / closingRate) : 0;
+  const requiredPipelineValue = requiredDeals * data.avgDealValue * (1 / closingRate);
+
+  const existing = await getCompanyGoal(data.year, data.month);
+  if (existing) {
+    await db.update(companyGoals).set({
+      revenueTarget: data.revenueTarget.toString(),
+      avgDealValue: data.avgDealValue.toString(),
+      closingRateTarget: data.closingRateTarget.toString(),
+      periodFrom: data.periodFrom as unknown as Date | undefined,
+      periodTo: data.periodTo as unknown as Date | undefined,
+      requiredDeals,
+      requiredVisits,
+      requiredPipelineValue: requiredPipelineValue.toFixed(2),
+      notes: data.notes,
+    }).where(eq(companyGoals.id, existing.id));
+    return { id: existing.id };
+  }
+
+  const [result] = await db.insert(companyGoals).values({
+    year: data.year,
+    month: data.month,
+    revenueTarget: data.revenueTarget.toString(),
+    avgDealValue: data.avgDealValue.toString(),
+    closingRateTarget: data.closingRateTarget.toString(),
+    periodFrom: data.periodFrom as unknown as Date | undefined,
+    periodTo: data.periodTo as unknown as Date | undefined,
+    requiredDeals,
+    requiredVisits,
+    requiredPipelineValue: requiredPipelineValue.toFixed(2),
+    notes: data.notes,
+  });
+  return { id: (result as any).insertId };
+}
+
+/** تقدم تحقيق هدف الشركة */
+export async function getCompanyGoalProgress(year: number, month: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const goal = await getCompanyGoal(year, month);
+  if (!goal) return null;
+
+  // المبيعات الفعلية هذا الشهر
+  const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+  const endDate = `${year}-${String(month).padStart(2, '0')}-31`;
+
+  const salesRows = await db.select({ total: sum(deals.value) })
+    .from(deals)
+    .where(and(
+      eq(deals.stage, 'closed_won'),
+      gte(deals.createdAt, new Date(startDate)),
+      lte(deals.createdAt, new Date(endDate))
+    ));
+  const actualRevenue = parseFloat(salesRows[0]?.total ?? '0');
+  const revenueTarget = parseFloat(goal.revenueTarget);
+
+  // عدد الصفقات المغلقة
+  const dealsRows = await db.select({ cnt: count() })
+    .from(deals)
+    .where(and(
+      eq(deals.stage, 'closed_won'),
+      gte(deals.createdAt, new Date(startDate)),
+      lte(deals.createdAt, new Date(endDate))
+    ));
+  const actualDeals = dealsRows[0]?.cnt ?? 0;
+
+  // عدد المعاينات
+  const visitsRows = await db.select({ cnt: count() })
+    .from(visits)
+    .where(and(
+      gte(visits.scheduledAt, new Date(startDate)),
+      lte(visits.scheduledAt, new Date(endDate))
+    ));
+  const actualVisits = visitsRows[0]?.cnt ?? 0;
+
+  // Closing Rate الفعلي
+  const totalDealsRows = await db.select({ cnt: count() })
+    .from(deals)
+    .where(and(
+      gte(deals.createdAt, new Date(startDate)),
+      lte(deals.createdAt, new Date(endDate))
+    ));
+  const totalDeals = totalDealsRows[0]?.cnt ?? 0;
+  const actualClosingRate = totalDeals > 0 ? (actualDeals / totalDeals) * 100 : 0;
+
+  return {
+    goal,
+    actual: {
+      revenue: actualRevenue,
+      deals: actualDeals,
+      visits: actualVisits,
+      closingRate: Math.round(actualClosingRate * 10) / 10,
+    },
+    progress: {
+      revenueProgress: revenueTarget > 0 ? Math.round((actualRevenue / revenueTarget) * 100) : 0,
+      dealsProgress: (goal.requiredDeals ?? 0) > 0 ? Math.round((actualDeals / (goal.requiredDeals ?? 1)) * 100) : 0,
+      visitsProgress: (goal.requiredVisits ?? 0) > 0 ? Math.round((actualVisits / (goal.requiredVisits ?? 1)) * 100) : 0,
+      closingRateProgress: parseFloat(goal.closingRateTarget) > 0
+        ? Math.round((actualClosingRate / parseFloat(goal.closingRateTarget)) * 100) : 0,
+    },
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Planning Module - Engineer Personal Goals
+// ═══════════════════════════════════════════════════════════════════════
+
+/** جلب الأهداف الشخصية لمهندس */
+export async function getEngineerPersonalGoals(engineerId: number, year: number, month: number): Promise<EngineerPersonalGoal[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(engineerPersonalGoals)
+    .where(and(
+      eq(engineerPersonalGoals.engineerId, engineerId),
+      eq(engineerPersonalGoals.year, year),
+      eq(engineerPersonalGoals.month, month)
+    ));
+}
+
+/** إضافة / تحديث هدف شخصي */
+export async function setPersonalGoal(data: {
+  id?: number;
+  engineerId: number;
+  year: number;
+  month: number;
+  objective: string;
+  developmentArea: EngineerPersonalGoal['developmentArea'];
+  evaluationMethod: EngineerPersonalGoal['evaluationMethod'];
+  reviewerRole: EngineerPersonalGoal['reviewerRole'];
+  score?: number;
+  reviewNotes?: string;
+}): Promise<{ id: number }> {
+  const db = await getDb();
+  if (!db) return { id: 0 };
+
+  if (data.id) {
+    await db.update(engineerPersonalGoals).set({
+      objective: data.objective,
+      developmentArea: data.developmentArea,
+      evaluationMethod: data.evaluationMethod,
+      reviewerRole: data.reviewerRole,
+      score: data.score,
+      reviewNotes: data.reviewNotes,
+      reviewedAt: data.score !== undefined ? new Date() : undefined,
+    }).where(eq(engineerPersonalGoals.id, data.id));
+    return { id: data.id };
+  }
+
+  const [result] = await db.insert(engineerPersonalGoals).values({
+    engineerId: data.engineerId,
+    year: data.year,
+    month: data.month,
+    objective: data.objective,
+    developmentArea: data.developmentArea,
+    evaluationMethod: data.evaluationMethod,
+    reviewerRole: data.reviewerRole,
+    score: data.score,
+    reviewNotes: data.reviewNotes,
+    reviewedAt: data.score !== undefined ? new Date() : undefined,
+  });
+  return { id: (result as any).insertId };
+}
+
+/** حساب Personal Score لمهندس */
+export async function calcPersonalScore(engineerId: number, year: number, month: number): Promise<number> {
+  const goals = await getEngineerPersonalGoals(engineerId, year, month);
+  if (!goals.length) return 0;
+  const scored = goals.filter(g => g.score !== null && g.score !== undefined);
+  if (!scored.length) return 0;
+  const avg = scored.reduce((sum, g) => sum + (g.score ?? 0), 0) / scored.length;
+  return Math.round(avg);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Planning Module - Total Performance Score
+// ═══════════════════════════════════════════════════════════════════════
+
+/** حساب Total Performance Score لمهندس (Financial 40% + Operational 40% + Personal 20%) */
+export async function calcTotalPerformanceScore(engineerId: number, year: number, month: number): Promise<{
+  financialScore: number;
+  operationalScore: number;
+  personalScore: number;
+  totalScore: number;
+  grade: 'A' | 'B' | 'C' | 'D';
+  financialDetails: { actual: number; target: number; progress: number };
+  operationalDetails: { activities: { name: string; actual: number; target: number; progress: number }[] };
+}> {
+  const db = await getDb();
+  const defaultResult = {
+    financialScore: 0, operationalScore: 0, personalScore: 0, totalScore: 0, grade: 'C' as const,
+    financialDetails: { actual: 0, target: 0, progress: 0 },
+    operationalDetails: { activities: [] },
+  };
+  if (!db) return defaultResult;
+
+  // 1) Financial Score (40%)
+  const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+  const endDate = `${year}-${String(month).padStart(2, '0')}-31`;
+
+  const targetRows = await db.select().from(engineerTargets)
+    .where(and(
+      eq(engineerTargets.engineerId, engineerId),
+      eq(engineerTargets.year, year),
+      eq(engineerTargets.month, month)
+    )).limit(1);
+  const target = targetRows[0];
+  const financialTarget = parseFloat(target?.targetAmount ?? '0');
+
+  const salesRows = await db.select({ total: sum(deals.value) })
+    .from(deals)
+    .where(and(
+      eq(deals.engineerId, engineerId),
+      eq(deals.stage, 'closed_won'),
+      gte(deals.createdAt, new Date(startDate)),
+      lte(deals.createdAt, new Date(endDate))
+    ));
+  const actualSales = parseFloat(salesRows[0]?.total ?? '0');
+  const financialProgress = financialTarget > 0 ? Math.min(100, Math.round((actualSales / financialTarget) * 100)) : 0;
+  const financialScore = Math.round(financialProgress * 0.4);
+
+  // 2) Operational Score (40%)
+  const activities = [
+    { name: '2D Design', target: target?.target2D ?? 0, taskType: '2d_design' },
+    { name: '3D Modeling', target: target?.target3D ?? 0, taskType: '3d_modeling' },
+    { name: 'Render', target: target?.targetRender ?? 0, taskType: 'render' },
+    { name: 'Quotation', target: target?.targetQuotations ?? 0, taskType: 'quotation' },
+    { name: 'Meeting', target: target?.targetMeetings ?? 0, taskType: 'meeting' },
+    { name: 'Presentation', target: target?.targetPresentations ?? 0, taskType: 'presentation' },
+    { name: 'Closing', target: target?.targetClosings ?? 0, taskType: 'closing' },
+  ];
+
+  const activityResults = await Promise.all(activities.map(async (act) => {
+    if (!act.target) return { name: act.name, actual: 0, target: 0, progress: 0 };
+    const rows = await db.select({ cnt: count() })
+      .from(dailyTasks)
+      .where(and(
+        eq(dailyTasks.engineerId, engineerId),
+        eq(dailyTasks.taskType, act.taskType as any),
+        eq(dailyTasks.status, 'completed'),
+        gte(dailyTasks.taskDate, startDate as unknown as Date),
+        lte(dailyTasks.taskDate, endDate as unknown as Date)
+      ));
+    const actual = rows[0]?.cnt ?? 0;
+    const progress = act.target > 0 ? Math.min(100, Math.round((actual / act.target) * 100)) : 0;
+    return { name: act.name, actual, target: act.target, progress };
+  }));
+
+  const withTargets = activityResults.filter(a => a.target > 0);
+  const avgOperational = withTargets.length > 0
+    ? withTargets.reduce((s, a) => s + a.progress, 0) / withTargets.length : 0;
+  const operationalScore = Math.round(avgOperational * 0.4);
+
+  // 3) Personal Score (20%)
+  const personalRaw = await calcPersonalScore(engineerId, year, month);
+  const personalScore = Math.round(personalRaw * 0.2);
+
+  // Total
+  const totalScore = financialScore + operationalScore + personalScore;
+  const grade: 'A' | 'B' | 'C' | 'D' =
+    totalScore >= 80 ? 'A' : totalScore >= 60 ? 'B' : totalScore >= 40 ? 'C' : 'D';
+
+  return {
+    financialScore,
+    operationalScore,
+    personalScore,
+    totalScore,
+    grade,
+    financialDetails: { actual: actualSales, target: financialTarget, progress: financialProgress },
+    operationalDetails: { activities: activityResults },
+  };
+}
+
+/** حساب Total Performance Score لكل المهندسين */
+export async function getAllEngineersPerformanceScores(year: number, month: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const salesEngineers = await db.select({ id: engineers.id, name: engineers.name, role: engineers.role })
+    .from(engineers)
+    .where(and(
+      inArray(engineers.role, ['sales_engineer', 'sales_specialist']),
+      eq(engineers.status, 'active')
+    ));
+
+  const results = await Promise.all(salesEngineers.map(async (eng) => {
+    const score = await calcTotalPerformanceScore(eng.id, year, month);
+    return { engineerId: eng.id, engineerName: eng.name, role: eng.role, ...score };
+  }));
+
+  return results.sort((a, b) => b.totalScore - a.totalScore);
 }

@@ -108,7 +108,8 @@ export default function KPIModule() {
   const { data: discountDist } = trpc.kpi.scoreBasedDiscountDistribution.useQuery({ year, month });
   const { data: allEarnings } = trpc.kpi.allEngineersEarnings.useQuery({ year, month, teamKPIPool: 2000 });
   const { data: companyClosingBonus } = trpc.kpi.companyClosingBonus.useQuery({ year, month });
-  const [kpiTab, setKpiTab] = useState<'sales'|'tele'|'site'|'closing'|'earnings'|'rewards'|'lost'>('sales');
+  const [kpiTab, setKpiTab] = useState<'sales'|'tele'|'site'|'closing'|'earnings'|'rewards'|'lost'|'performance'>('sales');
+  const { data: allPerfScores } = trpc.planning.allEngineersPerformanceScores.useQuery({ year, month });
 
   const sorted = kpiData ? [...kpiData].sort((a, b) => b.kpiScore - a.kpiScore) : [];
   const topPerformer = sorted[0];
@@ -795,6 +796,7 @@ export default function KPIModule() {
           { id: 'earnings', label: 'الاستحقاقات التفصيلية' },
           { id: 'rewards', label: 'نظام المكافآت' },
           { id: 'lost', label: 'تأثير الصفقات الخاسرة' },
+          { id: 'performance', label: '🎯 التقييم الشامل' },
         ] as const).map(tab => (
           <button key={tab.id} onClick={() => setKpiTab(tab.id)}
             className={`px-3 py-1.5 text-xs font-semibold rounded-full border transition-colors ${
@@ -1301,6 +1303,129 @@ export default function KPIModule() {
               </CardContent>
             </Card>
           )}
+        </div>
+      )}
+
+      {/* ─── TAB: Total Performance Score ─── */}
+      {kpiTab === 'performance' && (
+        <div className="space-y-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Target className="w-4 h-4 text-indigo-500" />
+                التقييم الشامل للأداء — {MONTHS[month - 1]} {year}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {!allPerfScores || allPerfScores.length === 0 ? (
+                <p className="text-center py-8 text-muted-foreground text-sm">لا توجد بيانات — يرجى تحديد الأهداف أولاً من موديول التخطيط</p>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {(allPerfScores as any[]).map((eng: any) => (
+                      <div key={eng.engineerId} className={`p-4 rounded-xl border-2 ${
+                        eng.grade === 'A' ? 'border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20' :
+                        eng.grade === 'B' ? 'border-indigo-300 bg-indigo-50 dark:bg-indigo-950/20' :
+                        eng.grade === 'C' ? 'border-amber-300 bg-amber-50 dark:bg-amber-950/20' :
+                        'border-red-300 bg-red-50 dark:bg-red-950/20'
+                      }`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-semibold text-sm truncate">{eng.engineerName}</span>
+                          <span className={`text-lg font-black ${
+                            eng.grade === 'A' ? 'text-emerald-600' :
+                            eng.grade === 'B' ? 'text-indigo-600' :
+                            eng.grade === 'C' ? 'text-amber-600' : 'text-red-600'
+                          }`}>{eng.grade}</span>
+                        </div>
+                        <div className={`text-3xl font-black ${
+                          eng.totalScore >= 80 ? 'text-emerald-600' :
+                          eng.totalScore >= 60 ? 'text-indigo-600' :
+                          eng.totalScore >= 40 ? 'text-amber-600' : 'text-red-600'
+                        }`}>{eng.totalScore}%</div>
+                        <div className="text-xs text-muted-foreground mt-1">إجمالي التقييم</div>
+                        <div className="h-1.5 bg-muted rounded-full mt-2 overflow-hidden">
+                          <div className={`h-full rounded-full ${
+                            eng.totalScore >= 80 ? 'bg-emerald-500' :
+                            eng.totalScore >= 60 ? 'bg-indigo-500' :
+                            eng.totalScore >= 40 ? 'bg-amber-500' : 'bg-red-500'
+                          }`} style={{ width: `${eng.totalScore}%` }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-xs text-muted-foreground">
+                          <th className="text-right py-2 pr-2">المهندس</th>
+                          <th className="text-center py-2">مالي (40%)</th>
+                          <th className="text-center py-2">تشغيلي (40%)</th>
+                          <th className="text-center py-2">شخصي (20%)</th>
+                          <th className="text-center py-2">الإجمالي</th>
+                          <th className="text-center py-2">التقدير</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(allPerfScores as any[]).map((eng: any) => (
+                          <tr key={eng.engineerId} className="border-b hover:bg-muted/30">
+                            <td className="py-2 pr-2 font-semibold">{eng.engineerName}</td>
+                            <td className="text-center py-2">
+                              <span className={`font-bold ${
+                                eng.financialScore >= 32 ? 'text-emerald-600' :
+                                eng.financialScore >= 24 ? 'text-indigo-600' :
+                                eng.financialScore >= 16 ? 'text-amber-600' : 'text-red-600'
+                              }`}>{eng.financialScore}/40</span>
+                              <div className="text-xs text-muted-foreground">{eng.financialDetails?.progress ?? 0}%</div>
+                            </td>
+                            <td className="text-center py-2">
+                              <span className={`font-bold ${
+                                eng.operationalScore >= 32 ? 'text-emerald-600' :
+                                eng.operationalScore >= 24 ? 'text-indigo-600' :
+                                eng.operationalScore >= 16 ? 'text-amber-600' : 'text-red-600'
+                              }`}>{eng.operationalScore}/40</span>
+                            </td>
+                            <td className="text-center py-2">
+                              <span className={`font-bold ${
+                                eng.personalScore >= 16 ? 'text-emerald-600' :
+                                eng.personalScore >= 10 ? 'text-indigo-600' :
+                                eng.personalScore >= 6 ? 'text-amber-600' : 'text-red-600'
+                              }`}>{eng.personalScore}/20</span>
+                            </td>
+                            <td className="text-center py-2">
+                              <span className={`text-lg font-black ${
+                                eng.totalScore >= 80 ? 'text-emerald-600' :
+                                eng.totalScore >= 60 ? 'text-indigo-600' :
+                                eng.totalScore >= 40 ? 'text-amber-600' : 'text-red-600'
+                              }`}>{eng.totalScore}%</span>
+                            </td>
+                            <td className="text-center py-2">
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                                eng.grade === 'A' ? 'bg-emerald-100 text-emerald-700' :
+                                eng.grade === 'B' ? 'bg-indigo-100 text-indigo-700' :
+                                eng.grade === 'C' ? 'bg-amber-100 text-amber-700' :
+                                'bg-red-100 text-red-700'
+                              }`}>{eng.grade}</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="flex flex-wrap gap-3 text-xs text-muted-foreground border-t pt-3">
+                    <span>الأوزان:</span>
+                    <span className="text-indigo-600 font-medium">مالي 40%</span>
+                    <span className="text-emerald-600 font-medium">تشغيلي 40%</span>
+                    <span className="text-purple-600 font-medium">شخصي 20%</span>
+                    <span className="mx-2">|</span>
+                    <span className="text-emerald-600 font-medium">A ≥ 80%</span>
+                    <span className="text-indigo-600 font-medium">B ≥ 60%</span>
+                    <span className="text-amber-600 font-medium">C ≥ 40%</span>
+                    <span className="text-red-600 font-medium">D &lt; 40%</span>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       )}
 

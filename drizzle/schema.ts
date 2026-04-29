@@ -816,3 +816,63 @@ export const discountBonusCaps = mysqlTable("discount_bonus_caps", {
 });
 export type DiscountBonusCap = typeof discountBonusCaps.$inferSelect;
 export type InsertDiscountBonusCap = typeof discountBonusCaps.$inferInsert;
+
+// ═══════════════════════════════════════════════════════════════════════
+// Company Goals (أهداف الشركة الشهرية)
+// ═══════════════════════════════════════════════════════════════════════
+export const companyGoals = mysqlTable("company_goals", {
+  id: int("id").autoincrement().primaryKey(),
+  year: int("year").notNull(),
+  month: int("month").notNull(),
+  // الهدف المالي الشهري
+  revenueTarget: decimal("revenueTarget", { precision: 14, scale: 2 }).notNull(),
+  // متوسط قيمة الصفقة المتوقعة
+  avgDealValue: decimal("avgDealValue", { precision: 14, scale: 2 }).notNull(),
+  // نسبة الإغلاق المستهدفة (0-100)
+  closingRateTarget: decimal("closingRateTarget", { precision: 5, scale: 2 }).notNull().default("60"),
+  // فترة الهدف
+  periodFrom: date("periodFrom"),
+  periodTo: date("periodTo"),
+  // أهداف محسوبة تلقائياً (يمكن override يدوي)
+  requiredDeals: int("requiredDeals"),        // عدد الصفقات المطلوبة
+  requiredVisits: int("requiredVisits"),      // عدد المعاينات المطلوبة
+  requiredPipelineValue: decimal("requiredPipelineValue", { precision: 14, scale: 2 }), // حجم Pipeline المطلوب
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type CompanyGoal = typeof companyGoals.$inferSelect;
+export type InsertCompanyGoal = typeof companyGoals.$inferInsert;
+
+// ═══════════════════════════════════════════════════════════════════════
+// Engineer Personal Goals (الأهداف الشخصية للمهندسين)
+// ═══════════════════════════════════════════════════════════════════════
+export const engineerPersonalGoals = mysqlTable("engineer_personal_goals", {
+  id: int("id").autoincrement().primaryKey(),
+  engineerId: int("engineerId").notNull(),
+  year: int("year").notNull(),
+  month: int("month").notNull(),
+  // الهدف الشخصي التطويري
+  objective: varchar("objective", { length: 255 }).notNull(),
+  // مجال التطوير
+  developmentArea: mysqlEnum("developmentArea", [
+    "closing", "negotiation", "render_quality", "presentation",
+    "design_quality", "client_communication", "time_management", "other"
+  ]).notNull().default("other"),
+  // طريقة التقييم
+  evaluationMethod: mysqlEnum("evaluationMethod", [
+    "meeting_review", "design_review", "render_review", "manager_review", "self_review"
+  ]).notNull().default("manager_review"),
+  // المراجع
+  reviewerRole: mysqlEnum("reviewerRole", ["admin", "manager"]).notNull().default("manager"),
+  // الدرجة (0-100)
+  score: int("score"),
+  // ملاحظات المراجع
+  reviewNotes: text("reviewNotes"),
+  // تاريخ التقييم
+  reviewedAt: timestamp("reviewedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type EngineerPersonalGoal = typeof engineerPersonalGoals.$inferSelect;
+export type InsertEngineerPersonalGoal = typeof engineerPersonalGoals.$inferInsert;

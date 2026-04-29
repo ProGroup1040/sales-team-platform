@@ -6,384 +6,253 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Target, Calculator, TrendingUp, Calendar, Save } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
+import {
+  Target, Calculator, TrendingUp, Calendar, Save, Users, User,
+  BookOpen, CheckCircle2, AlertCircle, Edit3, Plus
+} from "lucide-react";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
+} from "recharts";
 
 const now = new Date();
-const MONTHS = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+const MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
 
+const DEVELOPMENT_AREAS: Record<string, string> = {
+  closing: 'مهارة الإغلاق',
+  negotiation: 'التفاوض',
+  render_quality: 'جودة الرندر',
+  presentation: 'العرض التقديمي',
+  design_quality: 'جودة التصميم',
+  client_communication: 'التواصل مع العميل',
+  time_management: 'إدارة الوقت',
+  other: 'أخرى',
+};
 
-// ─── Engineer Targets Section ─────────────────────────────────────────────────
-function EngineerTargetsSection({ year, month }: { year: number; month: number }) {
+const EVALUATION_METHODS: Record<string, string> = {
+  meeting_review: 'مراجعة اجتماع',
+  design_review: 'مراجعة تصميم',
+  render_review: 'مراجعة رندر',
+  manager_review: 'مراجعة المدير',
+  self_review: 'تقييم ذاتي',
+};
+
+const OPERATIONAL_ITEMS = [
+  { key: 'meetings',       label: 'الاجتماعات',          targetKey: 'targetMeetings',      icon: '🤝' },
+  { key: 'design2D',      label: '2D Design',            targetKey: 'target2D',            icon: '📐' },
+  { key: 'design3D',      label: '3D Modeling',          targetKey: 'target3D',            icon: '🏗️' },
+  { key: 'render',        label: 'Render',               targetKey: 'targetRender',        icon: '🎨' },
+  { key: 'quotations',    label: 'عروض الأسعار',         targetKey: 'targetQuotations',    icon: '📋' },
+  { key: 'presentations', label: 'العروض التقديمية',     targetKey: 'targetPresentations', icon: '📊' },
+  { key: 'closings',      label: 'الإغلاقات',            targetKey: 'targetClosings',      icon: '🔒' },
+];
+
+// ─── Tab 1: Company Goals ──────────────────────────────────────────────────────
+function CompanyGoalsTab({ year, month }: { year: number; month: number }) {
   const utils = trpc.useUtils();
-  const { data: engineers } = trpc.engineers.list.useQuery();
-  const { data: perfData, isLoading } = trpc.sales.engineersPerformance.useQuery({ year, month });
-  const { data: opData } = trpc.kpi.operationalPerformance.useQuery({ year, month });
+  const { data: goalData } = trpc.planning.getCompanyGoal.useQuery({ year, month });
+  const { data: progressData } = trpc.planning.getCompanyGoalProgress.useQuery({ year, month });
+  const { data: trendData } = trpc.sales.trend.useQuery({ months: 6 });
 
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editTarget, setEditTarget] = useState('');
-  const [editManpower, setEditManpower] = useState('1');
+  const [revenueTarget, setRevenueTarget] = useState('');
+  const [avgDealValue, setAvgDealValue] = useState('85000');
+  const [closingRateTarget, setClosingRateTarget] = useState('35');
+  const [periodFrom, setPeriodFrom] = useState('');
+  const [periodTo, setPeriodTo] = useState('');
+  const [notes, setNotes] = useState('');
 
-  const setTargetMut = trpc.sales.setEngineerTarget.useMutation({
+  const setGoalMut = trpc.planning.setCompanyGoal.useMutation({
     onSuccess: () => {
-      toast.success('تم حفظ هدف المهندس');
-      utils.sales.engineersPerformance.invalidate();
-      utils.kpi.engineers.invalidate();
-      setEditingId(null);
+      toast.success('تم حفظ هدف الشركة');
+      utils.planning.getCompanyGoal.invalidate();
+      utils.planning.getCompanyGoalProgress.invalidate();
     },
     onError: () => toast.error('حدث خطأ في الحفظ'),
   });
 
-  const MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-bold flex items-center gap-2">
-            <Target className="w-5 h-5 text-indigo-500" />
-            أهداف المهندسين الفردية
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            {MONTHS[month - 1]} {year} — الأداء الفعلي مقابل الهدف المحدد
-          </p>
-        </div>
-      </div>
-
-      {isLoading && <div className="text-center py-8 text-muted-foreground">جاري التحميل...</div>}
-
-      {perfData && perfData.length === 0 && (
-        <div className="text-center py-8 text-muted-foreground">لا توجد بيانات لهذا الشهر</div>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {perfData && perfData.map((eng: any) => {
-          const op = opData?.find((o: any) => o.engineerId === eng.engineerId);
-          const isEditing = editingId === eng.engineerId;
-          const achievementColor = eng.achievementPct >= 100 ? 'text-emerald-600' :
-            eng.achievementPct >= 70 ? 'text-indigo-600' :
-            eng.achievementPct >= 50 ? 'text-amber-600' : 'text-red-600';
-          const progressColor = eng.achievementPct >= 100 ? 'bg-emerald-500' :
-            eng.achievementPct >= 70 ? 'bg-indigo-500' :
-            eng.achievementPct >= 50 ? 'bg-amber-500' : 'bg-red-500';
-
-          return (
-            <Card key={eng.engineerId} className="border">
-              <CardContent className="p-4 space-y-3">
-                {/* Header */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-9 h-9 rounded-full bg-indigo-100 dark:bg-indigo-950/40 flex items-center justify-center font-bold text-indigo-700 dark:text-indigo-400">
-                      {eng.engineerName.charAt(0)}
-                    </div>
-                    <div>
-                      <div className="font-semibold text-sm">{eng.engineerName}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {eng.closedWon} صفقة مغلقة • {eng.dealsCount} إجمالي
-                      </div>
-                    </div>
-                  </div>
-                  <div className={`text-2xl font-bold ${achievementColor}`}>
-                    {eng.achievementPct}%
-                  </div>
-                </div>
-
-                {/* Progress bar */}
-                <div>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span className="text-muted-foreground">
-                      {eng.actualSales.toLocaleString('ar-EG')} ج.م
-                    </span>
-                    <span className="text-muted-foreground">
-                      هدف: {eng.targetAmount > 0 ? eng.targetAmount.toLocaleString('ar-EG') + ' ج.م' : 'غير محدد'}
-                    </span>
-                  </div>
-                  <div className="h-2 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all ${progressColor}`}
-                      style={{ width: `${Math.min(100, eng.achievementPct)}%` }}
-                    />
-                  </div>
-                  {eng.targetAmount > 0 && eng.remaining > 0 && (
-                    <div className="text-xs text-muted-foreground mt-1">
-                      متبقي: {eng.remaining.toLocaleString('ar-EG')} ج.م
-                    </div>
-                  )}
-                </div>
-
-                {/* KPI from Tasks */}
-                {op && (
-                  <div className="grid grid-cols-3 gap-2 text-xs">
-                    <div className="bg-muted/50 rounded-lg p-2 text-center">
-                      <div className="font-bold text-base">{op.totalTasks}</div>
-                      <div className="text-muted-foreground">مهام</div>
-                    </div>
-                    <div className="bg-muted/50 rounded-lg p-2 text-center">
-                      <div className={`font-bold text-base ${op.taskEfficiency >= 80 ? 'text-emerald-600' : op.taskEfficiency >= 60 ? 'text-amber-600' : 'text-red-600'}`}>
-                        {op.taskEfficiency}%
-                      </div>
-                      <div className="text-muted-foreground">كفاءة</div>
-                    </div>
-                    <div className="bg-muted/50 rounded-lg p-2 text-center">
-                      <div className="font-bold text-base">{op.countTotalMeetings}</div>
-                      <div className="text-muted-foreground">اجتماعات</div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Edit target */}
-                {isEditing ? (
-                  <div className="space-y-2 pt-2 border-t">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <Label className="text-xs">الهدف (ج.م)</Label>
-                        <Input
-                          type="number"
-                          value={editTarget}
-                          onChange={e => setEditTarget(e.target.value)}
-                          className="h-8 text-sm"
-                          placeholder="مثال: 500000"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs">عدد الأفراد</Label>
-                        <Input
-                          type="number"
-                          value={editManpower}
-                          onChange={e => setEditManpower(e.target.value)}
-                          className="h-8 text-sm"
-                          min="0.5" step="0.5"
-                        />
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        className="flex-1 h-8 text-xs"
-                        onClick={() => {
-                          if (!editTarget) return toast.error('أدخل الهدف');
-                          setTargetMut.mutate({
-                            engineerId: eng.engineerId,
-                            year, month,
-                            targetAmount: parseFloat(editTarget),
-                            manpower: parseFloat(editManpower) || 1,
-                          });
-                        }}
-                        disabled={setTargetMut.isPending}
-                      >
-                        <Save className="w-3 h-3 mr-1" />
-                        حفظ
-                      </Button>
-                      <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => setEditingId(null)}>
-                        إلغاء
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="w-full h-8 text-xs"
-                    onClick={() => {
-                      setEditingId(eng.engineerId);
-                      setEditTarget(eng.targetAmount > 0 ? String(eng.targetAmount) : '');
-                      setEditManpower(String(eng.manpower ?? 1));
-                    }}
-                  >
-                    <Target className="w-3 h-3 mr-1" />
-                    {eng.targetAmount > 0 ? 'تعديل الهدف' : 'تحديد هدف'}
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-export default function PlanningModule() {
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
-  const [targetAmount, setTargetAmount] = useState('');
-  const [avgDealValue, setAvgDealValue] = useState('85000');
-  const [closingRate, setClosingRate] = useState('35');
-  const [visitToClosingRate, setVisitToClosingRate] = useState('45');
-  const [notes, setNotes] = useState('');
-
-  const utils = trpc.useUtils();
-  const { data: targetData, isLoading } = trpc.planning.getTarget.useQuery({ year, month });
-  const { data: trendData } = trpc.sales.trend.useQuery({ months: 6 });
-  const { data: salesStats } = trpc.sales.monthlyStats.useQuery({ year, month });
-  const currentTarget = targetData;
-
-  const setTargetMutation = trpc.planning.setTarget.useMutation({
-    onSuccess: () => { toast.success('تم حفظ الهدف'); utils.planning.getTarget.invalidate(); utils.sales.trend.invalidate(); },
-    onError: () => toast.error('حدث خطأ'),
-  });
-
-  // Load existing target data when available
-  // currentTarget is fetched above
-
-  const calculations = useMemo(() => {
-    const target = parseFloat(targetAmount || String(currentTarget?.targetAmount ?? 0));
-    const avgDeal = parseFloat(avgDealValue || String(currentTarget?.avgDealValue ?? 85000));
-    const closing = parseFloat(closingRate || String((currentTarget?.closingRate ?? 0.35) * 100)) / 100;
-    const visitClosing = parseFloat(visitToClosingRate || String((currentTarget?.visitToClosingRate ?? 0.45) * 100)) / 100;
-
-    if (!target || !avgDeal || !closing || !visitClosing) return null;
-
-    const dealsNeeded = Math.ceil(target / avgDeal);
-    const visitsNeeded = Math.ceil(dealsNeeded / visitClosing);
+  const calc = useMemo(() => {
+    const rev = parseFloat(revenueTarget || String(goalData?.revenueTarget ?? 0));
+    const avg = parseFloat(avgDealValue || String(goalData?.avgDealValue ?? 85000));
+    const rate = parseFloat(closingRateTarget || String(goalData?.closingRateTarget ?? 35)) / 100;
+    if (!rev || !avg || !rate) return null;
+    const dealsNeeded = Math.ceil(rev / avg);
+    const visitsNeeded = Math.ceil(dealsNeeded / rate);
     const leadsNeeded = Math.ceil(visitsNeeded / 0.7);
+    const pipelineValue = dealsNeeded * avg * (1 / rate);
+    return { rev, avg, rate, dealsNeeded, visitsNeeded, leadsNeeded, pipelineValue };
+  }, [revenueTarget, avgDealValue, closingRateTarget, goalData]);
 
-    return { target, avgDeal, closing, visitClosing, dealsNeeded, visitsNeeded, leadsNeeded };
-  }, [targetAmount, avgDealValue, closingRate, visitToClosingRate, currentTarget]);
-
-  const handleSave = () => {
-    if (!targetAmount) return toast.error('يرجى إدخال الهدف');
-    setTargetMutation.mutate({
-      year, month,
-      targetAmount: parseFloat(targetAmount),
-      avgDealValue: parseFloat(avgDealValue),
-      closingRate: parseFloat(closingRate) / 100,
-      visitToClosingRate: parseFloat(visitToClosingRate) / 100,
-      notes,
-    });
-  };
-
-  const historyChartData = trendData?.map(h => ({
+  const historyData = trendData?.map((h: any) => ({
     name: h.label,
     الهدف: h.target,
     'الفعلي': h.actual,
-    'نسبة التحقيق': h.achievementRate,
   })) ?? [];
 
-  const achievementRate = salesStats?.achievementRate ?? 0;
-  const currentActual = salesStats?.actual ?? 0;
-  const currentTargetAmount = parseFloat(String(currentTarget?.targetAmount ?? 0));
+  const prog = progressData;
+  const goal = goalData;
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">موديول تخطيط الأهداف</h1>
-          <p className="text-sm text-muted-foreground">تخطيط الأهداف وحساب المتطلبات</p>
+    <div className="space-y-6">
+      {/* Current Progress */}
+      {goal && prog && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[
+            {
+              label: 'الإيراد الفعلي',
+              value: `${prog.actual.revenue.toLocaleString('ar-EG')} ج.م`,
+              target: `من ${parseFloat(goal.revenueTarget).toLocaleString('ar-EG')} ج.م`,
+              pct: prog.progress.revenueProgress,
+            },
+            {
+              label: 'الصفقات المغلقة',
+              value: String(prog.actual.deals),
+              target: `من ${goal.requiredDeals ?? 0} صفقة`,
+              pct: prog.progress.dealsProgress,
+            },
+            {
+              label: 'المعاينات',
+              value: String(prog.actual.visits),
+              target: `من ${goal.requiredVisits ?? 0} معاينة`,
+              pct: prog.progress.visitsProgress,
+            },
+            {
+              label: 'نسبة الإغلاق الفعلية',
+              value: `${prog.actual.closingRate}%`,
+              target: `هدف: ${goal.closingRateTarget}%`,
+              pct: prog.progress.closingRateProgress,
+            },
+          ].map((item, i) => {
+            const color = item.pct >= 100 ? 'emerald' : item.pct >= 70 ? 'indigo' : item.pct >= 50 ? 'amber' : 'red';
+            return (
+              <Card key={i}>
+                <CardContent className="p-4">
+                  <p className="text-xs text-muted-foreground mb-1">{item.label}</p>
+                  <p className={`text-xl font-bold text-${color}-600`}>{item.value}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{item.target}</p>
+                  <Progress value={Math.min(item.pct, 100)} className="h-1.5 mt-2" />
+                  <p className="text-xs font-medium mt-1">{item.pct}%</p>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
-        <div className="flex items-center gap-2">
-          <select className="h-8 text-sm border rounded-md px-2 bg-background" value={month} onChange={e => setMonth(parseInt(e.target.value))}>
-            {MONTHS.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
-          </select>
-          <select className="h-8 text-sm border rounded-md px-2 bg-background" value={year} onChange={e => setYear(parseInt(e.target.value))}>
-            {[now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
-        </div>
-      </div>
-
-      {/* Current Month Status */}
-      {currentTargetAmount > 0 && (
-        <Card className={`border-2 ${achievementRate >= 100 ? 'border-emerald-300 bg-emerald-50/50' : achievementRate >= 70 ? 'border-indigo-300 bg-indigo-50/50' : achievementRate >= 50 ? 'border-amber-300 bg-amber-50/50' : 'border-red-300 bg-red-50/50'}`}>
-          <CardContent className="p-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-              <div>
-                <p className="text-sm text-muted-foreground">هدف {MONTHS[month - 1]} {year}</p>
-                <p className="text-3xl font-bold">{currentTargetAmount.toLocaleString('ar-EG')} ج.م</p>
-              </div>
-              <div className="text-right">
-                <p className="text-sm text-muted-foreground">الفعلي حتى الآن</p>
-                <p className="text-2xl font-bold text-indigo-600">{currentActual.toLocaleString('ar-EG')} ج.م</p>
-              </div>
-              <div className="text-center">
-                <div className={`text-4xl font-bold ${achievementRate >= 100 ? 'text-emerald-600' : achievementRate >= 70 ? 'text-indigo-600' : achievementRate >= 50 ? 'text-amber-600' : 'text-red-600'}`}>
-                  {achievementRate}%
-                </div>
-                <p className="text-xs text-muted-foreground">نسبة التحقيق</p>
-              </div>
-            </div>
-            <Progress value={Math.min(achievementRate, 100)} className="h-3" />
-            <div className="flex justify-between text-xs text-muted-foreground mt-1">
-              <span>المتبقي: {Math.max(0, currentTargetAmount - currentActual).toLocaleString('ar-EG')} ج.م</span>
-              <span>{achievementRate >= 100 ? '🎉 تم تحقيق الهدف!' : achievementRate >= 80 ? '💪 قريب من الهدف' : achievementRate >= 50 ? '⚡ يحتاج تسريع' : '🚨 يحتاج مراجعة'}</span>
-            </div>
-          </CardContent>
-        </Card>
       )}
 
-      {/* Target Setting Form */}
+      {/* Goal Setting + Calculations */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
-          <CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2"><Target className="w-4 h-4" />إدخال الهدف الشهري</CardTitle></CardHeader>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Target className="w-4 h-4 text-indigo-500" />
+              تحديد هدف الشركة الشهري
+            </CardTitle>
+          </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <Label>الهدف الشهري (ج.م) *</Label>
-              <Input type="number" value={targetAmount} onChange={e => setTargetAmount(e.target.value)} placeholder={currentTarget ? String(currentTarget.targetAmount) : 'مثال: 500000'} className="text-lg font-semibold" />
+              <Label>الهدف الإيرادي (ج.م) *</Label>
+              <Input
+                type="number"
+                value={revenueTarget}
+                onChange={e => setRevenueTarget(e.target.value)}
+                placeholder={goal ? String(goal.revenueTarget) : 'مثال: 2000000'}
+                className="text-lg font-semibold mt-1"
+              />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>متوسط قيمة الصفقة (ج.م)</Label>
-                <Input type="number" value={avgDealValue} onChange={e => setAvgDealValue(e.target.value)} />
+                <Input type="number" value={avgDealValue} onChange={e => setAvgDealValue(e.target.value)} className="mt-1" />
               </div>
               <div>
-                <Label>نسبة الإغلاق (%)</Label>
-                <Input type="number" value={closingRate} onChange={e => setClosingRate(e.target.value)} min="1" max="100" />
+                <Label>نسبة الإغلاق المستهدفة (%)</Label>
+                <Input type="number" value={closingRateTarget} onChange={e => setClosingRateTarget(e.target.value)} min="1" max="100" className="mt-1" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>من تاريخ</Label>
+                <Input type="date" value={periodFrom} onChange={e => setPeriodFrom(e.target.value)} className="mt-1" />
+              </div>
+              <div>
+                <Label>إلى تاريخ</Label>
+                <Input type="date" value={periodTo} onChange={e => setPeriodTo(e.target.value)} className="mt-1" />
               </div>
             </div>
             <div>
-              <Label>نسبة تحويل المعاينة لصفقة (%)</Label>
-              <Input type="number" value={visitToClosingRate} onChange={e => setVisitToClosingRate(e.target.value)} min="1" max="100" />
+              <Label>ملاحظات</Label>
+              <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="ملاحظات إضافية..." className="mt-1 h-20 resize-none" />
             </div>
-            <Button onClick={handleSave} disabled={setTargetMutation.isPending} className="w-full gap-2">
+            <Button
+              onClick={() => {
+                if (!revenueTarget) return toast.error('يرجى إدخال الهدف الإيرادي');
+                setGoalMut.mutate({
+                  year, month,
+                  revenueTarget: parseFloat(revenueTarget),
+                  avgDealValue: parseFloat(avgDealValue),
+                  closingRateTarget: parseFloat(closingRateTarget),
+                  periodFrom: periodFrom || undefined,
+                  periodTo: periodTo || undefined,
+                  notes: notes || undefined,
+                });
+              }}
+              disabled={setGoalMut.isPending}
+              className="w-full gap-2"
+            >
               <Save className="w-4 h-4" />
-              {setTargetMutation.isPending ? 'جاري الحفظ...' : 'حفظ الهدف'}
+              {setGoalMut.isPending ? 'جاري الحفظ...' : 'حفظ هدف الشركة'}
             </Button>
           </CardContent>
         </Card>
 
-        {/* Calculations */}
         <Card>
-          <CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2"><Calculator className="w-4 h-4" />المتطلبات المحسوبة</CardTitle></CardHeader>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Calculator className="w-4 h-4 text-emerald-500" />
+              الحسابات التلقائية
+            </CardTitle>
+          </CardHeader>
           <CardContent>
-            {calculations ? (
+            {calc ? (
               <div className="space-y-4">
                 <div className="p-4 rounded-xl bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-800/30">
-                  <p className="text-xs text-indigo-600 font-medium mb-1">الهدف المطلوب تحقيقه</p>
-                  <p className="text-2xl font-bold text-indigo-700">{calculations.target.toLocaleString('ar-EG')} ج.م</p>
+                  <p className="text-xs text-indigo-600 font-medium mb-1">الهدف الإيرادي</p>
+                  <p className="text-2xl font-bold text-indigo-700">{calc.rev.toLocaleString('ar-EG')} ج.م</p>
                 </div>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/30 text-center">
-                    <p className="text-2xl font-bold text-emerald-700">{calculations.dealsNeeded}</p>
+                    <p className="text-2xl font-bold text-emerald-700">{calc.dealsNeeded}</p>
                     <p className="text-xs text-emerald-600 mt-0.5">صفقة مطلوبة</p>
                   </div>
                   <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/30 text-center">
-                    <p className="text-2xl font-bold text-amber-700">{calculations.visitsNeeded}</p>
+                    <p className="text-2xl font-bold text-amber-700">{calc.visitsNeeded}</p>
                     <p className="text-xs text-amber-600 mt-0.5">معاينة مطلوبة</p>
                   </div>
                   <div className="p-3 rounded-xl bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800/30 text-center">
-                    <p className="text-2xl font-bold text-purple-700">{calculations.leadsNeeded}</p>
-                    <p className="text-xs text-purple-600 mt-0.5">عميل محتمل مطلوب</p>
+                    <p className="text-2xl font-bold text-purple-700">{calc.leadsNeeded}</p>
+                    <p className="text-xs text-purple-600 mt-0.5">عميل محتمل</p>
+                  </div>
+                  <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-800/30 text-center">
+                    <p className="text-xl font-bold text-rose-700">{(calc.pipelineValue / 1_000_000).toFixed(1)}M</p>
+                    <p className="text-xs text-rose-600 mt-0.5">حجم Pipeline</p>
                   </div>
                 </div>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between py-1.5 border-b">
+                <div className="space-y-1 text-sm border-t pt-3">
+                  <div className="flex justify-between py-1">
                     <span className="text-muted-foreground">متوسط قيمة الصفقة</span>
-                    <span className="font-medium">{calculations.avgDeal.toLocaleString('ar-EG')} ج.م</span>
+                    <span className="font-medium">{calc.avg.toLocaleString('ar-EG')} ج.م</span>
                   </div>
-                  <div className="flex justify-between py-1.5 border-b">
-                    <span className="text-muted-foreground">نسبة الإغلاق</span>
-                    <span className="font-medium">{(calculations.closing * 100).toFixed(0)}%</span>
+                  <div className="flex justify-between py-1">
+                    <span className="text-muted-foreground">نسبة الإغلاق المستهدفة</span>
+                    <span className="font-medium">{(calc.rate * 100).toFixed(0)}%</span>
                   </div>
-                  <div className="flex justify-between py-1.5">
-                    <span className="text-muted-foreground">نسبة تحويل المعاينة</span>
-                    <span className="font-medium">{(calculations.visitClosing * 100).toFixed(0)}%</span>
-                  </div>
+                  <p className="text-xs text-muted-foreground pt-1">* تحويل المعاينة لعميل = 70% افتراضي</p>
                 </div>
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center h-48 text-muted-foreground gap-3">
                 <Calculator className="w-10 h-10 opacity-30" />
-                <p className="text-sm">أدخل الهدف الشهري لحساب المتطلبات</p>
+                <p className="text-sm">أدخل الهدف الإيرادي لحساب المتطلبات تلقائياً</p>
               </div>
             )}
           </CardContent>
@@ -391,25 +260,709 @@ export default function PlanningModule() {
       </div>
 
       {/* History Chart */}
-      {historyChartData.length > 0 && (
+      {historyData.length > 0 && (
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-base">تاريخ الأهداف والتحقيق (6 أشهر)</CardTitle></CardHeader>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-indigo-500" />
+              تاريخ الأهداف والتحقيق (6 أشهر)
+            </CardTitle>
+          </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={historyChartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+              <BarChart data={historyData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
+                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`} />
                 <Tooltip formatter={(v: number) => [`${v.toLocaleString('ar-EG')} ج.م`]} />
-                <Bar dataKey="الهدف" fill="#6366f1" radius={[4, 4, 0, 0]} opacity={0.7} />
-                <Bar dataKey="الفعلي" fill="#10b981" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="الهدف" fill="#6366f1" radius={[4,4,0,0]} opacity={0.7} />
+                <Bar dataKey="الفعلي" fill="#10b981" radius={[4,4,0,0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
       )}
-      {/* ── Engineer Targets Section ── */}
-      <EngineerTargetsSection year={year} month={month} />
+    </div>
+  );
+}
+
+// ─── Tab 2: Individual Goals ───────────────────────────────────────────────────
+function IndividualGoalsTab({ year, month }: { year: number; month: number }) {
+  const utils = trpc.useUtils();
+  const { data: engineers } = trpc.engineers.list.useQuery();
+  const { data: perfData } = trpc.sales.engineersPerformance.useQuery({ year, month });
+
+  const [selectedEngId, setSelectedEngId] = useState<number | null>(null);
+  const [editingFinancial, setEditingFinancial] = useState(false);
+  const [editingOperational, setEditingOperational] = useState(false);
+  const [financialTarget, setFinancialTarget] = useState('');
+  const [manpower, setManpower] = useState('1');
+  const [opTargets, setOpTargets] = useState<Record<string, string>>({});
+
+  const { data: opData } = trpc.kpi.engineerOperationalTargets.useQuery(
+    { engineerId: selectedEngId ?? 0, year, month },
+    { enabled: !!selectedEngId }
+  );
+
+  const setFinancialMut = trpc.sales.setEngineerTarget.useMutation({
+    onSuccess: () => {
+      toast.success('تم حفظ الهدف المالي');
+      utils.sales.engineersPerformance.invalidate();
+      setEditingFinancial(false);
+    },
+    onError: () => toast.error('حدث خطأ'),
+  });
+
+  const setOperationalMut = trpc.sales.setOperationalTargets.useMutation({
+    onSuccess: () => {
+      toast.success('تم حفظ الأهداف التشغيلية');
+      utils.kpi.engineerOperationalTargets.invalidate();
+      setEditingOperational(false);
+    },
+    onError: () => toast.error('حدث خطأ'),
+  });
+
+  const salesEngineers = (engineers ?? []).filter((e: any) =>
+    !['admin', 'system_user'].includes(e.role ?? '')
+  );
+
+  // ── Engineer target form state
+  const selectedEng = selectedEngId
+    ? (perfData?.find((e: any) => e.engineerId === selectedEngId) ?? null)
+    : null;
+
+  const handleSelectEng = (id: number) => {
+    setSelectedEngId(id);
+    setEditingFinancial(false);
+    setEditingOperational(false);
+    const eng = perfData?.find((e: any) => e.engineerId === id);
+    if (eng) {
+      setFinancialTarget(eng.targetAmount > 0 ? String(eng.targetAmount) : '');
+      setManpower(String(eng.manpower ?? 1));
+    }
+  };
+
+  const handleSaveOperational = () => {
+    if (!selectedEngId) return;
+    const parsed: Record<string, number> = {};
+    OPERATIONAL_ITEMS.forEach(item => {
+      const val = opTargets[item.targetKey];
+      if (val !== undefined && val !== '') parsed[item.targetKey] = parseInt(val) || 0;
+    });
+    setOperationalMut.mutate({ engineerId: selectedEngId, year, month, ...parsed });
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Engineer Selector */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+        {salesEngineers.map((eng: any) => {
+          const perf = perfData?.find((p: any) => p.engineerId === eng.id);
+          const pct = perf?.achievementPct ?? 0;
+          const isSelected = selectedEngId === eng.id;
+          return (
+            <button
+              key={eng.id}
+              onClick={() => handleSelectEng(eng.id)}
+              className={`p-3 rounded-xl border-2 text-right transition-all ${isSelected
+                ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/30'
+                : 'border-border hover:border-indigo-300 bg-card'
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${isSelected ? 'bg-indigo-500 text-white' : 'bg-muted text-muted-foreground'}`}>
+                  {eng.name.charAt(0)}
+                </div>
+                <div className="text-sm font-semibold truncate">{eng.name}</div>
+              </div>
+              <div className={`text-lg font-bold ${pct >= 100 ? 'text-emerald-600' : pct >= 70 ? 'text-indigo-600' : pct >= 50 ? 'text-amber-600' : 'text-red-600'}`}>
+                {pct}%
+              </div>
+              <div className="text-xs text-muted-foreground">تحقيق مالي</div>
+            </button>
+          );
+        })}
+      </div>
+
+      {!selectedEngId && (
+        <div className="flex flex-col items-center justify-center h-32 text-muted-foreground gap-2">
+          <Users className="w-8 h-8 opacity-30" />
+          <p className="text-sm">اختر مهندساً لعرض وتعديل أهدافه</p>
+        </div>
+      )}
+
+      {selectedEngId && selectedEng && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Financial Target */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-indigo-500" />
+                  الهدف المالي
+                </CardTitle>
+                <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" onClick={() => setEditingFinancial(!editingFinancial)}>
+                  <Edit3 className="w-3 h-3" />
+                  {editingFinancial ? 'إلغاء' : 'تعديل'}
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div className="p-3 rounded-xl bg-muted/50">
+                  <p className="text-xs text-muted-foreground mb-1">الهدف</p>
+                  <p className="text-lg font-bold">
+                    {selectedEng.targetAmount > 0 ? `${(selectedEng.targetAmount / 1000).toFixed(0)}k` : '—'}
+                  </p>
+                  <p className="text-xs text-muted-foreground">ج.م</p>
+                </div>
+                <div className="p-3 rounded-xl bg-muted/50">
+                  <p className="text-xs text-muted-foreground mb-1">الفعلي</p>
+                  <p className="text-lg font-bold text-indigo-600">{(selectedEng.actualSales / 1000).toFixed(0)}k</p>
+                  <p className="text-xs text-muted-foreground">ج.م</p>
+                </div>
+                <div className="p-3 rounded-xl bg-muted/50">
+                  <p className="text-xs text-muted-foreground mb-1">التحقيق</p>
+                  <p className={`text-lg font-bold ${selectedEng.achievementPct >= 100 ? 'text-emerald-600' : selectedEng.achievementPct >= 70 ? 'text-indigo-600' : selectedEng.achievementPct >= 50 ? 'text-amber-600' : 'text-red-600'}`}>
+                    {selectedEng.achievementPct}%
+                  </p>
+                </div>
+              </div>
+              <Progress value={Math.min(selectedEng.achievementPct, 100)} className="h-2" />
+              {selectedEng.targetAmount > 0 && selectedEng.remaining > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  المتبقي: {selectedEng.remaining.toLocaleString('ar-EG')} ج.م
+                </p>
+              )}
+
+              {editingFinancial && (
+                <div className="space-y-3 pt-3 border-t">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs">الهدف المالي (ج.م)</Label>
+                      <Input type="number" value={financialTarget} onChange={e => setFinancialTarget(e.target.value)} className="h-8 text-sm mt-1" placeholder="مثال: 500000" />
+                    </div>
+                    <div>
+                      <Label className="text-xs">عدد الأفراد</Label>
+                      <Input type="number" value={manpower} onChange={e => setManpower(e.target.value)} className="h-8 text-sm mt-1" min="0.5" step="0.5" />
+                    </div>
+                  </div>
+                  <Button
+                    size="sm" className="w-full h-8 text-xs gap-1"
+                    onClick={() => {
+                      if (!financialTarget) return toast.error('أدخل الهدف');
+                      setFinancialMut.mutate({
+                        engineerId: selectedEngId, year, month,
+                        targetAmount: parseFloat(financialTarget),
+                        manpower: parseFloat(manpower) || 1,
+                      });
+                    }}
+                    disabled={setFinancialMut.isPending}
+                  >
+                    <Save className="w-3 h-3" />
+                    حفظ الهدف المالي
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Operational Targets */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Target className="w-4 h-4 text-emerald-500" />
+                  الأهداف التشغيلية
+                </CardTitle>
+                <Button
+                  size="sm" variant="ghost" className="h-7 text-xs gap-1"
+                  onClick={() => {
+                    if (!editingOperational && opData) {
+                      const init: Record<string, string> = {};
+                      OPERATIONAL_ITEMS.forEach(item => {
+                        init[item.targetKey] = String((opData.targets as any)[item.key] ?? 0);
+                      });
+                      setOpTargets(init);
+                    }
+                    setEditingOperational(!editingOperational);
+                  }}
+                >
+                  <Edit3 className="w-3 h-3" />
+                  {editingOperational ? 'إلغاء' : 'تعديل'}
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {opData ? (
+                <div className="space-y-2">
+                  {OPERATIONAL_ITEMS.map(item => {
+                    const actual = (opData.actuals as any)[item.key] ?? 0;
+                    const target = (opData.targets as any)[item.key] ?? 0;
+                    const pct = (opData.percentages as any)[item.key] ?? 0;
+                    return (
+                      <div key={item.key} className="flex items-center gap-3">
+                        <span className="text-base w-6 shrink-0">{item.icon}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between text-xs mb-0.5">
+                            <span className="font-medium">{item.label}</span>
+                            <span className={`font-bold ${pct >= 100 ? 'text-emerald-600' : pct >= 70 ? 'text-indigo-600' : pct >= 50 ? 'text-amber-600' : target === 0 ? 'text-muted-foreground' : 'text-red-600'}`}>
+                              {target === 0 ? '—' : `${actual}/${target} (${pct}%)`}
+                            </span>
+                          </div>
+                          {target > 0 && (
+                            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${pct >= 100 ? 'bg-emerald-500' : pct >= 70 ? 'bg-indigo-500' : pct >= 50 ? 'bg-amber-500' : 'bg-red-500'}`}
+                                style={{ width: `${Math.min(pct, 100)}%` }}
+                              />
+                            </div>
+                          )}
+                        </div>
+                        {editingOperational && (
+                          <Input
+                            type="number"
+                            value={opTargets[item.targetKey] ?? ''}
+                            onChange={e => setOpTargets(prev => ({ ...prev, [item.targetKey]: e.target.value }))}
+                            className="h-7 w-16 text-xs text-center shrink-0"
+                            min="0"
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                  {editingOperational && (
+                    <Button size="sm" className="w-full h-8 text-xs gap-1 mt-3" onClick={handleSaveOperational} disabled={setOperationalMut.isPending}>
+                      <Save className="w-3 h-3" />
+                      حفظ الأهداف التشغيلية
+                    </Button>
+                  )}
+                  {opData.diagnosis && opData.diagnosis !== 'no_data' && (
+                    <div className={`mt-3 p-3 rounded-lg text-xs ${
+                      opData.diagnosis === 'on_track' ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 border border-emerald-200' :
+                      opData.diagnosis === 'closing' ? 'bg-amber-50 dark:bg-amber-950/20 text-amber-700 border border-amber-200' :
+                      'bg-red-50 dark:bg-red-950/20 text-red-700 border border-red-200'
+                    }`}>
+                      {opData.diagnosis === 'on_track' ? <CheckCircle2 className="w-3.5 h-3.5 inline mr-1" /> : <AlertCircle className="w-3.5 h-3.5 inline mr-1" />}
+                      {opData.diagnosis === 'on_track' && 'الأداء على المسار الصحيح'}
+                      {opData.diagnosis === 'closing' && 'النشاط كافٍ لكن نسبة الإغلاق تحتاج تحسين'}
+                      {opData.diagnosis === 'activity' && 'عدد الأنشطة أقل من المطلوب'}
+                      {opData.diagnosis === 'both' && 'كل من النشاط والإغلاق يحتاجان تحسين'}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-32 text-muted-foreground gap-2">
+                  <Target className="w-8 h-8 opacity-30" />
+                  <p className="text-sm">لا توجد أهداف تشغيلية محددة</p>
+                  <Button
+                    size="sm" variant="outline" className="h-7 text-xs gap-1"
+                    onClick={() => {
+                      const init: Record<string, string> = {};
+                      OPERATIONAL_ITEMS.forEach(item => { init[item.targetKey] = '0'; });
+                      setOpTargets(init);
+                      setEditingOperational(true);
+                    }}
+                  >
+                    <Plus className="w-3 h-3" />
+                    تحديد أهداف تشغيلية
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* All Engineers Summary Table */}
+      {perfData && perfData.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Users className="w-4 h-4 text-indigo-500" />
+              ملخص أهداف الفريق — {MONTHS[month - 1]} {year}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-muted-foreground text-xs">
+                    <th className="text-right py-2 pr-2">المهندس</th>
+                    <th className="text-center py-2">الهدف</th>
+                    <th className="text-center py-2">الفعلي</th>
+                    <th className="text-center py-2">التحقيق</th>
+                    <th className="text-center py-2">الصفقات</th>
+                    <th className="text-center py-2">المتبقي</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {perfData.map((eng: any) => (
+                    <tr
+                      key={eng.engineerId}
+                      className={`border-b hover:bg-muted/30 cursor-pointer transition-colors ${selectedEngId === eng.engineerId ? 'bg-indigo-50/50 dark:bg-indigo-950/20' : ''}`}
+                      onClick={() => handleSelectEng(eng.engineerId)}
+                    >
+                      <td className="py-2 pr-2 font-medium">{eng.engineerName}</td>
+                      <td className="text-center py-2 text-muted-foreground">
+                        {eng.targetAmount > 0 ? `${(eng.targetAmount / 1000).toFixed(0)}k` : '—'}
+                      </td>
+                      <td className="text-center py-2 font-medium">{(eng.actualSales / 1000).toFixed(0)}k</td>
+                      <td className="text-center py-2">
+                        <Badge variant={eng.achievementPct >= 100 ? 'default' : eng.achievementPct >= 70 ? 'secondary' : 'destructive'} className="text-xs">
+                          {eng.achievementPct}%
+                        </Badge>
+                      </td>
+                      <td className="text-center py-2 text-muted-foreground">{eng.closedWon}</td>
+                      <td className="text-center py-2 text-muted-foreground">
+                        {eng.remaining > 0 ? `${(eng.remaining / 1000).toFixed(0)}k` : '✓'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ─── Tab 3: Personal Development ──────────────────────────────────────────────
+function PersonalDevelopmentTab({ year, month }: { year: number; month: number }) {
+  const utils = trpc.useUtils();
+  const { data: engineers } = trpc.engineers.list.useQuery();
+  const [selectedEngId, setSelectedEngId] = useState<number | null>(null);
+  const [showAddForm, setShowAddForm] = useState(false);
+
+  const { data: goals, isLoading } = trpc.planning.getPersonalGoals.useQuery(
+    { engineerId: selectedEngId ?? 0, year, month },
+    { enabled: !!selectedEngId }
+  );
+
+  const [newObjective, setNewObjective] = useState('');
+  const [newArea, setNewArea] = useState('other');
+  const [newMethod, setNewMethod] = useState('manager_review');
+  const [newReviewerRole, setNewReviewerRole] = useState('manager');
+  const [editingGoalId, setEditingGoalId] = useState<number | null>(null);
+  const [editScore, setEditScore] = useState('');
+  const [editNotes, setEditNotes] = useState('');
+
+  const addGoalMut = trpc.planning.setPersonalGoal.useMutation({
+    onSuccess: () => {
+      toast.success('تم إضافة الهدف الشخصي');
+      utils.planning.getPersonalGoals.invalidate();
+      setShowAddForm(false);
+      setNewObjective('');
+    },
+    onError: () => toast.error('حدث خطأ'),
+  });
+
+  const updateGoalMut = trpc.planning.setPersonalGoal.useMutation({
+    onSuccess: () => {
+      toast.success('تم تحديث التقييم');
+      utils.planning.getPersonalGoals.invalidate();
+      setEditingGoalId(null);
+    },
+    onError: () => toast.error('حدث خطأ'),
+  });
+
+  const salesEngineers = (engineers ?? []).filter((e: any) =>
+    !['admin', 'system_user'].includes(e.role ?? '')
+  );
+
+  const scoredGoals = (goals ?? []).filter((g: any) => g.score !== null);
+  const avgScore = scoredGoals.length > 0
+    ? Math.round(scoredGoals.reduce((s: number, g: any) => s + (g.score ?? 0), 0) / scoredGoals.length)
+    : null;
+
+  return (
+    <div className="space-y-6">
+      {/* Engineer Selector */}
+      <div className="flex flex-wrap gap-2">
+        {salesEngineers.map((eng: any) => (
+          <button
+            key={eng.id}
+            onClick={() => { setSelectedEngId(eng.id); setShowAddForm(false); }}
+            className={`px-4 py-2 rounded-full text-sm font-medium border transition-all ${selectedEngId === eng.id
+              ? 'bg-indigo-500 text-white border-indigo-500'
+              : 'bg-card border-border hover:border-indigo-300 text-foreground'
+            }`}
+          >
+            {eng.name}
+          </button>
+        ))}
+      </div>
+
+      {!selectedEngId && (
+        <div className="flex flex-col items-center justify-center h-32 text-muted-foreground gap-2">
+          <User className="w-8 h-8 opacity-30" />
+          <p className="text-sm">اختر مهندساً لعرض أهدافه الشخصية</p>
+        </div>
+      )}
+
+      {selectedEngId && (
+        <div className="space-y-4">
+          {/* Summary */}
+          {goals && goals.length > 0 && (
+            <div className="grid grid-cols-3 gap-4">
+              <Card>
+                <CardContent className="p-4 text-center">
+                  <p className="text-3xl font-bold text-indigo-600">{goals.length}</p>
+                  <p className="text-xs text-muted-foreground mt-1">إجمالي الأهداف</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-4 text-center">
+                  <p className="text-3xl font-bold text-emerald-600">{scoredGoals.length}</p>
+                  <p className="text-xs text-muted-foreground mt-1">تم تقييمها</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-4 text-center">
+                  <p className={`text-3xl font-bold ${avgScore !== null ? (avgScore >= 80 ? 'text-emerald-600' : avgScore >= 60 ? 'text-amber-600' : 'text-red-600') : 'text-muted-foreground'}`}>
+                    {avgScore !== null ? `${avgScore}%` : '—'}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">متوسط الدرجة</p>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {isLoading && <div className="text-center py-6 text-muted-foreground">جاري التحميل...</div>}
+
+          {goals && goals.length === 0 && !showAddForm && (
+            <div className="text-center py-8 text-muted-foreground">
+              <BookOpen className="w-10 h-10 mx-auto opacity-30 mb-2" />
+              <p className="text-sm">لا توجد أهداف شخصية لهذا الشهر</p>
+            </div>
+          )}
+
+          {goals && goals.map((goal: any) => (
+            <Card key={goal.id} className={`border ${goal.score !== null ? (goal.score >= 80 ? 'border-emerald-200' : goal.score >= 60 ? 'border-amber-200' : 'border-red-200') : 'border-border'}`}>
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm">{goal.objective}</p>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      <Badge variant="outline" className="text-xs">
+                        {DEVELOPMENT_AREAS[goal.developmentArea] ?? goal.developmentArea}
+                      </Badge>
+                      <Badge variant="secondary" className="text-xs">
+                        {EVALUATION_METHODS[goal.evaluationMethod] ?? goal.evaluationMethod}
+                      </Badge>
+                      <Badge variant="outline" className="text-xs">
+                        مراجع: {goal.reviewerRole === 'admin' ? 'الإدارة' : 'المدير'}
+                      </Badge>
+                    </div>
+                    {goal.reviewNotes && (
+                      <p className="text-xs text-muted-foreground mt-2 italic">"{goal.reviewNotes}"</p>
+                    )}
+                  </div>
+                  <div className="text-center min-w-[60px]">
+                    {goal.score !== null ? (
+                      <>
+                        <div className={`text-2xl font-bold ${goal.score >= 80 ? 'text-emerald-600' : goal.score >= 60 ? 'text-amber-600' : 'text-red-600'}`}>
+                          {goal.score}
+                        </div>
+                        <div className="text-xs text-muted-foreground">/ 100</div>
+                      </>
+                    ) : (
+                      <Badge variant="outline" className="text-xs">لم يُقيَّم</Badge>
+                    )}
+                  </div>
+                </div>
+
+                {editingGoalId === goal.id ? (
+                  <div className="mt-3 pt-3 border-t space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label className="text-xs">الدرجة (0-100)</Label>
+                        <Input type="number" value={editScore} onChange={e => setEditScore(e.target.value)} min="0" max="100" className="h-8 text-sm mt-1" />
+                      </div>
+                      <div>
+                        <Label className="text-xs">ملاحظات المراجع</Label>
+                        <Input value={editNotes} onChange={e => setEditNotes(e.target.value)} className="h-8 text-sm mt-1" placeholder="اختياري" />
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm" className="flex-1 h-8 text-xs gap-1"
+                        onClick={() => {
+                          updateGoalMut.mutate({
+                            id: goal.id,
+                            engineerId: selectedEngId,
+                            year, month,
+                            objective: goal.objective,
+                            developmentArea: goal.developmentArea,
+                            evaluationMethod: goal.evaluationMethod,
+                            reviewerRole: goal.reviewerRole,
+                            score: editScore ? parseInt(editScore) : undefined,
+                            reviewNotes: editNotes || undefined,
+                          });
+                        }}
+                        disabled={updateGoalMut.isPending}
+                      >
+                        <Save className="w-3 h-3" />
+                        حفظ التقييم
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => setEditingGoalId(null)}>إلغاء</Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button
+                    size="sm" variant="ghost" className="w-full h-7 text-xs mt-2 gap-1"
+                    onClick={() => {
+                      setEditingGoalId(goal.id);
+                      setEditScore(goal.score !== null ? String(goal.score) : '');
+                      setEditNotes(goal.reviewNotes ?? '');
+                    }}
+                  >
+                    <Edit3 className="w-3 h-3" />
+                    {goal.score !== null ? 'تعديل التقييم' : 'إضافة تقييم'}
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+
+          {/* Add New Goal */}
+          {showAddForm ? (
+            <Card className="border-dashed border-indigo-300">
+              <CardContent className="p-4 space-y-3">
+                <h3 className="font-semibold text-sm flex items-center gap-2">
+                  <Plus className="w-4 h-4 text-indigo-500" />
+                  هدف شخصي جديد
+                </h3>
+                <div>
+                  <Label className="text-xs">الهدف / الإنجاز المطلوب *</Label>
+                  <Textarea
+                    value={newObjective}
+                    onChange={e => setNewObjective(e.target.value)}
+                    placeholder="مثال: إتمام 3 عروض تقديمية احترافية مع تسجيل فيديو"
+                    className="mt-1 h-20 resize-none text-sm"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">مجال التطوير</Label>
+                    <select value={newArea} onChange={e => setNewArea(e.target.value)} className="w-full h-8 text-sm border rounded-md px-2 bg-background mt-1">
+                      {Object.entries(DEVELOPMENT_AREAS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">طريقة التقييم</Label>
+                    <select value={newMethod} onChange={e => setNewMethod(e.target.value)} className="w-full h-8 text-sm border rounded-md px-2 bg-background mt-1">
+                      {Object.entries(EVALUATION_METHODS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs">المراجع</Label>
+                  <select value={newReviewerRole} onChange={e => setNewReviewerRole(e.target.value)} className="w-full h-8 text-sm border rounded-md px-2 bg-background mt-1">
+                    <option value="manager">المدير المباشر</option>
+                    <option value="admin">الإدارة العليا</option>
+                  </select>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm" className="flex-1 h-8 text-xs gap-1"
+                    onClick={() => {
+                      if (!newObjective.trim()) return toast.error('أدخل الهدف');
+                      addGoalMut.mutate({
+                        engineerId: selectedEngId,
+                        year, month,
+                        objective: newObjective.trim(),
+                        developmentArea: newArea as any,
+                        evaluationMethod: newMethod as any,
+                        reviewerRole: newReviewerRole as any,
+                      });
+                    }}
+                    disabled={addGoalMut.isPending}
+                  >
+                    <Save className="w-3 h-3" />
+                    حفظ الهدف
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => setShowAddForm(false)}>إلغاء</Button>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <Button variant="outline" className="w-full gap-2 border-dashed" onClick={() => setShowAddForm(true)}>
+              <Plus className="w-4 h-4" />
+              إضافة هدف شخصي جديد
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main PlanningModule ───────────────────────────────────────────────────────
+export default function PlanningModule() {
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [activeTab, setActiveTab] = useState<'company' | 'individual' | 'personal'>('company');
+
+  const tabs = [
+    { id: 'company' as const,    label: 'هدف الشركة',      icon: Target },
+    { id: 'individual' as const, label: 'أهداف المهندسين', icon: Users },
+    { id: 'personal' as const,   label: 'التطوير الشخصي',  icon: BookOpen },
+  ];
+
+  return (
+    <div className="space-y-6 p-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Target className="w-6 h-6 text-indigo-500" />
+            موديول تخطيط الأهداف
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            تخطيط الأهداف المالية والتشغيلية والشخصية
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Calendar className="w-4 h-4 text-muted-foreground" />
+          <select className="h-8 text-sm border rounded-md px-2 bg-background" value={month} onChange={e => setMonth(parseInt(e.target.value))}>
+            {MONTHS.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+          </select>
+          <select className="h-8 text-sm border rounded-md px-2 bg-background" value={year} onChange={e => setYear(parseInt(e.target.value))}>
+            {[now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map(y => (
+              <option key={y} value={y}>{y}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 p-1 bg-muted rounded-xl w-fit">
+        {tabs.map(tab => {
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                activeTab === tab.id
+                  ? 'bg-background shadow-sm text-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Tab Content */}
+      {activeTab === 'company' && <CompanyGoalsTab year={year} month={month} />}
+      {activeTab === 'individual' && <IndividualGoalsTab year={year} month={month} />}
+      {activeTab === 'personal' && <PersonalDevelopmentTab year={year} month={month} />}
     </div>
   );
 }

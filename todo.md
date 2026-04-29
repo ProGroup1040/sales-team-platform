@@ -997,3 +997,32 @@
 - [ ] companyClosingBonus endpoint in routers.ts
 - [ ] Company Closing KPI Tab update: Tier + Bonus Multiplier + per-engineer eligibility
 - [ ] Test 3 scenarios: 35%, 50%, 65% closing rate
+
+## Planning Module - Full Goals System
+- [ ] Schema: companyGoals table (revenue target, avg deal, closing rate target, period)
+- [ ] Schema: engineerPersonalGoals table (objective, evaluation method, reviewer, score)
+- [ ] Migration SQL for new tables
+- [ ] db.ts: getCompanyGoals + setCompanyGoal + calcCompanyGoalProgress
+- [ ] db.ts: getEngineerPersonalGoals + setPersonalGoal + calcPersonalScore
+- [ ] db.ts: calcTotalPerformanceScore (Financial 40% + Operational 40% + Personal 20%)
+- [ ] routers.ts: planning.companyGoal + planning.individualGoal + planning.personalGoal endpoints
+- [ ] PlanningModule: Tab 1 - Company Goals (input + auto calculation)
+- [ ] PlanningModule: Tab 2 - Individual Goals (Financial + Operational per engineer)
+- [ ] PlanningModule: Tab 3 - Personal Development Goals (Objective + Score)
+- [ ] KPIModule: Total Performance Score panel (Financial + Operational + Personal)
+
+## Goals Module - تخطيط الأهداف الكامل (الطلب الأخير)
+- [x] تحديث schema: إضافة engineerTargets.target2D/target3D/targetRender/targetQuotations/targetMeetings/targetPresentations/targetClosings
+- [x] تحديث schema: إضافة engineerPersonalGoals (developmentArea + evaluationMethod + score + reviewerRole)
+- [x] تطبيق migration SQL الجديد
+- [x] Backend: upsertEngineerOperationalTargets (حفظ الأهداف التشغيلية)
+- [x] Backend: setOperationalTargets endpoint في sales router
+- [x] Backend: calcTotalPerformanceScore (مالي 40% + تشغيلي 40% + شخصي 20%)
+- [x] Backend: getAllEngineersPerformanceScores (لكل المهندسين)
+- [x] Backend: planning.allEngineersPerformanceScores endpoint
+- [x] PlanningModule.tsx: Tab 1 - هدف الشركة (Company Goals) مع الحسابات التلقائية
+- [x] PlanningModule.tsx: Tab 2 - أهداف المهندسين (Individual Goals) مالي + تشغيلي
+- [x] PlanningModule.tsx: Tab 3 - التطوير الشخصي (Personal Development) مع التقييم
+- [x] KPIModule.tsx: إضافة Tab "التقييم الشامل" يعرض Total Performance Score
+- [x] KPIModule.tsx: عرض مالي/40 + تشغيلي/40 + شخصي/20 + إجمالي + تقدير A/B/C/D
+- [x] إصلاح filter المهندسين ليشمل جميع الأدوار
