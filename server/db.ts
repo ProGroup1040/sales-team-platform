@@ -22,7 +22,9 @@ import {
   sessionActions, SessionAction, InsertSessionAction,
   engineerEvaluations, EngineerEvaluation, InsertEngineerEvaluation,
   engineerCareerLevels, EngineerCareerLevel, InsertEngineerCareerLevel,
-  dealTimeline, DealTimeline, InsertDealTimeline
+  dealTimeline, DealTimeline, InsertDealTimeline,
+  dealDiscountAllocations, DealDiscountAllocation, InsertDealDiscountAllocation,
+  discountBonusCaps, DiscountBonusCap, InsertDiscountBonusCap
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { notifyOwner } from './_core/notification';
@@ -8773,4 +8775,382 @@ export async function getAdvancedDiscountDistribution(month: number, year: numbe
       discountRate: Math.round(discountRate * 100),
     };
   });
+}
+
+// ─── Deal-Level Discount Distribution System ──────────────────────────────────
+// نظام توزيع الخصم على مستوى الصفقات (Core Logic)
+
+/**
+ * توزيع الخصم المتاح للمهندس على صفقاته بشكل نسبي حسب قيمة كل صفقة
+ * مثال: مهندس معاه 60,000 خصم + صفقة 300,000 وصفقة 100,000
+ * → الصفقة الكبيرة تأخذ 75% = 45,000 والصغيرة 25% = 15,000
+ */
+export async function distributeDiscountToDeals(engineerId: number): Promise<{
+  dealId: number; clientName: string; dealValue: number; dealType: 'pipeline' | 'closed';
+  allocatedDiscountMax: number; allocationPct: number; usedDiscount: number;
+  remainingDiscount: number; discountPct: number; grossValue: number; netValue: number;
+  lostDueToPricing: boolean;
+}[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  // جلب الخصم المتاح للمهندس
+  const summary = await getDiscountSummaryForEngineer(engineerId);
+  if (!summary) return [];
+
+  const totalAllowedDiscount = summary.allowedDiscount;
+
+  // جلب كل الصفقات النشطة (pipeline + closed_won فقط، ليس closed_lost)
+  const activeDeals = await db.select().from(deals)
+    .where(and(
+      eq(deals.engineerId, engineerId),
+      eq(deals.isDeleted, 0),
+      or(
+        ne(deals.stage, 'closed_lost'),
+      )
+    ))
+    .orderBy(desc(deals.value));
+
+  if (activeDeals.length === 0) return [];
+
+  // حساب إجمالي قيم الصفقات
+  const totalDealValue = activeDeals.reduce((s, d) => s + parseFloat(d.value as string || '0'), 0);
+  if (totalDealValue === 0) return [];
+
+  // جلب التخصيصات الحالية من قاعدة البيانات
+  const existingAllocations = await db.select().from(dealDiscountAllocations)
+    .where(eq(dealDiscountAllocations.engineerId, engineerId));
+  const allocationMap = new Map(existingAllocations.map(a => [a.dealId, a]));
+
+  const result = [];
+  for (const deal of activeDeals) {
+    const dealValue = parseFloat(deal.value as string || '0');
+    const allocationPct = totalDealValue > 0 ? (dealValue / totalDealValue) * 100 : 0;
+    const allocatedMax = totalAllowedDiscount * (allocationPct / 100);
+    const usedDiscount = parseFloat(deal.discountValue as string || '0');
+    const dealType: 'pipeline' | 'closed' = deal.stage === 'closed_won' ? 'closed' : 'pipeline';
+    const lostDueToPricing = deal.lostReason === 'price_high';
+
+    // تحديث أو إنشاء التخصيص في قاعدة البيانات
+    const existing = allocationMap.get(deal.id);
+    if (existing) {
+      await db.update(dealDiscountAllocations)
+        .set({
+          dealValue: dealValue.toString(),
+          allocatedDiscountMax: allocatedMax.toString(),
+          allocationPct: allocationPct.toFixed(2),
+          usedDiscount: usedDiscount.toString(),
+          dealType,
+          lostDueToPricing: lostDueToPricing ? 1 : 0,
+        })
+        .where(eq(dealDiscountAllocations.id, existing.id));
+    } else {
+      await db.insert(dealDiscountAllocations).values({
+        dealId: deal.id,
+        engineerId,
+        dealValue: dealValue.toString(),
+        allocatedDiscountMax: allocatedMax.toString(),
+        allocationPct: allocationPct.toFixed(2),
+        usedDiscount: usedDiscount.toString(),
+        dealType,
+        lostDueToPricing: lostDueToPricing ? 1 : 0,
+      });
+    }
+
+    result.push({
+      dealId: deal.id,
+      clientName: deal.clientName,
+      dealValue,
+      dealType,
+      allocatedDiscountMax: Math.round(allocatedMax),
+      allocationPct: Math.round(allocationPct * 10) / 10,
+      usedDiscount,
+      remainingDiscount: Math.max(0, Math.round(allocatedMax - usedDiscount)),
+      discountPct: dealValue > 0 ? Math.round((usedDiscount / dealValue) * 1000) / 10 : 0,
+      grossValue: parseFloat(deal.grossValue as string || dealValue.toString()),
+      netValue: parseFloat(deal.netValue as string || (dealValue - usedDiscount).toString()),
+      lostDueToPricing,
+    });
+  }
+
+  return result;
+}
+
+/**
+ * جلب ملخص الخصم للمهندس (مشابه لـ getDiscountSummary لكن لمهندس واحد)
+ */
+export async function getDiscountSummaryForEngineer(engineerId: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  // جلب الصفقات المغلقة (closed_won) في آخر 60 يوم
+  const since60 = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
+  const closedDeals = await db.select().from(deals)
+    .where(and(
+      eq(deals.engineerId, engineerId),
+      eq(deals.stage, 'closed_won'),
+      eq(deals.isDeleted, 0),
+      gte(deals.closedAt, since60)
+    ));
+
+  const actualSales = closedDeals.reduce((s, d) => s + parseFloat(d.netValue as string || d.value as string || '0'), 0);
+
+  // جلب الصفقات في Pipeline
+  const pipelineDeals = await db.select().from(deals)
+    .where(and(
+      eq(deals.engineerId, engineerId),
+      eq(deals.isDeleted, 0),
+      or(
+        eq(deals.stage, 'proposal'),
+        eq(deals.stage, 'negotiation'),
+        eq(deals.stage, 'contract_sent'),
+      )
+    ));
+  const pipeline = pipelineDeals.reduce((s, d) => s + parseFloat(d.value as string || '0'), 0);
+
+  // جلب شرائح الخصم
+  const discTiers = await db.select().from(discountTiers).orderBy(discountTiers.minSales);
+  const totalVolume = actualSales + pipeline;
+  const tier = getDiscountTier(totalVolume, discTiers.map(t => ({
+    minSales: t.minSales as string,
+    maxSales: t.maxSales as string | null,
+    maxDiscountPct: t.maxDiscountPct,
+    label: t.label,
+  })));
+
+  const discountPct = tier?.maxDiscountPct ?? getDiscountTierInfo(totalVolume).discountPct;
+  const allowedDiscount = totalVolume * (discountPct / 100);
+
+  // الخصم المستخدم على الصفقات المغلقة
+  const usedDiscount = closedDeals.reduce((s, d) => s + parseFloat(d.discountValue as string || '0'), 0);
+  // الخصم المحتمل على الـ Pipeline
+  const potentialDiscount = pipelineDeals.reduce((s, d) => s + parseFloat(d.discountValue as string || '0'), 0);
+  const remainingDiscount = Math.max(0, allowedDiscount - usedDiscount - potentialDiscount);
+
+  return {
+    engineerId,
+    actualSales,
+    pipeline,
+    totalVolume,
+    discountPct,
+    allowedDiscount: Math.round(allowedDiscount),
+    usedDiscount: Math.round(usedDiscount),
+    potentialDiscount: Math.round(potentialDiscount),
+    remainingDiscount: Math.round(remainingDiscount),
+    realizedDiscount: Math.round(usedDiscount),
+    closedDealsCount: closedDeals.length,
+    pipelineDealsCount: pipelineDeals.length,
+  };
+}
+
+/**
+ * حساب مكافأة الخصم لصفقة مغلقة (closed_won)
+ * الحالة 1: خصم ≤ كومشن → مكافأة = 50% من الخصم
+ * الحالة 2: خصم > كومشن → مكافأة = الكومشن فقط
+ * قيود: لا مكافأة إذا خسرت الصفقة بسبب السعر، ولا تتجاوز الـ Cap الشهري
+ */
+export async function calculateDiscountBonus(dealId: number): Promise<{
+  eligible: boolean; reason?: string;
+  discountUsed: number; commissionAmount: number;
+  bonusAmount: number; bonusCase: 1 | 2 | null;
+  monthlyCap: number; earnedThisMonth: number; remainingCap: number;
+}> {
+  const db = await getDb();
+  if (!db) return { eligible: false, reason: 'خطأ في قاعدة البيانات', discountUsed: 0, commissionAmount: 0, bonusAmount: 0, bonusCase: null, monthlyCap: 0, earnedThisMonth: 0, remainingCap: 0 };
+
+  // جلب الصفقة
+  const [deal] = await db.select().from(deals).where(eq(deals.id, dealId)).limit(1);
+  if (!deal) return { eligible: false, reason: 'الصفقة غير موجودة', discountUsed: 0, commissionAmount: 0, bonusAmount: 0, bonusCase: null, monthlyCap: 0, earnedThisMonth: 0, remainingCap: 0 };
+
+  // شرط 1: الصفقة يجب أن تكون closed_won
+  if (deal.stage !== 'closed_won') {
+    return { eligible: false, reason: 'الصفقة ليست مغلقة بنجاح', discountUsed: 0, commissionAmount: 0, bonusAmount: 0, bonusCase: null, monthlyCap: 0, earnedThisMonth: 0, remainingCap: 0 };
+  }
+
+  // شرط 2: لا مكافأة إذا خسرت بسبب السعر
+  if (deal.lostReason === 'price_high') {
+    return { eligible: false, reason: 'الصفقة خُسرت بسبب السعر', discountUsed: 0, commissionAmount: 0, bonusAmount: 0, bonusCase: null, monthlyCap: 0, earnedThisMonth: 0, remainingCap: 0 };
+  }
+
+  const discountUsed = parseFloat(deal.discountValue as string || '0');
+  const netValue = parseFloat(deal.netValue as string || deal.value as string || '0');
+
+  // حساب الكومشن على هذه الصفقة
+  const commissionTiersData = await db.select().from(commissionTiers).orderBy(commissionTiers.minAchievementPct);
+  // نستخدم نسبة كومشن افتراضية 3% إذا لم تكن هناك شرائح
+  const commissionPct = commissionTiersData.length > 0 ? commissionTiersData[0].commissionPct : 3;
+  const commissionAmount = netValue * (commissionPct / 100);
+
+  // حساب المكافأة
+  let bonusAmount = 0;
+  let bonusCase: 1 | 2 | null = null;
+
+  if (discountUsed > 0) {
+    if (discountUsed <= commissionAmount) {
+      // الحالة 1: خصم ≤ كومشن → مكافأة = 50% من الخصم
+      bonusAmount = discountUsed * 0.5;
+      bonusCase = 1;
+    } else {
+      // الحالة 2: خصم > كومشن → مكافأة = الكومشن فقط
+      bonusAmount = commissionAmount;
+      bonusCase = 2;
+    }
+  }
+
+  // التحقق من الـ Cap الشهري
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+
+  const [capRecord] = await db.select().from(discountBonusCaps)
+    .where(and(
+      eq(discountBonusCaps.engineerId, deal.engineerId),
+      eq(discountBonusCaps.year, year),
+      eq(discountBonusCaps.month, month),
+    )).limit(1);
+
+  const monthlyCap = parseFloat(capRecord?.monthlyCap as string || '15000');
+  const earnedThisMonth = parseFloat(capRecord?.earnedBonus as string || '0');
+  const remainingCap = Math.max(0, monthlyCap - earnedThisMonth);
+
+  // تطبيق الـ Cap
+  bonusAmount = Math.min(bonusAmount, remainingCap);
+
+  return {
+    eligible: bonusAmount > 0,
+    discountUsed: Math.round(discountUsed),
+    commissionAmount: Math.round(commissionAmount),
+    bonusAmount: Math.round(bonusAmount),
+    bonusCase,
+    monthlyCap,
+    earnedThisMonth: Math.round(earnedThisMonth),
+    remainingCap: Math.round(remainingCap),
+  };
+}
+
+/**
+ * جلب ملخص مكافأة الخصم للمهندس (شهري)
+ */
+export async function getDiscountBonusSummary(engineerId: number, year?: number, month?: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const now = new Date();
+  const y = year ?? now.getFullYear();
+  const m = month ?? (now.getMonth() + 1);
+
+  // جلب الصفقات المغلقة في هذا الشهر
+  const startOfMonth = new Date(y, m - 1, 1);
+  const endOfMonth = new Date(y, m, 0, 23, 59, 59);
+
+  const closedDeals = await db.select().from(deals)
+    .where(and(
+      eq(deals.engineerId, engineerId),
+      eq(deals.stage, 'closed_won'),
+      eq(deals.isDeleted, 0),
+      gte(deals.closedAt, startOfMonth),
+      lte(deals.closedAt, endOfMonth),
+    ));
+
+  // حساب المكافأة لكل صفقة
+  const dealBonuses = await Promise.all(closedDeals.map(async (deal) => {
+    const bonus = await calculateDiscountBonus(deal.id);
+    return {
+      dealId: deal.id,
+      clientName: deal.clientName,
+      dealValue: parseFloat(deal.value as string || '0'),
+      discountUsed: bonus.discountUsed,
+      commissionAmount: bonus.commissionAmount,
+      bonusAmount: bonus.bonusAmount,
+      bonusCase: bonus.bonusCase,
+      eligible: bonus.eligible,
+      reason: bonus.reason,
+    };
+  }));
+
+  const totalBonus = dealBonuses.reduce((s, d) => s + (d.eligible ? d.bonusAmount : 0), 0);
+
+  // جلب الـ Cap
+  const [capRecord] = await db.select().from(discountBonusCaps)
+    .where(and(
+      eq(discountBonusCaps.engineerId, engineerId),
+      eq(discountBonusCaps.year, y),
+      eq(discountBonusCaps.month, m),
+    )).limit(1);
+
+  const monthlyCap = parseFloat(capRecord?.monthlyCap as string || '15000');
+  const cappedBonus = Math.min(totalBonus, monthlyCap);
+
+  return {
+    engineerId,
+    year: y,
+    month: m,
+    dealBonuses,
+    totalBonusBeforeCap: Math.round(totalBonus),
+    monthlyCap,
+    cappedBonus: Math.round(cappedBonus),
+    isPaid: capRecord?.isPaid === 1,
+    eligibleDealsCount: dealBonuses.filter(d => d.eligible).length,
+    ineligibleDealsCount: dealBonuses.filter(d => !d.eligible).length,
+  };
+}
+
+/**
+ * جلب شاشة الخصومات الكاملة لمهندس (Dashboard)
+ */
+export async function getDiscountDashboard(engineerId: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const [summary, dealAllocations, bonusSummary] = await Promise.all([
+    getDiscountSummaryForEngineer(engineerId),
+    distributeDiscountToDeals(engineerId),
+    getDiscountBonusSummary(engineerId),
+  ]);
+
+  if (!summary) return null;
+
+  // فصل الصفقات: Closed vs Pipeline
+  const closedDeals = dealAllocations.filter(d => d.dealType === 'closed');
+  const pipelineDeals = dealAllocations.filter(d => d.dealType === 'pipeline');
+
+  return {
+    summary,
+    closedDeals,
+    pipelineDeals,
+    bonusSummary,
+    // إجماليات
+    totalAllocated: dealAllocations.reduce((s, d) => s + d.allocatedDiscountMax, 0),
+    totalUsed: dealAllocations.reduce((s, d) => s + d.usedDiscount, 0),
+    totalRemaining: dealAllocations.reduce((s, d) => s + d.remainingDiscount, 0),
+  };
+}
+
+/**
+ * تحديث الـ Cap الشهري لمهندس (من الإدارة)
+ */
+export async function setDiscountBonusCap(engineerId: number, year: number, month: number, monthlyCap: number) {
+  const db = await getDb();
+  if (!db) return;
+
+  const [existing] = await db.select().from(discountBonusCaps)
+    .where(and(
+      eq(discountBonusCaps.engineerId, engineerId),
+      eq(discountBonusCaps.year, year),
+      eq(discountBonusCaps.month, month),
+    )).limit(1);
+
+  if (existing) {
+    await db.update(discountBonusCaps)
+      .set({ monthlyCap: monthlyCap.toString() })
+      .where(eq(discountBonusCaps.id, existing.id));
+  } else {
+    await db.insert(discountBonusCaps).values({
+      engineerId,
+      year,
+      month,
+      monthlyCap: monthlyCap.toString(),
+      earnedBonus: '0',
+    });
+  }
 }

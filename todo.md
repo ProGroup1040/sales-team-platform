@@ -955,3 +955,18 @@
 - [x] Role-Based Access Control: useRoleAccess hook
 - [ ] RBAC: إخفاء Sales Modules عن Admin/Tele/Visits/Interior
 - [ ] RBAC: Manager يرى كل الأقسام
+
+## Discount System - Full Operational Redesign
+- [ ] Schema: dealDiscountAllocations table (توزيع الخصم على الصفقات)
+- [ ] Schema: discountBonusCap table (حد أقصى للمكافأة الشهرية)
+- [ ] db.ts: distributeDiscountToDeals (توزيع نسبي حسب قيمة الصفقة)
+- [ ] db.ts: Closed/Pipeline separation logic
+- [ ] db.ts: Bonus calculation (50% من الخصم أو بحد الكومشن)
+- [ ] db.ts: منع المكافأة إذا خسرت الصفقة بسبب السعر
+- [ ] routers.ts: discount.dealAllocations endpoint
+- [ ] routers.ts: discount.applyToClosedDeal endpoint
+- [ ] routers.ts: discount.bonusSummary endpoint
+- [ ] Frontend: DiscountModule - شاشة التوزيع على الصفقات
+- [ ] Frontend: بيانات كل صفقة (قبل/بعد الخصم + صافي + نسبة)
+- [ ] Frontend: Bonus Panel (شروط + حساب + Cap)
+- [ ] Frontend: إخفاء Pro Group Admin من الصفقات/الخصومات/التقارير

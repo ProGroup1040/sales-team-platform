@@ -768,3 +768,47 @@ export const dealTimeline = mysqlTable("deal_timeline", {
 });
 export type DealTimeline = typeof dealTimeline.$inferSelect;
 export type InsertDealTimeline = typeof dealTimeline.$inferInsert;
+
+// ─── Deal Discount Allocations (توزيع الخصم على الصفقات) ──────────────────────
+// يحدد الحد الأقصى للخصم المخصص لكل صفقة بناءً على نسبة قيمتها من إجمالي الصفقات
+export const dealDiscountAllocations = mysqlTable("deal_discount_allocations", {
+  id: int("id").autoincrement().primaryKey(),
+  dealId: int("dealId").notNull(),
+  engineerId: int("engineerId").notNull(),
+  // قيمة الصفقة وقت التخصيص
+  dealValue: decimal("dealValue", { precision: 14, scale: 2 }).notNull(),
+  // الحد الأقصى المخصص لهذه الصفقة (نسبي من إجمالي الخصم المتاح)
+  allocatedDiscountMax: decimal("allocatedDiscountMax", { precision: 14, scale: 2 }).notNull(),
+  // نسبة هذه الصفقة من إجمالي الصفقات (0-100)
+  allocationPct: decimal("allocationPct", { precision: 5, scale: 2 }).notNull(),
+  // الخصم الفعلي المستخدم في هذه الصفقة
+  usedDiscount: decimal("usedDiscount", { precision: 14, scale: 2 }).default("0").notNull(),
+  // نوع الصفقة: pipeline أو closed
+  dealType: mysqlEnum("dealType", ["pipeline", "closed"]).notNull().default("pipeline"),
+  // هل تم إغلاق الصفقة بسبب السعر (يمنع المكافأة)
+  lostDueToPricing: int("lostDueToPricing").default(0).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type DealDiscountAllocation = typeof dealDiscountAllocations.$inferSelect;
+export type InsertDealDiscountAllocation = typeof dealDiscountAllocations.$inferInsert;
+
+// ─── Discount Bonus Cap (حد أقصى لمكافأة الخصم الشهرية) ──────────────────────
+export const discountBonusCaps = mysqlTable("discount_bonus_caps", {
+  id: int("id").autoincrement().primaryKey(),
+  engineerId: int("engineerId").notNull(),
+  year: int("year").notNull(),
+  month: int("month").notNull(),
+  // الحد الأقصى للمكافأة الشهرية (يمكن تعديله من الإدارة)
+  monthlyCap: decimal("monthlyCap", { precision: 14, scale: 2 }).default("15000").notNull(),
+  // المكافأة المحتسبة هذا الشهر
+  earnedBonus: decimal("earnedBonus", { precision: 14, scale: 2 }).default("0").notNull(),
+  // هل تم دفع المكافأة
+  isPaid: int("isPaid").default(0).notNull(),
+  paidAt: timestamp("paidAt"),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type DiscountBonusCap = typeof discountBonusCaps.$inferSelect;
+export type InsertDiscountBonusCap = typeof discountBonusCaps.$inferInsert;

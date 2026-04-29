@@ -92,6 +92,18 @@ export default function ClosingModule() {
   const { data: discountSummary } = trpc.closing.discountSummary.useQuery();
   const { data: engDiscounts } = trpc.closing.engineerDiscountSummary.useQuery();
   const { data: lostAnalysis } = trpc.closing.lostDealsAnalysis.useQuery();
+
+  // ─── Deal-Level Discount Distribution ───────────────────────────────────────
+  const [discountSubTab, setDiscountSubTab] = useState<'overview' | 'deal_distribution' | 'bonus'>('overview');
+  const [selectedEngineerId, setSelectedEngineerId] = useState<number | null>(null);
+  const { data: discountDashboard } = trpc.closing.discountDashboard.useQuery(
+    { engineerId: selectedEngineerId! },
+    { enabled: !!selectedEngineerId }
+  );
+  const { data: bonusSummary } = trpc.closing.discountBonusSummary.useQuery(
+    { engineerId: selectedEngineerId! },
+    { enabled: !!selectedEngineerId }
+  );
   const { data: salesEngineers } = trpc.closing.salesEngineers.useQuery();
   const [changeEngineerWarn, setChangeEngineerWarn] = useState<{ dealId: number; newEngineerId: string } | null>(null);
   const [timelineDealId, setTimelineDealId] = useState<number | null>(null);
@@ -418,6 +430,22 @@ export default function ClosingModule() {
       {/* ─── Tab: نظام الخصومات ─── */}
       {activeTab === 'discount' && (
         <div className="space-y-4">
+          {/* Sub Tabs */}
+          <div className="flex gap-0 border-b border-border">
+            {[
+              { key: 'overview', label: 'نظرة عامة' },
+              { key: 'deal_distribution', label: 'توزيع على الصفقات' },
+              { key: 'bonus', label: 'مكافأة الخصم' },
+            ].map(st => (
+              <button key={st.key} onClick={() => setDiscountSubTab(st.key as any)}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                  discountSubTab === st.key ? 'border-amber-400 text-amber-400' : 'border-transparent text-muted-foreground hover:text-foreground'
+                }`}>{st.label}</button>
+            ))}
+          </div>
+
+          {/* Sub-Tab: نظرة عامة */}
+          {discountSubTab === 'overview' && (<>
           {/* Volume Summary */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Card><CardContent className="pt-4">
@@ -551,6 +579,230 @@ export default function ClosingModule() {
               </div>
             </CardContent>
           </Card>
+          </>)}
+
+          {/* Sub-Tab: توزيع على الصفقات */}
+          {discountSubTab === 'deal_distribution' && (
+            <div className="space-y-4">
+              {/* اختيار المهندس */}
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-medium">اختر المهندس:</span>
+                    <Select value={selectedEngineerId ? String(selectedEngineerId) : ''} onValueChange={v => setSelectedEngineerId(Number(v))}>
+                      <SelectTrigger className="w-48 h-8 text-sm"><SelectValue placeholder="اختر مهندس" /></SelectTrigger>
+                      <SelectContent>{(salesEngineers ?? engineers)?.map(e => <SelectItem key={e.id} value={String(e.id)}>{e.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {discountDashboard && (
+                <>
+                  {/* ملخص الخصم للمهندس */}
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                    {[
+                      { label: 'إجمالي الحجم', val: discountDashboard.summary.totalVolume, color: 'text-primary' },
+                      { label: 'الخصم المتاح', val: discountDashboard.summary.allowedDiscount, color: 'text-emerald-400' },
+                      { label: 'المستخدم', val: discountDashboard.summary.usedDiscount, color: 'text-red-400' },
+                      { label: 'المحتمل (Pipeline)', val: discountDashboard.summary.potentialDiscount, color: 'text-blue-400' },
+                      { label: 'المتبقي', val: discountDashboard.summary.remainingDiscount, color: 'text-amber-400' },
+                    ].map(item => (
+                      <Card key={item.label}><CardContent className="pt-3 pb-3">
+                        <div className={`text-lg font-bold ${item.color}`}>{fmt(item.val)} ج.م</div>
+                        <div className="text-xs text-muted-foreground">{item.label}</div>
+                      </CardContent></Card>
+                    ))}
+                  </div>
+
+                  {/* صفقات Closed */}
+                  {discountDashboard.closedDeals.length > 0 && (
+                    <Card>
+                      <CardHeader><CardTitle className="text-sm flex items-center gap-2"><CheckCircle className="h-4 w-4 text-emerald-400" />صفقات مغلقة (Closed) — تستخدم في الحساب النهائي</CardTitle></CardHeader>
+                      <CardContent>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead><tr className="border-b border-border text-muted-foreground text-xs">
+                              <th className="text-right py-2 px-3">العميل</th>
+                              <th className="text-right py-2 px-3">قيمة الصفقة</th>
+                              <th className="text-right py-2 px-3">نسبة التخصيص</th>
+                              <th className="text-right py-2 px-3">الحد الأقصى</th>
+                              <th className="text-right py-2 px-3">المستخدم</th>
+                              <th className="text-right py-2 px-3">المتبقي</th>
+                              <th className="text-right py-2 px-3">صافي</th>
+                            </tr></thead>
+                            <tbody>
+                              {discountDashboard.closedDeals.map(d => (
+                                <tr key={d.dealId} className="border-b border-border/30 hover:bg-muted/20">
+                                  <td className="py-2 px-3 font-medium">{d.clientName}</td>
+                                  <td className="py-2 px-3">{fmt(d.dealValue)} ج.م</td>
+                                  <td className="py-2 px-3 text-indigo-400">{d.allocationPct}%</td>
+                                  <td className="py-2 px-3 text-emerald-400">{fmt(d.allocatedDiscountMax)} ج.م</td>
+                                  <td className="py-2 px-3 text-red-400">{fmt(d.usedDiscount)} ج.م ({d.discountPct}%)</td>
+                                  <td className="py-2 px-3 text-amber-400">{fmt(d.remainingDiscount)} ج.م</td>
+                                  <td className="py-2 px-3 font-bold text-emerald-400">{fmt(d.netValue)} ج.م</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* صفقات Pipeline */}
+                  {discountDashboard.pipelineDeals.length > 0 && (
+                    <Card>
+                      <CardHeader><CardTitle className="text-sm flex items-center gap-2"><TrendingUp className="h-4 w-4 text-blue-400" />صفقات Pipeline — توزيع وتخطيط فقط</CardTitle></CardHeader>
+                      <CardContent>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead><tr className="border-b border-border text-muted-foreground text-xs">
+                              <th className="text-right py-2 px-3">العميل</th>
+                              <th className="text-right py-2 px-3">قيمة الصفقة</th>
+                              <th className="text-right py-2 px-3">نسبة التخصيص</th>
+                              <th className="text-right py-2 px-3">الحد الأقصى المخصص</th>
+                              <th className="text-right py-2 px-3">الخصم المخطط</th>
+                              <th className="text-right py-2 px-3">المتبقي</th>
+                            </tr></thead>
+                            <tbody>
+                              {discountDashboard.pipelineDeals.map(d => (
+                                <tr key={d.dealId} className="border-b border-border/30 hover:bg-muted/20">
+                                  <td className="py-2 px-3 font-medium">{d.clientName}</td>
+                                  <td className="py-2 px-3">{fmt(d.dealValue)} ج.م</td>
+                                  <td className="py-2 px-3 text-indigo-400">{d.allocationPct}%</td>
+                                  <td className="py-2 px-3 text-emerald-400">{fmt(d.allocatedDiscountMax)} ج.م</td>
+                                  <td className="py-2 px-3 text-blue-400">{fmt(d.usedDiscount)} ج.م</td>
+                                  <td className="py-2 px-3 text-amber-400">{fmt(d.remainingDiscount)} ج.م</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {discountDashboard.closedDeals.length === 0 && discountDashboard.pipelineDeals.length === 0 && (
+                    <Card><CardContent className="py-10 text-center text-muted-foreground">لا توجد صفقات لهذا المهندس</CardContent></Card>
+                  )}
+                </>
+              )}
+              {!selectedEngineerId && (
+                <Card><CardContent className="py-10 text-center text-muted-foreground">اختر مهندساً لعرض توزيع الخصم</CardContent></Card>
+              )}
+            </div>
+          )}
+
+          {/* Sub-Tab: مكافأة الخصم */}
+          {discountSubTab === 'bonus' && (
+            <div className="space-y-4">
+              {/* اختيار المهندس */}
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-medium">اختر المهندس:</span>
+                    <Select value={selectedEngineerId ? String(selectedEngineerId) : ''} onValueChange={v => setSelectedEngineerId(Number(v))}>
+                      <SelectTrigger className="w-48 h-8 text-sm"><SelectValue placeholder="اختر مهندس" /></SelectTrigger>
+                      <SelectContent>{(salesEngineers ?? engineers)?.map(e => <SelectItem key={e.id} value={String(e.id)}>{e.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* شرح نظام المكافأة */}
+              <Card className="bg-amber-950/10 border-amber-800/30">
+                <CardContent className="pt-4">
+                  <div className="text-sm font-medium text-amber-400 mb-3">✨ كيف تُحسب مكافأة الخصم؟</div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                    <div className="p-3 bg-emerald-950/20 rounded-lg border border-emerald-800/30">
+                      <div className="font-medium text-emerald-400 mb-1">الحالة 1: خصم ≤ كومشن</div>
+                      <div className="text-muted-foreground">مكافأة = 50% من قيمة الخصم المستخدم</div>
+                      <div className="text-emerald-400 mt-1">مثال: خصم 5,000 ج.م → مكافأة 2,500 ج.م</div>
+                    </div>
+                    <div className="p-3 bg-blue-950/20 rounded-lg border border-blue-800/30">
+                      <div className="font-medium text-blue-400 mb-1">الحالة 2: خصم أكبر من كومشن</div>
+                      <div className="text-muted-foreground">مكافأة = قيمة الكومشن فقط</div>
+                      <div className="text-blue-400 mt-1">مثال: خصم 20,000 وكومشن 8,000 → مكافأة 8,000 ج.م</div>
+                    </div>
+                    <div className="p-3 bg-red-950/20 rounded-lg border border-red-800/30">
+                      <div className="font-medium text-red-400 mb-1">✖ لا مكافأة إذا:</div>
+                      <div className="text-muted-foreground">• الصفقة خُسرت بسبب السعر (price_high)</div>
+                      <div className="text-muted-foreground">• الخصم غير مستخدم</div>
+                    </div>
+                    <div className="p-3 bg-indigo-950/20 rounded-lg border border-indigo-800/30">
+                      <div className="font-medium text-indigo-400 mb-1">• حد أقصى شهري (Cap)</div>
+                      <div className="text-muted-foreground">المكافأة لا تتجاوز 15,000 ج.م شهرياً (قابل للتعديل)</div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {bonusSummary && (
+                <>
+                  {/* ملخص المكافأة الشهرية */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <Card className="bg-amber-950/20 border-amber-700/40"><CardContent className="pt-3 pb-3">
+                      <div className="text-lg font-bold text-amber-400">{fmt(bonusSummary.totalBonusBeforeCap)} ج.م</div>
+                      <div className="text-xs text-muted-foreground">مكافأة قبل الحد</div>
+                    </CardContent></Card>
+                    <Card className="bg-emerald-950/20 border-emerald-700/40"><CardContent className="pt-3 pb-3">
+                      <div className="text-lg font-bold text-emerald-400">{fmt(bonusSummary.cappedBonus)} ج.م</div>
+                      <div className="text-xs text-muted-foreground">مكافأة بعد الحد</div>
+                    </CardContent></Card>
+                    <Card className="bg-indigo-950/20 border-indigo-700/40"><CardContent className="pt-3 pb-3">
+                      <div className="text-lg font-bold text-indigo-400">{fmt(bonusSummary.monthlyCap)} ج.م</div>
+                      <div className="text-xs text-muted-foreground">الحد الشهري</div>
+                    </CardContent></Card>
+                    <Card className={bonusSummary.isPaid ? 'bg-emerald-950/20 border-emerald-700/40' : 'bg-muted/20'}><CardContent className="pt-3 pb-3">
+                      <div className={`text-lg font-bold ${bonusSummary.isPaid ? 'text-emerald-400' : 'text-muted-foreground'}`}>{bonusSummary.isPaid ? '✔ تم الدفع' : 'لم يدفع'}</div>
+                      <div className="text-xs text-muted-foreground">حالة المكافأة</div>
+                    </CardContent></Card>
+                  </div>
+
+                  {/* تفاصيل المكافأة لكل صفقة */}
+                  <Card>
+                    <CardHeader><CardTitle className="text-sm">مكافأة كل صفقة</CardTitle></CardHeader>
+                    <CardContent>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead><tr className="border-b border-border text-muted-foreground text-xs">
+                            <th className="text-right py-2 px-3">العميل</th>
+                            <th className="text-right py-2 px-3">قيمة الصفقة</th>
+                            <th className="text-right py-2 px-3">الخصم المستخدم</th>
+                            <th className="text-right py-2 px-3">الكومشن</th>
+                            <th className="text-right py-2 px-3">الحالة</th>
+                            <th className="text-right py-2 px-3">المكافأة</th>
+                          </tr></thead>
+                          <tbody>
+                            {bonusSummary.dealBonuses.map(d => (
+                              <tr key={d.dealId} className="border-b border-border/30 hover:bg-muted/20">
+                                <td className="py-2 px-3 font-medium">{d.clientName}</td>
+                                <td className="py-2 px-3">{fmt(d.dealValue)} ج.م</td>
+                                <td className="py-2 px-3 text-amber-400">{fmt(d.discountUsed)} ج.م</td>
+                                <td className="py-2 px-3 text-indigo-400">{fmt(d.commissionAmount)} ج.م</td>
+                                <td className="py-2 px-3">
+                                  {d.eligible ? (
+                                    <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs">حالة {d.bonusCase}</Badge>
+                                  ) : (
+                                    <Badge className="bg-red-500/20 text-red-400 border-red-500/30 text-xs">{d.reason ?? 'غير مؤهل'}</Badge>
+                                  )}
+                                </td>
+                                <td className="py-2 px-3 font-bold text-emerald-400">{d.eligible ? fmt(d.bonusAmount) : 0} ج.م</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </>
+              )}
+              {!selectedEngineerId && (
+                <Card><CardContent className="py-10 text-center text-muted-foreground">اختر مهندساً لعرض مكافأته</CardContent></Card>
+              )}
+            </div>
+          )}
         </div>
       )}
 

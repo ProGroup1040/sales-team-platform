@@ -40,6 +40,7 @@ import {
   getAuditLogs,
   upsertLeadDailyStats, getLeadDailyStatsList, getLeadSummaryStats,
   getDiscountSummary, validateDealDiscount, createDealWithDiscount, updateDealFull, getEngineerDiscountSummary,
+  distributeDiscountToDeals, getDiscountSummaryForEngineer, calculateDiscountBonus, getDiscountBonusSummary, getDiscountDashboard, setDiscountBonusCap,
   getLostDealsAnalysis, getTasksCalendarView, LOST_REASON_LABELS,
   getEngineersTrend, getWeeklyReport,
   logWorkActivity, getWorkDistribution, getAllEngineersDistribution,
@@ -568,6 +569,29 @@ export const appRouter = router({
       discountValue: z.number().min(0),
     })).query(async ({ input }) => validateDealDiscount(input.dealId, input.discountValue)),
     engineerDiscountSummary: publicProcedure.query(async () => getEngineerDiscountSummary()),
+    // ─── New Deal-Level Discount Distribution ──────────────────────────────────────
+    dealAllocations: publicProcedure.input(z.object({ engineerId: z.number() }))
+      .query(async ({ input }) => distributeDiscountToDeals(input.engineerId)),
+    discountSummaryForEngineer: publicProcedure.input(z.object({ engineerId: z.number() }))
+      .query(async ({ input }) => getDiscountSummaryForEngineer(input.engineerId)),
+    discountDashboard: publicProcedure.input(z.object({ engineerId: z.number() }))
+      .query(async ({ input }) => getDiscountDashboard(input.engineerId)),
+    discountBonusSummary: publicProcedure.input(z.object({
+      engineerId: z.number(),
+      year: z.number().optional(),
+      month: z.number().optional(),
+    })).query(async ({ input }) => getDiscountBonusSummary(input.engineerId, input.year, input.month)),
+    calculateDealBonus: publicProcedure.input(z.object({ dealId: z.number() }))
+      .query(async ({ input }) => calculateDiscountBonus(input.dealId)),
+    setDiscountCap: protectedProcedure.input(z.object({
+      engineerId: z.number(),
+      year: z.number(),
+      month: z.number(),
+      monthlyCap: z.number().positive(),
+    })).mutation(async ({ input }) => {
+      await setDiscountBonusCap(input.engineerId, input.year, input.month, input.monthlyCap);
+      return { success: true };
+    }),
     // ─── Lost Deal Analysis ─────────────────────────────────────────────────────
     lostDealsAnalysis: publicProcedure.query(async () => getLostDealsAnalysis()),
     lostReasonLabels: publicProcedure.query(async () => LOST_REASON_LABELS),
