@@ -334,6 +334,7 @@ function VisitDeleteConfirm({ deleteVisit, onClose, onSuccess }: {
 export default function VisitsModule() {
   const [showAdd, setShowAdd] = useState(false);
   const [filterStatus, setFilterStatus] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("daily");
   const [updateVisit, setUpdateVisit] = useState<any | null>(null);
   const [deleteVisit, setDeleteVisit] = useState<{ id: number; clientName: string } | null>(null);
@@ -396,8 +397,11 @@ export default function VisitsModule() {
   ].filter(d => d.value > 0) : [];
 
   const activeVisits = useMemo(() =>
-    (visitsData?.data ?? []).filter((v: any) => !v.isDeleted),
-    [visitsData]
+    (visitsData?.data ?? []).filter((v: any) =>
+      !v.isDeleted &&
+      (!searchQuery || v.clientName?.toLowerCase().includes(searchQuery.toLowerCase()))
+    ),
+    [visitsData, searchQuery]
   );
 
   return (
@@ -813,17 +817,25 @@ export default function VisitsModule() {
       {/* Visits List */}
       <Card>
         <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base flex items-center gap-2">
-              <BarChart3 className="w-4 h-4" />قائمة المعاينات
-            </CardTitle>
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="w-36 h-8 text-sm"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">الكل</SelectItem>
-                {Object.entries(STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
-              </SelectContent>
-            </Select>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <BarChart3 className="w-4 h-4" />قائمة المعاينات
+              </CardTitle>
+              <Select value={filterStatus} onValueChange={setFilterStatus}>
+                <SelectTrigger className="w-36 h-8 text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">الكل</SelectItem>
+                  {Object.entries(STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <Input
+              placeholder="🔍 بحث باسم العميل..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="h-8 text-sm"
+            />
           </div>
         </CardHeader>
         <CardContent>
