@@ -349,7 +349,7 @@ export const appRouter = router({
       priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
       category: z.string().optional(), // 'closing' | 'meeting' | 'general'
       meetingRecordingLink: z.string().optional(),
-      taskType: z.enum(['design_2d','design_3d','render','quotation','meeting_modeling','meeting_presentation','meeting_closing','other']).optional(),
+      taskType: z.enum(['design_2d','design_3d','render','quotation','meeting_modeling','meeting_presentation','meeting_closing','contract','work_order','other']).optional(),
     })).mutation(async ({ input }) => {
       // باككند Department Enforcement: التحقق من أن الـ taskType مسموح للقسم
       if (input.taskType && input.taskType !== 'other') {
@@ -462,7 +462,7 @@ export const appRouter = router({
       meetingRecordingLink: z.string().optional(),
       startTime: z.string().optional(),
       endTime: z.string().optional(),
-      taskType: z.enum(['design_2d','design_3d','render','quotation','meeting_modeling','meeting_presentation','meeting_closing','meeting_2d','meeting_3d','meeting_quotation','closing','negotiation','other']).optional(),
+      taskType: z.enum(['design_2d','design_3d','render','quotation','meeting_modeling','meeting_presentation','meeting_closing','contract','work_order','meeting_2d','meeting_3d','meeting_quotation','closing','negotiation','other']).optional(),
     })).mutation(async ({ input }) => {
       const { startTime, endTime, taskType, ...rest } = input;
       // Check overlap if times provided
