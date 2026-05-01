@@ -1325,7 +1325,7 @@ export default function KPIModule() {
             </CardHeader>
             <CardContent>
               {!allPerfScores || allPerfScores.length === 0 ? (
-                <p className="text-center py-8 text-muted-foreground text-sm">لا توجد بيانات — يرجى تحديد الأهداف أولاً من موديول التخطيط</p>
+                <p className="text-center py-8 text-muted-foreground text-sm">لا توجد بيانات — يرجى تحديد الأهداف أولاً من التخطيط</p>
               ) : (
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

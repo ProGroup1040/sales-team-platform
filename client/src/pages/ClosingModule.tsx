@@ -264,7 +264,7 @@ export default function ClosingModule() {
     <div className="space-y-6 p-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">موديول التفاوض والإغلاق</h1>
+          <h1 className="text-2xl font-bold">التفاوض والإغلاق</h1>
           <p className="text-sm text-muted-foreground">متابعة الصفقات من التفاوض حتى الإغلاق + نظام الخصومات + تحليل الخسائر</p>
         </div>
         {canEdit && (

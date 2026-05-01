@@ -921,7 +921,7 @@ export default function PlanningModule() {
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Target className="w-6 h-6 text-indigo-500" />
-            موديول تخطيط الأهداف
+            تخطيط الأهداف
           </h1>
           <p className="text-sm text-muted-foreground">
             تخطيط الأهداف المالية والتشغيلية والشخصية

@@ -389,7 +389,7 @@ export default function Overview() {
               ))}
             </div>
             {criticalTasks.length > 6 && (
-              <p className="text-xs text-red-500 text-center mt-2">و {criticalTasks.length - 6} مهام حرجة أخرى — اذهب لموديول المهام للتفاصيل</p>
+              <p className="text-xs text-red-500 text-center mt-2">و {criticalTasks.length - 6} مهام حرجة أخرى — اذهب لقسم المهام للتفاصيل</p>
             )}
           </CardContent>
         </Card>

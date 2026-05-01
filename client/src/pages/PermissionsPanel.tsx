@@ -348,7 +348,7 @@ export default function PermissionsPanel() {
                     <table className="w-full text-sm border-collapse">
                       <thead>
                         <tr className="border-b border-border/40">
-                          <th className="text-right py-2 px-3 font-semibold text-muted-foreground w-40">الموديول</th>
+                          <th className="text-right py-2 px-3 font-semibold text-muted-foreground w-40">القسم</th>
                           <th className="text-center py-2 px-2 font-semibold text-blue-400 w-10">
                             <div className="flex flex-col items-center gap-0.5">
                               <Eye className="h-3.5 w-3.5" />
@@ -490,11 +490,11 @@ export default function PermissionsPanel() {
                   <div className="mt-4 pt-3 border-t border-border/20 flex items-center gap-4 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1">
                       <CheckCircle2 className="h-3 w-3 text-green-400" />
-                      {modules.filter(m => effectivePermMap[`${role.key}::${m.key}`]?.canView === 1).length} موديول مفعّل
+                      {modules.filter(m => effectivePermMap[`${role.key}::${m.key}`]?.canView === 1).length} قسم مفعّل
                     </span>
                     <span className="flex items-center gap-1">
                       <XCircle className="h-3 w-3 text-muted-foreground/40" />
-                      {modules.filter(m => !effectivePermMap[`${role.key}::${m.key}`] || effectivePermMap[`${role.key}::${m.key}`]?.canView === 0).length} موديول مخفي
+                      {modules.filter(m => !effectivePermMap[`${role.key}::${m.key}`] || effectivePermMap[`${role.key}::${m.key}`]?.canView === 0).length} قسم مخفي
                     </span>
                     {hasPendingChanges && (
                       <span className="flex items-center gap-1 text-yellow-400">

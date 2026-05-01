@@ -368,7 +368,7 @@ function PermissionsEditor({ userId, userName, onClose }: { userId: number; user
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border">
-              <th className="text-right py-2 pr-2 font-medium text-muted-foreground">الموديول</th>
+              <th className="text-right py-2 pr-2 font-medium text-muted-foreground">القسم</th>
               <th className="text-center py-2 px-1 font-medium text-muted-foreground">عرض</th>
               <th className="text-center py-2 px-1 font-medium text-muted-foreground">إضافة</th>
               <th className="text-center py-2 px-1 font-medium text-muted-foreground">تعديل</th>

@@ -139,7 +139,7 @@ export default function CollectionsModule() {
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
             <Banknote className="w-7 h-7 text-emerald-500" />
-            موديول التحصيل المالي
+            التحصيل المالي
           </h1>
           <p className="text-muted-foreground text-sm mt-1">متابعة التحصيل • وعود الدفع • الكوميشن على المحصّل</p>
         </div>
