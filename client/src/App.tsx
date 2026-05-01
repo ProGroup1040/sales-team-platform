@@ -21,7 +21,8 @@ import LoginPage from "./pages/LoginPage";
 import PromotionSystem from "./pages/PromotionSystem";
 import ReportsModule from "./pages/ReportsModule";
 import SalesExecutionSystem from "./pages/SalesExecutionSystem";
-import UserManagement from "./pages/UserManagement";
+import UserManagement from "@/pages/UserManagement";
+import PermissionsPanel from "@/pages/PermissionsPanel";
 
 function withLayout(Component: React.ComponentType) {
   return (
@@ -51,6 +52,7 @@ function Router() {
       <Route path={"/reports"}>{withLayout(ReportsModule)}</Route>
       <Route path={"/sales-execution"}>{withLayout(SalesExecutionSystem)}</Route>
       <Route path={"/user-management"}>{withLayout(UserManagement)}</Route>
+      <Route path={"/permissions"}>{withLayout(PermissionsPanel)}</Route>
 
       {/* Legacy routes redirect */}
       <Route path={"/dashboard"}>{withLayout(Overview)}</Route>

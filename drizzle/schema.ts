@@ -985,3 +985,32 @@ export const activityLogs = mysqlTable("activity_logs", {
 });
 export type ActivityLog = typeof activityLogs.$inferSelect;
 export type InsertActivityLog = typeof activityLogs.$inferInsert;
+
+// ═══════════════════════════════════════════════════════════════════════
+// Role Permissions (صلاحيات على مستوى الـ Role - Dynamic)
+// ═══════════════════════════════════════════════════════════════════════
+// هذا الجدول يخزن الصلاحيات الافتراضية لكل Role
+// يمكن للـ Admin تعديلها في أي وقت من خلال Permission Control Panel
+// ═══════════════════════════════════════════════════════════════════════
+export const rolePermissions = mysqlTable("role_permissions", {
+  id: int("id").autoincrement().primaryKey(),
+  // اسم الـ Role
+  role: varchar("role", { length: 64 }).notNull(),
+  // اسم الـ Module
+  module: varchar("module", { length: 64 }).notNull(),
+  // صلاحيات CRUD
+  canView: int("canView").default(0).notNull(),    // 1 = يمكن المشاهدة
+  canAdd: int("canAdd").default(0).notNull(),      // 1 = يمكن الإضافة
+  canEdit: int("canEdit").default(0).notNull(),    // 1 = يمكن التعديل
+  canDelete: int("canDelete").default(0).notNull(),// 1 = يمكن الحذف
+  // نطاق البيانات
+  dataScope: mysqlEnum("dataScope", [
+    "own",   // يرى بياناته فقط
+    "team",  // يرى بيانات فريقه
+    "all",   // يرى كل البيانات
+  ]).notNull().default("own"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type RolePermission = typeof rolePermissions.$inferSelect;
+export type InsertRolePermission = typeof rolePermissions.$inferInsert;

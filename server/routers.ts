@@ -97,6 +97,8 @@ import {
   createAppUser, loginAppUser, verifyAppUserToken, getAppUsers, getUserPermissions,
   updateUserPermissions, updateAppUser, logActivity, getActivityLogs,
   DEFAULT_ROLE_PERMISSIONS,
+  getRolePermissions, getAllRolePermissions, updateRolePermission, updateAllRolePermissions,
+  SYSTEM_MODULES, SYSTEM_ROLES,
 } from "./db";
 import { ACTIVITY_KEYS, ACTIVITY_LABELS as ACT_LABELS_EN, ACTIVITY_LABELS_AR, ACTIVITY_WEIGHTS, ACTIVITY_ICONS, ACTIVITY_COLORS } from '../shared/activityTypes';
 
@@ -1212,6 +1214,13 @@ export const appRouter = router({
         ctx.res.clearCookie(LOCAL_AUTH_COOKIE, cookieOptions);
         return { ok: true };
       }),
+    // جلب صلاحيات الـ role الحالي (للـ DashboardLayout)
+    myPermissions: publicProcedure
+      .query(async ({ ctx }) => {
+        const session = await getLocalSessionFromRequest(ctx.req);
+        if (!session) return [];
+        return getRolePermissions(session.role);
+      }),
   }),
 
   leadDailyStats: router({
@@ -1737,6 +1746,97 @@ export const appRouter = router({
     // Default permissions per role
     defaultPermissions: publicProcedure
       .query(async () => DEFAULT_ROLE_PERMISSIONS),
+  }),
+
+  // ─── Role Permissions (Dynamic Permissions Control Panel) ─────────────────
+  rolePermissions: router({
+    // جلب كل الصلاحيات لكل الـ Roles (للـ Matrix)
+    getAll: publicProcedure
+      .query(async ({ ctx }) => {
+        const req = (ctx as any).req;
+        const token = req?.cookies?.app_user_token;
+        if (!token) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        const caller = await verifyAppUserToken(token);
+        if (!caller || !['manager', 'admin_sales'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
+        const perms = await getAllRolePermissions();
+        return { permissions: perms, modules: SYSTEM_MODULES, roles: SYSTEM_ROLES };
+      }),
+
+    // جلب صلاحيات Role معين
+    getByRole: publicProcedure
+      .input(z.object({ role: z.string() }))
+      .query(async ({ input, ctx }) => {
+        const req = (ctx as any).req;
+        const token = req?.cookies?.app_user_token;
+        if (!token) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        const caller = await verifyAppUserToken(token);
+        if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        return getRolePermissions(input.role);
+      }),
+
+    // تحديث صلاحية واحدة
+    update: publicProcedure
+      .input(z.object({
+        role: z.string(),
+        module: z.string(),
+        canView: z.number().min(0).max(1),
+        canAdd: z.number().min(0).max(1),
+        canEdit: z.number().min(0).max(1),
+        canDelete: z.number().min(0).max(1),
+        dataScope: z.enum(['own', 'team', 'all']),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const req = (ctx as any).req;
+        const token = req?.cookies?.app_user_token;
+        if (!token) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        const caller = await verifyAppUserToken(token);
+        if (!caller || !['manager', 'admin_sales'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
+        const { role, module, ...data } = input;
+        await updateRolePermission(role, module, data);
+        await logActivity({
+          userId: caller.id,
+          action: 'permission_change',
+          module: 'permissions',
+          details: `تحديث صلاحية Role: ${role} - Module: ${module}`,
+        });
+        return { success: true };
+      }),
+
+    // تحديث صلاحيات Role كاملة دفعة واحدة
+    updateAll: publicProcedure
+      .input(z.object({
+        role: z.string(),
+        permissions: z.array(z.object({
+          module: z.string(),
+          canView: z.number().min(0).max(1),
+          canAdd: z.number().min(0).max(1),
+          canEdit: z.number().min(0).max(1),
+          canDelete: z.number().min(0).max(1),
+          dataScope: z.enum(['own', 'team', 'all']),
+        })),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const req = (ctx as any).req;
+        const token = req?.cookies?.app_user_token;
+        if (!token) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        const caller = await verifyAppUserToken(token);
+        if (!caller || !['manager', 'admin_sales'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
+        await updateAllRolePermissions(input.role, input.permissions);
+        await logActivity({
+          userId: caller.id,
+          action: 'permission_change',
+          module: 'permissions',
+          details: `تحديث صلاحيات Role كاملة: ${input.role}`,
+        });
+        return { success: true };
+      }),
+
+    // جلب الـ Modules وRoles المتاحة
+    meta: publicProcedure
+      .query(async () => ({
+        modules: SYSTEM_MODULES,
+        roles: SYSTEM_ROLES,
+      })),
   }),
 });
 export type AppRouter = typeof appRouter;

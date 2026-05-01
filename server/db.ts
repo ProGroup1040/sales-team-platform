@@ -28,7 +28,8 @@ import {
   companyGoals, CompanyGoal, InsertCompanyGoal,
   engineerPersonalGoals, EngineerPersonalGoal, InsertEngineerPersonalGoal,
   appUsers, userPermissions, activityLogs,
-  type AppUser, type InsertAppUser, type UserPermission
+  rolePermissions,
+  type AppUser, type InsertAppUser, type UserPermission, type RolePermission
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import bcrypt from "bcryptjs";
@@ -10571,3 +10572,115 @@ export async function getActivityLogs(filters?: {
   }
   return query;
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// Role Permissions - Dynamic Permissions System
+// ═══════════════════════════════════════════════════════════════════════
+
+/** جلب كل صلاحيات Role معين */
+export async function getRolePermissions(role: string): Promise<RolePermission[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(rolePermissions).where(eq(rolePermissions.role, role));
+}
+
+/** جلب كل الصلاحيات لكل الـ Roles (للـ Matrix) */
+export async function getAllRolePermissions(): Promise<RolePermission[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(rolePermissions).orderBy(rolePermissions.role, rolePermissions.module);
+}
+
+/** تحديث صلاحية محددة لـ Role + Module */
+export async function updateRolePermission(
+  role: string,
+  module: string,
+  data: {
+    canView?: number;
+    canAdd?: number;
+    canEdit?: number;
+    canDelete?: number;
+    dataScope?: "own" | "team" | "all";
+  }
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  // Check if exists
+  const [existing] = await db
+    .select()
+    .from(rolePermissions)
+    .where(and(eq(rolePermissions.role, role), eq(rolePermissions.module, module)));
+  if (existing) {
+    await db
+      .update(rolePermissions)
+      .set(data)
+      .where(and(eq(rolePermissions.role, role), eq(rolePermissions.module, module)));
+  } else {
+    await db.insert(rolePermissions).values({
+      role,
+      module,
+      canView: data.canView ?? 0,
+      canAdd: data.canAdd ?? 0,
+      canEdit: data.canEdit ?? 0,
+      canDelete: data.canDelete ?? 0,
+      dataScope: data.dataScope ?? "own",
+    });
+  }
+}
+
+/** تحديث صلاحيات Role كاملة دفعة واحدة */
+export async function updateAllRolePermissions(
+  role: string,
+  permissions: Array<{
+    module: string;
+    canView: number;
+    canAdd: number;
+    canEdit: number;
+    canDelete: number;
+    dataScope: "own" | "team" | "all";
+  }>
+): Promise<void> {
+  for (const perm of permissions) {
+    await updateRolePermission(role, perm.module, perm);
+  }
+}
+
+/** جلب صلاحية مستخدم لـ module معين (من role_permissions) */
+export async function getRoleModulePermission(
+  role: string,
+  module: string
+): Promise<RolePermission | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const [perm] = await db
+    .select()
+    .from(rolePermissions)
+    .where(and(eq(rolePermissions.role, role), eq(rolePermissions.module, module)));
+  return perm ?? null;
+}
+
+/** الـ Modules الكاملة في النظام */
+export const SYSTEM_MODULES = [
+  { key: "overview",        label: "نظرة عامة" },
+  { key: "tasks",           label: "المهام اليومية" },
+  { key: "crm",             label: "العملاء المحتملون" },
+  { key: "visits",          label: "المعاينات" },
+  { key: "closing",         label: "الإغلاق والتفاوض" },
+  { key: "sales",           label: "المبيعات" },
+  { key: "kpi",             label: "مؤشرات الأداء" },
+  { key: "collections",     label: "التحصيل المالي" },
+  { key: "planning",        label: "تخطيط الأهداف" },
+  { key: "reports",         label: "التقارير" },
+  { key: "sales_execution", label: "تنفيذ المبيعات" },
+  { key: "promotion",       label: "التقييم والترقية" },
+  { key: "users",           label: "إدارة المستخدمين" },
+  { key: "permissions",     label: "لوحة الصلاحيات" },
+] as const;
+
+/** الـ Roles الكاملة في النظام */
+export const SYSTEM_ROLES = [
+  { key: "manager",         label: "مدير / CEO" },
+  { key: "admin_sales",     label: "Admin Sales" },
+  { key: "sales_engineer",  label: "مهندس مبيعات" },
+  { key: "sales_specialist",label: "أخصائي مبيعات" },
+] as const;

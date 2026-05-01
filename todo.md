@@ -1096,3 +1096,14 @@
 - [x] hook useAppAuth.ts: useAppAuth, usePermission, useRequireAppAuth
 - [x] إنشاء مستخدم Manager افتراضي (admin/admin123)
 - [x] Vitest tests: 11 tests لنظام Users (جميعها اجتازت - 244 test إجمالاً)
+
+## Dynamic Permissions System (الطلب الجديد)
+- [ ] إضافة جدول role_permissions في schema.ts (صلاحيات على مستوى الـ Role)
+- [ ] توليد migration وتطبيقه
+- [ ] seed البيانات الافتراضية لكل Role في role_permissions
+- [ ] Backend: procedures لقراءة/تحديث role_permissions
+- [ ] إنشاء Permission Control Panel (Matrix) صفحة كاملة
+- [ ] استبدال useRoleAccess الـ Hardcoded بـ Dynamic permissions من DB
+- [ ] تحديث DashboardLayout ليعتمد على Dynamic permissions
+- [ ] إزالة كل الـ Hardcoded Rules من useRoleAccess.ts
+- [ ] اختبار تغيير الصلاحيات Live
