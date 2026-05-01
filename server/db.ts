@@ -10357,16 +10357,29 @@ export async function createAppUser(data: {
   password: string;
   role: "sales_engineer" | "sales_specialist" | "admin_sales" | "manager";
   engineerId?: number;
+  email?: string;
 }): Promise<AppUser> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+  // Check duplicate username
+  const [existingUsername] = await db.select({ id: appUsers.id }).from(appUsers)
+    .where(eq(appUsers.username, data.username.toLowerCase().trim()));
+  if (existingUsername) throw new Error("USERNAME_EXISTS");
+  // Check duplicate email if provided
+  if (data.email) {
+    const emailNorm = data.email.toLowerCase().trim();
+    const [existingEmail] = await db.select({ id: appUsers.id }).from(appUsers)
+      .where(eq(appUsers.email, emailNorm));
+    if (existingEmail) throw new Error("EMAIL_EXISTS");
+  }
   const passwordHash = await bcrypt.hash(data.password, 10);
   const [result] = await db.insert(appUsers).values({
-    name: data.name,
+    name: data.name.trim(),
     username: data.username.toLowerCase().trim(),
     passwordHash,
     role: data.role,
     engineerId: data.engineerId ?? null,
+    email: data.email ? data.email.toLowerCase().trim() : null,
     status: "active",
   });
   const userId = (result as any).insertId as number;

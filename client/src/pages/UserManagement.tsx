@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
 import { useLocalAuth } from "@/hooks/useLocalAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,10 +10,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
 import {
   Users, UserPlus, Shield, Key, Eye, EyeOff, Settings,
-  CheckCircle, XCircle, Activity, Lock, Unlock, Edit, RefreshCw
+  Activity, Lock, Unlock, Edit, RefreshCw, CheckCircle2,
+  AlertCircle, Mail, User, AtSign, Loader2
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -49,79 +51,224 @@ const MODULE_LABELS: Record<Module, string> = {
 
 const MODULES: Module[] = ["crm", "visits", "deals", "kpi", "planning", "discounts", "reports", "tasks", "collections", "users"];
 
+// ─── Validation Helpers ───────────────────────────────────────────────────────
+function validateCreateForm(form: { name: string; username: string; password: string; email: string }): Record<string, string> {
+  const errors: Record<string, string> = {};
+  if (!form.name.trim()) errors.name = "الاسم الكامل مطلوب";
+  else if (form.name.trim().length < 2) errors.name = "الاسم يجب أن يكون حرفين على الأقل";
+
+  if (!form.username.trim()) errors.username = "اسم المستخدم مطلوب";
+  else if (form.username.trim().length < 3) errors.username = "اسم المستخدم يجب أن يكون 3 أحرف على الأقل";
+  else if (!/^[a-zA-Z0-9._-]+$/.test(form.username.trim())) errors.username = "يجب أن يحتوي على حروف إنجليزية وأرقام فقط";
+
+  if (!form.password) errors.password = "كلمة المرور مطلوبة";
+  else if (form.password.length < 6) errors.password = "كلمة المرور يجب أن تكون 6 أحرف على الأقل";
+
+  if (form.email && form.email.trim()) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(form.email.trim())) errors.email = "صيغة البريد الإلكتروني غير صحيحة";
+  }
+  return errors;
+}
+
+// ─── Field Error Component ────────────────────────────────────────────────────
+function FieldError({ message }: { message?: string }) {
+  if (!message) return null;
+  return (
+    <p className="text-xs text-red-400 flex items-center gap-1 mt-1">
+      <AlertCircle className="h-3 w-3 shrink-0" />
+      {message}
+    </p>
+  );
+}
+
 // ─── Create User Form ─────────────────────────────────────────────────────────
 function CreateUserForm({ onSuccess }: { onSuccess: () => void }) {
-  const [form, setForm] = useState({ name: "", username: "", password: "", role: "sales_engineer" as Role, engineerId: "" });
+  const [form, setForm] = useState({
+    name: "",
+    username: "",
+    password: "",
+    email: "",
+    role: "sales_engineer" as Role,
+    engineerId: "",
+  });
   const [showPassword, setShowPassword] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
 
-  const engineersQuery = trpc.engineers.list.useQuery(undefined, { staleTime: 60000, enabled: true });
+  const engineersQuery = trpc.engineers.list.useQuery(undefined, { staleTime: 60000 });
+
   const createMut = trpc.appUsers.create.useMutation({
     onSuccess: () => {
-      toast.success("تم إنشاء المستخدم بنجاح");
-      setForm({ name: "", username: "", password: "", role: "sales_engineer", engineerId: "" });
+      toast.success("تم إنشاء المستخدم بنجاح", {
+        description: `المستخدم "${form.username}" جاهز لتسجيل الدخول`,
+      });
+      setForm({ name: "", username: "", password: "", email: "", role: "sales_engineer", engineerId: "" });
+      setFieldErrors({});
+      setTouched({});
       onSuccess();
     },
-    onError: (e) => toast.error(e.message || "حدث خطأ أثناء إنشاء المستخدم"),
+    onError: (e) => {
+      const msg = e.message || "حدث خطأ أثناء إنشاء المستخدم";
+      console.error("[CreateUser] Error:", e);
+      if (msg.includes("اسم المستخدم موجود")) {
+        setFieldErrors(prev => ({ ...prev, username: "اسم المستخدم موجود بالفعل، اختر اسماً آخر" }));
+        toast.error("اسم المستخدم مستخدم بالفعل");
+      } else if (msg.includes("البريد الإلكتروني مستخدم")) {
+        setFieldErrors(prev => ({ ...prev, email: "البريد الإلكتروني مستخدم بالفعل" }));
+        toast.error("البريد الإلكتروني مستخدم بالفعل");
+      } else if (msg.includes("خطأ في الخادم")) {
+        toast.error("خطأ في الخادم، يرجى المحاولة مرة أخرى");
+      } else {
+        toast.error(msg);
+      }
+    },
   });
+
+  const handleBlur = useCallback((field: string) => {
+    setTouched(prev => ({ ...prev, [field]: true }));
+    const errors = validateCreateForm(form);
+    setFieldErrors(prev => ({ ...prev, [field]: errors[field] || "" }));
+  }, [form]);
+
+  const handleChange = useCallback((field: string, value: string) => {
+    const newForm = { ...form, [field]: value };
+    setForm(newForm);
+    if (touched[field]) {
+      const errors = validateCreateForm(newForm);
+      setFieldErrors(prev => ({ ...prev, [field]: errors[field] || "" }));
+    }
+  }, [form, touched]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name || !form.username || !form.password) {
-      toast.error("يرجى ملء جميع الحقول المطلوبة");
+    const allTouched = { name: true, username: true, password: true, email: true };
+    setTouched(allTouched);
+    const errors = validateCreateForm(form);
+    setFieldErrors(errors);
+    if (Object.values(errors).some(Boolean)) {
+      toast.error("يرجى تصحيح الأخطاء قبل المتابعة");
       return;
     }
     createMut.mutate({
-      name: form.name,
-      username: form.username,
+      name: form.name.trim(),
+      username: form.username.trim().toLowerCase(),
       password: form.password,
       role: form.role,
-      engineerId: form.engineerId ? parseInt(form.engineerId) : undefined,
+      engineerId: form.engineerId && form.engineerId !== "none" ? parseInt(form.engineerId) : undefined,
+      email: form.email.trim() || undefined,
     });
   };
 
+  const isLoading = createMut.isPending;
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-4" dir="rtl">
+      {/* Name + Username */}
       <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label>الاسم الكامل *</Label>
+        <div className="space-y-1">
+          <Label className="flex items-center gap-1">
+            <User className="h-3.5 w-3.5 text-muted-foreground" />
+            الاسم الكامل <span className="text-red-400">*</span>
+          </Label>
           <Input
             placeholder="أحمد محمد"
             value={form.name}
-            onChange={(e) => setForm(p => ({ ...p, name: e.target.value }))}
+            onChange={(e) => handleChange("name", e.target.value)}
+            onBlur={() => handleBlur("name")}
+            className={touched.name && fieldErrors.name ? "border-red-500 focus-visible:ring-red-500" : ""}
+            disabled={isLoading}
           />
+          {touched.name && <FieldError message={fieldErrors.name} />}
         </div>
-        <div className="space-y-2">
-          <Label>اسم المستخدم *</Label>
+        <div className="space-y-1">
+          <Label className="flex items-center gap-1">
+            <AtSign className="h-3.5 w-3.5 text-muted-foreground" />
+            اسم المستخدم <span className="text-red-400">*</span>
+          </Label>
           <Input
             placeholder="ahmed.m"
             value={form.username}
-            onChange={(e) => setForm(p => ({ ...p, username: e.target.value }))}
+            onChange={(e) => handleChange("username", e.target.value.toLowerCase())}
+            onBlur={() => handleBlur("username")}
             dir="ltr"
+            className={touched.username && fieldErrors.username ? "border-red-500 focus-visible:ring-red-500" : ""}
+            disabled={isLoading}
           />
+          {touched.username && <FieldError message={fieldErrors.username} />}
         </div>
       </div>
-      <div className="space-y-2">
-        <Label>كلمة المرور *</Label>
+
+      {/* Password */}
+      <div className="space-y-1">
+        <Label className="flex items-center gap-1">
+          <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+          كلمة المرور <span className="text-red-400">*</span>
+        </Label>
         <div className="relative">
           <Input
             type={showPassword ? "text" : "password"}
             placeholder="6 أحرف على الأقل"
             value={form.password}
-            onChange={(e) => setForm(p => ({ ...p, password: e.target.value }))}
+            onChange={(e) => handleChange("password", e.target.value)}
+            onBlur={() => handleBlur("password")}
             dir="ltr"
-            className="pl-10"
+            className={`pl-10 ${touched.password && fieldErrors.password ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+            disabled={isLoading}
           />
-          <button type="button" onClick={() => setShowPassword(!showPassword)}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            tabIndex={-1}
+          >
             {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           </button>
         </div>
+        {touched.password && <FieldError message={fieldErrors.password} />}
+        {!fieldErrors.password && form.password.length > 0 && (
+          <div className="flex items-center gap-2 mt-1">
+            <div className="flex gap-1 flex-1">
+              {[1,2,3].map(i => (
+                <div key={i} className={`h-1 flex-1 rounded-full transition-colors ${
+                  form.password.length >= i * 4 ? (i === 3 ? "bg-emerald-500" : i === 2 ? "bg-yellow-500" : "bg-red-500") : "bg-muted"
+                }`} />
+              ))}
+            </div>
+            <span className="text-xs text-muted-foreground">
+              {form.password.length >= 10 ? "قوية" : form.password.length >= 6 ? "متوسطة" : "ضعيفة"}
+            </span>
+          </div>
+        )}
       </div>
+
+      {/* Email */}
+      <div className="space-y-1">
+        <Label className="flex items-center gap-1">
+          <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+          البريد الإلكتروني <span className="text-xs text-muted-foreground">(اختياري)</span>
+        </Label>
+        <Input
+          type="email"
+          placeholder="ahmed@company.com"
+          value={form.email}
+          onChange={(e) => handleChange("email", e.target.value)}
+          onBlur={() => handleBlur("email")}
+          dir="ltr"
+          className={touched.email && fieldErrors.email ? "border-red-500 focus-visible:ring-red-500" : ""}
+          disabled={isLoading}
+        />
+        {touched.email && <FieldError message={fieldErrors.email} />}
+      </div>
+
+      {/* Role + Engineer */}
       <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label>الدور *</Label>
-          <Select value={form.role} onValueChange={(v) => setForm(p => ({ ...p, role: v as Role }))}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
+        <div className="space-y-1">
+          <Label>الدور <span className="text-red-400">*</span></Label>
+          <Select value={form.role} onValueChange={(v) => setForm(p => ({ ...p, role: v as Role }))} disabled={isLoading}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               {Object.entries(ROLE_LABELS).map(([k, v]) => (
                 <SelectItem key={k} value={k}>{v}</SelectItem>
@@ -129,10 +276,12 @@ function CreateUserForm({ onSuccess }: { onSuccess: () => void }) {
             </SelectContent>
           </Select>
         </div>
-        <div className="space-y-2">
-          <Label>ربط بمهندس (اختياري)</Label>
-          <Select value={form.engineerId} onValueChange={(v) => setForm(p => ({ ...p, engineerId: v }))}>
-            <SelectTrigger><SelectValue placeholder="اختر مهندس" /></SelectTrigger>
+        <div className="space-y-1">
+          <Label>ربط بمهندس <span className="text-xs text-muted-foreground">(اختياري)</span></Label>
+          <Select value={form.engineerId} onValueChange={(v) => setForm(p => ({ ...p, engineerId: v }))} disabled={isLoading}>
+            <SelectTrigger>
+              <SelectValue placeholder="اختر مهندس" />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="none">بدون ربط</SelectItem>
               {engineersQuery.data?.map((eng: any) => (
@@ -142,8 +291,14 @@ function CreateUserForm({ onSuccess }: { onSuccess: () => void }) {
           </Select>
         </div>
       </div>
-      <Button type="submit" className="w-full" disabled={createMut.isPending}>
-        {createMut.isPending ? "جاري الإنشاء..." : "إنشاء المستخدم"}
+
+      {/* Submit */}
+      <Button type="submit" className="w-full gap-2" disabled={isLoading}>
+        {isLoading ? (
+          <><Loader2 className="h-4 w-4 animate-spin" /> جارٍ الإنشاء...</>
+        ) : (
+          <><UserPlus className="h-4 w-4" /> إنشاء المستخدم</>
+        )}
       </Button>
     </form>
   );
@@ -151,7 +306,7 @@ function CreateUserForm({ onSuccess }: { onSuccess: () => void }) {
 
 // ─── Permissions Editor ───────────────────────────────────────────────────────
 function PermissionsEditor({ userId, userName, onClose }: { userId: number; userName: string; onClose: () => void }) {
-  const permsQuery = trpc.appUsers.getPermissions.useQuery({ userId });
+  const permsQuery = trpc.appUsers.getPermissions.useQuery({ userId }, { staleTime: 0 });
   const updateMut = trpc.appUsers.updatePermissions.useMutation({
     onSuccess: () => {
       toast.success("تم تحديث الصلاحيات بنجاح");
@@ -179,17 +334,11 @@ function PermissionsEditor({ userId, userName, onClose }: { userId: number; user
   }
 
   const togglePerm = (module: string, key: "canView" | "canAdd" | "canEdit" | "canDelete") => {
-    setPerms(p => ({
-      ...p,
-      [module]: { ...p[module], [key]: p[module]?.[key] ? 0 : 1 }
-    }));
+    setPerms(p => ({ ...p, [module]: { ...p[module], [key]: p[module]?.[key] ? 0 : 1 } }));
   };
 
-  const toggleScope = (module: string) => {
-    setPerms(p => ({
-      ...p,
-      [module]: { ...p[module], dataScope: p[module]?.dataScope === "all" ? "own" : "all" }
-    }));
+  const setScope = (module: string, scope: string) => {
+    setPerms(p => ({ ...p, [module]: { ...p[module], dataScope: scope as "own" | "all" } }));
   };
 
   const handleSave = () => {
@@ -204,23 +353,27 @@ function PermissionsEditor({ userId, userName, onClose }: { userId: number; user
     updateMut.mutate({ userId, permissions });
   };
 
-  if (permsQuery.isLoading) return <div className="text-center py-8 text-muted-foreground">جاري التحميل...</div>;
+  if (permsQuery.isLoading) return (
+    <div className="flex items-center justify-center py-8">
+      <Loader2 className="h-6 w-6 animate-spin text-primary" />
+    </div>
+  );
 
   return (
-    <div className="space-y-4">
-      <div className="text-sm text-muted-foreground mb-4">
+    <div className="space-y-4" dir="rtl">
+      <p className="text-sm text-muted-foreground">
         تعديل صلاحيات: <span className="text-foreground font-medium">{userName}</span>
-      </div>
+      </p>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border">
-              <th className="text-right py-2 px-3 font-medium text-muted-foreground">الوحدة</th>
-              <th className="text-center py-2 px-3 font-medium text-muted-foreground">عرض</th>
-              <th className="text-center py-2 px-3 font-medium text-muted-foreground">إضافة</th>
-              <th className="text-center py-2 px-3 font-medium text-muted-foreground">تعديل</th>
-              <th className="text-center py-2 px-3 font-medium text-muted-foreground">حذف</th>
-              <th className="text-center py-2 px-3 font-medium text-muted-foreground">النطاق</th>
+              <th className="text-right py-2 pr-2 font-medium text-muted-foreground">الموديول</th>
+              <th className="text-center py-2 px-1 font-medium text-muted-foreground">عرض</th>
+              <th className="text-center py-2 px-1 font-medium text-muted-foreground">إضافة</th>
+              <th className="text-center py-2 px-1 font-medium text-muted-foreground">تعديل</th>
+              <th className="text-center py-2 px-1 font-medium text-muted-foreground">حذف</th>
+              <th className="text-center py-2 px-1 font-medium text-muted-foreground">نطاق البيانات</th>
             </tr>
           </thead>
           <tbody>
@@ -228,29 +381,26 @@ function PermissionsEditor({ userId, userName, onClose }: { userId: number; user
               const p = perms[mod] ?? { canView: 0, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "own" as const };
               return (
                 <tr key={mod} className="border-b border-border/50 hover:bg-muted/30">
-                  <td className="py-2 px-3 font-medium">{MODULE_LABELS[mod]}</td>
+                  <td className="py-2 pr-2 font-medium">{MODULE_LABELS[mod]}</td>
                   {(["canView", "canAdd", "canEdit", "canDelete"] as const).map(key => (
-                    <td key={key} className="text-center py-2 px-3">
-                      <button onClick={() => togglePerm(mod, key)} className="mx-auto block">
-                        {p[key] ? (
-                          <CheckCircle className="h-5 w-5 text-emerald-500" />
-                        ) : (
-                          <XCircle className="h-5 w-5 text-muted-foreground/40" />
-                        )}
-                      </button>
+                    <td key={key} className="text-center py-2 px-1">
+                      <Switch
+                        checked={!!p[key]}
+                        onCheckedChange={() => togglePerm(mod, key)}
+                        className="scale-75"
+                      />
                     </td>
                   ))}
-                  <td className="text-center py-2 px-3">
-                    <button
-                      onClick={() => toggleScope(mod)}
-                      className={`text-xs px-2 py-1 rounded-full border transition-colors ${
-                        p.dataScope === "all"
-                          ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                          : "bg-muted text-muted-foreground border-border"
-                      }`}
-                    >
-                      {p.dataScope === "all" ? "الكل" : "بياناته"}
-                    </button>
+                  <td className="text-center py-2 px-1">
+                    <Select value={p.dataScope} onValueChange={(v) => setScope(mod, v)}>
+                      <SelectTrigger className="h-7 text-xs w-24">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="own">بياناته فقط</SelectItem>
+                        <SelectItem value="all">كل البيانات</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </td>
                 </tr>
               );
@@ -258,9 +408,10 @@ function PermissionsEditor({ userId, userName, onClose }: { userId: number; user
           </tbody>
         </table>
       </div>
-      <div className="flex gap-2 pt-2">
-        <Button onClick={handleSave} disabled={updateMut.isPending} className="flex-1">
-          {updateMut.isPending ? "جاري الحفظ..." : "حفظ الصلاحيات"}
+      <div className="flex gap-3 pt-2">
+        <Button className="flex-1 gap-2" onClick={handleSave} disabled={updateMut.isPending}>
+          {updateMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+          حفظ الصلاحيات
         </Button>
         <Button variant="outline" onClick={onClose}>إلغاء</Button>
       </div>
@@ -268,133 +419,139 @@ function PermissionsEditor({ userId, userName, onClose }: { userId: number; user
   );
 }
 
-// ─── Edit User Form ───────────────────────────────────────────────────────────
+// ─── Edit User Form ────────────────────────────────────────────────────────────
 function EditUserForm({ user, onSuccess }: { user: any; onSuccess: () => void }) {
   const [form, setForm] = useState({
-    name: user.name,
-    role: user.role as Role,
-    status: user.status,
+    name: user.name || "",
+    role: user.role || "sales_engineer",
+    status: user.status || "active",
     password: "",
   });
   const [showPassword, setShowPassword] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   const updateMut = trpc.appUsers.update.useMutation({
     onSuccess: () => {
-      toast.success("تم تحديث المستخدم");
+      toast.success("تم تحديث المستخدم بنجاح");
       onSuccess();
     },
-    onError: (e) => toast.error(e.message || "حدث خطأ"),
+    onError: (e) => {
+      console.error("[EditUser] Error:", e);
+      toast.error(e.message || "حدث خطأ أثناء التحديث");
+    },
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const newErrors: Record<string, string> = {};
+    if (!form.name.trim()) newErrors.name = "الاسم مطلوب";
+    if (form.password && form.password.length < 6) newErrors.password = "كلمة المرور يجب أن تكون 6 أحرف على الأقل";
+    setErrors(newErrors);
+    if (Object.values(newErrors).some(Boolean)) return;
+
     updateMut.mutate({
       userId: user.id,
-      name: form.name,
-      role: form.role,
-      status: form.status,
-      ...(form.password ? { password: form.password } : {}),
+      name: form.name.trim(),
+      role: form.role as Role,
+      status: form.status as "active" | "inactive",
+      password: form.password || undefined,
     });
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-2">
-        <Label>الاسم الكامل</Label>
-        <Input value={form.name} onChange={(e) => setForm(p => ({ ...p, name: e.target.value }))} />
-      </div>
-      <div className="space-y-2">
-        <Label>الدور</Label>
-        <Select value={form.role} onValueChange={(v) => setForm(p => ({ ...p, role: v as Role }))}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {Object.entries(ROLE_LABELS).map(([k, v]) => (
-              <SelectItem key={k} value={k}>{v}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="flex items-center gap-3">
-        <Label>الحالة</Label>
-        <Switch
-          checked={form.status === "active"}
-          onCheckedChange={(v) => setForm(p => ({ ...p, status: v ? "active" : "inactive" }))}
+    <form onSubmit={handleSubmit} className="space-y-4" dir="rtl">
+      <div className="space-y-1">
+        <Label>الاسم الكامل *</Label>
+        <Input
+          value={form.name}
+          onChange={(e) => { setForm(p => ({ ...p, name: e.target.value })); setErrors(p => ({ ...p, name: "" })); }}
+          className={errors.name ? "border-red-500" : ""}
+          disabled={updateMut.isPending}
         />
-        <span className="text-sm text-muted-foreground">{form.status === "active" ? "نشط" : "موقوف"}</span>
+        <FieldError message={errors.name} />
       </div>
-      <div className="space-y-2">
-        <Label>كلمة مرور جديدة (اتركها فارغة للإبقاء على الحالية)</Label>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1">
+          <Label>الدور</Label>
+          <Select value={form.role} onValueChange={(v) => setForm(p => ({ ...p, role: v }))}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {Object.entries(ROLE_LABELS).map(([k, v]) => (
+                <SelectItem key={k} value={k}>{v}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label>الحالة</Label>
+          <Select value={form.status} onValueChange={(v) => setForm(p => ({ ...p, status: v }))}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">نشط</SelectItem>
+              <SelectItem value="inactive">موقوف</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <div className="space-y-1">
+        <Label>كلمة مرور جديدة <span className="text-xs text-muted-foreground">(اتركها فارغة للإبقاء على الحالية)</span></Label>
         <div className="relative">
           <Input
             type={showPassword ? "text" : "password"}
-            placeholder="كلمة مرور جديدة..."
+            placeholder="6 أحرف على الأقل"
             value={form.password}
-            onChange={(e) => setForm(p => ({ ...p, password: e.target.value }))}
+            onChange={(e) => { setForm(p => ({ ...p, password: e.target.value })); setErrors(p => ({ ...p, password: "" })); }}
             dir="ltr"
-            className="pl-10"
+            className={`pl-10 ${errors.password ? "border-red-500" : ""}`}
+            disabled={updateMut.isPending}
           />
           <button type="button" onClick={() => setShowPassword(!showPassword)}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" tabIndex={-1}>
             {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           </button>
         </div>
+        <FieldError message={errors.password} />
       </div>
-      <Button type="submit" className="w-full" disabled={updateMut.isPending}>
-        {updateMut.isPending ? "جاري الحفظ..." : "حفظ التغييرات"}
-      </Button>
+      <div className="flex gap-3 pt-2">
+        <Button type="submit" className="flex-1 gap-2" disabled={updateMut.isPending}>
+          {updateMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Settings className="h-4 w-4" />}
+          حفظ التعديلات
+        </Button>
+      </div>
     </form>
   );
 }
 
-// ─── Activity Logs ────────────────────────────────────────────────────────────
+// ─── Activity Logs ─────────────────────────────────────────────────────────────
 function ActivityLogsView() {
-  const logsQuery = trpc.appUsers.activityLogs.useQuery({ limit: 50 });
+  const logsQuery = trpc.appUsers.activityLogs.useQuery({ limit: 50 }, { staleTime: 30000 });
 
-  const ACTION_LABELS: Record<string, string> = {
-    login: "تسجيل دخول",
-    logout: "تسجيل خروج",
-    create: "إنشاء",
-    update: "تحديث",
-    delete: "حذف",
-    view: "عرض",
-    export: "تصدير",
-    permission_change: "تغيير صلاحيات",
-  };
+  if (logsQuery.isLoading) return (
+    <div className="flex items-center justify-center py-8">
+      <Loader2 className="h-6 w-6 animate-spin text-primary" />
+    </div>
+  );
 
-  const ACTION_COLORS: Record<string, string> = {
-    login: "text-emerald-400",
-    logout: "text-orange-400",
-    create: "text-blue-400",
-    update: "text-yellow-400",
-    delete: "text-red-400",
-    permission_change: "text-purple-400",
-  };
-
-  if (logsQuery.isLoading) return <div className="text-center py-8 text-muted-foreground">جاري التحميل...</div>;
+  if (!logsQuery.data?.length) return (
+    <div className="text-center py-8 text-muted-foreground">
+      <Activity className="h-10 w-10 mx-auto mb-2 opacity-30" />
+      <p>لا توجد سجلات نشاط بعد</p>
+    </div>
+  );
 
   return (
     <div className="space-y-2">
-      {logsQuery.data?.length === 0 && (
-        <div className="text-center py-8 text-muted-foreground">لا توجد سجلات نشاط</div>
-      )}
-      {logsQuery.data?.map((log: any) => (
-        <div key={log.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 border border-border/50">
-          <Activity className="h-4 w-4 text-muted-foreground shrink-0" />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className={`text-sm font-medium ${ACTION_COLORS[log.action] || "text-foreground"}`}>
-                {ACTION_LABELS[log.action] || log.action}
-              </span>
+      {logsQuery.data.map((log: any) => (
+        <div key={log.id} className="flex items-start gap-3 p-3 rounded-lg bg-muted/30 border border-border/50">
+          <Activity className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium">{log.details || log.action}</p>
+            <p className="text-xs text-muted-foreground">
               {log.module && (
-                <Badge variant="outline" className="text-xs">{log.module}</Badge>
+                <span className="ml-2 bg-primary/10 text-primary px-1.5 py-0.5 rounded text-xs">{log.module}</span>
               )}
-              {log.details && (
-                <span className="text-xs text-muted-foreground truncate">{log.details}</span>
-              )}
-            </div>
-            <div className="text-xs text-muted-foreground mt-1">
               {new Date(log.createdAt).toLocaleString("ar-SA")}
-            </div>
+            </p>
           </div>
         </div>
       ))}
@@ -408,6 +565,7 @@ export default function UserManagement() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editUser, setEditUser] = useState<any>(null);
   const [permUser, setPermUser] = useState<any>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const usersQuery = trpc.appUsers.list.useQuery(undefined, { staleTime: 30000 });
 
@@ -423,7 +581,6 @@ export default function UserManagement() {
     );
   }
 
-  // فقط المدير يمكنه الوصول لهذه الصفحة
   if (session.role !== "manager" && session.role !== "admin") {
     return (
       <div className="flex items-center justify-center h-64">
@@ -436,10 +593,20 @@ export default function UserManagement() {
     );
   }
 
+  const filteredUsers = usersQuery.data?.filter((u: any) =>
+    !searchQuery ||
+    u.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    u.username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    u.email?.toLowerCase().includes(searchQuery.toLowerCase())
+  ) ?? [];
+
+  const activeCount = usersQuery.data?.filter((u: any) => u.status === "active").length ?? 0;
+  const totalCount = usersQuery.data?.length ?? 0;
+
   return (
     <div className="space-y-6 p-6" dir="rtl">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Users className="h-6 w-6 text-primary" />
@@ -453,10 +620,10 @@ export default function UserManagement() {
           <DialogTrigger asChild>
             <Button className="gap-2">
               <UserPlus className="h-4 w-4" />
-              مستخدم جديد
+              إضافة مستخدم جديد
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-md" dir="rtl">
+          <DialogContent className="max-w-lg" dir="rtl">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <UserPlus className="h-5 w-5 text-primary" />
@@ -468,39 +635,104 @@ export default function UserManagement() {
         </Dialog>
       </div>
 
+      {/* Stats */}
+      <div className="grid grid-cols-3 gap-4">
+        <Card className="border-border/50">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+              <Users className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold">{totalCount}</p>
+              <p className="text-xs text-muted-foreground">إجمالي المستخدمين</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-border/50">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="h-10 w-10 rounded-full bg-emerald-500/10 flex items-center justify-center">
+              <Unlock className="h-5 w-5 text-emerald-500" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-emerald-500">{activeCount}</p>
+              <p className="text-xs text-muted-foreground">مستخدمون نشطون</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-border/50">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="h-10 w-10 rounded-full bg-red-500/10 flex items-center justify-center">
+              <Lock className="h-5 w-5 text-red-400" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-red-400">{totalCount - activeCount}</p>
+              <p className="text-xs text-muted-foreground">موقوفون</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Tabs */}
       <Tabs defaultValue="users">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="users" className="gap-2">
-            <Users className="h-4 w-4" />
-            المستخدمون
-          </TabsTrigger>
-          <TabsTrigger value="logs" className="gap-2">
-            <Activity className="h-4 w-4" />
-            سجل النشاط
-          </TabsTrigger>
+        <TabsList className="grid grid-cols-2 w-full max-w-xs">
+          <TabsTrigger value="users">المستخدمون</TabsTrigger>
+          <TabsTrigger value="logs">سجل النشاط</TabsTrigger>
         </TabsList>
 
         {/* Users Tab */}
-        <TabsContent value="users" className="space-y-4 mt-4">
+        <TabsContent value="users" className="mt-4 space-y-4">
+          {/* Search */}
+          <Input
+            placeholder="بحث بالاسم أو اسم المستخدم أو البريد..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+
+          {/* Error State */}
+          {usersQuery.isError && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription className="flex items-center justify-between">
+                <span>
+                  {usersQuery.error?.message?.includes("UNAUTHORIZED")
+                    ? "انتهت جلستك، يرجى تسجيل الدخول مجدداً"
+                    : "حدث خطأ في تحميل المستخدمين"}
+                </span>
+                <Button variant="link" size="sm" className="h-auto p-0 text-red-400" onClick={() => usersQuery.refetch()}>
+                  إعادة المحاولة
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Loading */}
           {usersQuery.isLoading && (
-            <div className="text-center py-8 text-muted-foreground">جاري التحميل...</div>
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
           )}
-          {usersQuery.data?.length === 0 && (
-            <Card>
-              <CardContent className="text-center py-12">
-                <Users className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-                <p className="text-muted-foreground">لا يوجد مستخدمون بعد</p>
-                <p className="text-xs text-muted-foreground mt-1">أنشئ أول مستخدم بالضغط على "مستخدم جديد"</p>
-              </CardContent>
-            </Card>
+
+          {/* Empty */}
+          {!usersQuery.isLoading && !usersQuery.isError && filteredUsers.length === 0 && (
+            <div className="text-center py-12 text-muted-foreground">
+              <Users className="h-12 w-12 mx-auto mb-3 opacity-30" />
+              <p className="font-medium">
+                {searchQuery ? "لا توجد نتائج للبحث" : "لا يوجد مستخدمون بعد"}
+              </p>
+              {!searchQuery && (
+                <p className="text-sm mt-1">اضغط على "إضافة مستخدم جديد" لإنشاء أول مستخدم</p>
+              )}
+            </div>
           )}
-          <div className="grid gap-3">
-            {usersQuery.data?.map((user: any) => (
-              <Card key={user.id} className="border-border/50">
+
+          {/* Users List */}
+          <div className="space-y-3">
+            {filteredUsers.map((user: any) => (
+              <Card key={user.id} className="border-border/50 hover:border-border transition-colors">
                 <CardContent className="p-4">
-                  <div className="flex items-center justify-between gap-4">
-                    {/* User Info */}
-                    <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    {/* Avatar + Info */}
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
                       <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                         <span className="text-sm font-bold text-primary">
                           {user.name?.charAt(0) || "U"}
@@ -508,7 +740,15 @@ export default function UserManagement() {
                       </div>
                       <div className="min-w-0">
                         <div className="font-medium truncate">{user.name}</div>
-                        <div className="text-xs text-muted-foreground" dir="ltr">@{user.username}</div>
+                        <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap" dir="ltr">
+                          <span>@{user.username}</span>
+                          {user.email && (
+                            <span className="flex items-center gap-1">
+                              <Mail className="h-3 w-3" />
+                              {user.email}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
 

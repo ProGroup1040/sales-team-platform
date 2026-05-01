@@ -284,6 +284,34 @@ async function seedData() {
 }
 
 // ─── App Router ───────────────────────────────────────────────────────────────
+// ─── Helper: get admin/manager caller from either local_session or app_user_token ─
+async function getAdminCallerFromRequest(req: any): Promise<{ id: number; role: string; name: string } | null> {
+  // Try app_user_token first
+  const appToken = req?.cookies?.app_user_token;
+  if (appToken) {
+    const caller = await verifyAppUserToken(appToken);
+    if (caller) return { id: caller.id, role: caller.role, name: caller.name };
+  }
+  // Fallback to local_session (engineers table)
+  const localSession = await getLocalSessionFromRequest(req);
+  if (localSession) {
+    // Map local session roles to app user roles
+    const roleMap: Record<string, string> = {
+      admin: 'manager',
+      manager: 'manager',
+      admin_sales: 'admin_sales',
+      engineer: 'sales_engineer',
+      sales_engineer: 'sales_engineer',
+      sales_specialist: 'sales_specialist',
+    };
+    return {
+      id: localSession.engineerId,
+      role: roleMap[localSession.role] ?? localSession.role,
+      name: localSession.name,
+    };
+  }
+  return null;
+}
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -1602,6 +1630,7 @@ export const appRouter = router({
       .query(async ({ input }) => getEngineerFunnelPlaybookInsights(input.engineerId)),
   }),
   // ── Internal Users System (نظام المستخدمين الداخلي) ───────────────────────
+
   appUsers: router({
     // Login
     login: publicProcedure
@@ -1644,34 +1673,44 @@ export const appRouter = router({
         const permissions = await getUserPermissions(user.id);
         return { ...user, permissions };
       }),
-    // List all users (manager only)
+    // List all users (manager/admin only)
     list: publicProcedure
       .query(async ({ ctx }) => {
         const req = (ctx as any).req;
-        const token = req?.cookies?.app_user_token;
-        if (!token) throw new TRPCError({ code: 'UNAUTHORIZED' });
-        const user = await verifyAppUserToken(token);
-        if (!user || user.role !== 'manager') throw new TRPCError({ code: 'FORBIDDEN' });
+        const caller = await getAdminCallerFromRequest(req);
+        if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'يجب تسجيل الدخول أولاً' });
+        if (!['manager', 'admin_sales', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN', message: 'ليس لديك صلاحية الوصول' });
         return getAppUsers();
       }),
     // Create user (manager only)
     create: publicProcedure
       .input(z.object({
-        name: z.string().min(2),
-        username: z.string().min(3),
-        password: z.string().min(6),
+        name: z.string().min(2, 'الاسم يجب أن يكون حرفين على الأقل'),
+        username: z.string().min(3, 'اسم المستخدم يجب أن يكون 3 أحرف على الأقل').regex(/^[a-zA-Z0-9._-]+$/, 'اسم المستخدم يجب أن يحتوي على حروف وأرقام فقط'),
+        password: z.string().min(6, 'كلمة المرور يجب أن تكون 6 أحرف على الأقل'),
         role: z.enum(['sales_engineer', 'sales_specialist', 'admin_sales', 'manager']),
         engineerId: z.number().optional(),
+        email: z.string().email('صيغة البريد الإلكتروني غير صحيحة').optional().or(z.literal('')).transform(v => v || undefined),
       }))
       .mutation(async ({ input, ctx }) => {
         const req = (ctx as any).req;
-        const token = req?.cookies?.app_user_token;
-        if (!token) throw new TRPCError({ code: 'UNAUTHORIZED' });
-        const caller = await verifyAppUserToken(token);
-        if (!caller || caller.role !== 'manager') throw new TRPCError({ code: 'FORBIDDEN' });
-        const newUser = await createAppUser(input);
-        await logActivity({ userId: caller.id, action: 'create', module: 'users', details: `إنشاء مستخدم: ${input.username}` });
-        return newUser;
+        const caller = await getAdminCallerFromRequest(req);
+        if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'يجب تسجيل الدخول أولاً' });
+        if (!['manager', 'admin_sales', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN', message: 'ليس لديك صلاحية إنشاء مستخدمين' });
+        try {
+          const newUser = await createAppUser(input);
+          await logActivity({ userId: caller.id, action: 'create', module: 'users', details: `إنشاء مستخدم: ${input.username}` });
+          return newUser;
+        } catch (err: any) {
+          if (err.message === 'USERNAME_EXISTS') {
+            throw new TRPCError({ code: 'CONFLICT', message: 'اسم المستخدم موجود بالفعل، يرجى اختيار اسم آخر' });
+          }
+          if (err.message === 'EMAIL_EXISTS') {
+            throw new TRPCError({ code: 'CONFLICT', message: 'البريد الإلكتروني مستخدم بالفعل' });
+          }
+          console.error('[appUsers.create] Error:', err);
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'حدث خطأ في الخادم، يرجى المحاولة مرة أخرى' });
+        }
       }),
     // Update user (manager only)
     update: publicProcedure
@@ -1685,10 +1724,9 @@ export const appRouter = router({
       }))
       .mutation(async ({ input, ctx }) => {
         const req = (ctx as any).req;
-        const token = req?.cookies?.app_user_token;
-        if (!token) throw new TRPCError({ code: 'UNAUTHORIZED' });
-        const caller = await verifyAppUserToken(token);
-        if (!caller || caller.role !== 'manager') throw new TRPCError({ code: 'FORBIDDEN' });
+        const caller = await getAdminCallerFromRequest(req);
+        if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'يجب تسجيل الدخول أولاً' });
+        if (!['manager', 'admin_sales', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN', message: 'ليس لديك صلاحية تعديل المستخدمين' });
         const { userId, ...data } = input;
         await updateAppUser(userId, data);
         await logActivity({ userId: caller.id, action: 'update', module: 'users', recordId: userId, details: `تحديث مستخدم #${userId}` });
@@ -1699,10 +1737,9 @@ export const appRouter = router({
       .input(z.object({ userId: z.number() }))
       .query(async ({ input, ctx }) => {
         const req = (ctx as any).req;
-        const token = req?.cookies?.app_user_token;
-        if (!token) throw new TRPCError({ code: 'UNAUTHORIZED' });
-        const caller = await verifyAppUserToken(token);
-        if (!caller || caller.role !== 'manager') throw new TRPCError({ code: 'FORBIDDEN' });
+        const caller = await getAdminCallerFromRequest(req);
+        if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'يجب تسجيل الدخول أولاً' });
+        if (!['manager', 'admin_sales', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
         return getUserPermissions(input.userId);
       }),
     // Update permissions for a user
@@ -1720,10 +1757,9 @@ export const appRouter = router({
       }))
       .mutation(async ({ input, ctx }) => {
         const req = (ctx as any).req;
-        const token = req?.cookies?.app_user_token;
-        if (!token) throw new TRPCError({ code: 'UNAUTHORIZED' });
-        const caller = await verifyAppUserToken(token);
-        if (!caller || caller.role !== 'manager') throw new TRPCError({ code: 'FORBIDDEN' });
+        const caller = await getAdminCallerFromRequest(req);
+        if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'يجب تسجيل الدخول أولاً' });
+        if (!['manager', 'admin_sales', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
         await updateUserPermissions(input.userId, input.permissions);
         await logActivity({ userId: caller.id, action: 'permission_change', module: 'users', recordId: input.userId, details: `تحديث صلاحيات مستخدم #${input.userId}` });
         return { success: true };
@@ -1737,10 +1773,9 @@ export const appRouter = router({
       }).optional())
       .query(async ({ input, ctx }) => {
         const req = (ctx as any).req;
-        const token = req?.cookies?.app_user_token;
-        if (!token) throw new TRPCError({ code: 'UNAUTHORIZED' });
-        const caller = await verifyAppUserToken(token);
-        if (!caller || caller.role !== 'manager') throw new TRPCError({ code: 'FORBIDDEN' });
+        const caller = await getAdminCallerFromRequest(req);
+        if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'يجب تسجيل الدخول أولاً' });
+        if (!['manager', 'admin_sales', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
         return getActivityLogs(input);
       }),
     // Default permissions per role

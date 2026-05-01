@@ -909,6 +909,7 @@ export const appUsers = mysqlTable("app_users", {
   ]).notNull().default("sales_engineer"),
   // ربط بجدول engineers (اختياري - لربط المستخدم بمهندس موجود)
   engineerId: int("engineerId"),
+  email: varchar("email", { length: 320 }),
   status: mysqlEnum("status", ["active", "inactive"]).notNull().default("active"),
   // آخر دخول
   lastLoginAt: timestamp("lastLoginAt"),
