@@ -593,8 +593,8 @@ export const appRouter = router({
   closing: router({
     stats: publicProcedure.input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getDealsStats(input.year, input.month)),
-    list: publicProcedure.input(z.object({ limit: z.number().optional(), offset: z.number().optional(), stage: z.string().optional() }))
-      .query(async ({ input }) => getDealsList(input.limit, input.offset, input.stage)),
+    list: publicProcedure.input(z.object({ limit: z.number().optional(), offset: z.number().optional(), stage: z.string().optional(), year: z.number().optional(), month: z.number().optional() }))
+      .query(async ({ input }) => getDealsList(input.limit, input.offset, input.stage, input.year, input.month)),
     create: publicProcedure.input(z.object({
       engineerId: z.number(), clientName: z.string().min(1), value: z.number().positive(),
       visitId: z.number().optional(), leadId: z.number().optional(),

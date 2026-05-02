@@ -84,26 +84,28 @@ export default function ClosingModule() {
     discountPercent: '0', discountValue: '0', discountNote: '',
   });
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
+  // ─── Month/Year Filter ─────────────────────────────────────────────────────
+  const [filterYear, setFilterYear] = useState(YEAR);
+  const [filterMonth, setFilterMonth] = useState(MONTH);
+  const yearOptions = Array.from({ length: 5 }, (_, i) => YEAR - i);
+  const MONTHS_AR = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
   const utils = trpc.useUtils();
 
-  const { data: stats } = trpc.closing.stats.useQuery({ year: YEAR, month: MONTH });
-  const { data: dealsData } = trpc.closing.list.useQuery({ limit: 50, stage: filterStage !== 'all' ? filterStage : undefined });
+  const { data: stats } = trpc.closing.stats.useQuery({ year: filterYear, month: filterMonth });
+  const { data: dealsData } = trpc.closing.list.useQuery({ limit: 200, stage: filterStage !== 'all' ? filterStage : undefined, year: filterYear, month: filterMonth });
   const { data: engineers } = trpc.engineers.list.useQuery();
   const { data: discountSummary } = trpc.closing.discountSummary.useQuery();
   const { data: engDiscounts } = trpc.closing.engineerDiscountSummary.useQuery();
   const { data: lostAnalysis } = trpc.closing.lostDealsAnalysis.useQuery();
 
   // ─── Deal-Level Discount Distribution ───────────────────────────────────────
-  const [discountSubTab, setDiscountSubTab] = useState<'overview' | 'deal_distribution' | 'bonus'>('overview');
+  const [discountSubTab, setDiscountSubTab] = useState<'overview' | 'deal_distribution'>('overview');
   const [selectedEngineerId, setSelectedEngineerId] = useState<number | null>(null);
   const { data: discountDashboard } = trpc.closing.discountDashboard.useQuery(
     { engineerId: selectedEngineerId! },
     { enabled: !!selectedEngineerId }
   );
-  const { data: bonusSummary } = trpc.closing.discountBonusSummary.useQuery(
-    { engineerId: selectedEngineerId! },
-    { enabled: !!selectedEngineerId }
-  );
+
   const { data: salesEngineers } = trpc.closing.salesEngineers.useQuery();
   const [changeEngineerWarn, setChangeEngineerWarn] = useState<{ dealId: number; newEngineerId: string } | null>(null);
   const [timelineDealId, setTimelineDealId] = useState<number | null>(null);
@@ -117,11 +119,14 @@ export default function ClosingModule() {
   });
 
   const invalidateAll = () => {
-    utils.closing.list.invalidate();
-    utils.closing.stats.invalidate();
+    utils.closing.list.invalidate({ year: filterYear, month: filterMonth });
+    utils.closing.stats.invalidate({ year: filterYear, month: filterMonth });
     utils.closing.discountSummary.invalidate();
     utils.closing.engineerDiscountSummary.invalidate();
     utils.closing.lostDealsAnalysis.invalidate();
+    // invalidate all variants to ensure fresh data
+    utils.closing.list.invalidate();
+    utils.closing.stats.invalidate();
   };
 
   const createMutation = trpc.closing.create.useMutation({
@@ -267,11 +272,22 @@ export default function ClosingModule() {
           <h1 className="text-2xl font-bold">التفاوض والإغلاق</h1>
           <p className="text-sm text-muted-foreground">متابعة الصفقات من التفاوض حتى الإغلاق + نظام الخصومات + تحليل الخسائر</p>
         </div>
-        {canEdit && (
-          <Button size="sm" onClick={() => setShowAdd(true)} className="gap-1.5">
-            <Plus className="w-4 h-4" />إضافة صفقة
-          </Button>
-        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Month/Year Filter */}
+          <Select value={String(filterMonth)} onValueChange={v => setFilterMonth(Number(v))}>
+            <SelectTrigger className="w-32 h-8 text-sm"><SelectValue /></SelectTrigger>
+            <SelectContent>{MONTHS_AR.map((m, i) => <SelectItem key={i+1} value={String(i+1)}>{m}</SelectItem>)}</SelectContent>
+          </Select>
+          <Select value={String(filterYear)} onValueChange={v => setFilterYear(Number(v))}>
+            <SelectTrigger className="w-24 h-8 text-sm"><SelectValue /></SelectTrigger>
+            <SelectContent>{yearOptions.map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}</SelectContent>
+          </Select>
+          {canEdit && (
+            <Button size="sm" onClick={() => setShowAdd(true)} className="gap-1.5">
+              <Plus className="w-4 h-4" />إضافة صفقة
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* KPI Cards */}
@@ -435,7 +451,6 @@ export default function ClosingModule() {
             {[
               { key: 'overview', label: 'نظرة عامة' },
               { key: 'deal_distribution', label: 'توزيع على الصفقات' },
-              { key: 'bonus', label: 'مكافأة الخصم' },
             ].map(st => (
               <button key={st.key} onClick={() => setDiscountSubTab(st.key as any)}
                 className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
@@ -694,115 +709,6 @@ export default function ClosingModule() {
             </div>
           )}
 
-          {/* Sub-Tab: مكافأة الخصم */}
-          {discountSubTab === 'bonus' && (
-            <div className="space-y-4">
-              {/* اختيار المهندس */}
-              <Card>
-                <CardContent className="pt-4">
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-medium">اختر المهندس:</span>
-                    <Select value={selectedEngineerId ? String(selectedEngineerId) : ''} onValueChange={v => setSelectedEngineerId(Number(v))}>
-                      <SelectTrigger className="w-48 h-8 text-sm"><SelectValue placeholder="اختر مهندس" /></SelectTrigger>
-                      <SelectContent>{(salesEngineers ?? engineers)?.map(e => <SelectItem key={e.id} value={String(e.id)}>{e.name}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* شرح نظام المكافأة */}
-              <Card className="bg-amber-950/10 border-amber-800/30">
-                <CardContent className="pt-4">
-                  <div className="text-sm font-medium text-amber-400 mb-3">✨ كيف تُحسب مكافأة الخصم؟</div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                    <div className="p-3 bg-emerald-950/20 rounded-lg border border-emerald-800/30">
-                      <div className="font-medium text-emerald-400 mb-1">الحالة 1: خصم ≤ كومشن</div>
-                      <div className="text-muted-foreground">مكافأة = 50% من قيمة الخصم المستخدم</div>
-                      <div className="text-emerald-400 mt-1">مثال: خصم 5,000 ج.م → مكافأة 2,500 ج.م</div>
-                    </div>
-                    <div className="p-3 bg-blue-950/20 rounded-lg border border-blue-800/30">
-                      <div className="font-medium text-blue-400 mb-1">الحالة 2: خصم أكبر من كومشن</div>
-                      <div className="text-muted-foreground">مكافأة = قيمة الكومشن فقط</div>
-                      <div className="text-blue-400 mt-1">مثال: خصم 20,000 وكومشن 8,000 → مكافأة 8,000 ج.م</div>
-                    </div>
-                    <div className="p-3 bg-red-950/20 rounded-lg border border-red-800/30">
-                      <div className="font-medium text-red-400 mb-1">✖ لا مكافأة إذا:</div>
-                      <div className="text-muted-foreground">• الصفقة خُسرت بسبب السعر (price_high)</div>
-                      <div className="text-muted-foreground">• الخصم غير مستخدم</div>
-                    </div>
-                    <div className="p-3 bg-indigo-950/20 rounded-lg border border-indigo-800/30">
-                      <div className="font-medium text-indigo-400 mb-1">• حد أقصى شهري (Cap)</div>
-                      <div className="text-muted-foreground">المكافأة لا تتجاوز 15,000 ج.م شهرياً (قابل للتعديل)</div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {bonusSummary && (
-                <>
-                  {/* ملخص المكافأة الشهرية */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <Card className="bg-amber-950/20 border-amber-700/40"><CardContent className="pt-3 pb-3">
-                      <div className="text-lg font-bold text-amber-400">{fmt(bonusSummary.totalBonusBeforeCap)} ج.م</div>
-                      <div className="text-xs text-muted-foreground">مكافأة قبل الحد</div>
-                    </CardContent></Card>
-                    <Card className="bg-emerald-950/20 border-emerald-700/40"><CardContent className="pt-3 pb-3">
-                      <div className="text-lg font-bold text-emerald-400">{fmt(bonusSummary.cappedBonus)} ج.م</div>
-                      <div className="text-xs text-muted-foreground">مكافأة بعد الحد</div>
-                    </CardContent></Card>
-                    <Card className="bg-indigo-950/20 border-indigo-700/40"><CardContent className="pt-3 pb-3">
-                      <div className="text-lg font-bold text-indigo-400">{fmt(bonusSummary.monthlyCap)} ج.م</div>
-                      <div className="text-xs text-muted-foreground">الحد الشهري</div>
-                    </CardContent></Card>
-                    <Card className={bonusSummary.isPaid ? 'bg-emerald-950/20 border-emerald-700/40' : 'bg-muted/20'}><CardContent className="pt-3 pb-3">
-                      <div className={`text-lg font-bold ${bonusSummary.isPaid ? 'text-emerald-400' : 'text-muted-foreground'}`}>{bonusSummary.isPaid ? '✔ تم الدفع' : 'لم يدفع'}</div>
-                      <div className="text-xs text-muted-foreground">حالة المكافأة</div>
-                    </CardContent></Card>
-                  </div>
-
-                  {/* تفاصيل المكافأة لكل صفقة */}
-                  <Card>
-                    <CardHeader><CardTitle className="text-sm">مكافأة كل صفقة</CardTitle></CardHeader>
-                    <CardContent>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead><tr className="border-b border-border text-muted-foreground text-xs">
-                            <th className="text-right py-2 px-3">العميل</th>
-                            <th className="text-right py-2 px-3">قيمة الصفقة</th>
-                            <th className="text-right py-2 px-3">الخصم المستخدم</th>
-                            <th className="text-right py-2 px-3">الكومشن</th>
-                            <th className="text-right py-2 px-3">الحالة</th>
-                            <th className="text-right py-2 px-3">المكافأة</th>
-                          </tr></thead>
-                          <tbody>
-                            {bonusSummary.dealBonuses.map(d => (
-                              <tr key={d.dealId} className="border-b border-border/30 hover:bg-muted/20">
-                                <td className="py-2 px-3 font-medium">{d.clientName}</td>
-                                <td className="py-2 px-3">{fmt(d.dealValue)} ج.م</td>
-                                <td className="py-2 px-3 text-amber-400">{fmt(d.discountUsed)} ج.م</td>
-                                <td className="py-2 px-3 text-indigo-400">{fmt(d.commissionAmount)} ج.م</td>
-                                <td className="py-2 px-3">
-                                  {d.eligible ? (
-                                    <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs">حالة {d.bonusCase}</Badge>
-                                  ) : (
-                                    <Badge className="bg-red-500/20 text-red-400 border-red-500/30 text-xs">{d.reason ?? 'غير مؤهل'}</Badge>
-                                  )}
-                                </td>
-                                <td className="py-2 px-3 font-bold text-emerald-400">{d.eligible ? fmt(d.bonusAmount) : 0} ج.م</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </>
-              )}
-              {!selectedEngineerId && (
-                <Card><CardContent className="py-10 text-center text-muted-foreground">اختر مهندساً لعرض مكافأته</CardContent></Card>
-              )}
-            </div>
-          )}
         </div>
       )}
 
@@ -833,16 +739,9 @@ export default function ClosingModule() {
                           <div className="text-blue-400 font-bold">{fmt(eng.allocatedDiscount)}</div>
                           <div className="text-muted-foreground">خصم متاح</div>
                         </div>
-                        <div className="text-center p-2 bg-amber-950/30 rounded border border-amber-700/40">
-                          <div className="text-amber-400 font-bold">{fmt((eng as any).engineerBonus ?? 0)}</div>
-                          <div className="text-amber-300/70">مكافأة 50% خصم موفّر</div>
-                        </div>
+
                       </div>
-                      {((eng as any).savedDiscount ?? 0) > 0 && (
-                        <div className="mt-2 text-xs text-amber-400/80 bg-amber-950/20 rounded p-2 text-center">
-                          ✨ خصم موفَّر: {fmt((eng as any).savedDiscount)} ج.م → مكافأة المهندس: {fmt((eng as any).engineerBonus)} ج.م
-                        </div>
-                      )}
+
                     </div>
                   ))}
                 </div>

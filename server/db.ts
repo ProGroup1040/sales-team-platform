@@ -559,10 +559,16 @@ export async function getDealsStats(year: number, month: number) {
   return { open, closedWon, closedLost, totalValue, closedValue, conversionRate, byStage };
 }
 
-export async function getDealsList(limit = 20, offset = 0, stage?: string) {
+export async function getDealsList(limit = 20, offset = 0, stage?: string, year?: number, month?: number) {
   const db = await getDb();
   if (!db) return { data: [], total: 0 };
-  const conditions = stage ? [eq(deals.stage, stage as any)] : [];
+  const conditions: any[] = [];
+  if (stage) conditions.push(eq(deals.stage, stage as any));
+  if (year && month) {
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0, 23, 59, 59);
+    conditions.push(between(deals.createdAt, startDate, endDate));
+  }
   const data = await db.select().from(deals)
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(deals.createdAt)).limit(limit).offset(offset);
