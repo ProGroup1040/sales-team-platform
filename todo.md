@@ -1107,3 +1107,26 @@
 - [ ] تحديث DashboardLayout ليعتمد على Dynamic permissions
 - [ ] إزالة كل الـ Hardcoded Rules من useRoleAccess.ts
 - [ ] اختبار تغيير الصلاحيات Live
+
+## Granular Section Permissions (الطلب الجديد - 2 مايو 2026)
+- [x] تطبيق canViewSection('kpi', section) على KPI Module (tabs: engineer_details, monthly_earnings, company_closing, rewards, lost_deals_impact, overall_evaluation, activities_analysis)
+- [x] تطبيق canViewSection('planning', section) على Planning Module (tabs: company_goals, engineer_goals, personal_goals)
+- [x] تطبيق canViewSection('closing', section) على Closing Module (tabs: deals_pipeline, discount_system, engineers_tab, lost_deals)
+- [ ] تحديث MODULE_SECTIONS في db.ts لإضافة الـ sections الجديدة لكل Module
+- [ ] تحديث شاشة إدارة الصلاحيات لعرض Section-level controls بدلاً من Module-level
+- [ ] إضافة دعم View All / View Self / Hidden لكل Section
+- [ ] Backend: تطبيق View Self على Goals Module (المهندس يرى نفسه فقط)
+- [ ] Backend: تطبيق View Self على KPI Module (المهندس يرى بياناته فقط)
+
+## Auto Target Distribution Engine (الطلب الجديد - 2 مايو 2026)
+- [x] إضافة حقول isAutoDistributed وdistributionWeight وtargetLeads إلى engineerTargets schema
+- [x] تطبيق migration على قاعدة البيانات
+- [x] بناء calcAutoDistribution function في db.ts
+- [x] بناء applyAutoDistribution function في db.ts
+- [x] بناء manualOverrideEngineerTarget function في db.ts
+- [x] إضافة previewDistribution وapplyDistribution وmanualOverride procedures في routers.ts
+- [x] دمج شاشة أهداف المهندسين مع التطوير الشخصي في شاشة واحدة
+- [x] عرض Auto Distribution Banner مع معاينة التوزيع
+- [x] دعم Manual Override مع Flag تحذيري
+- [x] عرض الهدف المالي والتشغيلي والشخصي في نفس الشاشة
+- [x] إزالة tab التطوير الشخصي المنفصل (مدمج داخل أهداف المهندسين)

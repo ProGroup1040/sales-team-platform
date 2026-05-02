@@ -281,6 +281,20 @@
       "when": 1777677243851,
       "tag": "0039_rainy_blur",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "5",
+      "when": 1777683785089,
+      "tag": "0040_tidy_lifeguard",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "5",
+      "when": 1777689773152,
+      "tag": "0041_steep_jack_murdock",
+      "breakpoints": true
     }
   ]
 }

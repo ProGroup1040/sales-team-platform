@@ -1,5 +1,5 @@
 import {
-  int, mysqlEnum, mysqlTable, text, timestamp,
+  int, tinyint, mysqlEnum, mysqlTable, text, timestamp,
   varchar, decimal, date, float, boolean
 } from "drizzle-orm/mysql-core";
 
@@ -279,6 +279,10 @@ export const engineerTargets = mysqlTable("engineer_targets", {
   targetRender: int("targetRender").default(0),  // هدف Render
   targetContract: int("targetContract").default(0),   // هدف إعداد العقود
   targetWorkOrder: int("targetWorkOrder").default(0), // هدف أوامر الشغل
+  // ─── Auto Distribution Fields ─────────────────────────────────────────────
+  isAutoDistributed: tinyint("isAutoDistributed").default(0), // 1 = auto, 0 = manual override
+  distributionWeight: decimal("distributionWeight", { precision: 5, scale: 4 }).default("1.0000"), // وزن التوزيع
+  targetLeads: int("targetLeads").default(0),          // هدف عدد العملاء المحتملين
   notes: text("notes"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
@@ -1015,3 +1019,25 @@ export const rolePermissions = mysqlTable("role_permissions", {
 });
 export type RolePermission = typeof rolePermissions.$inferSelect;
 export type InsertRolePermission = typeof rolePermissions.$inferInsert;
+
+// ─── Section Permissions (Granular Permissions per Section inside Module) ──────
+export const sectionPermissions = mysqlTable("section_permissions", {
+  id: int("id").autoincrement().primaryKey(),
+  // اسم الـ Role
+  role: varchar("role", { length: 64 }).notNull(),
+  // اسم الـ Module
+  module: varchar("module", { length: 64 }).notNull(),
+  // اسم الـ Section داخل الـ Module
+  section: varchar("section", { length: 128 }).notNull(),
+  // مستوى الصلاحية
+  // "all"  = يرى كل البيانات
+  // "self" = يرى بياناته فقط
+  // "hidden" = مخفي تماماً
+  visibility: mysqlEnum("visibility", ["all", "self", "hidden"]).notNull().default("all"),
+  // هل يمكن التعديل على هذا الـ Section
+  canEdit: int("canEdit").default(0).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type SectionPermission = typeof sectionPermissions.$inferSelect;
+export type InsertSectionPermission = typeof sectionPermissions.$inferInsert;

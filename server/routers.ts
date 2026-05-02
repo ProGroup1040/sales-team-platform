@@ -98,7 +98,10 @@ import {
   updateUserPermissions, updateAppUser, logActivity, getActivityLogs,
   DEFAULT_ROLE_PERMISSIONS,
   getRolePermissions, getAllRolePermissions, updateRolePermission, updateAllRolePermissions,
+  getSectionPermissions, getAllSectionPermissions, updateSectionPermission, bulkUpdateSectionPermissions, MODULE_SECTIONS,
   SYSTEM_MODULES, SYSTEM_ROLES,
+  // Auto Distribution Engine
+  calcAutoDistribution, applyAutoDistribution, manualOverrideEngineerTarget, getEngineerFullTarget,
 } from "./db";
 import { ACTIVITY_KEYS, ACTIVITY_LABELS as ACT_LABELS_EN, ACTIVITY_LABELS_AR, ACTIVITY_WEIGHTS, ACTIVITY_ICONS, ACTIVITY_COLORS } from '../shared/activityTypes';
 
@@ -925,6 +928,36 @@ export const appRouter = router({
         icons: ACTIVITY_ICONS,
         colors: ACTIVITY_COLORS,
       })),
+    // ── Auto Distribution Engine ───────────────────────────────────────────────────────────────────────────────────────────
+    /** معاينة التوزيع التلقائي قبل التطبيق */
+    previewDistribution: publicProcedure
+      .input(z.object({ year: z.number(), month: z.number() }))
+      .query(async ({ input }) => calcAutoDistribution(input.year, input.month)),
+    /** تطبيق التوزيع التلقائي على جميع المهندسين */
+    applyDistribution: publicProcedure
+      .input(z.object({ year: z.number(), month: z.number() }))
+      .mutation(async ({ input }) => applyAutoDistribution(input.year, input.month)),
+    /** تعديل يدوي (Manual Override) لمهندس */
+    manualOverride: publicProcedure
+      .input(z.object({
+        engineerId: z.number(), year: z.number(), month: z.number(),
+        targetAmount: z.number().optional(),
+        targetDeals: z.number().optional(),
+        targetLeads: z.number().optional(),
+        targetMeetings: z.number().optional(),
+        targetQuotations: z.number().optional(),
+        targetPresentations: z.number().optional(),
+        targetRender: z.number().optional(),
+        target2D: z.number().optional(),
+        target3D: z.number().optional(),
+        targetClosings: z.number().optional(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => { await manualOverrideEngineerTarget(input); return { success: true }; }),
+    /** جلب هدف مهندس كامل (مالي + تشغيلي + شخصي) */
+    getEngineerFullTarget: publicProcedure
+      .input(z.object({ engineerId: z.number(), year: z.number(), month: z.number() }))
+      .query(async ({ input }) => getEngineerFullTarget(input.engineerId, input.year, input.month)),
   }),
 
   // ── Financial Module ───────────────────────────────────────────────────────────────────────────────
@@ -1871,7 +1904,151 @@ export const appRouter = router({
       .query(async () => ({
         modules: SYSTEM_MODULES,
         roles: SYSTEM_ROLES,
+        moduleSections: MODULE_SECTIONS,
       })),
+  }),
+
+  // ─── Section Permissions Router ──────────────────────────────────────────
+  sectionPermissions: router({
+    // جلب صلاحيات الـ Sections للـ Role الحالي (من local_session)
+    myPermissions: protectedProcedure
+      .query(async ({ ctx }) => {
+        const req = (ctx as any).req;
+        const session = await (await import('./localAuth')).getLocalSessionFromRequest(req);
+        if (!session) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        const perms = await getSectionPermissions(session.role);
+        // Build map: module.section → { visibility, canEdit }
+        const map: Record<string, { visibility: string; canEdit: boolean }> = {};
+        for (const p of perms) {
+          map[`${p.module}.${p.section}`] = {
+            visibility: p.visibility,
+            canEdit: p.canEdit === 1,
+          };
+        }
+        return map;
+      }),
+
+    // جلب كل صلاحيات الـ Sections لكل الـ Roles (للـ Admin Panel)
+    getAll: publicProcedure
+      .query(async ({ ctx }) => {
+        const req = (ctx as any).req;
+        const caller = await getAdminCallerFromRequest(req);
+        if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        if (!['manager', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
+        const perms = await getAllSectionPermissions();
+        return { permissions: perms, roles: SYSTEM_ROLES, modules: SYSTEM_MODULES };
+      }),
+    // تهيئة البيانات الافتراضية لـ Section Permissions
+    initDefaults: publicProcedure
+      .mutation(async ({ ctx }) => {
+        const req = (ctx as any).req;
+        const caller = await getAdminCallerFromRequest(req);
+        if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        if (!['manager', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
+        // Default permissions per role
+        const defaults: Array<{ role: string; module: string; section: string; visibility: 'all' | 'self' | 'hidden'; canEdit: number }> = [];
+        for (const roleObj of SYSTEM_ROLES) {
+          const role = roleObj.key;
+          for (const [moduleKey, sections] of Object.entries(MODULE_SECTIONS)) {
+            for (const sec of sections) {
+              let visibility: 'all' | 'self' | 'hidden' = 'all';
+              let canEdit = 0;
+              // KPI: engineer_details → manager/admin_sales only
+              if (moduleKey === 'kpi' && sec.section === 'engineer_details') {
+                visibility = ['manager', 'admin_sales'].includes(role) ? 'all' : 'hidden';
+              }
+              // KPI: overall_evaluation → manager only
+              if (moduleKey === 'kpi' && sec.section === 'overall_evaluation') {
+                visibility = role === 'manager' ? 'all' : 'hidden';
+              }
+              // Planning: engineer_goals → admin sees all, engineer sees self
+              if (moduleKey === 'planning' && sec.section === 'engineer_goals') {
+                visibility = ['manager', 'admin_sales'].includes(role) ? 'all' : 'self';
+              }
+              // Planning: personal_goals → admin + self only
+              if (moduleKey === 'planning' && sec.section === 'personal_goals') {
+                visibility = ['manager', 'admin_sales'].includes(role) ? 'all' : 'self';
+              }
+              // canEdit: manager/admin_sales can edit
+              canEdit = ['manager', 'admin_sales'].includes(role) ? 1 : 0;
+              defaults.push({ role, module: moduleKey, section: sec.section, visibility, canEdit });
+            }
+          }
+        }
+        await bulkUpdateSectionPermissions(defaults);
+        await logActivity({
+          userId: caller.id ?? 0,
+          action: 'permission_change',
+          module: 'permissions',
+          details: `تهيئة ${defaults.length} Section Permission افتراضي`,
+        });
+        return { success: true, count: defaults.length };
+      }),
+
+    // جلب صلاحيات Role معين
+    getByRole: publicProcedure
+      .input(z.object({ role: z.string() }))
+      .query(async ({ input, ctx }) => {
+        const req = (ctx as any).req;
+        const caller = await getAdminCallerFromRequest(req);
+        if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        if (!['manager', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
+        return getSectionPermissions(input.role);
+      }),
+
+    // تحديث صلاحية Section معين
+    update: publicProcedure
+      .input(z.object({
+        role: z.string(),
+        module: z.string(),
+        section: z.string(),
+        visibility: z.enum(['all', 'self', 'hidden']),
+        canEdit: z.number().min(0).max(1),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const req = (ctx as any).req;
+        const caller = await getAdminCallerFromRequest(req);
+        if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        if (!['manager', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
+        await updateSectionPermission(input.role, input.module, input.section, input.visibility, input.canEdit);
+        await logActivity({
+          userId: caller.id ?? 0,
+          action: 'permission_change',
+          module: 'permissions',
+          details: `تحديث Section Permission: ${input.role} → ${input.module}.${input.section} = ${input.visibility}`,
+        });
+        return { success: true };
+      }),
+
+    // تحديث صلاحيات متعددة دفعة واحدة
+    bulkUpdate: publicProcedure
+      .input(z.object({
+        updates: z.array(z.object({
+          role: z.string(),
+          module: z.string(),
+          section: z.string(),
+          visibility: z.enum(['all', 'self', 'hidden']),
+          canEdit: z.number().min(0).max(1),
+        })),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const req = (ctx as any).req;
+        const caller = await getAdminCallerFromRequest(req);
+        if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        if (!['manager', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
+        await bulkUpdateSectionPermissions(input.updates);
+        await logActivity({
+          userId: caller.id ?? 0,
+          action: 'permission_change',
+          module: 'permissions',
+          details: `تحديث ${input.updates.length} Section Permissions دفعة واحدة`,
+        });
+        return { success: true };
+      }),
+
+    // جلب الـ Module Sections المتاحة
+    moduleSections: publicProcedure
+      .query(async () => MODULE_SECTIONS),
   }),
 });
 export type AppRouter = typeof appRouter;

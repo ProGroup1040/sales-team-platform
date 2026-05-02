@@ -28,8 +28,8 @@ import {
   companyGoals, CompanyGoal, InsertCompanyGoal,
   engineerPersonalGoals, EngineerPersonalGoal, InsertEngineerPersonalGoal,
   appUsers, userPermissions, activityLogs,
-  rolePermissions,
-  type AppUser, type InsertAppUser, type UserPermission, type RolePermission
+  rolePermissions, sectionPermissions,
+  type AppUser, type InsertAppUser, type UserPermission, type RolePermission, type SectionPermission
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import bcrypt from "bcryptjs";
@@ -10703,3 +10703,274 @@ export const SYSTEM_ROLES = [
   { key: "sales_engineer",  label: "مهندس مبيعات" },
   { key: "sales_specialist",label: "أخصائي مبيعات" },
 ] as const;
+
+// ─── Section Permissions Functions ──────────────────────────────────────────
+
+/** جلب صلاحيات الـ Sections لـ Role معين */
+export async function getSectionPermissions(role: string): Promise<SectionPermission[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(sectionPermissions).where(eq(sectionPermissions.role, role));
+}
+/** جلب كل صلاحيات الـ Sections لكل الـ Roles */
+export async function getAllSectionPermissions(): Promise<SectionPermission[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(sectionPermissions);
+}
+/** تحديث صلاحية Section معين لـ Role معين */
+export async function updateSectionPermission(
+  role: string,
+  module: string,
+  section: string,
+  visibility: 'all' | 'self' | 'hidden',
+  canEdit: number
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  // Check if exists
+  const existing = await db.select({ id: sectionPermissions.id })
+    .from(sectionPermissions)
+    .where(
+      and(
+        eq(sectionPermissions.role, role),
+        eq(sectionPermissions.module, module),
+        eq(sectionPermissions.section, section)
+      )
+    )
+    .limit(1);
+  if (existing.length > 0) {
+    await db.update(sectionPermissions)
+      .set({ visibility, canEdit })
+      .where(
+        and(
+          eq(sectionPermissions.role, role),
+          eq(sectionPermissions.module, module),
+          eq(sectionPermissions.section, section)
+        )
+      );
+  } else {
+    await db.insert(sectionPermissions).values({ role, module, section, visibility, canEdit });
+  }
+}
+
+/** تحديث صلاحيات متعددة دفعة واحدة */
+export async function bulkUpdateSectionPermissions(
+  updates: Array<{
+    role: string;
+    module: string;
+    section: string;
+    visibility: 'all' | 'self' | 'hidden';
+    canEdit: number;
+  }>
+): Promise<void> {
+  for (const u of updates) {
+    await updateSectionPermission(u.role, u.module, u.section, u.visibility, u.canEdit);
+  }
+}
+
+/** تعريف الـ Sections المتاحة لكل Module */
+export const MODULE_SECTIONS = {
+  kpi: [
+    { section: 'engineer_details',    label: 'تفاصيل أداء المهندسين' },
+    { section: 'monthly_earnings',    label: 'ملخص المستحقات الشهرية' },
+    { section: 'performance_trends',  label: 'اتجاهات الأداء' },
+    { section: 'commission_details',  label: 'تفاصيل الكوميشن التراكمي' },
+    { section: 'operational_analysis',label: 'تحليل الأداء التشغيلي' },
+    { section: 'company_closing',     label: 'Company Closing KPI' },
+    { section: 'lost_deals_impact',   label: 'تأثير الصفقات الخاسرة' },
+    { section: 'overall_evaluation',  label: 'التقييم الشامل' },
+    { section: 'activities_analysis', label: 'تحليل الأنشطة' },
+    { section: 'rewards',             label: 'نظام المكافآت' },
+  ],
+  planning: [
+    { section: 'company_goals',       label: 'أهداف الشركة' },
+    { section: 'engineer_goals',      label: 'أهداف المهندسين' },
+    { section: 'personal_goals',      label: 'الهدف الشخصي' },
+    { section: 'reviews',             label: 'التقييمات' },
+  ],
+  closing: [
+    { section: 'deals_pipeline',      label: 'مسار الصفقات' },
+    { section: 'discount_system',     label: 'نظام الخصومات' },
+    { section: 'engineers_tab',       label: 'المهندسون' },
+    { section: 'lost_deals',          label: 'الصفقات الخاسرة' },
+  ],
+} as const;
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// AUTO TARGET DISTRIBUTION ENGINE
+// ════════════════════════════════════════════════════════════════════════════
+
+/** حساب توزيع الأهداف تلقائياً بناءً على هدف الشركة */
+export async function calcAutoDistribution(year: number, month: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  // جلب هدف الشركة
+  const goal = await getCompanyGoal(year, month);
+  if (!goal) return null;
+
+  const revenueTarget = parseFloat(goal.revenueTarget);
+  const avgDealValue  = parseFloat(goal.avgDealValue);
+  const closingRate   = parseFloat(goal.closingRateTarget) / 100; // 0.35 مثلاً
+
+  if (avgDealValue <= 0 || closingRate <= 0) return null;
+
+  // الحسابات الأساسية
+  const dealsNeeded  = Math.ceil(revenueTarget / avgDealValue);
+  const leadsNeeded  = Math.ceil(dealsNeeded / closingRate);
+  const meetingsNeeded = leadsNeeded; // كل عميل = ميتينج
+  const quotationsNeeded = leadsNeeded;
+  const presentationsNeeded = leadsNeeded;
+  const rendersNeeded = leadsNeeded;
+
+  // جلب المهندسين النشطين
+  const engList = await getEngineers();
+  const activeCount = engList.length;
+  if (activeCount === 0) return null;
+
+  // التوزيع المتساوي (يمكن تطويره لاحقاً بناءً على الأداء)
+  const perEng = {
+    targetAmount:       Math.round(revenueTarget / activeCount),
+    targetDeals:        Math.ceil(dealsNeeded / activeCount),
+    targetLeads:        Math.ceil(leadsNeeded / activeCount),
+    targetMeetings:     Math.ceil(meetingsNeeded / activeCount),
+    targetQuotations:   Math.ceil(quotationsNeeded / activeCount),
+    targetPresentations:Math.ceil(presentationsNeeded / activeCount),
+    targetRender:       Math.ceil(rendersNeeded / activeCount),
+    target2D:           Math.ceil(leadsNeeded / activeCount),
+    target3D:           Math.ceil(leadsNeeded / activeCount),
+    targetClosings:     Math.ceil(dealsNeeded / activeCount),
+  };
+
+  return {
+    companyGoal: {
+      revenueTarget,
+      avgDealValue,
+      closingRate: closingRate * 100,
+      dealsNeeded,
+      leadsNeeded,
+      meetingsNeeded,
+      quotationsNeeded,
+      presentationsNeeded,
+      rendersNeeded,
+    },
+    engineerCount: activeCount,
+    perEngineer: perEng,
+    engineers: engList.map(eng => ({ id: eng.id, name: eng.name })),
+  };
+}
+
+/** تطبيق التوزيع التلقائي على جميع المهندسين */
+export async function applyAutoDistribution(year: number, month: number) {
+  const db = await getDb();
+  if (!db) return { success: false, message: 'DB unavailable' };
+
+  const dist = await calcAutoDistribution(year, month);
+  if (!dist) return { success: false, message: 'لا يوجد هدف للشركة لهذا الشهر' };
+
+  const { perEngineer, engineers: engList } = dist;
+
+  for (const eng of engList) {
+    const existing = await db.select().from(engineerTargets)
+      .where(and(
+        eq(engineerTargets.engineerId, eng.id),
+        eq(engineerTargets.year, year),
+        eq(engineerTargets.month, month)
+      )).limit(1);
+
+    const vals = {
+      targetAmount:        perEngineer.targetAmount.toString(),
+      targetDeals:         perEngineer.targetDeals,
+      targetLeads:         perEngineer.targetLeads,
+      targetMeetings:      perEngineer.targetMeetings,
+      targetQuotations:    perEngineer.targetQuotations,
+      targetPresentations: perEngineer.targetPresentations,
+      targetRender:        perEngineer.targetRender,
+      target2D:            perEngineer.target2D,
+      target3D:            perEngineer.target3D,
+      targetClosings:      perEngineer.targetClosings,
+      isAutoDistributed:   1,
+      distributionWeight:  (1 / engList.length).toFixed(4),
+    };
+
+    if (existing.length > 0) {
+      // فقط إذا لم يكن manual override
+      if (existing[0].isAutoDistributed !== 0) {
+        await db.update(engineerTargets).set(vals).where(eq(engineerTargets.id, existing[0].id));
+      }
+    } else {
+      await db.insert(engineerTargets).values({
+        engineerId: eng.id, year, month, manpower: 1, ...vals,
+      });
+    }
+  }
+
+  return { success: true, count: engList.length, perEngineer };
+}
+
+/** تحديث هدف مهندس يدوياً (Manual Override) */
+export async function manualOverrideEngineerTarget(data: {
+  engineerId: number; year: number; month: number;
+  targetAmount?: number;
+  targetDeals?: number; targetLeads?: number; targetMeetings?: number;
+  targetQuotations?: number; targetPresentations?: number;
+  targetRender?: number; target2D?: number; target3D?: number;
+  targetClosings?: number; notes?: string;
+}) {
+  const db = await getDb();
+  if (!db) return;
+
+  const existing = await db.select().from(engineerTargets)
+    .where(and(
+      eq(engineerTargets.engineerId, data.engineerId),
+      eq(engineerTargets.year, data.year),
+      eq(engineerTargets.month, data.month)
+    )).limit(1);
+
+  const updateData: Record<string, any> = { isAutoDistributed: 0 }; // Manual Override flag
+  if (data.targetAmount    !== undefined) updateData.targetAmount    = data.targetAmount.toString();
+  if (data.targetDeals     !== undefined) updateData.targetDeals     = data.targetDeals;
+  if (data.targetLeads     !== undefined) updateData.targetLeads     = data.targetLeads;
+  if (data.targetMeetings  !== undefined) updateData.targetMeetings  = data.targetMeetings;
+  if (data.targetQuotations!== undefined) updateData.targetQuotations= data.targetQuotations;
+  if (data.targetPresentations !== undefined) updateData.targetPresentations = data.targetPresentations;
+  if (data.targetRender    !== undefined) updateData.targetRender    = data.targetRender;
+  if (data.target2D        !== undefined) updateData.target2D        = data.target2D;
+  if (data.target3D        !== undefined) updateData.target3D        = data.target3D;
+  if (data.targetClosings  !== undefined) updateData.targetClosings  = data.targetClosings;
+  if (data.notes           !== undefined) updateData.notes           = data.notes;
+
+  if (existing.length > 0) {
+    await db.update(engineerTargets).set(updateData).where(eq(engineerTargets.id, existing[0].id));
+  } else {
+    await db.insert(engineerTargets).values({
+      engineerId: data.engineerId, year: data.year, month: data.month,
+      targetAmount: (data.targetAmount ?? 0).toString(),
+      manpower: 1,
+      ...updateData,
+    });
+  }
+}
+
+/** جلب هدف مهندس واحد مع كل التفاصيل */
+export async function getEngineerFullTarget(engineerId: number, year: number, month: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const [target] = await db.select().from(engineerTargets)
+    .where(and(
+      eq(engineerTargets.engineerId, engineerId),
+      eq(engineerTargets.year, year),
+      eq(engineerTargets.month, month)
+    )).limit(1);
+
+  const personalGoals = await getEngineerPersonalGoals(engineerId, year, month);
+
+  return {
+    target: target ?? null,
+    personalGoals,
+    isManualOverride: target ? target.isAutoDistributed === 0 : false,
+  };
+}

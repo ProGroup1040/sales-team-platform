@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
+import { useSectionPermission } from "@/hooks/useSectionPermission";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,7 +11,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import {
   Target, Calculator, TrendingUp, Calendar, Save, Users, User,
-  BookOpen, CheckCircle2, AlertCircle, Edit3, Plus
+  BookOpen, CheckCircle2, AlertCircle, Edit3, Plus, Zap, RefreshCw,
+  Wand2, AlertTriangle, ChevronDown, ChevronUp
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -288,20 +290,38 @@ function CompanyGoalsTab({ year, month }: { year: number; month: number }) {
   );
 }
 
-// ─── Tab 2: Individual Goals ───────────────────────────────────────────────────
+// ─── Tab 2: Individual Goals (Merged with Personal Development + Auto Distribution) ─
 function IndividualGoalsTab({ year, month }: { year: number; month: number }) {
   const utils = trpc.useUtils();
   const { data: engineers } = trpc.engineers.list.useQuery();
   const { data: perfData } = trpc.sales.engineersPerformance.useQuery({ year, month });
+  const { data: distPreview } = trpc.planning.previewDistribution.useQuery({ year, month });
 
   const [selectedEngId, setSelectedEngId] = useState<number | null>(null);
+  const [activeSection, setActiveSection] = useState<'financial' | 'operational' | 'personal'>('financial');
   const [editingFinancial, setEditingFinancial] = useState(false);
   const [editingOperational, setEditingOperational] = useState(false);
   const [financialTarget, setFinancialTarget] = useState('');
   const [manpower, setManpower] = useState('1');
   const [opTargets, setOpTargets] = useState<Record<string, string>>({});
+  const [showDistPreview, setShowDistPreview] = useState(false);
+
+  // Personal Development state
+  const [showAddGoalForm, setShowAddGoalForm] = useState(false);
+  const [newObjective, setNewObjective] = useState('');
+  const [newArea, setNewArea] = useState('other');
+  const [newMethod, setNewMethod] = useState('manager_review');
+  const [newReviewerRole, setNewReviewerRole] = useState('manager');
+  const [editingGoalId, setEditingGoalId] = useState<number | null>(null);
+  const [editScore, setEditScore] = useState('');
+  const [editNotes, setEditNotes] = useState('');
 
   const { data: opData } = trpc.kpi.engineerOperationalTargets.useQuery(
+    { engineerId: selectedEngId ?? 0, year, month },
+    { enabled: !!selectedEngId }
+  );
+
+  const { data: personalGoals, isLoading: loadingPersonal } = trpc.planning.getPersonalGoals.useQuery(
     { engineerId: selectedEngId ?? 0, year, month },
     { enabled: !!selectedEngId }
   );
@@ -312,7 +332,7 @@ function IndividualGoalsTab({ year, month }: { year: number; month: number }) {
       utils.sales.engineersPerformance.invalidate();
       setEditingFinancial(false);
     },
-    onError: () => toast.error('حدث خطأ'),
+    onError: (e) => toast.error(`خطأ في الحفظ: ${e.message}`),
   });
 
   const setOperationalMut = trpc.sales.setOperationalTargets.useMutation({
@@ -321,6 +341,46 @@ function IndividualGoalsTab({ year, month }: { year: number; month: number }) {
       utils.kpi.engineerOperationalTargets.invalidate();
       setEditingOperational(false);
     },
+    onError: (e) => toast.error(`خطأ في الحفظ: ${e.message}`),
+  });
+
+  const applyDistMut = trpc.planning.applyDistribution.useMutation({
+    onSuccess: (res) => {
+      toast.success(`تم توزيع الأهداف على ${res.count} مهندس`);
+      utils.sales.engineersPerformance.invalidate();
+      utils.kpi.engineerOperationalTargets.invalidate();
+      utils.planning.previewDistribution.invalidate();
+    },
+    onError: (e) => toast.error(`خطأ: ${e.message}`),
+  });
+
+  const manualOverrideMut = trpc.planning.manualOverride.useMutation({
+    onSuccess: () => {
+      toast.success('تم حفظ التعديل اليدوي');
+      utils.sales.engineersPerformance.invalidate();
+      utils.kpi.engineerOperationalTargets.invalidate();
+      setEditingFinancial(false);
+      setEditingOperational(false);
+    },
+    onError: (e) => toast.error(`خطأ: ${e.message}`),
+  });
+
+  const addGoalMut = trpc.planning.setPersonalGoal.useMutation({
+    onSuccess: () => {
+      toast.success('تم إضافة الهدف الشخصي');
+      utils.planning.getPersonalGoals.invalidate();
+      setShowAddGoalForm(false);
+      setNewObjective('');
+    },
+    onError: () => toast.error('حدث خطأ'),
+  });
+
+  const updateGoalMut = trpc.planning.setPersonalGoal.useMutation({
+    onSuccess: () => {
+      toast.success('تم تحديث التقييم');
+      utils.planning.getPersonalGoals.invalidate();
+      setEditingGoalId(null);
+    },
     onError: () => toast.error('حدث خطأ'),
   });
 
@@ -328,7 +388,6 @@ function IndividualGoalsTab({ year, month }: { year: number; month: number }) {
     !['admin', 'system_user'].includes(e.role ?? '')
   );
 
-  // ── Engineer target form state
   const selectedEng = selectedEngId
     ? (perfData?.find((e: any) => e.engineerId === selectedEngId) ?? null)
     : null;
@@ -337,6 +396,7 @@ function IndividualGoalsTab({ year, month }: { year: number; month: number }) {
     setSelectedEngId(id);
     setEditingFinancial(false);
     setEditingOperational(false);
+    setActiveSection('financial');
     const eng = perfData?.find((e: any) => e.engineerId === id);
     if (eng) {
       setFinancialTarget(eng.targetAmount > 0 ? String(eng.targetAmount) : '');
@@ -351,12 +411,86 @@ function IndividualGoalsTab({ year, month }: { year: number; month: number }) {
       const val = opTargets[item.targetKey];
       if (val !== undefined && val !== '') parsed[item.targetKey] = parseInt(val) || 0;
     });
-    setOperationalMut.mutate({ engineerId: selectedEngId, year, month, ...parsed });
+    manualOverrideMut.mutate({ engineerId: selectedEngId, year, month, ...parsed });
   };
+
+  const scoredGoals = (personalGoals ?? []).filter((g: any) => g.score !== null);
+  const avgScore = scoredGoals.length > 0
+    ? Math.round(scoredGoals.reduce((s: number, g: any) => s + (g.score ?? 0), 0) / scoredGoals.length)
+    : null;
 
   return (
     <div className="space-y-6">
-      {/* Engineer Selector */}
+
+      {/* ── Auto Distribution Banner */}
+      {distPreview && (
+        <Card className="border-indigo-200 dark:border-indigo-800/50 bg-indigo-50/50 dark:bg-indigo-950/10">
+          <CardContent className="p-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-lg bg-indigo-100 dark:bg-indigo-900/40">
+                  <Zap className="w-5 h-5 text-indigo-600" />
+                </div>
+                <div>
+                  <p className="font-semibold text-sm text-indigo-800 dark:text-indigo-200">توزيع تلقائي جاهز</p>
+                  <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-0.5">
+                    إيراد الشركة: {distPreview.companyGoal.revenueTarget.toLocaleString('ar-EG')} ج.م → كل مهندس: {distPreview.perEngineer.targetAmount.toLocaleString('ar-EG')} ج.م
+                  </p>
+                  <div className="flex flex-wrap gap-3 mt-2 text-xs text-indigo-700 dark:text-indigo-300">
+                    <span>📊 {distPreview.companyGoal.dealsNeeded} صفقة مطلوبة</span>
+                    <span>👤 {distPreview.companyGoal.leadsNeeded} عميل محتمل</span>
+                    <span>🤝 {distPreview.companyGoal.meetingsNeeded} اجتماع</span>
+                    <span>📈 نسبة إغلاق: {distPreview.companyGoal.closingRate.toFixed(0)}%</span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                <Button
+                  size="sm" variant="outline" className="h-8 text-xs gap-1"
+                  onClick={() => setShowDistPreview(!showDistPreview)}
+                >
+                  {showDistPreview ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                  تفاصيل
+                </Button>
+                <Button
+                  size="sm" className="h-8 text-xs gap-1 bg-indigo-600 hover:bg-indigo-700"
+                  onClick={() => applyDistMut.mutate({ year, month })}
+                  disabled={applyDistMut.isPending}
+                >
+                  {applyDistMut.isPending ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
+                  تطبيق التوزيع
+                </Button>
+              </div>
+            </div>
+
+            {/* Distribution Preview Table */}
+            {showDistPreview && (
+              <div className="mt-4 pt-4 border-t border-indigo-200 dark:border-indigo-800/50">
+                <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 mb-3">معاينة التوزيع لكل مهندس:</p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                  {[
+                    { label: 'الهدف المالي', value: `${(distPreview.perEngineer.targetAmount / 1000).toFixed(0)}k ج.م`, color: 'indigo' },
+                    { label: 'الصفقات', value: distPreview.perEngineer.targetDeals, color: 'emerald' },
+                    { label: 'العملاء المحتملين', value: distPreview.perEngineer.targetLeads, color: 'amber' },
+                    { label: 'الاجتماعات', value: distPreview.perEngineer.targetMeetings, color: 'purple' },
+                    { label: 'عروض الأسعار', value: distPreview.perEngineer.targetQuotations, color: 'rose' },
+                    { label: 'العروض التقديمية', value: distPreview.perEngineer.targetPresentations, color: 'cyan' },
+                    { label: 'Render', value: distPreview.perEngineer.targetRender, color: 'orange' },
+                    { label: 'الإغلاقات', value: distPreview.perEngineer.targetClosings, color: 'green' },
+                  ].map((item, i) => (
+                    <div key={i} className="p-2 rounded-lg bg-white dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-800/30 text-center">
+                      <p className="text-sm font-bold text-indigo-700 dark:text-indigo-300">{item.value}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{item.label}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Engineer Selector */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
         {salesEngineers.map((eng: any) => {
           const perf = perfData?.find((p: any) => p.engineerId === eng.id);
@@ -389,194 +523,413 @@ function IndividualGoalsTab({ year, month }: { year: number; month: number }) {
       {!selectedEngId && (
         <div className="flex flex-col items-center justify-center h-32 text-muted-foreground gap-2">
           <Users className="w-8 h-8 opacity-30" />
-          <p className="text-sm">اختر مهندساً لعرض وتعديل أهدافه</p>
+          <p className="text-sm">اختر مهندساً لعرض أهدافه الكاملة</p>
         </div>
       )}
 
+      {/* ── Engineer Detail Panel */}
       {selectedEngId && selectedEng && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Financial Target */}
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-indigo-500" />
-                  الهدف المالي
-                </CardTitle>
-                <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" onClick={() => setEditingFinancial(!editingFinancial)}>
-                  <Edit3 className="w-3 h-3" />
-                  {editingFinancial ? 'إلغاء' : 'تعديل'}
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-3 gap-3 text-center">
-                <div className="p-3 rounded-xl bg-muted/50">
-                  <p className="text-xs text-muted-foreground mb-1">الهدف</p>
-                  <p className="text-lg font-bold">
-                    {selectedEng.targetAmount > 0 ? `${(selectedEng.targetAmount / 1000).toFixed(0)}k` : '—'}
-                  </p>
-                  <p className="text-xs text-muted-foreground">ج.م</p>
-                </div>
-                <div className="p-3 rounded-xl bg-muted/50">
-                  <p className="text-xs text-muted-foreground mb-1">الفعلي</p>
-                  <p className="text-lg font-bold text-indigo-600">{(selectedEng.actualSales / 1000).toFixed(0)}k</p>
-                  <p className="text-xs text-muted-foreground">ج.م</p>
-                </div>
-                <div className="p-3 rounded-xl bg-muted/50">
-                  <p className="text-xs text-muted-foreground mb-1">التحقيق</p>
-                  <p className={`text-lg font-bold ${selectedEng.achievementPct >= 100 ? 'text-emerald-600' : selectedEng.achievementPct >= 70 ? 'text-indigo-600' : selectedEng.achievementPct >= 50 ? 'text-amber-600' : 'text-red-600'}`}>
-                    {selectedEng.achievementPct}%
-                  </p>
-                </div>
-              </div>
-              <Progress value={Math.min(selectedEng.achievementPct, 100)} className="h-2" />
-              {selectedEng.targetAmount > 0 && selectedEng.remaining > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  المتبقي: {selectedEng.remaining.toLocaleString('ar-EG')} ج.م
-                </p>
-              )}
+        <div className="space-y-4">
+          {/* Section Tabs */}
+          <div className="flex gap-1 p-1 bg-muted rounded-xl w-fit">
+            {[
+              { id: 'financial' as const, label: 'الهدف المالي', icon: TrendingUp },
+              { id: 'operational' as const, label: 'الأهداف التشغيلية', icon: Target },
+              { id: 'personal' as const, label: 'التطوير الشخصي', icon: BookOpen },
+            ].map(tab => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveSection(tab.id)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    activeSection === tab.id
+                      ? 'bg-background shadow-sm text-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
 
-              {editingFinancial && (
-                <div className="space-y-3 pt-3 border-t">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label className="text-xs">الهدف المالي (ج.م)</Label>
-                      <Input type="number" value={financialTarget} onChange={e => setFinancialTarget(e.target.value)} className="h-8 text-sm mt-1" placeholder="مثال: 500000" />
-                    </div>
-                    <div>
-                      <Label className="text-xs">عدد الأفراد</Label>
-                      <Input type="number" value={manpower} onChange={e => setManpower(e.target.value)} className="h-8 text-sm mt-1" min="0.5" step="0.5" />
-                    </div>
+          {/* ── SECTION 1: Financial Target */}
+          {activeSection === 'financial' && (
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4 text-indigo-500" />
+                    الهدف المالي — {selectedEng.engineerName}
+                  </CardTitle>
+                  <div className="flex items-center gap-2">
+                    {/* Manual Override Flag */}
+                    <Badge variant="outline" className="text-xs gap-1">
+                      <AlertTriangle className="w-3 h-3" />
+                      تعديل يدوي
+                    </Badge>
+                    <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" onClick={() => setEditingFinancial(!editingFinancial)}>
+                      <Edit3 className="w-3 h-3" />
+                      {editingFinancial ? 'إلغاء' : 'تعديل'}
+                    </Button>
                   </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-3 gap-3 text-center">
+                  <div className="p-3 rounded-xl bg-muted/50">
+                    <p className="text-xs text-muted-foreground mb-1">الهدف</p>
+                    <p className="text-lg font-bold">
+                      {selectedEng.targetAmount > 0 ? `${(selectedEng.targetAmount / 1000).toFixed(0)}k` : '—'}
+                    </p>
+                    <p className="text-xs text-muted-foreground">ج.م</p>
+                  </div>
+                  <div className="p-3 rounded-xl bg-muted/50">
+                    <p className="text-xs text-muted-foreground mb-1">الفعلي</p>
+                    <p className="text-lg font-bold text-indigo-600">{(selectedEng.actualSales / 1000).toFixed(0)}k</p>
+                    <p className="text-xs text-muted-foreground">ج.م</p>
+                  </div>
+                  <div className="p-3 rounded-xl bg-muted/50">
+                    <p className="text-xs text-muted-foreground mb-1">التحقيق</p>
+                    <p className={`text-lg font-bold ${selectedEng.achievementPct >= 100 ? 'text-emerald-600' : selectedEng.achievementPct >= 70 ? 'text-indigo-600' : selectedEng.achievementPct >= 50 ? 'text-amber-600' : 'text-red-600'}`}>
+                      {selectedEng.achievementPct}%
+                    </p>
+                  </div>
+                </div>
+                <Progress value={Math.min(selectedEng.achievementPct, 100)} className="h-2" />
+                {selectedEng.targetAmount > 0 && selectedEng.remaining > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    المتبقي: {selectedEng.remaining.toLocaleString('ar-EG')} ج.م
+                  </p>
+                )}
+                {editingFinancial && (
+                  <div className="space-y-3 pt-3 border-t">
+                    <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 text-xs text-amber-700 flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                      تعديل يدوي — سيتم كسر الربط التلقائي لهذا المهندس
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-xs">الهدف المالي (ج.م)</Label>
+                        <Input type="number" value={financialTarget} onChange={e => setFinancialTarget(e.target.value)} className="h-8 text-sm mt-1" placeholder="مثال: 500000" />
+                      </div>
+                      <div>
+                        <Label className="text-xs">عدد الأفراد</Label>
+                        <Input type="number" value={manpower} onChange={e => setManpower(e.target.value)} className="h-8 text-sm mt-1" min="0.5" step="0.5" />
+                      </div>
+                    </div>
+                    <Button
+                      size="sm" className="w-full h-8 text-xs gap-1"
+                      onClick={() => {
+                        if (!financialTarget) return toast.error('أدخل الهدف');
+                        manualOverrideMut.mutate({
+                          engineerId: selectedEngId, year, month,
+                          targetAmount: parseFloat(financialTarget),
+                        });
+                      }}
+                      disabled={manualOverrideMut.isPending}
+                    >
+                      <Save className="w-3 h-3" />
+                      حفظ الهدف المالي
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ── SECTION 2: Operational Targets */}
+          {activeSection === 'operational' && (
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Target className="w-4 h-4 text-emerald-500" />
+                    الأهداف التشغيلية — {selectedEng.engineerName}
+                  </CardTitle>
                   <Button
-                    size="sm" className="w-full h-8 text-xs gap-1"
+                    size="sm" variant="ghost" className="h-7 text-xs gap-1"
                     onClick={() => {
-                      if (!financialTarget) return toast.error('أدخل الهدف');
-                      setFinancialMut.mutate({
-                        engineerId: selectedEngId, year, month,
-                        targetAmount: parseFloat(financialTarget),
-                        manpower: parseFloat(manpower) || 1,
-                      });
+                      if (!editingOperational && opData) {
+                        const init: Record<string, string> = {};
+                        OPERATIONAL_ITEMS.forEach(item => {
+                          init[item.targetKey] = String((opData.targets as any)[item.key] ?? 0);
+                        });
+                        setOpTargets(init);
+                      } else if (!editingOperational) {
+                        const init: Record<string, string> = {};
+                        OPERATIONAL_ITEMS.forEach(item => { init[item.targetKey] = '0'; });
+                        setOpTargets(init);
+                      }
+                      setEditingOperational(!editingOperational);
                     }}
-                    disabled={setFinancialMut.isPending}
                   >
-                    <Save className="w-3 h-3" />
-                    حفظ الهدف المالي
+                    <Edit3 className="w-3 h-3" />
+                    {editingOperational ? 'إلغاء' : 'تعديل'}
                   </Button>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Operational Targets */}
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Target className="w-4 h-4 text-emerald-500" />
-                  الأهداف التشغيلية
-                </CardTitle>
-                <Button
-                  size="sm" variant="ghost" className="h-7 text-xs gap-1"
-                  onClick={() => {
-                    if (!editingOperational && opData) {
-                      const init: Record<string, string> = {};
-                      OPERATIONAL_ITEMS.forEach(item => {
-                        init[item.targetKey] = String((opData.targets as any)[item.key] ?? 0);
-                      });
-                      setOpTargets(init);
-                    }
-                    setEditingOperational(!editingOperational);
-                  }}
-                >
-                  <Edit3 className="w-3 h-3" />
-                  {editingOperational ? 'إلغاء' : 'تعديل'}
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {opData ? (
-                <div className="space-y-2">
-                  {OPERATIONAL_ITEMS.map(item => {
-                    const actual = (opData.actuals as any)[item.key] ?? 0;
-                    const target = (opData.targets as any)[item.key] ?? 0;
-                    const pct = (opData.percentages as any)[item.key] ?? 0;
-                    return (
-                      <div key={item.key} className="flex items-center gap-3">
-                        <span className="text-base w-6 shrink-0">{item.icon}</span>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex justify-between text-xs mb-0.5">
-                            <span className="font-medium">{item.label}</span>
-                            <span className={`font-bold ${pct >= 100 ? 'text-emerald-600' : pct >= 70 ? 'text-indigo-600' : pct >= 50 ? 'text-amber-600' : target === 0 ? 'text-muted-foreground' : 'text-red-600'}`}>
-                              {target === 0 ? '—' : `${actual}/${target} (${pct}%)`}
-                            </span>
-                          </div>
-                          {target > 0 && (
-                            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                              <div
-                                className={`h-full rounded-full ${pct >= 100 ? 'bg-emerald-500' : pct >= 70 ? 'bg-indigo-500' : pct >= 50 ? 'bg-amber-500' : 'bg-red-500'}`}
-                                style={{ width: `${Math.min(pct, 100)}%` }}
-                              />
+              </CardHeader>
+              <CardContent>
+                {opData ? (
+                  <div className="space-y-2">
+                    {OPERATIONAL_ITEMS.map(item => {
+                      const actual = (opData.actuals as any)[item.key] ?? 0;
+                      const target = (opData.targets as any)[item.key] ?? 0;
+                      const pct = (opData.percentages as any)[item.key] ?? 0;
+                      return (
+                        <div key={item.key} className="flex items-center gap-3">
+                          <span className="text-base w-6 shrink-0">{item.icon}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex justify-between text-xs mb-0.5">
+                              <span className="font-medium">{item.label}</span>
+                              <span className={`font-bold ${pct >= 100 ? 'text-emerald-600' : pct >= 70 ? 'text-indigo-600' : pct >= 50 ? 'text-amber-600' : target === 0 ? 'text-muted-foreground' : 'text-red-600'}`}>
+                                {target === 0 ? '—' : `${actual}/${target} (${pct}%)`}
+                              </span>
                             </div>
+                            {target > 0 && (
+                              <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full ${pct >= 100 ? 'bg-emerald-500' : pct >= 70 ? 'bg-indigo-500' : pct >= 50 ? 'bg-amber-500' : 'bg-red-500'}`}
+                                  style={{ width: `${Math.min(pct, 100)}%` }}
+                                />
+                              </div>
+                            )}
+                          </div>
+                          {editingOperational && (
+                            <Input
+                              type="number"
+                              value={opTargets[item.targetKey] ?? ''}
+                              onChange={e => setOpTargets(prev => ({ ...prev, [item.targetKey]: e.target.value }))}
+                              className="h-7 w-16 text-xs text-center shrink-0"
+                              min="0"
+                            />
                           )}
                         </div>
-                        {editingOperational && (
-                          <Input
-                            type="number"
-                            value={opTargets[item.targetKey] ?? ''}
-                            onChange={e => setOpTargets(prev => ({ ...prev, [item.targetKey]: e.target.value }))}
-                            className="h-7 w-16 text-xs text-center shrink-0"
-                            min="0"
-                          />
-                        )}
+                      );
+                    })}
+                    {editingOperational && (
+                      <>
+                        <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 text-xs text-amber-700 flex items-center gap-1.5 mt-2">
+                          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                          تعديل يدوي — سيتم كسر الربط التلقائي
+                        </div>
+                        <Button size="sm" className="w-full h-8 text-xs gap-1 mt-1" onClick={handleSaveOperational} disabled={manualOverrideMut.isPending}>
+                          <Save className="w-3 h-3" />
+                          حفظ الأهداف التشغيلية
+                        </Button>
+                      </>
+                    )}
+                    {opData.diagnosis && opData.diagnosis !== 'no_data' && (
+                      <div className={`mt-3 p-3 rounded-lg text-xs ${
+                        opData.diagnosis === 'on_track' ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 border border-emerald-200' :
+                        opData.diagnosis === 'closing' ? 'bg-amber-50 dark:bg-amber-950/20 text-amber-700 border border-amber-200' :
+                        'bg-red-50 dark:bg-red-950/20 text-red-700 border border-red-200'
+                      }`}>
+                        {opData.diagnosis === 'on_track' ? <CheckCircle2 className="w-3.5 h-3.5 inline mr-1" /> : <AlertCircle className="w-3.5 h-3.5 inline mr-1" />}
+                        {opData.diagnosis === 'on_track' && 'الأداء على المسار الصحيح'}
+                        {opData.diagnosis === 'closing' && 'النشاط كافٍ لكن نسبة الإغلاق تحتاج تحسين'}
+                        {opData.diagnosis === 'activity' && 'عدد الأنشطة أقل من المطلوب'}
+                        {opData.diagnosis === 'both' && 'كل من النشاط والإغلاق يحتاجان تحسين'}
                       </div>
-                    );
-                  })}
-                  {editingOperational && (
-                    <Button size="sm" className="w-full h-8 text-xs gap-1 mt-3" onClick={handleSaveOperational} disabled={setOperationalMut.isPending}>
-                      <Save className="w-3 h-3" />
-                      حفظ الأهداف التشغيلية
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-32 text-muted-foreground gap-2">
+                    <Target className="w-8 h-8 opacity-30" />
+                    <p className="text-sm">لا توجد أهداف تشغيلية محددة</p>
+                    <Button
+                      size="sm" variant="outline" className="h-7 text-xs gap-1"
+                      onClick={() => {
+                        const init: Record<string, string> = {};
+                        OPERATIONAL_ITEMS.forEach(item => { init[item.targetKey] = '0'; });
+                        setOpTargets(init);
+                        setEditingOperational(true);
+                      }}
+                    >
+                      <Plus className="w-3 h-3" />
+                      تحديد أهداف تشغيلية
                     </Button>
-                  )}
-                  {opData.diagnosis && opData.diagnosis !== 'no_data' && (
-                    <div className={`mt-3 p-3 rounded-lg text-xs ${
-                      opData.diagnosis === 'on_track' ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 border border-emerald-200' :
-                      opData.diagnosis === 'closing' ? 'bg-amber-50 dark:bg-amber-950/20 text-amber-700 border border-amber-200' :
-                      'bg-red-50 dark:bg-red-950/20 text-red-700 border border-red-200'
-                    }`}>
-                      {opData.diagnosis === 'on_track' ? <CheckCircle2 className="w-3.5 h-3.5 inline mr-1" /> : <AlertCircle className="w-3.5 h-3.5 inline mr-1" />}
-                      {opData.diagnosis === 'on_track' && 'الأداء على المسار الصحيح'}
-                      {opData.diagnosis === 'closing' && 'النشاط كافٍ لكن نسبة الإغلاق تحتاج تحسين'}
-                      {opData.diagnosis === 'activity' && 'عدد الأنشطة أقل من المطلوب'}
-                      {opData.diagnosis === 'both' && 'كل من النشاط والإغلاق يحتاجان تحسين'}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center h-32 text-muted-foreground gap-2">
-                  <Target className="w-8 h-8 opacity-30" />
-                  <p className="text-sm">لا توجد أهداف تشغيلية محددة</p>
-                  <Button
-                    size="sm" variant="outline" className="h-7 text-xs gap-1"
-                    onClick={() => {
-                      const init: Record<string, string> = {};
-                      OPERATIONAL_ITEMS.forEach(item => { init[item.targetKey] = '0'; });
-                      setOpTargets(init);
-                      setEditingOperational(true);
-                    }}
-                  >
-                    <Plus className="w-3 h-3" />
-                    تحديد أهداف تشغيلية
-                  </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ── SECTION 3: Personal Development */}
+          {activeSection === 'personal' && (
+            <div className="space-y-4">
+              {/* Summary */}
+              {personalGoals && personalGoals.length > 0 && (
+                <div className="grid grid-cols-3 gap-4">
+                  <Card><CardContent className="p-4 text-center">
+                    <p className="text-3xl font-bold text-indigo-600">{personalGoals.length}</p>
+                    <p className="text-xs text-muted-foreground mt-1">إجمالي الأهداف</p>
+                  </CardContent></Card>
+                  <Card><CardContent className="p-4 text-center">
+                    <p className="text-3xl font-bold text-emerald-600">{scoredGoals.length}</p>
+                    <p className="text-xs text-muted-foreground mt-1">تم تقييمها</p>
+                  </CardContent></Card>
+                  <Card><CardContent className="p-4 text-center">
+                    <p className={`text-3xl font-bold ${avgScore !== null ? (avgScore >= 80 ? 'text-emerald-600' : avgScore >= 60 ? 'text-amber-600' : 'text-red-600') : 'text-muted-foreground'}`}>
+                      {avgScore !== null ? `${avgScore}%` : '—'}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">متوسط الدرجة</p>
+                  </CardContent></Card>
                 </div>
               )}
-            </CardContent>
-          </Card>
+
+              {loadingPersonal && <div className="text-center py-6 text-muted-foreground">جاري التحميل...</div>}
+
+              {personalGoals && personalGoals.length === 0 && !showAddGoalForm && (
+                <div className="text-center py-8 text-muted-foreground">
+                  <BookOpen className="w-10 h-10 mx-auto opacity-30 mb-2" />
+                  <p className="text-sm">لا توجد أهداف شخصية لهذا الشهر</p>
+                </div>
+              )}
+
+              {personalGoals && personalGoals.map((goal: any) => (
+                <Card key={goal.id} className={`border ${goal.score !== null ? (goal.score >= 80 ? 'border-emerald-200' : goal.score >= 60 ? 'border-amber-200' : 'border-red-200') : 'border-border'}`}>
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm">{goal.objective}</p>
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          <Badge variant="outline" className="text-xs">{DEVELOPMENT_AREAS[goal.developmentArea] ?? goal.developmentArea}</Badge>
+                          <Badge variant="secondary" className="text-xs">{EVALUATION_METHODS[goal.evaluationMethod] ?? goal.evaluationMethod}</Badge>
+                          <Badge variant="outline" className="text-xs">مراجع: {goal.reviewerRole === 'admin' ? 'الإدارة' : 'المدير'}</Badge>
+                        </div>
+                        {goal.reviewNotes && <p className="text-xs text-muted-foreground mt-2 italic">"{goal.reviewNotes}"</p>}
+                      </div>
+                      <div className="text-center min-w-[60px]">
+                        {goal.score !== null ? (
+                          <>
+                            <div className={`text-2xl font-bold ${goal.score >= 80 ? 'text-emerald-600' : goal.score >= 60 ? 'text-amber-600' : 'text-red-600'}`}>{goal.score}</div>
+                            <div className="text-xs text-muted-foreground">/ 100</div>
+                          </>
+                        ) : (
+                          <Badge variant="outline" className="text-xs">لم يُقيَّم</Badge>
+                        )}
+                      </div>
+                    </div>
+                    {editingGoalId === goal.id ? (
+                      <div className="mt-3 pt-3 border-t space-y-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <Label className="text-xs">الدرجة (0-100)</Label>
+                            <Input type="number" value={editScore} onChange={e => setEditScore(e.target.value)} min="0" max="100" className="h-8 text-sm mt-1" />
+                          </div>
+                          <div>
+                            <Label className="text-xs">ملاحظات المراجع</Label>
+                            <Input value={editNotes} onChange={e => setEditNotes(e.target.value)} className="h-8 text-sm mt-1" placeholder="اختياري" />
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm" className="flex-1 h-8 text-xs gap-1"
+                            onClick={() => {
+                              updateGoalMut.mutate({
+                                id: goal.id, engineerId: selectedEngId, year, month,
+                                objective: goal.objective, developmentArea: goal.developmentArea,
+                                evaluationMethod: goal.evaluationMethod, reviewerRole: goal.reviewerRole,
+                                score: editScore ? parseInt(editScore) : undefined,
+                                reviewNotes: editNotes || undefined,
+                              });
+                            }}
+                            disabled={updateGoalMut.isPending}
+                          >
+                            <Save className="w-3 h-3" />
+                            حفظ التقييم
+                          </Button>
+                          <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => setEditingGoalId(null)}>إلغاء</Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <Button
+                        size="sm" variant="ghost" className="w-full h-7 text-xs mt-2 gap-1"
+                        onClick={() => { setEditingGoalId(goal.id); setEditScore(goal.score !== null ? String(goal.score) : ''); setEditNotes(goal.reviewNotes ?? ''); }}
+                      >
+                        <Edit3 className="w-3 h-3" />
+                        {goal.score !== null ? 'تعديل التقييم' : 'إضافة تقييم'}
+                      </Button>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+
+              {/* Add New Goal */}
+              {showAddGoalForm ? (
+                <Card className="border-dashed border-indigo-300">
+                  <CardContent className="p-4 space-y-3">
+                    <h3 className="font-semibold text-sm flex items-center gap-2">
+                      <Plus className="w-4 h-4 text-indigo-500" />
+                      هدف شخصي جديد
+                    </h3>
+                    <div>
+                      <Label className="text-xs">الهدف / الإنجاز المطلوب *</Label>
+                      <Textarea
+                        value={newObjective}
+                        onChange={e => setNewObjective(e.target.value)}
+                        placeholder="مثال: إتمام 3 عروض تقديمية احترافية مع تسجيل فيديو"
+                        className="mt-1 h-20 resize-none text-sm"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-xs">مجال التطوير</Label>
+                        <select value={newArea} onChange={e => setNewArea(e.target.value)} className="w-full h-8 text-sm border rounded-md px-2 bg-background mt-1">
+                          {Object.entries(DEVELOPMENT_AREAS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <Label className="text-xs">طريقة التقييم</Label>
+                        <select value={newMethod} onChange={e => setNewMethod(e.target.value)} className="w-full h-8 text-sm border rounded-md px-2 bg-background mt-1">
+                          {Object.entries(EVALUATION_METHODS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <Label className="text-xs">المراجع</Label>
+                      <select value={newReviewerRole} onChange={e => setNewReviewerRole(e.target.value)} className="w-full h-8 text-sm border rounded-md px-2 bg-background mt-1">
+                        <option value="manager">المدير المباشر</option>
+                        <option value="admin">الإدارة العليا</option>
+                      </select>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm" className="flex-1 h-8 text-xs gap-1"
+                        onClick={() => {
+                          if (!newObjective.trim()) return toast.error('أدخل الهدف');
+                          addGoalMut.mutate({
+                            engineerId: selectedEngId, year, month,
+                            objective: newObjective.trim(),
+                            developmentArea: newArea as any,
+                            evaluationMethod: newMethod as any,
+                            reviewerRole: newReviewerRole as any,
+                          });
+                        }}
+                        disabled={addGoalMut.isPending}
+                      >
+                        <Save className="w-3 h-3" />
+                        حفظ الهدف
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => setShowAddGoalForm(false)}>إلغاء</Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : (
+                <Button variant="outline" className="w-full gap-2 border-dashed" onClick={() => setShowAddGoalForm(true)}>
+                  <Plus className="w-4 h-4" />
+                  إضافة هدف شخصي جديد
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       )}
 
-      {/* All Engineers Summary Table */}
+      {/* ── All Engineers Summary Table */}
       {perfData && perfData.length > 0 && (
         <Card>
           <CardHeader className="pb-3">
@@ -907,12 +1260,14 @@ export default function PlanningModule() {
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [activeTab, setActiveTab] = useState<'company' | 'individual' | 'personal'>('company');
+  const { canViewSection } = useSectionPermission();
 
-  const tabs = [
-    { id: 'company' as const,    label: 'هدف الشركة',      icon: Target },
-    { id: 'individual' as const, label: 'أهداف المهندسين', icon: Users },
-    { id: 'personal' as const,   label: 'التطوير الشخصي',  icon: BookOpen },
+  const allTabs = [
+    { id: 'company' as const,    label: 'هدف الشركة',      icon: Target,    section: 'company_goals' },
+    { id: 'individual' as const, label: 'أهداف المهندسين', icon: Users,     section: 'engineer_goals' },
+    { id: 'personal' as const,   label: 'التطوير الشخصي',  icon: BookOpen,  section: 'personal_goals' },
   ];
+  const tabs = allTabs.filter(t => canViewSection('planning', t.section));
 
   return (
     <div className="space-y-6 p-6">

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { useSectionPermission } from "@/hooks/useSectionPermission";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -110,6 +111,7 @@ export default function KPIModule() {
   const { data: companyClosingBonus } = trpc.kpi.companyClosingBonus.useQuery({ year, month });
   const [kpiTab, setKpiTab] = useState<'sales'|'tele'|'site'|'closing'|'earnings'|'rewards'|'lost'|'performance'|'activities'>('sales');
   const [activityEngId, setActivityEngId] = useState<number | null>(null);
+  const { canViewSection } = useSectionPermission();
   const { data: allPerfScores } = trpc.planning.allEngineersPerformanceScores.useQuery({ year, month });
   const { data: activityBreakdown } = trpc.planning.getOperationalBreakdown.useQuery(
     { engineerId: activityEngId ?? 0, year, month },
@@ -795,16 +797,16 @@ export default function KPIModule() {
       {/* ─── ROLE TABS ─── */}
       <div className="flex flex-wrap gap-2 border-b pb-2">
         {([
-          { id: 'sales', label: 'مبيعات (Sales Engineers)' },
-          { id: 'tele', label: 'Tele Sales' },
-          { id: 'site', label: 'Site Engineers' },
-          { id: 'closing', label: 'Company Closing KPI' },
-          { id: 'earnings', label: 'الاستحقاقات التفصيلية' },
-          { id: 'rewards', label: 'نظام المكافآت' },
-          { id: 'lost', label: 'تأثير الصفقات الخاسرة' },
-          { id: 'performance', label: '🎯 التقييم الشامل' },
-          { id: 'activities', label: '📊 تحليل الأنشطة' },
-        ] as const).map(tab => (
+          { id: 'sales', label: 'مبيعات (Sales Engineers)', section: 'engineer_details' },
+          { id: 'tele', label: 'Tele Sales', section: 'engineer_details' },
+          { id: 'site', label: 'Site Engineers', section: 'engineer_details' },
+          { id: 'closing', label: 'Company Closing KPI', section: 'company_closing' },
+          { id: 'earnings', label: 'الاستحقاقات التفصيلية', section: 'monthly_earnings' },
+          { id: 'rewards', label: 'نظام المكافآت', section: 'rewards' },
+          { id: 'lost', label: 'تأثير الصفقات الخاسرة', section: 'lost_deals_impact' },
+          { id: 'performance', label: '🎯 التقييم الشامل', section: 'overall_evaluation' },
+          { id: 'activities', label: '📊 تحليل الأنشطة', section: 'activities_analysis' },
+        ] as const).filter(tab => canViewSection('kpi', tab.section)).map(tab => (
           <button key={tab.id} onClick={() => setKpiTab(tab.id)}
             className={`px-3 py-1.5 text-xs font-semibold rounded-full border transition-colors ${
               kpiTab === tab.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-muted text-muted-foreground border-muted hover:bg-muted/80'

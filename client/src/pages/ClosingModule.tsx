@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { useSectionPermission } from "@/hooks/useSectionPermission";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -73,6 +74,7 @@ export default function ClosingModule() {
   const canEdit = session?.role === 'admin' || session?.role === 'admin_sales';
 
   const [activeTab, setActiveTab] = useState<'deals' | 'discount' | 'engineers' | 'lost'>('deals');
+  const { canViewSection } = useSectionPermission();
   const [showAdd, setShowAdd] = useState(false);
   const [filterStage, setFilterStage] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -313,11 +315,11 @@ export default function ClosingModule() {
       {/* Tabs */}
       <div className="flex gap-0 border-b border-border overflow-x-auto">
         {[
-          { key: 'deals', label: 'الصفقات', icon: BarChart3 },
-          { key: 'discount', label: 'نظام الخصومات', icon: Percent },
-          { key: 'engineers', label: 'المهندسون', icon: Users },
-          { key: 'lost', label: 'الصفقات الخاسرة', icon: TrendingDown },
-        ].map(tab => (
+          { key: 'deals', label: 'الصفقات', icon: BarChart3, section: 'deals_pipeline' },
+          { key: 'discount', label: 'نظام الخصومات', icon: Percent, section: 'discount_system' },
+          { key: 'engineers', label: 'المهندسون', icon: Users, section: 'engineers_tab' },
+          { key: 'lost', label: 'الصفقات الخاسرة', icon: TrendingDown, section: 'lost_deals' },
+        ].filter(tab => canViewSection('closing', tab.section)).map(tab => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key as any)}
