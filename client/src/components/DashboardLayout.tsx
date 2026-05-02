@@ -15,7 +15,7 @@ import {
 import { useIsMobile } from "@/hooks/useMobile";
 import { useLocalAuth } from "@/hooks/useLocalAuth";
 import { useRoleAccess } from "@/hooks/useRoleAccess";
-import { LayoutDashboard, PanelLeft, BarChart2, CheckSquare, UserPlus, MapPin, Handshake, TrendingUp, Award, DollarSign, Target, LogOut, Crown, Zap, FileBarChart, Users, Shield } from "lucide-react";
+import { LayoutDashboard, PanelLeft, BarChart2, CheckSquare, UserPlus, MapPin, Handshake, TrendingUp, Award, DollarSign, Target, LogOut, LogIn, Crown, Zap, FileBarChart, Users, Shield } from "lucide-react";
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
@@ -242,7 +242,7 @@ function DashboardLayoutContent({
             ))}
           </SidebarContent>
 
-          <SidebarFooter className="p-3">
+          <SidebarFooter className="p-3 border-t border-border/40">
               <div className="flex items-center gap-3 rounded-lg px-1 py-1 w-full">
               <Avatar className="h-9 w-9 border shrink-0">
                 <AvatarFallback className="text-xs font-medium bg-primary/10 text-primary">
@@ -266,7 +266,44 @@ function DashboardLayoutContent({
                    session?.role === "system_user" ? "مستخدم النظام" : "مستخدم"}
                 </p>
               </div>
+              {session ? (
+                <button
+                  onClick={() => logoutMut.mutate()}
+                  disabled={logoutMut.isPending}
+                  title="تسجيل الخروج"
+                  className="shrink-0 group-data-[collapsible=icon]:hidden p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                >
+                  <LogOut className="h-4 w-4" />
+                </button>
+              ) : (
+                <button
+                  onClick={() => setLocation("/login")}
+                  title="تسجيل الدخول"
+                  className="shrink-0 group-data-[collapsible=icon]:hidden p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                >
+                  <LogIn className="h-4 w-4" />
+                </button>
+              )}
             </div>
+            {session && (
+              <button
+                onClick={() => logoutMut.mutate()}
+                disabled={logoutMut.isPending}
+                className="hidden group-data-[collapsible=icon]:flex w-full items-center justify-center p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                title="تسجيل الخروج"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
+            )}
+            {!session && (
+              <button
+                onClick={() => setLocation("/login")}
+                className="hidden group-data-[collapsible=icon]:flex w-full items-center justify-center p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                title="تسجيل الدخول"
+              >
+                <LogIn className="h-4 w-4" />
+              </button>
+            )}
           </SidebarFooter>
         </Sidebar>
         <div

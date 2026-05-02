@@ -168,16 +168,19 @@ export function useRoleAccess(role: string | null | undefined): RoleAccess {
   const { data: dbPerms, isLoading } = trpc.localAuth.myPermissions.useQuery(
     undefined,
     {
-      enabled: !!r,
+      // Always fetch — server checks session/OAuth internally
       staleTime: 30_000, // cache 30s
       retry: false,
     }
   );
 
   return useMemo(() => {
+    // If we have DB permissions, use them (works for both local session and OAuth)
+    if (dbPerms && dbPerms.length > 0) return buildDynamicAccess(r, dbPerms as any[]);
+    if (isLoading) return buildDefaultAccess(r, true);
+    // No session at all
     if (!r) return buildDefaultAccess(null, false);
-    if (isLoading || !dbPerms) return buildDefaultAccess(r, isLoading);
-    return buildDynamicAccess(r, dbPerms as any[]);
+    return buildDefaultAccess(r, false);
   }, [r, dbPerms, isLoading]);
 }
 

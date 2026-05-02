@@ -1264,9 +1264,17 @@ export const appRouter = router({
     // جلب بيانات الجلسة الحالية
     me: publicProcedure
       .query(async ({ ctx }) => {
+        // 1) Try local session (username/password login)
         const session = await getLocalSessionFromRequest(ctx.req);
-        if (!session) return null;
-        return { engineerId: session.engineerId, username: session.username, role: session.role, name: session.name };
+        if (session) {
+          return { engineerId: session.engineerId, username: session.username, role: session.role, name: session.name };
+        }
+        // 2) Fallback: Manus OAuth user → treat as admin
+        if (ctx.user) {
+          const role = ctx.user.role === 'admin' ? 'admin' : 'admin';
+          return { engineerId: 0, username: ctx.user.email ?? ctx.user.name ?? 'admin', role, name: ctx.user.name ?? 'Admin' };
+        }
+        return null;
       }),
     // تسجيل الخروج
     logout: publicProcedure
@@ -1278,9 +1286,16 @@ export const appRouter = router({
     // جلب صلاحيات الـ role الحالي (للـ DashboardLayout)
     myPermissions: publicProcedure
       .query(async ({ ctx }) => {
+        // 1) Try local session (username/password login)
         const session = await getLocalSessionFromRequest(ctx.req);
-        if (!session) return [];
-        return getRolePermissions(session.role);
+        if (session) {
+          return getRolePermissions(session.role);
+        }
+        // 2) Fallback: Manus OAuth user → admin permissions
+        if (ctx.user) {
+          return getRolePermissions('admin');
+        }
+        return [];
       }),
   }),
 
