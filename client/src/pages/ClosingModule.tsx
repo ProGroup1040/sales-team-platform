@@ -96,9 +96,9 @@ export default function ClosingModule() {
   const { data: stats } = trpc.closing.stats.useQuery({ year: filterYear, month: filterMonth });
   const { data: dealsData } = trpc.closing.list.useQuery({ limit: 200, stage: filterStage !== 'all' ? filterStage : undefined, year: filterYear, month: filterMonth });
   const { data: engineers } = trpc.engineers.list.useQuery();
-  const { data: discountSummary } = trpc.closing.discountSummary.useQuery();
+  const { data: discountSummary } = trpc.closing.discountSummary.useQuery({ year: filterYear, month: filterMonth });
   const { data: engDiscounts } = trpc.closing.engineerDiscountSummary.useQuery();
-  const { data: lostAnalysis } = trpc.closing.lostDealsAnalysis.useQuery();
+  const { data: lostAnalysis } = trpc.closing.lostDealsAnalysis.useQuery({ year: filterYear, month: filterMonth });
 
   // ─── Deal-Level Discount Distribution ───────────────────────────────────────
   const [discountSubTab, setDiscountSubTab] = useState<'overview' | 'deal_distribution'>('overview');
@@ -123,6 +123,7 @@ export default function ClosingModule() {
   const invalidateAll = () => {
     utils.closing.list.invalidate({ year: filterYear, month: filterMonth });
     utils.closing.stats.invalidate({ year: filterYear, month: filterMonth });
+    utils.closing.discountSummary.invalidate({ year: filterYear, month: filterMonth });
     utils.closing.discountSummary.invalidate();
     utils.closing.engineerDiscountSummary.invalidate();
     utils.closing.lostDealsAnalysis.invalidate();
@@ -509,6 +510,25 @@ export default function ClosingModule() {
                 <div className="text-xs text-muted-foreground">ج.م</div>
               </CardContent>
             </Card>
+          </div>
+
+          {/* Closing Rate + Lost Deals Summary */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card className="bg-purple-950/20 border-purple-700/40"><CardContent className="pt-4">
+              <div className="flex items-center gap-2 mb-1"><TrendingUp className="h-4 w-4 text-purple-400" /><span className="text-xs text-muted-foreground">نسبة الإغلاق</span></div>
+              <div className="text-2xl font-bold text-purple-400">{(discountSummary as any)?.closingRate ?? 0}%</div>
+              <div className="text-xs text-muted-foreground">{(discountSummary as any)?.closedCount ?? 0} مغلقة من {((discountSummary as any)?.closedCount ?? 0) + ((discountSummary as any)?.lostCount ?? 0)}</div>
+            </CardContent></Card>
+            <Card className="bg-red-950/20 border-red-700/40"><CardContent className="pt-4">
+              <div className="flex items-center gap-2 mb-1"><XCircle className="h-4 w-4 text-red-400" /><span className="text-xs text-muted-foreground">الصفقات الخاسرة</span></div>
+              <div className="text-2xl font-bold text-red-400">{(discountSummary as any)?.lostCount ?? 0}</div>
+              <div className="text-xs text-muted-foreground">قيمة: {fmt((discountSummary as any)?.lostValue ?? 0)} ج.م</div>
+            </CardContent></Card>
+            <Card className="bg-blue-950/20 border-blue-700/40"><CardContent className="pt-4">
+              <div className="flex items-center gap-2 mb-1"><TrendingUp className="h-4 w-4 text-blue-400" /><span className="text-xs text-muted-foreground">Pipeline الحالي</span></div>
+              <div className="text-2xl font-bold text-blue-400">{(discountSummary as any)?.pipelineCount ?? 0}</div>
+              <div className="text-xs text-muted-foreground">قيمة: {fmt(discountSummary?.pipeline ?? 0)} ج.م</div>
+            </CardContent></Card>
           </div>
 
           {/* Realized vs Potential Discount */}
@@ -933,6 +953,11 @@ export default function ClosingModule() {
       <Dialog open={showAdd} onOpenChange={setShowAdd}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>إضافة صفقة جديدة</DialogTitle></DialogHeader>
+          {/* Month Attribution Notice */}
+          <div className="flex items-start gap-2 rounded-lg border border-blue-500/30 bg-blue-950/20 px-3 py-2 text-sm text-blue-300">
+            <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-blue-400" />
+            <span>سيتم احتساب هذه الصفقة ضمن شهر <strong className="text-blue-200">{MONTHS_AR[filterMonth - 1]} {filterYear}</strong>. هل تريد المتابعة؟</span>
+          </div>
           <div className="space-y-3">
             <div><Label>المهندس المسؤول *</Label>
               <Select value={newDeal.engineerId} onValueChange={v => setNewDeal(p => ({ ...p, engineerId: v }))}>

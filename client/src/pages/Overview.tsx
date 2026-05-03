@@ -269,7 +269,7 @@ export default function Overview() {
   const { data: collectionsStats } = trpc.collections.stats.useQuery();
   const { data: salesTrend } = trpc.sales.trend.useQuery({ months: 6 });
   const { data: kpiData } = trpc.kpi.engineers.useQuery({ year: YEAR, month: MONTH });
-  const { data: dealsList } = trpc.closing.list.useQuery({ limit: 5 });
+  const { data: dealsList } = trpc.closing.list.useQuery({ limit: 5, year: YEAR, month: MONTH });
   const { data: missingRecordings } = trpc.tasks.missingRecordings.useQuery({});
   const { data: pendingReviews } = trpc.tasks.pendingReviews.useQuery();
   // Playbook insights: get per-engineer playbook usage from workDist

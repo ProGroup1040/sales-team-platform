@@ -615,7 +615,7 @@ export const appRouter = router({
       discountNote: z.string().optional(),
     })).mutation(async ({ input }) => { await updateDealFull(input.id, input); return { success: true }; }),
     // ─── Discount System ────────────────────────────────────────────────────────────────────────────────────────
-    discountSummary: publicProcedure.query(async () => getDiscountSummary()),
+    discountSummary: publicProcedure.input(z.object({ year: z.number().optional(), month: z.number().optional() })).query(async ({ input }) => getDiscountSummary(input.year, input.month)),
     validateDiscount: publicProcedure.input(z.object({
       dealId: z.number().optional(),
       discountValue: z.number().min(0),
@@ -645,7 +645,7 @@ export const appRouter = router({
       return { success: true };
     }),
     // ─── Lost Deal Analysis ─────────────────────────────────────────────────────
-    lostDealsAnalysis: publicProcedure.query(async () => getLostDealsAnalysis()),
+    lostDealsAnalysis: publicProcedure.input(z.object({ year: z.number().optional(), month: z.number().optional() })).query(async ({ input }) => getLostDealsAnalysis(input.year, input.month)),
     lostReasonLabels: publicProcedure.query(async () => LOST_REASON_LABELS),
     // ─── Update deal with lostReason ────────────────────────────────────────────
     updateDealStage: publicProcedure.input(z.object({

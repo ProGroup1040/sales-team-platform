@@ -214,6 +214,9 @@ export const deals = mysqlTable("deals", {
   savedDiscountBonus: decimal("savedDiscountBonus", { precision: 14, scale: 2 }).default("0").notNull(),
   discountApprovalStatus: mysqlEnum("discountApprovalStatus", ["none", "pending", "approved", "rejected"]).default("none").notNull(),
   discountApprovedBy: varchar("discountApprovedBy", { length: 120 }),
+  // ─── Closing Month Attribution (CRITICAL: deals attributed by closedAt month) ──
+  closingMonth: int("closingMonth"),   // 1-12: month of closing (set when stage → closed_won/lost)
+  closingYear: int("closingYear"),    // e.g. 2026
   // ─── Lost Deal Analysis ─────────────────────────────────────────────────────
   lostReason: mysqlEnum("lostReason", ["price_high", "competitor", "slow_response", "wrong_product", "not_serious", "budget_cut", "other"]),
   lostReasonNote: varchar("lostReasonNote", { length: 255 }),

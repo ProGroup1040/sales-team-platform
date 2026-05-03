@@ -1134,3 +1134,38 @@
 ## إصلاح تسجيل الدخول والخروج
 - [x] إضافة زر تسجيل الدخول (Login) في الـ Sidebar أو الـ Header
 - [x] إضافة زر تسجيل الخروج (Logout) في الـ Sidebar أو الـ Header
+
+## تعديلات موديول التفاوض والإغلاق + نظام الخصومات (Critical - 3 مايو 2026)
+
+### أولاً: Schema
+- [x] إضافة حقل closingMonth (int) و closingYear (int) في جدول deals
+- [x] تطبيق migration SQL
+
+### ثانياً: Backend - منطق الفلترة
+- [x] تصحيح getDealsStats: فلترة closed_won بـ closingMonth/closingYear، وفلترة Pipeline بـ createdAt
+- [x] تصحيح getDealsList: نفس المنطق (closed_won → closingMonth، غيرها → createdAt)
+- [x] تصحيح getDiscountSummary: إضافة year/month parameter وفلترة بالشهر
+- [x] تصحيح getMonthlySalesStats: استخدام netValue فقط
+- [x] تصحيح getEngineersSalesPerformance: استخدام netValue فقط
+- [x] تصحيح getSalesControlStats: استخدام netValue فقط
+- [x] تصحيح getEngineersKPI: استخدام netValue فقط
+- [x] تحديث createDealWithDiscount: حفظ closingMonth و closingYear عند الإنشاء
+- [x] تحديث updateDealFull: تحديث closingMonth و closingYear عند الإغلاق
+
+### ثالثاً: Frontend - ClosingModule
+- [x] إضافة رسالة تأكيد الشهر في نافذة إضافة الصفقة
+- [x] عرض Gross vs Net بوضوح في قائمة الصفقات
+- [x] ربط فلتر الشهر بالـ Discount tab (getDiscountSummary يأخذ year/month)
+- [x] ربط lostDealsAnalysis بفلتر year/month
+- [x] إضافة بطاقات نسبة الإغلاق + الصفقات الخاسرة + Pipeline في الـ discount tab
+
+### رابعاً: توحيد فلتر الشهر
+- [x] KPI Module: يستخدم year/month بالفعل
+- [x] Sales Module: يستخدم year/month بالفعل
+- [x] Discount tab في Closing: مربوط بفلتر الشهر المحدد
+- [x] Overview: closing.list مربوط بالشهر الحالي
+
+### خامساً: الاختبارات
+- [x] Vitest: اختبار منطق الفلترة بالشهر (closedAt vs createdAt) - 8 اختبارات ناجحة
+- [x] Vitest: اختبار حساب netValue = grossValue - discountValue
+- [x] Vitest: اختبار استقلالية بيانات كل شهر

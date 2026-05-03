@@ -295,6 +295,13 @@
       "when": 1777689773152,
       "tag": "0041_steep_jack_murdock",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "5",
+      "when": 1777825277326,
+      "tag": "0042_windy_bill_hollister",
+      "breakpoints": true
     }
   ]
 }

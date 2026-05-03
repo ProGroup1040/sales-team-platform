@@ -1,4 +1,4 @@
-import { and, between, count, desc, eq, gte, isNull, lte, or, sql, sum, avg, lt, ne, inArray, notInArray } from "drizzle-orm";
+import { and, between, count, desc, eq, gte, isNull, lte, or, sql, sum, avg, lt, ne, inArray, notInArray, not } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser, users,
@@ -536,18 +536,38 @@ export async function getDealsStats(year: number, month: number) {
   if (!db) return { open: 0, closedWon: 0, closedLost: 0, totalValue: 0, closedValue: 0, conversionRate: 0, byStage: [] };
   const startDate = new Date(year, month - 1, 1);
   const endDate = new Date(year, month, 0, 23, 59, 59);
-  const allDeals = await db.select().from(deals).where(between(deals.createdAt, startDate, endDate));
-  const open = allDeals.filter(d => !['closed_won', 'closed_lost'].includes(d.stage)).length;
-  const closedWon = allDeals.filter(d => d.stage === 'closed_won').length;
-  const closedLost = allDeals.filter(d => d.stage === 'closed_lost').length;
+  // CRITICAL: closed deals are attributed by closingMonth/closingYear (= closedAt month)
+  // Pipeline deals are shown if they were created in this month OR are still open
+  const closedDealsThisMonth = await db.select().from(deals).where(
+    and(
+      eq(deals.isDeleted, 0),
+      or(
+        and(eq(deals.stage, 'closed_won'), eq(deals.closingMonth as any, month), eq(deals.closingYear as any, year)),
+        and(eq(deals.stage, 'closed_lost'), eq(deals.closingMonth as any, month), eq(deals.closingYear as any, year)),
+        // Fallback: use closedAt if closingMonth not set
+        and(eq(deals.stage, 'closed_won'), isNull(deals.closingMonth as any), between(deals.closedAt as any, startDate, endDate)),
+        and(eq(deals.stage, 'closed_lost'), isNull(deals.closingMonth as any), between(deals.closedAt as any, startDate, endDate)),
+      )
+    )
+  );
+  const pipelineDeals = await db.select().from(deals).where(
+    and(
+      eq(deals.isDeleted, 0),
+      not(inArray(deals.stage, ['closed_won', 'closed_lost'])),
+      between(deals.createdAt, startDate, endDate)
+    )
+  );
+  const allDeals = [...closedDealsThisMonth, ...pipelineDeals];
+  const open = pipelineDeals.length;
+  const closedWon = closedDealsThisMonth.filter(d => d.stage === 'closed_won').length;
+  const closedLost = closedDealsThisMonth.filter(d => d.stage === 'closed_lost').length;
   const totalValue = allDeals.reduce((s, d) => s + parseFloat(d.value), 0);
-  const closedValue = allDeals.filter(d => d.stage === 'closed_won').reduce((s, d) => s + parseFloat((d.netValue as string) || d.value || '0'), 0);
-
+  // CRITICAL: closedValue uses netValue (after discount)
+  const closedValue = closedDealsThisMonth.filter(d => d.stage === 'closed_won').reduce((s, d) => s + parseFloat((d.netValue as string) || d.value || '0'), 0);
   // Conversion rate from visits
   const visitsCount = await db.select({ total: count() }).from(visits).where(between(visits.scheduledAt, startDate, endDate));
   const totalVisits = visitsCount[0]?.total ?? 0;
   const conversionRate = totalVisits > 0 ? Math.round((closedWon / totalVisits) * 100) : 0;
-
   const stageMap: Record<string, { count: number; value: number }> = {};
   allDeals.forEach(d => {
     if (!stageMap[d.stage]) stageMap[d.stage] = { count: 0, value: 0 };
@@ -555,25 +575,59 @@ export async function getDealsStats(year: number, month: number) {
     stageMap[d.stage].value += parseFloat(d.value);
   });
   const byStage = Object.entries(stageMap).map(([stage, data]) => ({ stage, ...data }));
-
   return { open, closedWon, closedLost, totalValue, closedValue, conversionRate, byStage };
 }
 
 export async function getDealsList(limit = 20, offset = 0, stage?: string, year?: number, month?: number) {
   const db = await getDb();
   if (!db) return { data: [], total: 0 };
-  const conditions: any[] = [];
-  if (stage) conditions.push(eq(deals.stage, stage as any));
+  // CRITICAL: closed deals attributed by closingMonth/closingYear; pipeline by createdAt
+  let whereClause: any = eq(deals.isDeleted, 0);
   if (year && month) {
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 0, 23, 59, 59);
-    conditions.push(between(deals.createdAt, startDate, endDate));
+    if (stage && (stage === 'closed_won' || stage === 'closed_lost')) {
+      // Closed deals: use closingMonth/closingYear (fallback to closedAt)
+      whereClause = and(
+        eq(deals.isDeleted, 0),
+        eq(deals.stage, stage as any),
+        or(
+          and(eq(deals.closingMonth as any, month), eq(deals.closingYear as any, year)),
+          and(isNull(deals.closingMonth as any), between(deals.closedAt as any, startDate, endDate))
+        )
+      );
+    } else if (stage && stage !== 'all') {
+      // Pipeline with specific stage: use createdAt
+      whereClause = and(
+        eq(deals.isDeleted, 0),
+        eq(deals.stage, stage as any),
+        between(deals.createdAt, startDate, endDate)
+      );
+    } else {
+      // All deals for this month: closed by closingMonth OR pipeline by createdAt
+      whereClause = and(
+        eq(deals.isDeleted, 0),
+        or(
+          and(inArray(deals.stage, ['closed_won', 'closed_lost']),
+            or(
+              and(eq(deals.closingMonth as any, month), eq(deals.closingYear as any, year)),
+              and(isNull(deals.closingMonth as any), between(deals.closedAt as any, startDate, endDate))
+            )
+          ),
+          and(
+            not(inArray(deals.stage, ['closed_won', 'closed_lost'])),
+            between(deals.createdAt, startDate, endDate)
+          )
+        )
+      );
+    }
+  } else if (stage && stage !== 'all') {
+    whereClause = and(eq(deals.isDeleted, 0), eq(deals.stage, stage as any));
   }
   const data = await db.select().from(deals)
-    .where(conditions.length ? and(...conditions) : undefined)
+    .where(whereClause)
     .orderBy(desc(deals.createdAt)).limit(limit).offset(offset);
-  const [{ total }] = await db.select({ total: count() }).from(deals)
-    .where(conditions.length ? and(...conditions) : undefined);
+  const [{ total }] = await db.select({ total: count() }).from(deals).where(whereClause);
   return { data, total };
 }
 
@@ -2806,38 +2860,70 @@ export function getDiscountTierInfo(totalVolume: number): { tierLabel: string; d
 }
 
 /** ملخص الخصومات الكامل (Total Volume + Tier + Allowed + Used + Remaining) */
-export async function getDiscountSummary() {
+export async function getDiscountSummary(year?: number, month?: number) {
   const db = await getDb();
   if (!db) return null;
-
-  const allDeals = await db.select().from(deals).where(eq(deals.isDeleted, 0));
-
-  // Actual Sales = closed_won deals
-  const actualSales = allDeals
-    .filter(d => d.stage === 'closed_won')
-    .reduce((s, d) => s + parseFloat(d.value as string), 0);
-
-  // Pipeline = deals not closed (proposal, negotiation, contract_sent)
-  const pipeline = allDeals
-    .filter(d => !['closed_won', 'closed_lost'].includes(d.stage))
-    .reduce((s, d) => s + parseFloat(d.value as string), 0);
-
+  // CRITICAL: each month has independent discount data
+  // closed_won deals: attributed by closingMonth/closingYear
+  // pipeline deals: attributed by createdAt month
+  let closedDeals: any[];
+  let pipelineDeals: any[];
+  if (year && month) {
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0, 23, 59, 59);
+    closedDeals = await db.select().from(deals).where(
+      and(
+        eq(deals.isDeleted, 0),
+        eq(deals.stage, 'closed_won'),
+        or(
+          and(eq(deals.closingMonth as any, month), eq(deals.closingYear as any, year)),
+          and(isNull(deals.closingMonth as any), between(deals.closedAt as any, startDate, endDate))
+        )
+      )
+    );
+    pipelineDeals = await db.select().from(deals).where(
+      and(
+        eq(deals.isDeleted, 0),
+        not(inArray(deals.stage, ['closed_won', 'closed_lost'])),
+        between(deals.createdAt, startDate, endDate)
+      )
+    );
+  } else {
+    const allDeals = await db.select().from(deals).where(eq(deals.isDeleted, 0));
+    closedDeals = allDeals.filter(d => d.stage === 'closed_won');
+    pipelineDeals = allDeals.filter(d => !['closed_won', 'closed_lost'].includes(d.stage));
+  }
+  // CRITICAL: actualSales uses netValue (after discount)
+  const actualSales = closedDeals.reduce((s, d) => s + parseFloat((d.netValue as string) || d.value || '0'), 0);
+  const pipeline = pipelineDeals.reduce((s, d) => s + parseFloat(d.value as string), 0);
   const totalVolume = actualSales + pipeline;
   const { tierLabel, discountPct } = getDiscountTierInfo(totalVolume);
   const allowedDiscount = totalVolume * (discountPct / 100);
-
-  // Used Discount = مجموع الخصومات على الصفقات المغلقة (closed_won)
-  const usedDiscount = allDeals
-    .filter(d => d.stage === 'closed_won')
-    .reduce((s, d) => s + parseFloat(d.discountValue as string || '0'), 0);
-
+  // Used Discount = مجموع الخصومات على الصفقات المغلقة (closed_won) في هذا الشهر
+  const usedDiscount = closedDeals.reduce((s, d) => s + parseFloat(d.discountValue as string || '0'), 0);
   const remainingDiscount = Math.max(0, allowedDiscount - usedDiscount);
-  // Realized Discount = خصم مستخدم فعلياً على صفقات closed_won
   const realizedDiscount = usedDiscount;
-  // Potential Discount = خصم محتمل على الـ Pipeline الحالي
-  const potentialDiscount = allDeals
-    .filter(d => !['closed_won', 'closed_lost'].includes(d.stage))
-    .reduce((s, d) => s + parseFloat(d.discountValue as string || '0'), 0);
+  const potentialDiscount = pipelineDeals.reduce((s, d) => s + parseFloat(d.discountValue as string || '0'), 0);
+  // Lost deals this month
+  let lostDeals: any[] = [];
+  if (year && month) {
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0, 23, 59, 59);
+    lostDeals = await db.select().from(deals).where(
+      and(
+        eq(deals.isDeleted, 0),
+        eq(deals.stage, 'closed_lost'),
+        or(
+          and(eq(deals.closingMonth as any, month), eq(deals.closingYear as any, year)),
+          and(isNull(deals.closingMonth as any), between(deals.closedAt as any, startDate, endDate))
+        )
+      )
+    );
+  }
+  const lostValue = lostDeals.reduce((s, d) => s + parseFloat(d.value as string || '0'), 0);
+  const closingRate = (closedDeals.length + lostDeals.length) > 0
+    ? Math.round((closedDeals.length / (closedDeals.length + lostDeals.length)) * 100)
+    : 0;
   return {
     actualSales,
     pipeline,
@@ -2849,6 +2935,11 @@ export async function getDiscountSummary() {
     remainingDiscount,
     realizedDiscount,
     potentialDiscount,
+    lostValue,
+    closingRate,
+    closedCount: closedDeals.length,
+    lostCount: lostDeals.length,
+    pipelineCount: pipelineDeals.length,
   };
 }
 /** التحقق من أن خصم صفقة جديدة لا يتجاوز الحد المتبقي */
@@ -2930,7 +3021,13 @@ export async function updateDealFull(id: number, data: {
     else if (gv !== undefined) updateData.netValue = gv.toString(); // no discount info, use gross
   }
   // Lock deal after closing
-  if (data.stage === 'closed_won' || data.stage === 'closed_lost') updateData.isLocked = 1;
+  if (data.stage === 'closed_won' || data.stage === 'closed_lost') {
+    updateData.isLocked = 1;
+    // CRITICAL: set closingMonth/closingYear for month attribution
+    const closingDate = data.closedAt ?? new Date();
+    updateData.closingMonth = closingDate.getMonth() + 1;
+    updateData.closingYear = closingDate.getFullYear();
+  }
   if (data.lostReason !== undefined) updateData.lostReason = data.lostReason;
   if (data.lostReasonNote !== undefined) updateData.lostReasonNote = data.lostReasonNote;
   if (data.closedAt !== undefined) updateData.closedAt = data.closedAt;
@@ -3022,24 +3119,28 @@ export const LOST_REASON_LABELS: Record<string, string> = {
   other: "أسباب أخرى",
 };
 
-export async function getLostDealsAnalysis() {
+export async function getLostDealsAnalysis(year?: number, month?: number) {
   const db = await getDb();
   if (!db) return null;
-
   const allEngineers = await db
     .select({ id: engineers.id, name: engineers.name })
     .from(engineers)
     .where(eq(engineers.isDeleted, 0));
-
-  const lostDeals = await db
-    .select()
-    .from(deals)
-    .where(
-      and(
-        eq(deals.stage, "closed_lost"),
-        eq(deals.isDeleted, 0)
+  // CRITICAL: filter lost deals by closingMonth/closingYear if provided
+  let lostDealsWhere: any = and(eq(deals.stage, 'closed_lost'), eq(deals.isDeleted, 0));
+  if (year && month) {
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0, 23, 59, 59);
+    lostDealsWhere = and(
+      eq(deals.stage, 'closed_lost'),
+      eq(deals.isDeleted, 0),
+      or(
+        and(eq(deals.closingMonth as any, month), eq(deals.closingYear as any, year)),
+        and(isNull(deals.closingMonth as any), between(deals.closedAt as any, startDate, endDate))
       )
     );
+  }
+  const lostDeals = await db.select().from(deals).where(lostDealsWhere);;
 
   // إجمالي الصفقات الخاسرة
   const totalLost = lostDeals.length;
