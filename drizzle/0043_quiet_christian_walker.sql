@@ -1,0 +1,1 @@
+ALTER TABLE `engineers` ADD `forcePasswordChange` int DEFAULT 0 NOT NULL;

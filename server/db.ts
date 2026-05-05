@@ -11075,3 +11075,140 @@ export async function getEngineerFullTarget(engineerId: number, year: number, mo
     isManualOverride: target ? target.isAutoDistributed === 0 : false,
   };
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// User Management: Bulk Creation + Password Management
+// ═══════════════════════════════════════════════════════════════════════
+
+/** الأدوار التي تُعتبر ضمن فريق المبيعات (تُستثنى site_engineer و admin/Pro Group) */
+const SALES_ROLES = ["sales_engineer", "sales_specialist", "admin_sales", "manager", "tele_sales", "interior_designer"];
+
+/** توليد username من الاسم */
+function generateUsername(name: string, role: string): string {
+  const parts = name.trim().split(/\s+/);
+  const first = parts[0]?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'user';
+  const last = parts[1]?.toLowerCase().replace(/[^a-z0-9]/g, '') || role.replace('_', '');
+  return `${first}.${last}`;
+}
+
+/** قراءة كل المهندسين مع حالة الـ account */
+export async function listEngineersWithAccountStatus(): Promise<Array<{
+  id: number;
+  name: string;
+  role: string;
+  department: string | null;
+  status: string;
+  hasAccount: boolean;
+  username: string | null;
+  forcePasswordChange: number;
+}>> {
+  const db = await getDb();
+  if (!db) return [];
+  const all = await db.select({
+    id: engineers.id,
+    name: engineers.name,
+    role: engineers.role,
+    department: engineers.department,
+    status: engineers.status,
+    username: engineers.username,
+    forcePasswordChange: (engineers as any).forcePasswordChange,
+  }).from(engineers).where(eq(engineers.isDeleted, 0)).orderBy(engineers.name);
+  return all.map(e => ({
+    ...e,
+    hasAccount: !!e.username,
+    forcePasswordChange: e.forcePasswordChange ?? 0,
+  }));
+}
+
+/** إنشاء حسابات تلقائياً لكل المهندسين الذين ليس لديهم username */
+export async function bulkCreateEngineersAccounts(defaultPassword: string = "12345678"): Promise<{
+  created: Array<{ id: number; name: string; username: string }>;
+  skipped: Array<{ id: number; name: string; reason: string }>;
+}> {
+  const db = await getDb();
+  if (!db) return { created: [], skipped: [] };
+  const allEngineers = await db.select().from(engineers).where(
+    and(eq(engineers.isDeleted, 0), eq(engineers.status, "active"))
+  );
+  const created: Array<{ id: number; name: string; username: string }> = [];
+  const skipped: Array<{ id: number; name: string; reason: string }> = [];
+  const passwordHash = await bcrypt.hash(defaultPassword, 10);
+  for (const eng of allEngineers) {
+    if (eng.username) {
+      skipped.push({ id: eng.id, name: eng.name, reason: "لديه حساب بالفعل" });
+      continue;
+    }
+    // توليد username فريد
+    let baseUsername = generateUsername(eng.name, eng.role);
+    let username = baseUsername;
+    let counter = 1;
+    // التحقق من التكرار
+    while (true) {
+      const [existing] = await db.select({ id: engineers.id }).from(engineers)
+        .where(eq(engineers.username, username)).limit(1);
+      if (!existing) break;
+      username = `${baseUsername}${counter}`;
+      counter++;
+    }
+    await db.update(engineers).set({
+      username,
+      passwordHash,
+      forcePasswordChange: 1,
+    } as any).where(eq(engineers.id, eng.id));
+    created.push({ id: eng.id, name: eng.name, username });
+  }
+  return { created, skipped };
+}
+
+/** تغيير كلمة مرور المهندس (يستخدمها المهندس نفسه) */
+export async function changeEngineerPassword(engineerId: number, oldPassword: string, newPassword: string): Promise<{ success: boolean; error?: string }> {
+  const db = await getDb();
+  if (!db) return { success: false, error: "Database not available" };
+  const [eng] = await db.select().from(engineers).where(eq(engineers.id, engineerId)).limit(1);
+  if (!eng || !eng.passwordHash) return { success: false, error: "المستخدم غير موجود" };
+  const valid = await bcrypt.compare(oldPassword, eng.passwordHash);
+  if (!valid) return { success: false, error: "كلمة المرور القديمة غير صحيحة" };
+  const newHash = await bcrypt.hash(newPassword, 10);
+  await db.update(engineers).set({
+    passwordHash: newHash,
+    forcePasswordChange: 0,
+  } as any).where(eq(engineers.id, engineerId));
+  return { success: true };
+}
+
+/** إعادة تعيين كلمة مرور مهندس (يستخدمها الأدمن) */
+export async function resetEngineerPassword(engineerId: number, newPassword: string): Promise<{ success: boolean }> {
+  const db = await getDb();
+  if (!db) return { success: false };
+  const newHash = await bcrypt.hash(newPassword, 10);
+  await db.update(engineers).set({
+    passwordHash: newHash,
+    forcePasswordChange: 1,
+  } as any).where(eq(engineers.id, engineerId));
+  return { success: true };
+}
+
+/** تفعيل / تعطيل حساب مهندس */
+export async function toggleEngineerAccountStatus(engineerId: number, status: "active" | "inactive"): Promise<{ success: boolean }> {
+  const db = await getDb();
+  if (!db) return { success: false };
+  await db.update(engineers).set({ status }).where(eq(engineers.id, engineerId));
+  return { success: true };
+}
+
+/** إنشاء حساب لمهندس واحد */
+export async function createEngineerAccount(engineerId: number, username: string, password: string, forceChange: boolean = true): Promise<{ success: boolean; error?: string }> {
+  const db = await getDb();
+  if (!db) return { success: false, error: "Database not available" };
+  // التحقق من التكرار
+  const [existing] = await db.select({ id: engineers.id }).from(engineers)
+    .where(eq(engineers.username, username.toLowerCase().trim())).limit(1);
+  if (existing && existing.id !== engineerId) return { success: false, error: "اسم المستخدم مستخدم بالفعل" };
+  const passwordHash = await bcrypt.hash(password, 10);
+  await db.update(engineers).set({
+    username: username.toLowerCase().trim(),
+    passwordHash,
+    forcePasswordChange: forceChange ? 1 : 0,
+  } as any).where(eq(engineers.id, engineerId));
+  return { success: true };
+}

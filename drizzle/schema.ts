@@ -36,6 +36,8 @@ export const engineers = mysqlTable("engineers", {
   deleteReason: mysqlEnum("deleteReason", ["data_entry_error", "duplicate", "client_cancelled", "other"]),
   deleteReasonCustom: varchar("deleteReasonCustom", { length: 255 }),
   deletedBy: varchar("deletedBy", { length: 120 }),
+  // إجبار تغيير كلمة المرور عند أول دخول
+  forcePasswordChange: int("forcePasswordChange").default(0).notNull(),
 });
 export type Engineer = typeof engineers.$inferSelect;
 

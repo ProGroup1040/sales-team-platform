@@ -559,7 +559,243 @@ function ActivityLogsView() {
   );
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+// ──// ─── Engineers Accounts Tab ───────────────────────────────────────────────
+function EngineersAccountsTab() {
+  const utils = trpc.useUtils();
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [selectedEng, setSelectedEng] = useState<any>(null);
+  const [resetEngId, setResetEngId] = useState<number | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [createForm, setCreateForm] = useState({ username: "", password: "12345678", forceChange: true });
+
+  const listQuery = trpc.appUsers.listEngineers.useQuery(undefined, { staleTime: 15000 });
+
+  const bulkMut = trpc.appUsers.bulkCreateAccounts.useMutation({
+    onSuccess: (data) => {
+      toast.success(`تم إنشاء ${data.created.length} حساب تلقائياً`, {
+        description: data.skipped.length > 0 ? `تم تخطي المهندسين الذين لديهم حسابات بالفعل (${data.skipped.length})` : undefined,
+      });
+      setBulkOpen(false);
+      utils.appUsers.listEngineers.invalidate();
+    },
+    onError: (e) => toast.error(e.message || "حدث خطأ"),
+  });
+
+  const createMut = trpc.appUsers.createEngineerAccount.useMutation({
+    onSuccess: () => {
+      toast.success("تم إنشاء الحساب بنجاح");
+      setCreateOpen(false);
+      setSelectedEng(null);
+      setCreateForm({ username: "", password: "12345678", forceChange: true });
+      utils.appUsers.listEngineers.invalidate();
+    },
+    onError: (e) => toast.error(e.message || "حدث خطأ"),
+  });
+
+  const resetMut = trpc.appUsers.resetPassword.useMutation({
+    onSuccess: () => {
+      toast.success("تم إعادة تعيين كلمة المرور بنجاح");
+      setResetEngId(null);
+      setNewPassword("");
+      utils.appUsers.listEngineers.invalidate();
+    },
+    onError: (e) => toast.error(e.message || "حدث خطأ"),
+  });
+
+  const toggleMut = trpc.appUsers.toggleStatus.useMutation({
+    onSuccess: () => {
+      toast.success("تم تحديث حالة الحساب");
+      utils.appUsers.listEngineers.invalidate();
+    },
+    onError: (e) => toast.error(e.message || "حدث خطأ"),
+  });
+
+  const engineers = listQuery.data ?? [];
+  const withAccount = engineers.filter((e: any) => e.hasAccount);
+  const withoutAccount = engineers.filter((e: any) => !e.hasAccount);
+
+  const SALES_ROLES = ["sales_engineer", "sales_specialist", "admin_sales", "manager", "engineer", "admin"];
+  const salesEngineers = engineers.filter((e: any) => SALES_ROLES.includes(e.role));
+
+  return (
+    <div className="space-y-4" dir="rtl">
+      {/* Header Actions */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+          <span>{withAccount.length} مهندس لديه حساب</span>
+          <span className="text-border">|</span>
+          <AlertCircle className="h-4 w-4 text-amber-500" />
+          <span>{withoutAccount.length} بدون حساب</span>
+        </div>
+        <div className="flex gap-2">
+          <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" className="gap-2" disabled={withoutAccount.length === 0}>
+                <RefreshCw className="h-4 w-4" />
+                إنشاء تلقائي ({withoutAccount.length})
+              </Button>
+            </DialogTrigger>
+            <DialogContent dir="rtl">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Users className="h-5 w-5 text-primary" />
+                  إنشاء حسابات تلقائية
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <Alert>
+                  <AlertDescription className="text-sm">
+                    سيتم إنشاء حسابات لـ <strong>{withoutAccount.length}</strong> مهندس بدون حساب حالياً.
+                    كلمة المرور الافتراضية: <code className="bg-muted px-1 rounded">12345678</code>
+                    وسيتم إجبار كل مهندس على تغييرها عند أول دخول.
+                  </AlertDescription>
+                </Alert>
+                <div className="max-h-48 overflow-y-auto space-y-1">
+                  {withoutAccount.map((e: any) => (
+                    <div key={e.id} className="flex items-center justify-between text-sm p-2 rounded bg-muted/50">
+                      <span>{e.name}</span>
+                      <Badge variant="outline" className="text-xs">{e.role}</Badge>
+                    </div>
+                  ))}
+                </div>
+                <Button
+                  className="w-full"
+                  onClick={() => bulkMut.mutate({ defaultPassword: "12345678" })}
+                  disabled={bulkMut.isPending}
+                >
+                  {bulkMut.isPending ? (
+                    <span className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" />جاري الإنشاء...</span>
+                  ) : (
+                    `إنشاء ${withoutAccount.length} حساب تلقائياً`
+                  )}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </div>
+
+      {/* Engineers List */}
+      {listQuery.isLoading && (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      )}
+      <div className="space-y-2">
+        {salesEngineers.map((eng: any) => (
+          <Card key={eng.id} className={`border-border/50 ${!eng.hasAccount ? 'border-amber-500/30 bg-amber-500/5' : ''}`}>
+            <CardContent className="p-3">
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="h-9 w-9 rounded-full flex items-center justify-center shrink-0"
+                  style={{ background: eng.hasAccount ? 'hsl(var(--primary)/0.1)' : 'hsl(38 92% 50% / 0.1)' }}>
+                  <span className="text-sm font-bold" style={{ color: eng.hasAccount ? 'hsl(var(--primary))' : 'hsl(38 92% 50%)' }}>
+                    {eng.name?.charAt(0)}
+                  </span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-sm">{eng.name}</div>
+                  <div className="text-xs text-muted-foreground flex items-center gap-2">
+                    {eng.hasAccount ? (
+                      <span dir="ltr" className="flex items-center gap-1">
+                        <AtSign className="h-3 w-3" />{eng.username}
+                      </span>
+                    ) : (
+                      <span className="text-amber-500">بدون حساب</span>
+                    )}
+                    <Badge variant="outline" className="text-xs">{eng.role}</Badge>
+                  </div>
+                </div>
+                {eng.hasAccount && (
+                  <div className="flex items-center gap-1">
+                    {eng.status === 'active' ? (
+                      <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-xs">نشط</Badge>
+                    ) : (
+                      <Badge className="bg-red-500/10 text-red-400 border-red-500/20 text-xs">موقوف</Badge>
+                    )}
+                    {eng.forcePasswordChange && (
+                      <Badge className="bg-amber-500/10 text-amber-400 border-amber-500/20 text-xs">يجب تغيير كلمة المرور</Badge>
+                    )}
+                  </div>
+                )}
+                {/* Actions */}
+                <div className="flex items-center gap-1 shrink-0">
+                  {!eng.hasAccount ? (
+                    <Dialog open={createOpen && selectedEng?.id === eng.id} onOpenChange={(open) => { setCreateOpen(open); if (!open) setSelectedEng(null); }}>
+                      <DialogTrigger asChild>
+                        <Button size="sm" className="gap-1" onClick={() => { setSelectedEng(eng); setCreateForm({ username: eng.name?.toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '') || '', password: '12345678', forceChange: true }); }}>
+                          <UserPlus className="h-3.5 w-3.5" />
+                          إنشاء حساب
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent dir="rtl">
+                        <DialogHeader>
+                          <DialogTitle>إنشاء حساب: {eng.name}</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-3 py-2">
+                          <div className="space-y-1">
+                            <Label>اسم المستخدم</Label>
+                            <Input dir="ltr" value={createForm.username} onChange={(e) => setCreateForm(p => ({ ...p, username: e.target.value }))} placeholder="ahmed.ali" />
+                          </div>
+                          <div className="space-y-1">
+                            <Label>كلمة المرور</Label>
+                            <Input dir="ltr" type="password" value={createForm.password} onChange={(e) => setCreateForm(p => ({ ...p, password: e.target.value }))} />
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Switch checked={createForm.forceChange} onCheckedChange={(v) => setCreateForm(p => ({ ...p, forceChange: v }))} />
+                            <Label className="text-sm">إجبار تغيير كلمة المرور عند أول دخول</Label>
+                          </div>
+                          <Button className="w-full" disabled={createMut.isPending}
+                            onClick={() => createMut.mutate({ engineerId: eng.id, username: createForm.username, password: createForm.password, forceChange: createForm.forceChange })}>
+                            {createMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'إنشاء الحساب'}
+                          </Button>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  ) : (
+                    <>
+                      {/* Reset Password */}
+                      <Dialog open={resetEngId === eng.id} onOpenChange={(open) => { if (!open) { setResetEngId(null); setNewPassword(''); } }}>
+                        <DialogTrigger asChild>
+                          <Button variant="outline" size="sm" className="gap-1" onClick={() => setResetEngId(eng.id)}>
+                            <Key className="h-3.5 w-3.5" />
+                            إعادة كلمة المرور
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent dir="rtl">
+                          <DialogHeader>
+                            <DialogTitle>إعادة كلمة مرور: {eng.name}</DialogTitle>
+                          </DialogHeader>
+                          <div className="space-y-3 py-2">
+                            <Input dir="ltr" type="password" placeholder="كلمة المرور الجديدة" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+                            <Button className="w-full" disabled={resetMut.isPending || !newPassword}
+                              onClick={() => resetMut.mutate({ engineerId: eng.id, newPassword })}>
+                              {resetMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'حفظ كلمة المرور'}
+                            </Button>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                      {/* Toggle Status */}
+                      <Button variant="outline" size="sm" className="gap-1"
+                        disabled={toggleMut.isPending}
+                        onClick={() => toggleMut.mutate({ engineerId: eng.id, status: eng.status === 'active' ? 'inactive' : 'active' })}>
+                        {eng.status === 'active' ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
+                        {eng.status === 'active' ? 'تعطيل' : 'تفعيل'}
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Component ────────────────────────────────────────────────
 export default function UserManagement() {
   const { session } = useLocalAuth();
   const [createOpen, setCreateOpen] = useState(false);
@@ -673,11 +909,17 @@ export default function UserManagement() {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="users">
-        <TabsList className="grid grid-cols-2 w-full max-w-xs">
-          <TabsTrigger value="users">المستخدمون</TabsTrigger>
+      <Tabs defaultValue="engineers">
+        <TabsList className="grid grid-cols-3 w-full max-w-md">
+          <TabsTrigger value="engineers">حسابات المهندسين</TabsTrigger>
+          <TabsTrigger value="users">مستخدمو النظام</TabsTrigger>
           <TabsTrigger value="logs">سجل النشاط</TabsTrigger>
         </TabsList>
+
+        {/* Engineers Accounts Tab */}
+        <TabsContent value="engineers" className="mt-4 space-y-4">
+          <EngineersAccountsTab />
+        </TabsContent>
 
         {/* Users Tab */}
         <TabsContent value="users" className="mt-4 space-y-4">

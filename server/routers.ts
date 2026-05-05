@@ -102,6 +102,9 @@ import {
   SYSTEM_MODULES, SYSTEM_ROLES,
   // Auto Distribution Engine
   calcAutoDistribution, applyAutoDistribution, manualOverrideEngineerTarget, getEngineerFullTarget,
+  // User Management
+  listEngineersWithAccountStatus, bulkCreateEngineersAccounts, changeEngineerPassword,
+  resetEngineerPassword, toggleEngineerAccountStatus, createEngineerAccount,
 } from "./db";
 import { ACTIVITY_KEYS, ACTIVITY_LABELS as ACT_LABELS_EN, ACTIVITY_LABELS_AR, ACTIVITY_WEIGHTS, ACTIVITY_ICONS, ACTIVITY_COLORS } from '../shared/activityTypes';
 
@@ -1259,7 +1262,13 @@ export const appRouter = router({
           ...cookieOptions,
           maxAge: 1000 * 60 * 60 * 24 * 365,
         });
-        return { ok: true, role: result.session.role, name: result.session.name, engineerId: result.session.engineerId };
+        return {
+          ok: true,
+          role: result.session.role,
+          name: result.session.name,
+          engineerId: result.session.engineerId,
+          forcePasswordChange: result.session.forcePasswordChange ?? false,
+        };
       }),
     // جلب بيانات الجلسة الحالية
     me: publicProcedure
@@ -1921,9 +1930,94 @@ export const appRouter = router({
         roles: SYSTEM_ROLES,
         moduleSections: MODULE_SECTIONS,
       })),
+    // ─── Engineer Account Management ─────────────────────────────────────────
+    // قراءة كل المهندسين مع حالة الـ account
+    listEngineers: publicProcedure
+      .query(async ({ ctx }) => {
+        const req = (ctx as any).req;
+        const caller = await getAdminCallerFromRequest(req);
+        if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        if (!['manager', 'admin_sales', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
+        return listEngineersWithAccountStatus();
+      }),
+    // إنشاء حسابات تلقائياً لكل المهندسين
+    bulkCreateAccounts: publicProcedure
+      .input(z.object({ defaultPassword: z.string().min(6).optional() }))
+      .mutation(async ({ input, ctx }) => {
+        const req = (ctx as any).req;
+        const caller = await getAdminCallerFromRequest(req);
+        if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        if (!['manager', 'admin_sales', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
+        const result = await bulkCreateEngineersAccounts(input.defaultPassword ?? '12345678');
+        await logActivity({ userId: caller.id, action: 'create', module: 'users', details: `إنشاء حسابات تلقائية: ${result.created.length} حساب` });
+        return result;
+      }),
+    // إنشاء حساب لمهندس واحد
+    createEngineerAccount: publicProcedure
+      .input(z.object({
+        engineerId: z.number(),
+        username: z.string().min(3).regex(/^[a-zA-Z0-9._-]+$/),
+        password: z.string().min(6),
+        forceChange: z.boolean().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const req = (ctx as any).req;
+        const caller = await getAdminCallerFromRequest(req);
+        if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        if (!['manager', 'admin_sales', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
+        const result = await createEngineerAccount(input.engineerId, input.username, input.password, input.forceChange ?? true);
+        if (!result.success) throw new TRPCError({ code: 'CONFLICT', message: result.error });
+        await logActivity({ userId: caller.id, action: 'create', module: 'users', details: `إنشاء حساب للمهندس #${input.engineerId}: ${input.username}` });
+        return { success: true };
+      }),
+    // إعادة تعيين كلمة مرور (Admin)
+    resetPassword: publicProcedure
+      .input(z.object({ engineerId: z.number(), newPassword: z.string().min(6) }))
+      .mutation(async ({ input, ctx }) => {
+        const req = (ctx as any).req;
+        const caller = await getAdminCallerFromRequest(req);
+        if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        if (!['manager', 'admin_sales', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
+        await resetEngineerPassword(input.engineerId, input.newPassword);
+        await logActivity({ userId: caller.id, action: 'update', module: 'users', recordId: input.engineerId, details: `إعادة تعيين كلمة مرور المهندس #${input.engineerId}` });
+        return { success: true };
+      }),
+    // تغيير كلمة المرور (المهندس نفسه)
+    changePassword: publicProcedure
+      .input(z.object({ oldPassword: z.string().min(1), newPassword: z.string().min(6) }))
+      .mutation(async ({ input, ctx }) => {
+        const req = (ctx as any).req;
+        // محاولة الحصول على engineerId من local session أو app_user_token
+        let engineerId: number | null = null;
+        const { getLocalSessionFromRequest } = await import('./localAuth');
+        const session = await getLocalSessionFromRequest(req);
+        if (session) engineerId = session.engineerId;
+        if (!engineerId) {
+          const token = req?.cookies?.app_user_token;
+          if (token) {
+            const user = await verifyAppUserToken(token);
+            if (user?.engineerId) engineerId = user.engineerId;
+          }
+        }
+        if (!engineerId) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'يجب تسجيل الدخول أولاً' });
+        const result = await changeEngineerPassword(engineerId, input.oldPassword, input.newPassword);
+        if (!result.success) throw new TRPCError({ code: 'BAD_REQUEST', message: result.error });
+        return { success: true };
+      }),
+    // تفعيل / تعطيل حساب
+    toggleStatus: publicProcedure
+      .input(z.object({ engineerId: z.number(), status: z.enum(['active', 'inactive']) }))
+      .mutation(async ({ input, ctx }) => {
+        const req = (ctx as any).req;
+        const caller = await getAdminCallerFromRequest(req);
+        if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        if (!['manager', 'admin_sales', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
+        await toggleEngineerAccountStatus(input.engineerId, input.status);
+        await logActivity({ userId: caller.id, action: 'update', module: 'users', recordId: input.engineerId, details: `تغيير حالة المهندس #${input.engineerId}: ${input.status}` });
+        return { success: true };
+      }),
   }),
-
-  // ─── Section Permissions Router ──────────────────────────────────────────
+  // ─── Section Permissions Routerr ──────────────────────────────────────────
   sectionPermissions: router({
     // جلب صلاحيات الـ Sections للـ Role الحالي (من local_session)
     myPermissions: protectedProcedure

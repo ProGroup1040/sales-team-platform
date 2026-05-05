@@ -1169,3 +1169,30 @@
 - [x] Vitest: اختبار منطق الفلترة بالشهر (closedAt vs createdAt) - 8 اختبارات ناجحة
 - [x] Vitest: اختبار حساب netValue = grossValue - discountValue
 - [x] Vitest: اختبار استقلالية بيانات كل شهر
+
+## نظام إدارة المستخدمين الكامل (Critical - 5 مايو 2026)
+
+### أولاً: Schema
+- [ ] إضافة حقل forcePasswordChange (boolean) في جدول engineers
+- [ ] تطبيق migration SQL
+
+### ثانياً: Backend
+- [ ] إضافة procedure bulkCreateUsers: إنشاء username/password لكل مهندس بدون account
+- [ ] تحديث localLogin: التحقق من forcePasswordChange وإرجاعه في الـ session
+- [ ] إضافة procedure changePassword: تغيير كلمة المرور مع التحقق من القديمة
+- [ ] إضافة procedure resetPassword (admin): إعادة تعيين كلمة المرور وتفعيل forcePasswordChange
+- [ ] إضافة procedure listEngineersWithAccountStatus: عرض كل المهندسين مع حالة الـ account
+- [ ] فلترة site_engineer و admin (Pro Group) من شاشات المبيعات والـ KPI
+
+### ثالثاً: Frontend
+- [ ] تحديث LoginPage: عرض شاشة تغيير كلمة المرور عند forcePasswordChange
+- [ ] تحديث UserManagement: عرض كل المهندسين مع حالة الـ account (لديه account / بدون)
+- [ ] إضافة زر "إنشاء حسابات تلقائياً" في UserManagement (Bulk Creation)
+- [ ] إضافة زر "إعادة تعيين كلمة المرور" لكل مستخدم
+- [ ] إضافة زر "تفعيل / تعطيل" لكل مستخدم
+- [ ] عرض بيانات المهندس حسب دوره (Engineer يرى بياناته فقط)
+
+### رابعاً: الاختبارات
+- [ ] Vitest: اختبار Bulk Creation
+- [ ] Vitest: اختبار forcePasswordChange flow
+- [ ] Vitest: اختبار Role-based data filtering

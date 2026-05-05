@@ -13,6 +13,7 @@ export type LocalSessionPayload = {
   username: string;
   role: string;
   name: string;
+  forcePasswordChange?: boolean;
 };
 
 function getSecretKey() {
@@ -27,6 +28,7 @@ export async function signLocalSession(payload: LocalSessionPayload): Promise<st
     username: payload.username,
     role: payload.role,
     name: payload.name,
+    forcePasswordChange: payload.forcePasswordChange ? 1 : 0,
   })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
     .setExpirationTime(expirationSeconds)
@@ -37,9 +39,15 @@ export async function verifyLocalSession(token: string | undefined | null): Prom
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, getSecretKey(), { algorithms: ["HS256"] });
-    const { engineerId, username, role, name } = payload as Record<string, unknown>;
+    const { engineerId, username, role, name, forcePasswordChange } = payload as Record<string, unknown>;
     if (!engineerId || !username || !role) return null;
-    return { engineerId: engineerId as number, username: username as string, role: role as string, name: (name as string) || "" };
+    return {
+      engineerId: engineerId as number,
+      username: username as string,
+      role: role as string,
+      name: (name as string) || "",
+      forcePasswordChange: !!forcePasswordChange,
+    };
   } catch {
     return null;
   }
@@ -56,6 +64,7 @@ export async function localLogin(username: string, password: string): Promise<{ 
     .limit(1);
 
   if (!engineer || !engineer.passwordHash || engineer.isDeleted) return null;
+  if (engineer.status !== "active") return null;
 
   const valid = await bcrypt.compare(password, engineer.passwordHash);
   if (!valid) return null;
@@ -65,6 +74,7 @@ export async function localLogin(username: string, password: string): Promise<{ 
     username: engineer.username!,
     role: engineer.role,
     name: engineer.name,
+    forcePasswordChange: !!((engineer as any).forcePasswordChange),
   };
   const token = await signLocalSession(session);
   return { token, session };
