@@ -4,6 +4,7 @@ import { useSectionPermission } from "@/hooks/useSectionPermission";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DateRangePicker, getCurrentMonthFilter, type DateFilter } from "@/components/DateRangePicker";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   RadarChart, PolarGrid, PolarAngleAxis, Radar, Legend,
@@ -94,8 +95,9 @@ const KPI_RULES = [
 ];
 
 export default function KPIModule() {
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [dateFilter, setDateFilter] = useState<DateFilter>(getCurrentMonthFilter());
+  const year = dateFilter.mode === 'month' ? dateFilter.year : dateFilter.startDate.getFullYear();
+  const month = dateFilter.mode === 'month' ? dateFilter.month : dateFilter.startDate.getMonth() + 1;
 
   const { data: kpiData, isLoading } = trpc.kpi.engineers.useQuery({ year, month });
   const { data: trendData } = trpc.kpi.trend.useQuery({ year, month });
@@ -161,14 +163,7 @@ export default function KPIModule() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Select value={String(month)} onValueChange={v => setMonth(parseInt(v))}>
-            <SelectTrigger className="w-32 h-8 text-sm"><SelectValue /></SelectTrigger>
-            <SelectContent>{MONTHS.map((m, i) => <SelectItem key={i+1} value={String(i+1)}>{m}</SelectItem>)}</SelectContent>
-          </Select>
-          <Select value={String(year)} onValueChange={v => setYear(parseInt(v))}>
-            <SelectTrigger className="w-24 h-8 text-sm"><SelectValue /></SelectTrigger>
-            <SelectContent>{[2024,2025,2026].map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}</SelectContent>
-          </Select>
+          <DateRangePicker value={dateFilter} onChange={setDateFilter} />
         </div>
       </div>
 

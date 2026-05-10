@@ -219,6 +219,11 @@ export const deals = mysqlTable("deals", {
   // ─── Closing Month Attribution (CRITICAL: deals attributed by closedAt month) ──
   closingMonth: int("closingMonth"),   // 1-12: month of closing (set when stage → closed_won/lost)
   closingYear: int("closingYear"),    // e.g. 2026
+  // ─── Accounting Month Attribution (CRITICAL: financial accounting month, can differ from closing month) ──
+  accountingMonth: int("accountingMonth"),  // 1-12: month for financial accounting (admin/manager only)
+  accountingYear: int("accountingYear"),   // e.g. 2026
+  accountingMonthSetBy: varchar("accountingMonthSetBy", { length: 120 }), // who set it
+  accountingMonthSetAt: timestamp("accountingMonthSetAt"), // when it was set
   // ─── Lost Deal Analysis ─────────────────────────────────────────────────────
   lostReason: mysqlEnum("lostReason", ["price_high", "competitor", "slow_response", "wrong_product", "not_serious", "budget_cut", "other"]),
   lostReasonNote: varchar("lostReasonNote", { length: 255 }),

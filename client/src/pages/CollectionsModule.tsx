@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DateRangePicker, getCurrentMonthFilter, type DateFilter } from "@/components/DateRangePicker";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -50,8 +51,9 @@ export default function CollectionsModule() {
   const { data: engineers = [] } = trpc.engineers.list.useQuery();
 
   const now = new Date();
-  const [currentMonth] = useState(now.getMonth() + 1);
-  const [currentYear] = useState(now.getFullYear());
+  const [dateFilter, setDateFilter] = useState<DateFilter>(getCurrentMonthFilter());
+  const currentMonth = dateFilter.mode === 'month' ? dateFilter.month : dateFilter.startDate.getMonth() + 1;
+  const currentYear = dateFilter.mode === 'month' ? dateFilter.year : dateFilter.startDate.getFullYear();
   const [filterDept, setFilterDept] = useState("all");
   const [newPaymentReceiptUrl, setNewPaymentReceiptUrl] = useState("");
   const [newPaymentNextDate, setNewPaymentNextDate] = useState("");
@@ -60,6 +62,14 @@ export default function CollectionsModule() {
   const { data: collectionDashboard } = trpc.financial.dashboard.useQuery({ month: currentMonth, year: currentYear });
   const { data: collectionAlerts = [] } = trpc.financial.alerts.useQuery();
   const { data: contractsWithComm = [] } = trpc.financial.contractsWithCommission.useQuery({});
+  // Period Analysis
+  const periodStart = dateFilter.mode === 'month'
+    ? new Date(dateFilter.year, dateFilter.month - 1, 1).toISOString().split('T')[0]
+    : dateFilter.startDate.toISOString().split('T')[0];
+  const periodEnd = dateFilter.mode === 'month'
+    ? new Date(dateFilter.year, dateFilter.month, 0).toISOString().split('T')[0]
+    : dateFilter.endDate.toISOString().split('T')[0];
+  const { data: periodAnalysis } = trpc.financial.periodAnalysis.useQuery({ startDate: periodStart, endDate: periodEnd });
 
   // Filter: Sales Engineers + Sales Specialists + Admin Sales only
   const SALES_DEPTS = ["sales_engineer", "sales_specialist", "admin_sales"];
@@ -143,9 +153,12 @@ export default function CollectionsModule() {
           </h1>
           <p className="text-muted-foreground text-sm mt-1">متابعة التحصيل • وعود الدفع • الكوميشن على المحصّل</p>
         </div>
-        <Button onClick={() => setShowAddContract(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2">
-          <Plus className="w-4 h-4" /> إضافة عقد
-        </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <DateRangePicker value={dateFilter} onChange={setDateFilter} />
+          <Button onClick={() => setShowAddContract(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2">
+            <Plus className="w-4 h-4" /> إضافة عقد
+          </Button>
+        </div>
       </div>
 
       {/* KPI Cards */}
@@ -711,6 +724,65 @@ export default function CollectionsModule() {
 
         {/* Tab: Analytics */}
         <TabsContent value="analytics" className="space-y-4 mt-4">
+          {/* Period Summary */}
+          {periodAnalysis && (
+            <Card className="border-0 shadow-sm bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-indigo-600" />
+                  تحليل التحصيل للفترة: {periodStart} → {periodEnd}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                  <div className="bg-white dark:bg-slate-800 rounded-lg p-3 text-center shadow-sm">
+                    <div className="text-xl font-bold text-indigo-700 dark:text-indigo-300">{fmt(periodAnalysis.total)}</div>
+                    <div className="text-xs text-muted-foreground">إجمالي التحصيل</div>
+                  </div>
+                  <div className="bg-white dark:bg-slate-800 rounded-lg p-3 text-center shadow-sm">
+                    <div className="text-xl font-bold text-emerald-700">{periodAnalysis.count}</div>
+                    <div className="text-xs text-muted-foreground">عدد الدفعات</div>
+                  </div>
+                  <div className="bg-white dark:bg-slate-800 rounded-lg p-3 text-center shadow-sm">
+                    <div className="text-xl font-bold text-red-700">{fmt(periodAnalysis.overdue.total)}</div>
+                    <div className="text-xs text-muted-foreground">المتأخرات</div>
+                  </div>
+                  <div className="bg-white dark:bg-slate-800 rounded-lg p-3 text-center shadow-sm">
+                    <div className="text-xl font-bold text-amber-700">{periodAnalysis.overdue.count}</div>
+                    <div className="text-xs text-muted-foreground">عقود متأخرة</div>
+                  </div>
+                </div>
+                {periodAnalysis.monthlyBreakdown.length > 1 && (
+                  <>
+                    <p className="text-xs font-semibold text-muted-foreground mb-2">التحصيل الشهري</p>
+                    <ResponsiveContainer width="100%" height={180}>
+                      <BarChart data={periodAnalysis.monthlyBreakdown} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                        <XAxis dataKey="label" tick={{ fontSize: 9 }} />
+                        <YAxis tick={{ fontSize: 9 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}ك`} />
+                        <Tooltip formatter={(v: number) => [`${fmt(v)} ج.م`]} />
+                        <Bar dataKey="total" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </>
+                )}
+                {periodAnalysis.byType.length > 0 && (
+                  <div className="mt-3">
+                    <p className="text-xs font-semibold text-muted-foreground mb-2">التحصيل حسب نوع الدفعة</p>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                      {periodAnalysis.byType.map((t: any) => (
+                        <div key={t.type} className="bg-white dark:bg-slate-800 rounded p-2 text-center shadow-sm">
+                          <div className="text-sm font-bold">{fmt(t.total)}</div>
+                          <div className="text-xs text-muted-foreground">{t.type === 'initial' ? 'مقدم' : t.type === 'installment' ? 'قسط' : t.type === 'final' ? 'نهائي' : 'معاينة'}</div>
+                          <div className="text-xs text-muted-foreground">{t.count} دفعة</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
           <div className="grid md:grid-cols-2 gap-4">
             <Card className="border-0 shadow-sm">
               <CardHeader className="pb-2">

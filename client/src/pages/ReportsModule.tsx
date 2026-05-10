@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DateRangePicker, getCurrentMonthFilter, type DateFilter } from "@/components/DateRangePicker";
 import { Progress } from "@/components/ui/progress";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -241,12 +242,11 @@ function WeeklyReportTab() {
   );
 }
 
-// ─── Monthly Report Tab ──────────────────────────────────────────────────────
+// ─── Monthly Report Tab ────────────────────────────────────────────
 function MonthlyReportTab() {
-  const now = new Date();
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
-
+  const [dateFilter, setDateFilter] = useState<DateFilter>(getCurrentMonthFilter());
+  const year = dateFilter.mode === 'month' ? dateFilter.year : dateFilter.startDate.getFullYear();
+  const month = dateFilter.mode === 'month' ? dateFilter.month : dateFilter.startDate.getMonth() + 1;
   const { data, isLoading } = trpc.reports.monthlyKPI.useQuery({ year, month });
 
   if (isLoading) return <div className="flex items-center justify-center h-40"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>;
@@ -264,28 +264,9 @@ function MonthlyReportTab() {
 
   return (
     <div className="space-y-6">
-      {/* Month Selector */}
+      {/* Date Range Picker */}
       <div className="flex items-center gap-3">
-        <Select value={String(month)} onValueChange={v => setMonth(Number(v))}>
-          <SelectTrigger className="w-40">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {MONTHS_AR.map((m, i) => (
-              <SelectItem key={i} value={String(i + 1)}>{m}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={String(year)} onValueChange={v => setYear(Number(v))}>
-          <SelectTrigger className="w-28">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {[now.getFullYear() - 1, now.getFullYear()].map(y => (
-              <SelectItem key={y} value={String(y)}>{y}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <DateRangePicker value={dateFilter} onChange={setDateFilter} />
         <Badge variant="outline">{MONTHS_AR[month - 1]} {year}</Badge>
       </div>
 

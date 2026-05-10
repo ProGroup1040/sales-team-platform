@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DateRangePicker, getCurrentMonthFilter, type DateFilter } from "@/components/DateRangePicker";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,8 +20,6 @@ import { DeleteConfirmDialog, type DeleteReason } from "@/components/DeleteConfi
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 
 const now = new Date();
-const YEAR = now.getFullYear();
-const MONTH = now.getMonth() + 1;
 const TODAY = now.toISOString().split('T')[0];
 
 const STATUS_LABELS: Record<string, string> = {
@@ -343,6 +342,9 @@ export default function VisitsModule() {
   });
 
   const utils = trpc.useUtils();
+  const [dateFilter, setDateFilter] = useState<DateFilter>(getCurrentMonthFilter());
+  const YEAR = dateFilter.mode === 'month' ? dateFilter.year : dateFilter.startDate.getFullYear();
+  const MONTH = dateFilter.mode === 'month' ? dateFilter.month : dateFilter.startDate.getMonth() + 1;
   const { data: stats } = trpc.visits.stats.useQuery({ year: YEAR, month: MONTH });
   const { data: visitsData } = trpc.visits.list.useQuery({
     limit: 50, status: filterStatus !== 'all' ? filterStatus : undefined
@@ -412,7 +414,8 @@ export default function VisitsModule() {
           <h1 className="text-2xl font-bold">المعاينات</h1>
           <p className="text-sm text-muted-foreground">نظام تشغيل يومي إلزامي — من الحجز حتى التحصيل</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <DateRangePicker value={dateFilter} onChange={setDateFilter} />
           {alertsCount > 0 && (
             <Badge variant="destructive" className="gap-1">
               <Bell className="w-3 h-3" />{alertsCount} تنبيه

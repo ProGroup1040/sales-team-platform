@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DateRangePicker, getCurrentMonthFilter, type DateFilter } from "@/components/DateRangePicker";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -86,10 +87,10 @@ export default function ClosingModule() {
     discountPercent: '0', discountValue: '0', discountNote: '',
   });
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
-  // ─── Month/Year Filter ─────────────────────────────────────────────────────
-  const [filterYear, setFilterYear] = useState(YEAR);
-  const [filterMonth, setFilterMonth] = useState(MONTH);
-  const yearOptions = Array.from({ length: 5 }, (_, i) => YEAR - i);
+  // ─── Date Filter (DateRangePicker) ───────────────────────────────────────────
+  const [dateFilter, setDateFilter] = useState<DateFilter>(getCurrentMonthFilter());
+  const filterYear = dateFilter.mode === 'month' ? dateFilter.year : dateFilter.startDate.getFullYear();
+  const filterMonth = dateFilter.mode === 'month' ? dateFilter.month : dateFilter.startDate.getMonth() + 1;
   const MONTHS_AR = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
   const utils = trpc.useUtils();
 
@@ -276,15 +277,8 @@ export default function ClosingModule() {
           <p className="text-sm text-muted-foreground">متابعة الصفقات من التفاوض حتى الإغلاق + نظام الخصومات + تحليل الخسائر</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Month/Year Filter */}
-          <Select value={String(filterMonth)} onValueChange={v => setFilterMonth(Number(v))}>
-            <SelectTrigger className="w-32 h-8 text-sm"><SelectValue /></SelectTrigger>
-            <SelectContent>{MONTHS_AR.map((m, i) => <SelectItem key={i+1} value={String(i+1)}>{m}</SelectItem>)}</SelectContent>
-          </Select>
-          <Select value={String(filterYear)} onValueChange={v => setFilterYear(Number(v))}>
-            <SelectTrigger className="w-24 h-8 text-sm"><SelectValue /></SelectTrigger>
-            <SelectContent>{yearOptions.map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}</SelectContent>
-          </Select>
+          {/* Date Range Picker */}
+          <DateRangePicker value={dateFilter} onChange={setDateFilter} />
           {canEdit && (
             <Button size="sm" onClick={() => setShowAdd(true)} className="gap-1.5">
               <Plus className="w-4 h-4" />إضافة صفقة

@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { DateRangePicker, dateFilterToParams, type DateFilter } from "@/components/DateRangePicker";
 import {
   Users, TrendingUp, Clock, CheckCircle2, XCircle,
   AlertTriangle, BarChart3, CalendarDays, Plus, Save,
@@ -399,16 +400,22 @@ function DailyLogTable({ from, to }: { from: string; to: string }) {
 
 // ─── Main LeadsModule ─────────────────────────────────────────────────────────
 export default function LeadsModule() {
-  const [preset, setPreset] = useState<PresetKey>("last7");
-  const [customFrom, setCustomFrom] = useState(() => toDateStr(new Date(new Date().setDate(new Date().getDate() - 6))));
-  const [customTo, setCustomTo] = useState(() => toDateStr(new Date()));
+  const [dateFilter, setDateFilter] = useState<DateFilter>(() => {
+    const now = new Date();
+    const last7 = new Date(now);
+    last7.setDate(now.getDate() - 6);
+    return { mode: 'custom', startDate: last7, endDate: now, label: 'آخر 7 أيام' };
+  });
   const [showForm, setShowForm] = useState(false);
   const utils = trpc.useUtils();
 
-  const { from, to } = useMemo(
-    () => computeRange(preset, customFrom, customTo),
-    [preset, customFrom, customTo]
-  );
+  const { from, to } = useMemo(() => {
+    const p = dateFilterToParams(dateFilter);
+    return {
+      from: p.startDate ?? toDateStr(new Date(p.year, p.month - 1, 1)),
+      to: p.endDate ?? toDateStr(new Date(p.year, p.month, 0))
+    };
+  }, [dateFilter]);
 
   const { data: summary } = trpc.leadDailyStats.summary.useQuery({ from, to });
 
@@ -416,12 +423,6 @@ export default function LeadsModule() {
     utils.leadDailyStats.list.invalidate();
     utils.leadDailyStats.summary.invalidate();
     setShowForm(false);
-  };
-
-  const handleReset = () => {
-    setPreset("last7");
-    setCustomFrom(toDateStr(new Date(new Date().setDate(new Date().getDate() - 6))));
-    setCustomTo(toDateStr(new Date()));
   };
 
   return (
@@ -442,18 +443,9 @@ export default function LeadsModule() {
 
       {showForm && <DailyInputForm onSuccess={handleSuccess} />}
 
-      {/* Advanced Date Filter */}
+      {/* Date Range Picker */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-        <AdvancedDateFilter
-          preset={preset}
-          onPresetChange={setPreset}
-          customFrom={customFrom}
-          onCustomFromChange={setCustomFrom}
-          customTo={customTo}
-          onCustomToChange={setCustomTo}
-          onReset={handleReset}
-        />
-        {/* Date Range Display */}
+        <DateRangePicker value={dateFilter} onChange={setDateFilter} />
         <div className="text-xs text-muted-foreground flex items-center gap-1">
           <Calendar className="h-3.5 w-3.5" />
           <span>{from}</span>

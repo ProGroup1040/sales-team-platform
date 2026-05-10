@@ -550,11 +550,11 @@ export async function getDealsStats(year: number, month: number) {
       )
     )
   );
+  // Pipeline: all open deals (not closed) regardless of creation date - they're still active
   const pipelineDeals = await db.select().from(deals).where(
     and(
       eq(deals.isDeleted, 0),
-      not(inArray(deals.stage, ['closed_won', 'closed_lost'])),
-      between(deals.createdAt, startDate, endDate)
+      not(inArray(deals.stage, ['closed_won', 'closed_lost']))
     )
   );
   const allDeals = [...closedDealsThisMonth, ...pipelineDeals];
@@ -564,10 +564,9 @@ export async function getDealsStats(year: number, month: number) {
   const totalValue = allDeals.reduce((s, d) => s + parseFloat(d.value), 0);
   // CRITICAL: closedValue uses netValue (after discount)
   const closedValue = closedDealsThisMonth.filter(d => d.stage === 'closed_won').reduce((s, d) => s + parseFloat((d.netValue as string) || d.value || '0'), 0);
-  // Conversion rate from visits
-  const visitsCount = await db.select({ total: count() }).from(visits).where(between(visits.scheduledAt, startDate, endDate));
-  const totalVisits = visitsCount[0]?.total ?? 0;
-  const conversionRate = totalVisits > 0 ? Math.round((closedWon / totalVisits) * 100) : 0;
+  // CORRECT Closing Rate: closedWon / (closedWon + closedLost) for this month
+  const totalDecided = closedWon + closedLost;
+  const conversionRate = totalDecided > 0 ? Math.round((closedWon / totalDecided) * 100) : 0;
   const stageMap: Record<string, { count: number; value: number }> = {};
   allDeals.forEach(d => {
     if (!stageMap[d.stage]) stageMap[d.stage] = { count: 0, value: 0 };
@@ -8378,11 +8377,11 @@ export async function getLostDealsImpact(year: number, month: number) {
 
   // Company-level stats
   const companyTotalValue = allClosedDeals.reduce((s, d) => {
-    const v = parseFloat((d.netValue ?? d.value) as string || '0');
+    const v = parseFloat(((d as any).netValue ?? d.value) as string || '0');
     return s + (isNaN(v) ? 0 : v);
   }, 0);
   const companyLostValue = lostDeals.reduce((s, d) => {
-    const v = parseFloat((d.netValue ?? d.value) as string || '0');
+    const v = parseFloat(((d as any).netValue ?? d.value) as string || '0');
     return s + (isNaN(v) ? 0 : v);
   }, 0);
   const companyLostRate = allClosedDeals.length > 0
@@ -8415,11 +8414,11 @@ export async function getLostDealsImpact(year: number, month: number) {
 
     const lostCount = engLost.length;
     const lostValue = engLost.reduce((s, d) => {
-      const v = parseFloat((d.netValue ?? d.value) as string || '0');
+      const v = parseFloat(((d as any).netValue ?? d.value) as string || '0');
       return s + (isNaN(v) ? 0 : v);
     }, 0);
     const totalValue = engClosed.reduce((s, d) => {
-      const v = parseFloat((d.netValue ?? d.value) as string || '0');
+      const v = parseFloat(((d as any).netValue ?? d.value) as string || '0');
       return s + (isNaN(v) ? 0 : v);
     }, 0);
 
@@ -11211,4 +11210,163 @@ export async function createEngineerAccount(engineerId: number, username: string
     forcePasswordChange: forceChange ? 1 : 0,
   } as any).where(eq(engineers.id, engineerId));
   return { success: true };
+}
+
+// ─── Reopen Deal ─────────────────────────────────────────────────────────────
+/**
+ * إعادة فتح صفقة مغلقة (closed_won أو closed_lost)
+ * - يُزيل isLocked
+ * - يُعيد المرحلة إلى negotiation
+ * - يُصفّر closingMonth/closingYear
+ * - يُسجّل في audit_logs
+ */
+export async function reopenDeal(params: {
+  dealId: number;
+  modifiedBy: string;
+  reason?: string;
+}) {
+  const db = await getDb();
+  if (!db) return { success: false, error: 'DB not available' };
+  const [deal] = await db.select().from(deals).where(eq(deals.id, params.dealId)).limit(1);
+  if (!deal) return { success: false, error: 'Deal not found' };
+  if (!['closed_won', 'closed_lost'].includes(deal.stage)) {
+    return { success: false, error: 'الصفقة ليست مغلقة' };
+  }
+  const oldStage = deal.stage;
+  await db.update(deals).set({
+    stage: 'negotiation',
+    isLocked: 0,
+    closedAt: null as any,
+    closingMonth: null as any,
+    closingYear: null as any,
+  }).where(eq(deals.id, params.dealId));
+  // Log in deal_timeline
+  await addDealTimelineEntry({
+    dealId: params.dealId,
+    engineerId: deal.engineerId,
+    activityType: 'stage_changed',
+    description: `إعادة فتح الصفقة من "${oldStage === 'closed_won' ? 'مغلقة (فوز)' : 'مغلقة (خسارة)'}" إلى "تفاوض" بواسطة ${params.modifiedBy}${params.reason ? ` - السبب: ${params.reason}` : ''}`,
+  });
+  // Log in audit_logs
+  await db.insert(auditLogs).values({
+    action: 'deal_reopened',
+    entityType: 'deal',
+    entityId: params.dealId,
+    oldValue: JSON.stringify({ stage: oldStage, isLocked: 1 }),
+    newValue: JSON.stringify({ stage: 'negotiation', isLocked: 0 }),
+    performedBy: params.modifiedBy,
+  } as any);
+  return { success: true, oldStage };
+}
+
+// ─── Set Deal Accounting Month (Admin/Manager only) ──────────────────────────
+export async function setDealAccountingMonth(params: {
+  dealId: number;
+  accountingMonth: number;
+  accountingYear: number;
+  setBy: string;
+}) {
+  const db = await getDb();
+  if (!db) return { success: false, error: 'DB not available' };
+  const deal = await db.select().from(deals).where(eq(deals.id, params.dealId)).then(r => r[0]);
+  if (!deal) return { success: false, error: 'Deal not found' };
+  const oldAccounting = { accountingMonth: deal.accountingMonth, accountingYear: deal.accountingYear };
+  await db.update(deals).set({
+    accountingMonth: params.accountingMonth,
+    accountingYear: params.accountingYear,
+    accountingMonthSetBy: params.setBy,
+    accountingMonthSetAt: new Date(),
+  } as any).where(eq(deals.id, params.dealId));
+  // Log in deal_timeline
+  await addDealTimelineEntry({
+    dealId: params.dealId,
+    engineerId: deal.engineerId,
+    activityType: 'note_added',
+    description: `تغيير شهر الاحتساب المالي إلى ${params.accountingMonth}/${params.accountingYear} بواسطة ${params.setBy}`,
+  });
+  // Log in audit_logs
+  await db.insert(auditLogs).values({
+    action: 'accounting_month_changed',
+    entityType: 'deal',
+    entityId: params.dealId,
+    oldValue: JSON.stringify(oldAccounting),
+    newValue: JSON.stringify({ accountingMonth: params.accountingMonth, accountingYear: params.accountingYear }),
+    performedBy: params.setBy,
+  } as any);
+  return { success: true };
+}
+
+// ─── Collection Period Analysis ───────────────────────────────────────────────
+export async function getCollectionPeriodAnalysis(startDate: string, endDate: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+
+  // إجمالي التحصيل في الفترة
+  const periodPayments = await db.select({
+    total: sql<string>`COALESCE(SUM(${payments.amount}), 0)`,
+    count: sql<number>`COUNT(*)`,
+  }).from(payments)
+    .where(and(
+      gte(payments.paymentDate, start as unknown as Date),
+      lte(payments.paymentDate, end as unknown as Date),
+    ));
+
+  // التحصيل حسب الشهر (للرسم البياني)
+  const monthlyBreakdown = await db.select({
+    year: sql<number>`YEAR(${payments.paymentDate})`,
+    month: sql<number>`MONTH(${payments.paymentDate})`,
+    total: sql<string>`COALESCE(SUM(${payments.amount}), 0)`,
+    count: sql<number>`COUNT(*)`,
+  }).from(payments)
+    .where(and(
+      gte(payments.paymentDate, start as unknown as Date),
+      lte(payments.paymentDate, end as unknown as Date),
+    ))
+    .groupBy(sql`YEAR(${payments.paymentDate}), MONTH(${payments.paymentDate})`)
+    .orderBy(sql`YEAR(${payments.paymentDate}), MONTH(${payments.paymentDate})`);
+
+  // التحصيل حسب نوع الدفعة
+  const byType = await db.select({
+    paymentType: payments.paymentType,
+    total: sql<string>`COALESCE(SUM(${payments.amount}), 0)`,
+    count: sql<number>`COUNT(*)`,
+  }).from(payments)
+    .where(and(
+      gte(payments.paymentDate, start as unknown as Date),
+      lte(payments.paymentDate, end as unknown as Date),
+    ))
+    .groupBy(payments.paymentType);
+
+  // المتأخرات في الفترة
+  const overdueInPeriod = await db.select({
+    count: sql<number>`COUNT(*)`,
+    total: sql<string>`COALESCE(SUM(${collections.contractAmount} - ${collections.collectedAmount}), 0)`,
+  }).from(collections)
+    .where(eq(collections.status, 'overdue'));
+
+  const ARABIC_MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+
+  return {
+    period: { from: startDate, to: endDate },
+    total: parseFloat(periodPayments[0]?.total ?? '0'),
+    count: periodPayments[0]?.count ?? 0,
+    monthlyBreakdown: monthlyBreakdown.map(r => ({
+      year: r.year,
+      month: r.month,
+      label: `${ARABIC_MONTHS[(r.month ?? 1) - 1]} ${r.year}`,
+      total: parseFloat(r.total ?? '0'),
+      count: r.count ?? 0,
+    })),
+    byType: byType.map(r => ({
+      type: r.paymentType ?? 'other',
+      total: parseFloat(r.total ?? '0'),
+      count: r.count ?? 0,
+    })),
+    overdue: {
+      count: overdueInPeriod[0]?.count ?? 0,
+      total: parseFloat(overdueInPeriod[0]?.total ?? '0'),
+    },
+  };
 }

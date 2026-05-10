@@ -1196,3 +1196,73 @@
 - [ ] Vitest: اختبار Bulk Creation
 - [ ] Vitest: اختبار forcePasswordChange flow
 - [ ] Vitest: اختبار Role-based data filtering
+
+## نظام تاريخ الاحتساب المالي (accountingMonth/accountingYear)
+
+### أولاً: Schema
+- [ ] إضافة حقل accountingMonth (int) و accountingYear (int) في جدول deals
+- [ ] تطبيق migration SQL
+
+### ثانياً: Backend
+- [ ] تحديث getDealsStats لاستخدام accountingMonth/accountingYear
+- [ ] تحديث getDealsList لاستخدام accountingMonth/accountingYear
+- [ ] تحديث getDiscountSummary لاستخدام accountingMonth/accountingYear
+- [ ] تحديث getLostDealsAnalysis لاستخدام accountingMonth/accountingYear
+- [ ] إضافة procedure updateAccountingMonth (للـ Admin فقط) مع تسجيل في audit_logs
+- [ ] عند إغلاق الصفقة: accountingMonth = closingMonth تلقائياً
+- [ ] إضافة reopenDeal procedure في closing router
+
+### ثالثاً: Frontend
+- [ ] إضافة Badge "محسوبة على شهر: [اسم الشهر]" في بطاقة كل صفقة
+- [ ] إضافة زر تعديل شهر الاحتساب (للـ Admin فقط) في نافذة التعديل
+- [ ] إضافة Reopen Deal button في بطاقة الصفقات المغلقة
+- [ ] تحسين Deal Transfer UI
+
+### رابعاً: إصلاح TS errors
+- [ ] إصلاح localAuth.changePassword procedure في routers.ts
+- [ ] إصلاح UserManagement.tsx - listEngineers, bulkCreateAccounts, createEngineerAccount, resetPassword, toggleStatus
+- [ ] إصلاح LoginPage.tsx - changePassword procedure
+
+## نظام Calendar الموحد (Advanced Date Filter)
+
+### أولاً: DateRangePicker Component
+- [ ] بناء DateRangePicker component موحد يدعم: Today, Yesterday, Last 7 Days, Last 30 Days, This Month, Last Month, Custom Range
+- [ ] تصميم مشابه لـ Meta Ads Business Manager
+- [ ] دعم From Date → To Date للـ Custom Range
+
+### ثانياً: ربط Calendar بالـ Modules
+- [ ] Leads Module: ربط بـ DateRangePicker (activityDate)
+- [ ] Closing Module: ربط بـ DateRangePicker (accountingDate/closingDate)
+- [ ] KPI Module: ربط بـ DateRangePicker (period)
+- [ ] Collections Module: ربط بـ DateRangePicker (paymentDate)
+- [ ] Visits Module: ربط بـ DateRangePicker (visitDate)
+- [ ] Reports Module: ربط بـ DateRangePicker (unified)
+
+### ثالثاً: Backend Date Range Support
+- [ ] تحديث getLeadDailyStatsList لقبول from/to dates
+- [ ] تحديث getDealsStats لقبول from/to dates (بجانب month/year)
+- [ ] تحديث getDealsList لقبول from/to dates
+- [ ] تحديث getDiscountSummary لقبول from/to dates
+- [ ] تحديث getPaymentsList لقبول from/to dates
+- [ ] تحديث getVisitsStats لقبول from/to dates
+
+### رابعاً: إصلاح TS errors
+- [ ] نقل listEngineers/bulkCreateAccounts/createEngineerAccount/resetPassword/changePassword/toggleStatus من rolePermissions إلى appUsers في routers.ts
+- [ ] إصلاح LoginPage.tsx - استخدام trpc.appUsers.changePassword بدلاً من trpc.localAuth.changePassword
+
+## نظام Calendar الموحد (Timeline System)
+- [x] بناء DateRangePicker Component موحد (مشابه Meta Ads Business Manager)
+- [x] يدعم: Today, Yesterday, Last 7 Days, Last 30 Days, This Month, Last Month, Custom Range
+- [x] يدعم: From Date → To Date (Custom Range مع Calendar Grid مزدوج)
+- [x] ربط DateRangePicker بـ LeadsModule
+- [x] ربط DateRangePicker بـ ClosingModule
+- [x] ربط DateRangePicker بـ KPIModule
+- [x] ربط DateRangePicker بـ CollectionsModule (Financial Collection)
+- [x] ربط DateRangePicker بـ VisitsModule
+- [x] ربط DateRangePicker بـ ReportsModule (MonthlyReportTab)
+- [x] إضافة accountingMonth/accountingYear في deals table (Schema + Migration 0044)
+- [x] Backend: setDealAccountingMonth procedure (admin/manager only)
+- [x] Backend: financial.periodAnalysis procedure (startDate → endDate)
+- [x] CollectionsModule: تحليل زمني كامل في analytics tab (إجمالي التحصيل + حسب الشهر + حسب نوع الدفعة + المتأخرات)
+- [x] Historical Tracking: مراجعة أي فترة ماضية في كل Module
+- [x] Vitest tests لـ DateRangePicker utilities (305 اختبار ناجح)
