@@ -411,7 +411,13 @@ function ManageEngineersDialog({ engineers, onDone }: { engineers: any[]; onDone
     onError: () => toast.error("حدث خطأ في التحديث"),
   });
   const softDeleteMut = trpc.softDelete.engineer.useMutation({
-    onSuccess: () => { utils.tasks.engineers.invalidate(); toast.success("تم حذف المهندس"); setDeleteTarget(null); onDone(); },
+    onSuccess: () => {
+      // Invalidate all caches to ensure engineer disappears from all dropdowns and lists
+      utils.invalidate();
+      toast.success("تم حذف المهندس وإخفاؤه من جميع القوائم");
+      setDeleteTarget(null);
+      onDone();
+    },
     onError: () => toast.error("حدث خطأ في الحذف"),
   });
   const DEPT_OPTIONS = [

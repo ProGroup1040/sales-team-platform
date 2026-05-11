@@ -1319,3 +1319,39 @@
 - [ ] ربط Company Closing KPI بـ Discount Flexibility
 - [ ] واجهة عرض: Discount Pool + Used + Remaining + Pipeline + Closed
 - [ ] تطبيق النظام فقط على Sales Engineer + Sales Specialist
+
+## إصلاح bugs الحذف والتحديث في ClosingModule
+- [ ] إصلاح deleteDeal procedure (خطأ "حدث خطأ في الحذف")
+- [ ] إضافة Activity Log للحذف (من حذف + وقت + سبب)
+- [ ] إصلاح Re-fetch بعد الحذف (تحديث القائمة + الأرقام)
+- [ ] إصلاح نقل الصفقة للشهر المحاسبي الصحيح عند التحديث
+- [ ] إصلاح Calendar Filtering - Month-Based بدلاً من Global Accumulative
+- [ ] إصلاح Re-fetch بعد Update (تحديث Sales + Pipeline + Discounts + KPI)
+- [ ] إصلاح getDeals query لاستخدام accountingMonth/accountingYear كـ primary filter
+
+## إصلاح bug حذف المهندس
+- [ ] إصلاح softDelete.engineer - protectedProcedure يفشل مع localAuth
+- [ ] إصلاح softDelete.deal - protectedProcedure يفشل مع localAuth
+- [ ] إخفاء المهندس المحذوف من جميع Dropdowns
+- [ ] إعادة حساب KPI/Ranking بعد الحذف
+- [ ] Activity Log للحذف (من حذف + وقت + سبب)
+
+## إصلاح Bug حذف المهندس (مايو 2026)
+- [x] إصلاح getEngineers و getEngineersWithRole لإضافة فلتر isDeleted = 0
+- [x] إصلاح softDeleteEngineer لتعيين status = inactive عند الحذف
+- [x] إصلاح softDeleteMut في TasksModule.tsx لإطلاق utils.invalidate() الشامل
+- [x] إصلاح getEngineersCollectionCommission لإضافة فلتر isDeleted = 0
+- [x] إصلاح getAllEngineersDistribution لإضافة فلتر isDeleted = 0
+- [x] إصلاح getAllEngineersPerformanceScores لإضافة فلتر isDeleted = 0
+- [x] إصلاح getFollowupComplianceReport لإضافة فلتر isDeleted = 0
+- [x] إصلاح getTeamPerformanceRanking لإضافة فلتر isDeleted = 0
+- [x] إصلاح getEngineersKPI لإضافة فلتر isDeleted = 0
+- [x] إصلاح getAllEngineersEvaluationDashboard لإضافة فلتر isDeleted = 0
+- [x] إصلاح getEngineersSalesPerformance لاستخدام accountingMonth كأولوية
+- [x] إصلاح getSalesControlStats لاستخدام accountingMonth كأولوية
+- [x] إصلاح getDealsStats لاستخدام accountingMonth كأولوية
+- [x] إصلاح getDealsList لاستخدام accountingMonth كأولوية
+- [x] إصلاح getDiscountSummary لاستخدام accountingMonth كأولوية
+- [x] إصلاح getEngineerDiscountSummary لاستخدام accountingMonth كأولوية
+- [x] إصلاح getLostDealsAnalysis لاستخدام accountingMonth كأولوية
+- [x] إصلاح getTeamPerformanceRanking لاستخدام accountingMonth كأولوية

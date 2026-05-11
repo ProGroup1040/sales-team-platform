@@ -137,15 +137,16 @@ export default function ClosingModule() {
   });
 
   const invalidateAll = () => {
-    utils.closing.list.invalidate({ year: filterYear, month: filterMonth });
-    utils.closing.stats.invalidate({ year: filterYear, month: filterMonth });
-    utils.closing.discountSummary.invalidate({ year: filterYear, month: filterMonth });
+    // مسح كل الـ cache variants بدون parameters لضمان تحديث كامل
+    utils.closing.list.invalidate();
+    utils.closing.stats.invalidate();
     utils.closing.discountSummary.invalidate();
     utils.closing.engineerDiscountSummary.invalidate();
     utils.closing.lostDealsAnalysis.invalidate();
-    // invalidate all variants to ensure fresh data
-    utils.closing.list.invalidate();
-    utils.closing.stats.invalidate();
+    utils.closing.discountDashboard.invalidate();
+    utils.closing.salesEngineers.invalidate();
+    refetchOverdue();
+    refetchPending();
   };
 
   const createMutation = trpc.closing.create.useMutation({

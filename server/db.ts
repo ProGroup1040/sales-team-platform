@@ -81,7 +81,9 @@ export async function getUserByOpenId(openId: string) {
 export async function getEngineers() {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(engineers).where(eq(engineers.status, 'active')).orderBy(engineers.name);
+  return db.select().from(engineers)
+    .where(and(eq(engineers.status, 'active'), eq(engineers.isDeleted, 0)))
+    .orderBy(engineers.name);
 }
 
 export async function getEngineerById(id: number) {
@@ -139,7 +141,9 @@ export async function getDailyTasksStats(dateStr: string) {
   const critical = allTasks.filter(t => t.isCritical === 1).length;
   const total = allTasks.length;
 
-  const engList = await db.select().from(engineers).where(eq(engineers.status, 'active')).orderBy(engineers.name);
+  const engList = await db.select().from(engineers)
+    .where(and(eq(engineers.status, 'active'), eq(engineers.isDeleted, 0)))
+    .orderBy(engineers.name);
   const byEngineer = engList.map(eng => {
     const engTasks = allTasks.filter(t => t.engineerId === eng.id);
     const scorableTasks = engTasks.filter(t => t.status !== 'client_delay' && t.status !== 'planned');
@@ -307,7 +311,9 @@ export async function rescheduleTask(id: number, newDate: string) {
 export async function getEngineersWithRole() {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(engineers).where(eq(engineers.status, 'active')).orderBy(engineers.name);
+  return db.select().from(engineers)
+    .where(and(eq(engineers.status, 'active'), eq(engineers.isDeleted, 0)))
+    .orderBy(engineers.name);
 }
 
 export async function createEngineerWithRole(data: { name: string; email?: string; phone?: string; department?: string; role?: string }) {
@@ -537,18 +543,23 @@ export async function getDealsStats(year: number, month: number) {
   if (!db) return { open: 0, closedWon: 0, closedLost: 0, totalValue: 0, closedValue: 0, conversionRate: 0, byStage: [] };
   const startDate = new Date(year, month - 1, 1);
   const endDate = new Date(year, month, 0, 23, 59, 59);
-  // CRITICAL: closed deals are attributed by closingMonth/closingYear (= closedAt month)
-  // Pipeline deals are shown if they were created in this month OR are still open
+  // CRITICAL: Priority order for closed deals:
+  // 1. accountingMonth/accountingYear (admin override - highest priority)
+  // 2. closingMonth/closingYear (auto-set on close)
+  // 3. closedAt date range (fallback)
+  const closedDealMonthMatch = or(
+    // Priority 1: accountingMonth (admin override)
+    and(eq(deals.accountingMonth as any, month), eq(deals.accountingYear as any, year)),
+    // Priority 2: closingMonth (auto-set)
+    and(isNull(deals.accountingMonth as any), eq(deals.closingMonth as any, month), eq(deals.closingYear as any, year)),
+    // Priority 3: closedAt fallback
+    and(isNull(deals.accountingMonth as any), isNull(deals.closingMonth as any), between(deals.closedAt as any, startDate, endDate))
+  );
   const closedDealsThisMonth = await db.select().from(deals).where(
     and(
       eq(deals.isDeleted, 0),
-      or(
-        and(eq(deals.stage, 'closed_won'), eq(deals.closingMonth as any, month), eq(deals.closingYear as any, year)),
-        and(eq(deals.stage, 'closed_lost'), eq(deals.closingMonth as any, month), eq(deals.closingYear as any, year)),
-        // Fallback: use closedAt if closingMonth not set
-        and(eq(deals.stage, 'closed_won'), isNull(deals.closingMonth as any), between(deals.closedAt as any, startDate, endDate)),
-        and(eq(deals.stage, 'closed_lost'), isNull(deals.closingMonth as any), between(deals.closedAt as any, startDate, endDate)),
-      )
+      inArray(deals.stage, ['closed_won', 'closed_lost']),
+      closedDealMonthMatch
     )
   );
   // Pipeline: all open deals (not closed) regardless of creation date - they're still active
@@ -581,20 +592,38 @@ export async function getDealsStats(year: number, month: number) {
 export async function getDealsList(limit = 20, offset = 0, stage?: string, year?: number, month?: number) {
   const db = await getDb();
   if (!db) return { data: [], total: 0 };
-  // CRITICAL: closed deals attributed by closingMonth/closingYear; pipeline by createdAt
+  // CRITICAL: Priority order for closed deals:
+  // 1. accountingMonth/accountingYear (set by admin/manager - highest priority)
+  // 2. closingMonth/closingYear (set automatically when deal closes)
+  // 3. closedAt date range (fallback)
+  // Pipeline deals: use createdAt
   let whereClause: any = eq(deals.isDeleted, 0);
   if (year && month) {
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 0, 23, 59, 59);
+    // Helper: closed deal attribution condition
+    const closedDealMonthMatch = or(
+      // Priority 1: accountingMonth (admin override)
+      and(eq(deals.accountingMonth as any, month), eq(deals.accountingYear as any, year)),
+      // Priority 2: closingMonth (auto-set on close)
+      and(
+        isNull(deals.accountingMonth as any),
+        eq(deals.closingMonth as any, month),
+        eq(deals.closingYear as any, year)
+      ),
+      // Priority 3: closedAt date range (fallback)
+      and(
+        isNull(deals.accountingMonth as any),
+        isNull(deals.closingMonth as any),
+        between(deals.closedAt as any, startDate, endDate)
+      )
+    );
     if (stage && (stage === 'closed_won' || stage === 'closed_lost')) {
-      // Closed deals: use closingMonth/closingYear (fallback to closedAt)
+      // Closed deals: use accountingMonth > closingMonth > closedAt
       whereClause = and(
         eq(deals.isDeleted, 0),
         eq(deals.stage, stage as any),
-        or(
-          and(eq(deals.closingMonth as any, month), eq(deals.closingYear as any, year)),
-          and(isNull(deals.closingMonth as any), between(deals.closedAt as any, startDate, endDate))
-        )
+        closedDealMonthMatch
       );
     } else if (stage && stage !== 'all') {
       // Pipeline with specific stage: use createdAt
@@ -604,16 +633,11 @@ export async function getDealsList(limit = 20, offset = 0, stage?: string, year?
         between(deals.createdAt, startDate, endDate)
       );
     } else {
-      // All deals for this month: closed by closingMonth OR pipeline by createdAt
+      // All deals for this month: closed by accountingMonth/closingMonth OR pipeline by createdAt
       whereClause = and(
         eq(deals.isDeleted, 0),
         or(
-          and(inArray(deals.stage, ['closed_won', 'closed_lost']),
-            or(
-              and(eq(deals.closingMonth as any, month), eq(deals.closingYear as any, year)),
-              and(isNull(deals.closingMonth as any), between(deals.closedAt as any, startDate, endDate))
-            )
-          ),
+          and(inArray(deals.stage, ['closed_won', 'closed_lost']), closedDealMonthMatch),
           and(
             not(inArray(deals.stage, ['closed_won', 'closed_lost'])),
             between(deals.createdAt, startDate, endDate)
@@ -708,7 +732,20 @@ export async function getEngineersKPI(year: number, month: number) {
   const allTasks = await db.select().from(dailyTasks)
     .where(and(gte(dailyTasks.taskDate, startDate), lte(dailyTasks.taskDate, endDate)));
   const allVisits = await db.select().from(visits).where(between(visits.scheduledAt, startDate, endDate));
-  const allDeals = await db.select().from(deals).where(between(deals.createdAt, startDate, endDate));
+  // Pipeline deals: by createdAt; Closed deals: by accountingMonth > closingMonth > closedAt
+  const pipelineDealsThisMonth = await db.select().from(deals)
+    .where(and(eq(deals.isDeleted, 0), not(inArray(deals.stage, ['closed_won', 'closed_lost'])), between(deals.createdAt, startDate, endDate)));
+  const closedDealsThisMonth = await db.select().from(deals)
+    .where(and(
+      eq(deals.isDeleted, 0),
+      inArray(deals.stage, ['closed_won', 'closed_lost']),
+      or(
+        and(eq(deals.accountingMonth as any, month), eq(deals.accountingYear as any, year)),
+        and(isNull(deals.accountingMonth as any), eq(deals.closingMonth as any, month), eq(deals.closingYear as any, year)),
+        and(isNull(deals.accountingMonth as any), isNull(deals.closingMonth as any), between(deals.closedAt as any, startDate, endDate))
+      )
+    ));
+  const allDeals = [...pipelineDealsThisMonth, ...closedDealsThisMonth];
   const allLeads = await db.select().from(leads).where(between(leads.createdAt, startDate, endDate));
   const commTiers = await getCommissionTiers();
   const engTargetsList = await db.select().from(engineerTargets)
@@ -1193,21 +1230,28 @@ export async function getEngineersSalesPerformance(year: number, month: number) 
   const engList = await getEngineers();
   const targets = await db.select().from(engineerTargets)
     .where(and(eq(engineerTargets.year, year), eq(engineerTargets.month, month)));
+   // Priority: accountingMonth > closingMonth > closedAt
   const wonDeals = await db.select().from(deals)
-    .where(and(eq(deals.stage, 'closed_won'), between(deals.closedAt as any, startDate, endDate)));
+    .where(and(
+      eq(deals.stage, 'closed_won'),
+      eq(deals.isDeleted, 0),
+      or(
+        and(eq(deals.accountingMonth as any, month), eq(deals.accountingYear as any, year)),
+        and(isNull(deals.accountingMonth as any), eq(deals.closingMonth as any, month), eq(deals.closingYear as any, year)),
+        and(isNull(deals.accountingMonth as any), isNull(deals.closingMonth as any), between(deals.closedAt as any, startDate, endDate))
+      )
+    ));
   const allDeals = await db.select().from(deals)
-    .where(between(deals.createdAt, startDate, endDate));
+    .where(and(eq(deals.isDeleted, 0), between(deals.createdAt, startDate, endDate)));
   const allVisits = await db.select().from(visits)
     .where(between(visits.scheduledAt, startDate, endDate));
   const commTiers = await db.select().from(commissionTiers).orderBy(commissionTiers.minAchievementPct);
-
   return engList.map(eng => {
     const targetRow = targets.find(t => t.engineerId === eng.id);
     const targetAmount = targetRow ? parseFloat(targetRow.targetAmount) : 0;
     const manpower = targetRow?.manpower ?? 1;
-
     const engWonDeals = wonDeals.filter(d => d.engineerId === eng.id);
-    const actualSales = engWonDeals.reduce((s, d) => s + parseFloat(d.value), 0);
+    const actualSales = engWonDeals.reduce((s, d) => s + parseFloat(d.value), 0);;
     const achievementPct = targetAmount > 0 ? Math.round((actualSales / targetAmount) * 100) : 0;
     const remaining = Math.max(0, targetAmount - actualSales);
 
@@ -1258,9 +1302,17 @@ export async function getSalesControlStats(year: number, month: number) {
     .where(and(eq(monthlyTargets.year, year), eq(monthlyTargets.month, month))).limit(1);
   const totalTarget = targetRow.length > 0 ? parseFloat(targetRow[0].targetAmount) : 0;
 
-  // المبيعات الفعلية
+  // المبيعات الفعلية - Priority: accountingMonth > closingMonth > closedAt
   const wonDeals = await db.select().from(deals)
-    .where(and(eq(deals.stage, 'closed_won'), between(deals.closedAt as any, startDate, endDate)));
+    .where(and(
+      eq(deals.stage, 'closed_won'),
+      eq(deals.isDeleted, 0),
+      or(
+        and(eq(deals.accountingMonth as any, month), eq(deals.accountingYear as any, year)),
+        and(isNull(deals.accountingMonth as any), eq(deals.closingMonth as any, month), eq(deals.closingYear as any, year)),
+        and(isNull(deals.accountingMonth as any), isNull(deals.closingMonth as any), between(deals.closedAt as any, startDate, endDate))
+      )
+    ));
   const actualSales = wonDeals.reduce((s, d) => s + parseFloat(d.value), 0);
   const achievementRate = totalTarget > 0 ? Math.round((actualSales / totalTarget) * 100) : 0;
   const remaining = Math.max(0, totalTarget - actualSales);
@@ -1665,7 +1717,8 @@ export async function getDailyFollowUpList() {
 export async function getEngineersCollectionCommission() {
   const db = await getDb();
   if (!db) return [];
-  const engs = await db.select().from(engineers).where(eq(engineers.status, "active"));
+  const engs = await db.select().from(engineers)
+    .where(and(eq(engineers.status, "active"), eq(engineers.isDeleted, 0)));
   const results = await Promise.all(engs.map(async (eng) => {
     const engPayments = await db.select().from(payments).where(eq(payments.engineerId, eng.id));
     const totalCollected = engPayments.reduce((s, p) => s + parseFloat(p.amount as string), 0);
@@ -2649,6 +2702,7 @@ export async function softDeleteEngineer(id: number, reason: string, reasonCusto
   const [eng] = await db.select({ name: engineers.name }).from(engineers).where(eq(engineers.id, id));
   await db.update(engineers).set({
     isDeleted: 1,
+    status: 'inactive' as any,  // Mark as inactive so they don't appear in any active lists
     deletedAt: new Date(),
     deleteReason: reason as any,
     deleteReasonCustom: reasonCustom,
@@ -2878,21 +2932,18 @@ export async function getDiscountSummary(year?: number, month?: number, startDat
   let pipelineDeals: any[];
   let lostDeals: any[];
   if (rangeStart && rangeEnd) {
-    // ─── Closed Won: بناءً على closingDate أو closedAt ───────────────────────
+    // ─── Priority order for closed deals attribution:
+    // 1. accountingMonth/accountingYear (admin override)
+    // 2. closingMonth/closingYear (auto-set on close)
+    // 3. closedAt date range (fallback)
+    const closedDealAttribution = year && month ? or(
+      and(eq(deals.accountingMonth as any, month), eq(deals.accountingYear as any, year)),
+      and(isNull(deals.accountingMonth as any), eq(deals.closingMonth as any, month), eq(deals.closingYear as any, year)),
+      and(isNull(deals.accountingMonth as any), isNull(deals.closingMonth as any), between(deals.closedAt as any, rangeStart, rangeEnd))
+    ) : between(deals.closedAt as any, rangeStart, rangeEnd);
+    // ─── Closed Won ────────────────────────────────────────────────────────────
     closedDeals = await db.select().from(deals).where(
-      and(
-        eq(deals.isDeleted, 0),
-        eq(deals.stage, 'closed_won'),
-        or(
-          // استخدم closedAt إذا كان موجوداً
-          between(deals.closedAt as any, rangeStart, rangeEnd),
-          // أو closingMonth/closingYear إذا كان النطاق شهراً كاملاً
-          and(
-            isNull(deals.closedAt as any),
-            year && month ? and(eq(deals.closingMonth as any, month), eq(deals.closingYear as any, year)) : sql`1=0`
-          )
-        )
-      )
+      and(eq(deals.isDeleted, 0), eq(deals.stage, 'closed_won'), closedDealAttribution)
     );
     // ─── Pipeline: بناءً على createdAt ────────────────────────────────────────
     pipelineDeals = await db.select().from(deals).where(
@@ -2902,13 +2953,9 @@ export async function getDiscountSummary(year?: number, month?: number, startDat
         between(deals.createdAt, rangeStart, rangeEnd)
       )
     );
-    // ─── Lost: بناءً على closedAt ─────────────────────────────────────────────
+    // ─── Lost ──────────────────────────────────────────────────────────────────
     lostDeals = await db.select().from(deals).where(
-      and(
-        eq(deals.isDeleted, 0),
-        eq(deals.stage, 'closed_lost'),
-        between(deals.closedAt as any, rangeStart, rangeEnd)
-      )
+      and(eq(deals.isDeleted, 0), eq(deals.stage, 'closed_lost'), closedDealAttribution)
     );
   } else {
     // بدون فلتر: كل الصفقات
@@ -3094,9 +3141,15 @@ export async function getEngineerDiscountSummary(year?: number, month?: number, 
   // جلب الصفقات حسب الفترة
   let allDealsInRange: any[];
   if (rangeStart && rangeEnd) {
+    // Priority: accountingMonth > closingMonth > closedAt
+    const closedDealAttribution = year && month ? or(
+      and(eq(deals.accountingMonth as any, month), eq(deals.accountingYear as any, year)),
+      and(isNull(deals.accountingMonth as any), eq(deals.closingMonth as any, month), eq(deals.closingYear as any, year)),
+      and(isNull(deals.accountingMonth as any), isNull(deals.closingMonth as any), between(deals.closedAt as any, rangeStart, rangeEnd))
+    ) : between(deals.closedAt as any, rangeStart, rangeEnd);
     // صفقات مغلقة في الفترة
     const closedInRange = await db.select().from(deals).where(
-      and(eq(deals.isDeleted, 0), eq(deals.stage, 'closed_won'), between(deals.closedAt as any, rangeStart, rangeEnd))
+      and(eq(deals.isDeleted, 0), eq(deals.stage, 'closed_won'), closedDealAttribution)
     );
     // صفقات الـ Pipeline في الفترة
     const pipelineInRange = await db.select().from(deals).where(
@@ -3160,7 +3213,7 @@ export async function getLostDealsAnalysis(year?: number, month?: number) {
     .select({ id: engineers.id, name: engineers.name })
     .from(engineers)
     .where(eq(engineers.isDeleted, 0));
-  // CRITICAL: filter lost deals by closingMonth/closingYear if provided
+  // CRITICAL: Priority: accountingMonth > closingMonth > closedAt
   let lostDealsWhere: any = and(eq(deals.stage, 'closed_lost'), eq(deals.isDeleted, 0));
   if (year && month) {
     const startDate = new Date(year, month - 1, 1);
@@ -3169,8 +3222,12 @@ export async function getLostDealsAnalysis(year?: number, month?: number) {
       eq(deals.stage, 'closed_lost'),
       eq(deals.isDeleted, 0),
       or(
-        and(eq(deals.closingMonth as any, month), eq(deals.closingYear as any, year)),
-        and(isNull(deals.closingMonth as any), between(deals.closedAt as any, startDate, endDate))
+        // Priority 1: accountingMonth (admin override)
+        and(eq(deals.accountingMonth as any, month), eq(deals.accountingYear as any, year)),
+        // Priority 2: closingMonth (auto-set)
+        and(isNull(deals.accountingMonth as any), eq(deals.closingMonth as any, month), eq(deals.closingYear as any, year)),
+        // Priority 3: closedAt fallback
+        and(isNull(deals.accountingMonth as any), isNull(deals.closingMonth as any), between(deals.closedAt as any, startDate, endDate))
       )
     );
   }
@@ -3660,7 +3717,8 @@ export async function getAllEngineersDistribution(year: number, month: number) {
   const db = await getDb();
   if (!db) return [];
 
-  const allEngineers = await db.select().from(engineers).where(eq(engineers.status, "active"));
+  const allEngineers = await db.select().from(engineers)
+    .where(and(eq(engineers.status, "active"), eq(engineers.isDeleted, 0)));
   const results = await Promise.all(
     allEngineers.map(async (eng) => {
       const dist = await getWorkDistribution(eng.id, year, month);
@@ -8911,7 +8969,7 @@ export async function getAdvancedDiscountDistribution(month: number, year: numbe
 
   // Get sales engineers
   const salesEngineers = await db.select().from(engineers)
-    .where(inArray(engineers.department as any, SALES_DEPTS));
+    .where(and(inArray(engineers.department as any, SALES_DEPTS), eq(engineers.isDeleted, 0)));
   if (!salesEngineers.length) return [];
 
   const engineerIds = salesEngineers.map((e: any) => e.id);
@@ -9585,15 +9643,18 @@ export async function getTeamPerformanceRanking(year: number, month: number) {
       .limit(1);
     const target = targetRows[0];
 
-    // المبيعات الفعلية
+    // المبيعات الفعلية - Priority: accountingMonth > closingMonth > closedAt
     const salesRows = await db.select({ total: sql<string>`SUM(${deals.netValue})`, cnt: sql<number>`COUNT(*)`, won: sql<number>`SUM(CASE WHEN ${deals.stage}='closed_won' THEN 1 ELSE 0 END)` })
       .from(deals)
       .where(and(
         eq(deals.engineerId, eng.id),
-        sql`${deals.stage} IN ('closed_won','closed_lost')`,
+        inArray(deals.stage, ['closed_won', 'closed_lost']),
         eq(deals.isDeleted, 0),
-        gte(deals.createdAt, startDate),
-        lte(deals.createdAt, endDate),
+        or(
+          and(eq(deals.accountingMonth as any, month), eq(deals.accountingYear as any, year)),
+          and(isNull(deals.accountingMonth as any), eq(deals.closingMonth as any, month), eq(deals.closingYear as any, year)),
+          and(isNull(deals.accountingMonth as any), isNull(deals.closingMonth as any), gte(deals.closedAt as any, startDate), lte(deals.closedAt as any, endDate))
+        )
       ));
     const actualSales = parseFloat(salesRows[0]?.total ?? '0');
     const totalDeals = Number(salesRows[0]?.cnt ?? 0);
@@ -10265,7 +10326,7 @@ export async function getAllEngineersPerformanceScores(year: number, month: numb
   if (!db) return [];
   const salesEngineers = await db.select({ id: engineers.id, name: engineers.name, role: engineers.role })
     .from(engineers)
-    .where(eq(engineers.status, 'active'))
+    .where(and(eq(engineers.status, 'active'), eq(engineers.isDeleted, 0)))
     .orderBy(engineers.name);
 
   const results = await Promise.all(salesEngineers.map(async (eng) => {
@@ -11519,7 +11580,8 @@ export async function getFollowupKPI(engineerId: number, startDate?: string, end
 export async function getFollowupComplianceReport(startDate?: string, endDate?: string) {
   const db = await getDb();
   if (!db) return [];
-  const allEngineers = await db.select().from(engineers).where(eq(engineers.status, 'active'));
+  const allEngineers = await db.select().from(engineers)
+    .where(and(eq(engineers.status, 'active'), eq(engineers.isDeleted, 0)));
   const results = await Promise.all(allEngineers.map(async eng => {
     const kpi = await getFollowupKPI(eng.id, startDate, endDate);
     return { ...kpi, engineerId: eng.id, engineerName: eng.name };

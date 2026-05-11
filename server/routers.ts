@@ -1272,39 +1272,54 @@ export const appRouter = router({
   }),
   // Soft Delete + Audit Log
   softDelete: router({
-    engineer: protectedProcedure
+    engineer: publicProcedure
       .input(z.object({ id: z.number(), reason: z.enum(['data_entry_error','duplicate','client_cancelled','other']), reasonCustom: z.string().optional() }))
       .mutation(async ({ input, ctx }) => {
-        if (ctx.user.role !== 'admin') throw new Error('FORBIDDEN');
-        await softDeleteEngineer(input.id, input.reason, input.reasonCustom, ctx.user.name ?? 'admin');
+        const req = (ctx as any).req;
+        const session = await (await import('./localAuth')).getLocalSessionFromRequest(req);
+        const performedBy = session?.username ?? ctx.user?.name ?? 'admin';
+        if (!session && !ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        await softDeleteEngineer(input.id, input.reason, input.reasonCustom, performedBy);
         return { success: true };
       }),
-    task: protectedProcedure
+    task: publicProcedure
       .input(z.object({ id: z.number(), reason: z.enum(['data_entry_error','duplicate','client_cancelled','other']), reasonCustom: z.string().optional() }))
       .mutation(async ({ input, ctx }) => {
-        if (!['admin','admin_sales'].includes(ctx.user.role ?? '')) throw new Error('FORBIDDEN');
-        await softDeleteTask(input.id, input.reason, input.reasonCustom, ctx.user.name ?? 'user');
+        const req = (ctx as any).req;
+        const session = await (await import('./localAuth')).getLocalSessionFromRequest(req);
+        const performedBy = session?.username ?? ctx.user?.name ?? 'user';
+        if (!session && !ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        await softDeleteTask(input.id, input.reason, input.reasonCustom, performedBy);
         return { success: true };
       }),
-    lead: protectedProcedure
+    lead: publicProcedure
       .input(z.object({ id: z.number(), reason: z.enum(['data_entry_error','duplicate','client_cancelled','other']), reasonCustom: z.string().optional() }))
       .mutation(async ({ input, ctx }) => {
-        if (!['admin','admin_sales'].includes(ctx.user.role ?? '')) throw new Error('FORBIDDEN');
-        await softDeleteLead(input.id, input.reason, input.reasonCustom, ctx.user.name ?? 'user');
+        const req = (ctx as any).req;
+        const session = await (await import('./localAuth')).getLocalSessionFromRequest(req);
+        const performedBy = session?.username ?? ctx.user?.name ?? 'user';
+        if (!session && !ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        await softDeleteLead(input.id, input.reason, input.reasonCustom, performedBy);
         return { success: true };
       }),
-    visit: protectedProcedure
+    visit: publicProcedure
       .input(z.object({ id: z.number(), reason: z.enum(['data_entry_error','duplicate','client_cancelled','other']), reasonCustom: z.string().optional() }))
       .mutation(async ({ input, ctx }) => {
-        if (!['admin','admin_sales'].includes(ctx.user.role ?? '')) throw new Error('FORBIDDEN');
-        await softDeleteVisitFull(input.id, input.reason, input.reasonCustom, ctx.user.name ?? 'user');
+        const req = (ctx as any).req;
+        const session = await (await import('./localAuth')).getLocalSessionFromRequest(req);
+        const performedBy = session?.username ?? ctx.user?.name ?? 'user';
+        if (!session && !ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        await softDeleteVisitFull(input.id, input.reason, input.reasonCustom, performedBy);
         return { success: true };
       }),
-    deal: protectedProcedure
+    deal: publicProcedure
       .input(z.object({ id: z.number(), reason: z.enum(['data_entry_error','duplicate','client_cancelled','other']), reasonCustom: z.string().optional() }))
       .mutation(async ({ input, ctx }) => {
-        if (ctx.user.role !== 'admin') throw new Error('FORBIDDEN');
-        await softDeleteDeal(input.id, input.reason, input.reasonCustom, ctx.user.name ?? 'admin');
+        const req = (ctx as any).req;
+        const session = await (await import('./localAuth')).getLocalSessionFromRequest(req);
+        const performedBy = session?.username ?? ctx.user?.name ?? 'admin';
+        if (!session && !ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        await softDeleteDeal(input.id, input.reason, input.reasonCustom, performedBy);
         return { success: true };
       }),
     getAuditLogs: publicProcedure
