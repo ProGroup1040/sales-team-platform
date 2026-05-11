@@ -938,7 +938,7 @@ export const appRouter = router({
     getCompanyGoal: publicProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getCompanyGoal(input.year, input.month)),
-    setCompanyGoal: protectedProcedure
+    setCompanyGoal: publicProcedure
       .input(z.object({
         year: z.number(), month: z.number(),
         revenueTarget: z.number().positive(),
@@ -948,7 +948,12 @@ export const appRouter = router({
         periodTo: z.string().optional(),
         notes: z.string().optional(),
       }))
-      .mutation(async ({ input }) => setCompanyGoal(input)),
+      .mutation(async ({ input, ctx }) => {
+        const req = (ctx as any).req;
+        const session = await (await import('./localAuth')).getLocalSessionFromRequest(req);
+        if (!session && !ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'يجب تسجيل الدخول أولاً' });
+        return setCompanyGoal(input);
+      }),
     getCompanyGoalProgress: publicProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getCompanyGoalProgress(input.year, input.month)),

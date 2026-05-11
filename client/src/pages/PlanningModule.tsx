@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { useSectionPermission } from "@/hooks/useSectionPermission";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -55,7 +55,7 @@ const OPERATIONAL_ITEMS = [
 // ─── Tab 1: Company Goals ──────────────────────────────────────────────────────
 function CompanyGoalsTab({ year, month }: { year: number; month: number }) {
   const utils = trpc.useUtils();
-  const { data: goalData } = trpc.planning.getCompanyGoal.useQuery({ year, month });
+  const { data: goalData, isLoading: goalLoading } = trpc.planning.getCompanyGoal.useQuery({ year, month });
   const { data: progressData } = trpc.planning.getCompanyGoalProgress.useQuery({ year, month });
   const { data: trendData } = trpc.sales.trend.useQuery({ months: 6 });
 
@@ -65,14 +65,61 @@ function CompanyGoalsTab({ year, month }: { year: number; month: number }) {
   const [periodFrom, setPeriodFrom] = useState('');
   const [periodTo, setPeriodTo] = useState('');
   const [notes, setNotes] = useState('');
+  const [initialized, setInitialized] = useState(false);
+
+  // تحميل البيانات المحفوظة عند فتح الصفحة أو تغيير الشهر
+  useEffect(() => {
+    if (!goalLoading) {
+      if (goalData) {
+        setRevenueTarget(String(parseFloat(goalData.revenueTarget as string)));
+        setAvgDealValue(String(parseFloat(goalData.avgDealValue as string)));
+        setClosingRateTarget(String(parseFloat(goalData.closingRateTarget as string)));
+        // تحويل التواريخ إلى صيغة YYYY-MM-DD
+        if (goalData.periodFrom) {
+          const d = new Date(goalData.periodFrom as unknown as string);
+          if (!isNaN(d.getTime())) setPeriodFrom(d.toISOString().split('T')[0]);
+        } else {
+          // افتراضي: أول يوم في الشهر
+          setPeriodFrom(`${year}-${String(month).padStart(2, '0')}-01`);
+        }
+        if (goalData.periodTo) {
+          const d = new Date(goalData.periodTo as unknown as string);
+          if (!isNaN(d.getTime())) setPeriodTo(d.toISOString().split('T')[0]);
+        } else {
+          // افتراضي: آخر يوم في الشهر
+          const lastDay = new Date(year, month, 0).getDate();
+          setPeriodTo(`${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`);
+        }
+        setNotes(goalData.notes ?? '');
+      } else {
+        // لا يوجد هدف محفوظ - استخدام القيم الافتراضية
+        setRevenueTarget('');
+        setAvgDealValue('85000');
+        setClosingRateTarget('35');
+        setPeriodFrom(`${year}-${String(month).padStart(2, '0')}-01`);
+        const lastDay = new Date(year, month, 0).getDate();
+        setPeriodTo(`${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`);
+        setNotes('');
+      }
+      setInitialized(true);
+    }
+  }, [goalData, goalLoading, year, month]);
 
   const setGoalMut = trpc.planning.setCompanyGoal.useMutation({
     onSuccess: () => {
-      toast.success('تم حفظ هدف الشركة');
+      toast.success('تم حفظ هدف الشركة بنجاح ✔️');
       utils.planning.getCompanyGoal.invalidate();
       utils.planning.getCompanyGoalProgress.invalidate();
+      utils.invalidate(); // تحديث جميع الموديولات المرتبطة
     },
-    onError: () => toast.error('حدث خطأ في الحفظ'),
+    onError: (err: any) => {
+      const msg = err?.message || err?.data?.message || '';
+      if (msg.includes('UNAUTHORIZED') || msg.includes('تسجيل')) {
+        toast.error('يجب تسجيل الدخول أولاً لحفظ الهدف');
+      } else {
+        toast.error(`حدث خطأ في الحفظ: ${msg || 'خطأ غير معروف'}`);
+      }
+    },
   });
 
   const calc = useMemo(() => {
@@ -150,16 +197,39 @@ function CompanyGoalsTab({ year, month }: { year: number; month: number }) {
             <CardTitle className="text-base flex items-center gap-2">
               <Target className="w-4 h-4 text-indigo-500" />
               تحديد هدف الشركة الشهري
+              {goal && (
+                <Badge variant="outline" className="mr-auto text-xs bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-800/30">
+                  ✔ محفوظ لشهر {MONTHS[month - 1]} {year}
+                </Badge>
+              )}
+              {!goal && !goalLoading && (
+                <Badge variant="outline" className="mr-auto text-xs bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-800/30">
+                  ⚠ لا يوجد هدف محفوظ لهذا الشهر
+                </Badge>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* عرض الهدف المحفوظ الحالي */}
+            {goal && (
+              <div className="p-3 rounded-xl bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-800/30 flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-indigo-600 dark:text-indigo-400 font-medium">الهدف الحالي لشهر {MONTHS[month - 1]}</p>
+                  <p className="text-lg font-bold text-indigo-700 dark:text-indigo-300">{parseFloat(goal.revenueTarget as string).toLocaleString('ar-EG')} ج.م</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">نسبة الإغلاق: {parseFloat(goal.closingRateTarget as string)}%</p>
+                  <p className="text-xs text-muted-foreground">صفقات مطلوبة: {goal.requiredDeals ?? 0}</p>
+                </div>
+              </div>
+            )}
             <div>
               <Label>الهدف الإيرادي (ج.م) *</Label>
               <Input
                 type="number"
                 value={revenueTarget}
                 onChange={e => setRevenueTarget(e.target.value)}
-                placeholder={goal ? String(goal.revenueTarget) : 'مثال: 2000000'}
+                placeholder={goal ? String(parseFloat(goal.revenueTarget as string)) : 'مثال: 2000000'}
                 className="text-lg font-semibold mt-1"
               />
             </div>
@@ -175,12 +245,59 @@ function CompanyGoalsTab({ year, month }: { year: number; month: number }) {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>من تاريخ</Label>
-                <Input type="date" value={periodFrom} onChange={e => setPeriodFrom(e.target.value)} className="mt-1" />
+                <Label className="flex items-center gap-1">
+                  <Calendar className="w-3 h-3 text-muted-foreground" />
+                  من تاريخ
+                </Label>
+                <div className="relative mt-1">
+                  <Input
+                    type="date"
+                    value={periodFrom}
+                    onChange={e => {
+                      const val = e.target.value;
+                      if (periodTo && val > periodTo) {
+                        toast.error('تاريخ البداية يجب أن يكون قبل تاريخ النهاية');
+                        return;
+                      }
+                      setPeriodFrom(val);
+                    }}
+                    className="cursor-pointer"
+                    style={{ colorScheme: 'light' }}
+                  />
+                  {periodFrom && (
+                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">
+                      {new Date(periodFrom).toLocaleDateString('ar-EG', { day: 'numeric', month: 'long', year: 'numeric' })}
+                    </span>
+                  )}
+                </div>
               </div>
               <div>
-                <Label>إلى تاريخ</Label>
-                <Input type="date" value={periodTo} onChange={e => setPeriodTo(e.target.value)} className="mt-1" />
+                <Label className="flex items-center gap-1">
+                  <Calendar className="w-3 h-3 text-muted-foreground" />
+                  إلى تاريخ
+                </Label>
+                <div className="relative mt-1">
+                  <Input
+                    type="date"
+                    value={periodTo}
+                    min={periodFrom || undefined}
+                    onChange={e => {
+                      const val = e.target.value;
+                      if (periodFrom && val < periodFrom) {
+                        toast.error('تاريخ النهاية يجب أن يكون بعد تاريخ البداية');
+                        return;
+                      }
+                      setPeriodTo(val);
+                    }}
+                    className="cursor-pointer"
+                    style={{ colorScheme: 'light' }}
+                  />
+                  {periodTo && (
+                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">
+                      {new Date(periodTo).toLocaleDateString('ar-EG', { day: 'numeric', month: 'long', year: 'numeric' })}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
             <div>

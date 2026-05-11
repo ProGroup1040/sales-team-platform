@@ -1355,3 +1355,13 @@
 - [x] إصلاح getEngineerDiscountSummary لاستخدام accountingMonth كأولوية
 - [x] إصلاح getLostDealsAnalysis لاستخدام accountingMonth كأولوية
 - [x] إصلاح getTeamPerformanceRanking لاستخدام accountingMonth كأولوية
+
+## إصلاح Bug تخطيط الأهداف (مايو 2026)
+- [x] إصلاح setCompanyGoal router: تحويل من protectedProcedure إلى publicProcedure مع localAuth
+- [x] إضافة useEffect لتحميل البيانات المحفوظة عند فتح الصفحة أو تغيير الشهر
+- [x] إضافة Badge لإظهار حالة الهدف (محفوظ / غير محفوظ) في header الـ Card
+- [x] إضافة banner لعرض الهدف المحفوظ الحالي مع التفاصيل
+- [x] تحسين Date Picker: إضافة Calendar icon وتحقق من صحة التاريخ ومنع تاريخ نهاية قبل البداية
+- [x] إضافة onError handler مع رسائل خطأ واضحة
+- [x] إصلاح getCompanyGoalProgress لاستخدام accountingMonth كأولوية أولى
+- [x] إضافة utils.invalidate() شامل بعد حفظ الهدف لتحديث جميع الموديولات

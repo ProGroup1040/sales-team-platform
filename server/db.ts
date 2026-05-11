@@ -10086,35 +10086,36 @@ export async function setCompanyGoal(data: {
 export async function getCompanyGoalProgress(year: number, month: number) {
   const db = await getDb();
   if (!db) return null;
-
   const goal = await getCompanyGoal(year, month);
   if (!goal) return null;
-
-  // المبيعات الفعلية هذا الشهر
-  const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
-  const endDate = `${year}-${String(month).padStart(2, '0')}-31`;
-
+  // المبيعات الفعلية هذا الشهر - يستخدم accountingMonth كأولوية أولى
   const salesRows = await db.select({ total: sum(deals.value) })
     .from(deals)
     .where(and(
       eq(deals.stage, 'closed_won'),
-      gte(deals.createdAt, new Date(startDate)),
-      lte(deals.createdAt, new Date(endDate))
+      eq(deals.isDeleted, 0),
+      or(
+        and(eq(deals.accountingMonth, month), eq(deals.accountingYear, year)),
+        and(isNull(deals.accountingMonth), eq(deals.closingMonth, month), eq(deals.closingYear, year))
+      )
     ));
   const actualRevenue = parseFloat(salesRows[0]?.total ?? '0');
   const revenueTarget = parseFloat(goal.revenueTarget);
-
   // عدد الصفقات المغلقة
   const dealsRows = await db.select({ cnt: count() })
     .from(deals)
     .where(and(
       eq(deals.stage, 'closed_won'),
-      gte(deals.createdAt, new Date(startDate)),
-      lte(deals.createdAt, new Date(endDate))
+      eq(deals.isDeleted, 0),
+      or(
+        and(eq(deals.accountingMonth, month), eq(deals.accountingYear, year)),
+        and(isNull(deals.accountingMonth), eq(deals.closingMonth, month), eq(deals.closingYear, year))
+      )
     ));
   const actualDeals = dealsRows[0]?.cnt ?? 0;
-
   // عدد المعاينات
+  const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+  const endDate = `${year}-${String(month).padStart(2, '0')}-31`;
   const visitsRows = await db.select({ cnt: count() })
     .from(visits)
     .where(and(
@@ -10122,13 +10123,15 @@ export async function getCompanyGoalProgress(year: number, month: number) {
       lte(visits.scheduledAt, new Date(endDate))
     ));
   const actualVisits = visitsRows[0]?.cnt ?? 0;
-
-  // Closing Rate الفعلي
+  // Closing Rate الفعلي - نسبة الصفقات المغلقة إلى إجمالي الصفقات
   const totalDealsRows = await db.select({ cnt: count() })
     .from(deals)
     .where(and(
-      gte(deals.createdAt, new Date(startDate)),
-      lte(deals.createdAt, new Date(endDate))
+      eq(deals.isDeleted, 0),
+      or(
+        and(eq(deals.accountingMonth, month), eq(deals.accountingYear, year)),
+        and(isNull(deals.accountingMonth), eq(deals.closingMonth, month), eq(deals.closingYear, year))
+      )
     ));
   const totalDeals = totalDealsRows[0]?.cnt ?? 0;
   const actualClosingRate = totalDeals > 0 ? (actualDeals / totalDeals) * 100 : 0;
