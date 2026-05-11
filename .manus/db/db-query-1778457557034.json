@@ -1,0 +1,9 @@
+{
+  "query": "CREATE TABLE `deal_tasks` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`dealId` int NOT NULL,\n\t`engineerId` int NOT NULL,\n\t`title` varchar(255) NOT NULL,\n\t`description` text,\n\t`dueDate` date NOT NULL,\n\t`createdAt` timestamp NOT NULL DEFAULT (now()),\n\t`completedAt` timestamp,\n\t`status` enum('pending','done','overdue') NOT NULL DEFAULT 'pending',\n\t`delayDays` int NOT NULL DEFAULT 0,\n\t`createdBy` varchar(128),\n\t`clientName` varchar(255),\n\t`dealStage` varchar(64),\n\t`loggedToTimeline` int NOT NULL DEFAULT 0,\n\tCONSTRAINT `deal_tasks_id` PRIMARY KEY(`id`)\n);",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user fZydmv6Jueen1GW.d1ac4e774f80 --database 9B5dXFSohC6AundZRCEr3i --execute CREATE TABLE `deal_tasks` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`dealId` int NOT NULL,\n\t`engineerId` int NOT NULL,\n\t`title` varchar(255) NOT NULL,\n\t`description` text,\n\t`dueDate` date NOT NULL,\n\t`createdAt` timestamp NOT NULL DEFAULT (now()),\n\t`completedAt` timestamp,\n\t`status` enum('pending','done','overdue') NOT NULL DEFAULT 'pending',\n\t`delayDays` int NOT NULL DEFAULT 0,\n\t`createdBy` varchar(128),\n\t`clientName` varchar(255),\n\t`dealStage` varchar(64),\n\t`loggedToTimeline` int NOT NULL DEFAULT 0,\n\tCONSTRAINT `deal_tasks_id` PRIMARY KEY(`id`)\n);",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 2058
+}

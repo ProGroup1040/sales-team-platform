@@ -29,6 +29,7 @@ import {
   engineerPersonalGoals, EngineerPersonalGoal, InsertEngineerPersonalGoal,
   appUsers, userPermissions, activityLogs,
   rolePermissions, sectionPermissions,
+  dealTasks, DealTask, InsertDealTask,
   type AppUser, type InsertAppUser, type UserPermission, type RolePermission, type SectionPermission
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
@@ -2859,66 +2860,73 @@ export function getDiscountTierInfo(totalVolume: number): { tierLabel: string; d
 }
 
 /** ملخص الخصومات الكامل (Total Volume + Tier + Allowed + Used + Remaining) */
-export async function getDiscountSummary(year?: number, month?: number) {
+export async function getDiscountSummary(year?: number, month?: number, startDate?: Date, endDate?: Date) {
   const db = await getDb();
   if (!db) return null;
-  // CRITICAL: each month has independent discount data
-  // closed_won deals: attributed by closingMonth/closingYear
-  // pipeline deals: attributed by createdAt month
+  // ─── تحديد نطاق التاريخ ───────────────────────────────────────────────────
+  // Priority: startDate/endDate > year/month > all time
+  let rangeStart: Date | undefined;
+  let rangeEnd: Date | undefined;
+  if (startDate && endDate) {
+    rangeStart = startDate;
+    rangeEnd = endDate;
+  } else if (year && month) {
+    rangeStart = new Date(year, month - 1, 1);
+    rangeEnd = new Date(year, month, 0, 23, 59, 59);
+  }
   let closedDeals: any[];
   let pipelineDeals: any[];
-  if (year && month) {
-    const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 0, 23, 59, 59);
+  let lostDeals: any[];
+  if (rangeStart && rangeEnd) {
+    // ─── Closed Won: بناءً على closingDate أو closedAt ───────────────────────
     closedDeals = await db.select().from(deals).where(
       and(
         eq(deals.isDeleted, 0),
         eq(deals.stage, 'closed_won'),
         or(
-          and(eq(deals.closingMonth as any, month), eq(deals.closingYear as any, year)),
-          and(isNull(deals.closingMonth as any), between(deals.closedAt as any, startDate, endDate))
+          // استخدم closedAt إذا كان موجوداً
+          between(deals.closedAt as any, rangeStart, rangeEnd),
+          // أو closingMonth/closingYear إذا كان النطاق شهراً كاملاً
+          and(
+            isNull(deals.closedAt as any),
+            year && month ? and(eq(deals.closingMonth as any, month), eq(deals.closingYear as any, year)) : sql`1=0`
+          )
         )
       )
     );
+    // ─── Pipeline: بناءً على createdAt ────────────────────────────────────────
     pipelineDeals = await db.select().from(deals).where(
       and(
         eq(deals.isDeleted, 0),
         not(inArray(deals.stage, ['closed_won', 'closed_lost'])),
-        between(deals.createdAt, startDate, endDate)
+        between(deals.createdAt, rangeStart, rangeEnd)
+      )
+    );
+    // ─── Lost: بناءً على closedAt ─────────────────────────────────────────────
+    lostDeals = await db.select().from(deals).where(
+      and(
+        eq(deals.isDeleted, 0),
+        eq(deals.stage, 'closed_lost'),
+        between(deals.closedAt as any, rangeStart, rangeEnd)
       )
     );
   } else {
+    // بدون فلتر: كل الصفقات
     const allDeals = await db.select().from(deals).where(eq(deals.isDeleted, 0));
     closedDeals = allDeals.filter(d => d.stage === 'closed_won');
     pipelineDeals = allDeals.filter(d => !['closed_won', 'closed_lost'].includes(d.stage));
+    lostDeals = allDeals.filter(d => d.stage === 'closed_lost');
   }
-  // CRITICAL: actualSales uses netValue (after discount)
+  // ─── الحسابات ─────────────────────────────────────────────────────────────
   const actualSales = closedDeals.reduce((s, d) => s + parseFloat((d.netValue as string) || d.value || '0'), 0);
   const pipeline = pipelineDeals.reduce((s, d) => s + parseFloat(d.value as string), 0);
   const totalVolume = actualSales + pipeline;
   const { tierLabel, discountPct } = getDiscountTierInfo(totalVolume);
   const allowedDiscount = totalVolume * (discountPct / 100);
-  // Used Discount = مجموع الخصومات على الصفقات المغلقة (closed_won) في هذا الشهر
   const usedDiscount = closedDeals.reduce((s, d) => s + parseFloat(d.discountValue as string || '0'), 0);
   const remainingDiscount = Math.max(0, allowedDiscount - usedDiscount);
   const realizedDiscount = usedDiscount;
   const potentialDiscount = pipelineDeals.reduce((s, d) => s + parseFloat(d.discountValue as string || '0'), 0);
-  // Lost deals this month
-  let lostDeals: any[] = [];
-  if (year && month) {
-    const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 0, 23, 59, 59);
-    lostDeals = await db.select().from(deals).where(
-      and(
-        eq(deals.isDeleted, 0),
-        eq(deals.stage, 'closed_lost'),
-        or(
-          and(eq(deals.closingMonth as any, month), eq(deals.closingYear as any, year)),
-          and(isNull(deals.closingMonth as any), between(deals.closedAt as any, startDate, endDate))
-        )
-      )
-    );
-  }
   const lostValue = lostDeals.reduce((s, d) => s + parseFloat(d.value as string || '0'), 0);
   const closingRate = (closedDeals.length + lostDeals.length) > 0
     ? Math.round((closedDeals.length / (closedDeals.length + lostDeals.length)) * 100)
@@ -2997,6 +3005,8 @@ export async function updateDealFull(id: number, data: {
   stage?: string; nextAction?: string; nextActionDate?: string; notes?: string;
   discountPercent?: number; discountValue?: number; discountNote?: string; value?: number;
   lostReason?: string; lostReasonNote?: string; closedAt?: Date;
+  accountingMonth?: number; // شهر احتساب الصفقة
+  accountingYear?: number;  // سنة احتساب الصفقة
 }) {
   const db = await getDb();
   if (!db) return;
@@ -3031,6 +3041,9 @@ export async function updateDealFull(id: number, data: {
   if (data.lostReasonNote !== undefined) updateData.lostReasonNote = data.lostReasonNote;
   if (data.closedAt !== undefined) updateData.closedAt = data.closedAt;
   else if (data.stage === 'closed_won' || data.stage === 'closed_lost') updateData.closedAt = new Date();
+  // شهر احتساب الصفقة - يؤثر على جميع التقارير والخصومات
+  if (data.accountingMonth !== undefined) updateData.accountingMonth = data.accountingMonth;
+  if (data.accountingYear !== undefined) updateData.accountingYear = data.accountingYear;
   await db.update(deals).set(updateData).where(eq(deals.id, id));
   // إذا تغيرت المرحلة إلى closed_won ، أنشئ عقداً تلقائياً إذا لم يكن موجوداً
   if (data.stage === 'closed_won') {
@@ -3063,32 +3076,54 @@ export async function updateDealFull(id: number, data: {
 }
 
 /** ملخص الخصم لكل مهندس (Pipeline + خصم مستخدم + خصم متاح) */
-export async function getEngineerDiscountSummary() {
+export async function getEngineerDiscountSummary(year?: number, month?: number, startDate?: Date, endDate?: Date) {
   const db = await getDb();
   if (!db) return [];
-
-  const summary = await getDiscountSummary();
+  // ─── تحديد نطاق التاريخ ───────────────────────────────────────────────────
+  let rangeStart: Date | undefined;
+  let rangeEnd: Date | undefined;
+  if (startDate && endDate) {
+    rangeStart = startDate;
+    rangeEnd = endDate;
+  } else if (year && month) {
+    rangeStart = new Date(year, month - 1, 1);
+    rangeEnd = new Date(year, month, 0, 23, 59, 59);
+  }
+  const summary = await getDiscountSummary(year, month, startDate, endDate);
   if (!summary) return [];
-
-  const allDeals = await db.select().from(deals).where(eq(deals.isDeleted, 0));
+  // جلب الصفقات حسب الفترة
+  let allDealsInRange: any[];
+  if (rangeStart && rangeEnd) {
+    // صفقات مغلقة في الفترة
+    const closedInRange = await db.select().from(deals).where(
+      and(eq(deals.isDeleted, 0), eq(deals.stage, 'closed_won'), between(deals.closedAt as any, rangeStart, rangeEnd))
+    );
+    // صفقات الـ Pipeline في الفترة
+    const pipelineInRange = await db.select().from(deals).where(
+      and(eq(deals.isDeleted, 0), not(inArray(deals.stage, ['closed_won', 'closed_lost'])), between(deals.createdAt, rangeStart, rangeEnd))
+    );
+    allDealsInRange = [...closedInRange, ...pipelineInRange];
+  } else {
+    allDealsInRange = await db.select().from(deals).where(eq(deals.isDeleted, 0));
+  }
   const engList = await db.select().from(engineers).where(eq(engineers.isDeleted, 0));
-
   return engList.map(eng => {
-    const engDeals = allDeals.filter(d => d.engineerId === eng.id);
+    const engDeals = allDealsInRange.filter(d => d.engineerId === eng.id);
     const engPipeline = engDeals
       .filter(d => !['closed_won', 'closed_lost'].includes(d.stage))
       .reduce((s, d) => s + parseFloat(d.value as string), 0);
     const engActual = engDeals
       .filter(d => d.stage === 'closed_won')
-      .reduce((s, d) => s + parseFloat(d.value as string), 0);
+      .reduce((s, d) => s + parseFloat((d.netValue as string) || d.value || '0'), 0);
     const engUsedDiscount = engDeals
       .filter(d => d.stage === 'closed_won')
       .reduce((s, d) => s + parseFloat(d.discountValue as string || '0'), 0);
-    // نسبة المهندس من الـ Pipeline الكلي
-    const pipelineShare = summary.totalVolume > 0 ? engPipeline / summary.totalVolume : 0;
-    const allocatedDiscount = summary.remainingDiscount * pipelineShare;
-    // Saved Discount = الخصم المتاح - الخصم المستخدم
-    const savedDiscount = Math.max(0, allocatedDiscount - engUsedDiscount);
+    // نسبة المهندس من الـ Volume الكلي في الفترة
+    const engVolume = engActual + engPipeline;
+    const { discountPct: engDiscountPct } = getDiscountTierInfo(engVolume);
+    const engAllowedDiscount = engVolume * (engDiscountPct / 100);
+    const savedDiscount = Math.max(0, engAllowedDiscount - engUsedDiscount);
+    const allocatedDiscount = engAllowedDiscount;
     // Bonus 50% للمهندس من الخصم الموفَّر
     const engineerBonus = Math.round(savedDiscount * 0.5);
     const companyProfit = Math.round(savedDiscount * 0.5);
@@ -11369,4 +11404,125 @@ export async function getCollectionPeriodAnalysis(startDate: string, endDate: st
       total: parseFloat(overdueInPeriod[0]?.total ?? '0'),
     },
   };
+}
+
+// ─── Deal Tasks (Next Step → Task System) ────────────────────────────────────
+
+/** إنشاء task مرتبطة بصفقة (يُستدعى تلقائياً عند حفظ Next Step) */
+export async function createDealTask(params: {
+  dealId: number;
+  engineerId: number;
+  title: string;
+  description?: string;
+  dueDate: string; // ISO date string YYYY-MM-DD
+  createdBy?: string;
+  clientName?: string;
+  dealStage?: string;
+}) {
+  const db = await getDb();
+  if (!db) return null;
+  const [result] = await db.insert(dealTasks).values({
+    dealId: params.dealId,
+    engineerId: params.engineerId,
+    title: params.title,
+    description: params.description,
+    dueDate: new Date(params.dueDate + 'T00:00:00'), // تحويل string إلى Date
+    createdBy: params.createdBy,
+    clientName: params.clientName,
+    dealStage: params.dealStage,
+    status: 'pending',
+    delayDays: 0,
+  });
+  return result;
+}
+
+/** جلب جميع tasks المتأخرة (overdue) مع تحديث delayDays */
+export async function getOverdueDealTasks(engineerId?: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  // تحديث حالة المهام المتأخرة
+  await db.update(dealTasks)
+    .set({ status: 'overdue' })
+    .where(
+      and(
+        eq(dealTasks.status, 'pending'),
+        lt(dealTasks.dueDate, today)
+      )
+    );
+  // حساب delayDays لكل مهمة متأخرة
+  const overdueTasks = await db.select().from(dealTasks)
+    .where(
+      and(
+        eq(dealTasks.status, 'overdue'),
+        engineerId ? eq(dealTasks.engineerId, engineerId) : undefined
+      )
+    )
+    .orderBy(dealTasks.dueDate);
+  // حساب أيام التأخير
+  const todayMs = today.getTime();
+  return overdueTasks.map(task => {
+    const dueMs = new Date(task.dueDate).getTime();
+    const delayDays = Math.max(0, Math.floor((todayMs - dueMs) / (1000 * 60 * 60 * 24)));
+    return { ...task, delayDays };
+  });
+}
+
+/** جلب جميع tasks المعلقة (pending) لمهندس */
+export async function getPendingDealTasks(engineerId?: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return db.select().from(dealTasks)
+    .where(
+      and(
+        eq(dealTasks.status, 'pending'),
+        gte(dealTasks.dueDate, today),
+        engineerId ? eq(dealTasks.engineerId, engineerId) : undefined
+      )
+    )
+    .orderBy(dealTasks.dueDate);
+}
+
+/** تحديد task كـ Done */
+export async function markDealTaskDone(taskId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(dealTasks)
+    .set({ status: 'done', completedAt: new Date() })
+    .where(eq(dealTasks.id, taskId));
+}
+
+/** حساب Follow-up KPI لمهندس (نسبة الالتزام بالمتابعة) */
+export async function getFollowupKPI(engineerId: number, startDate?: string, endDate?: string) {
+  const db = await getDb();
+  if (!db) return { total: 0, done: 0, overdue: 0, pending: 0, complianceRate: 0, avgDelayDays: 0 };
+  const conditions: any[] = [eq(dealTasks.engineerId, engineerId)];
+  if (startDate) conditions.push(gte(dealTasks.dueDate, new Date(startDate + 'T00:00:00')));
+  if (endDate) conditions.push(lte(dealTasks.dueDate, new Date(endDate + 'T23:59:59')));
+  const allTasks = await db.select().from(dealTasks).where(and(...conditions));
+  const total = allTasks.length;
+  const done = allTasks.filter(t => t.status === 'done').length;
+  const overdue = allTasks.filter(t => t.status === 'overdue').length;
+  const pending = allTasks.filter(t => t.status === 'pending').length;
+  const complianceRate = total > 0 ? Math.round((done / total) * 100) : 0;
+  const overdueItems = allTasks.filter(t => t.status === 'overdue');
+  const avgDelayDays = overdueItems.length > 0
+    ? Math.round(overdueItems.reduce((sum, t) => sum + (t.delayDays ?? 0), 0) / overdueItems.length)
+    : 0;
+  return { total, done, overdue, pending, complianceRate, avgDelayDays };
+}
+
+/** جلب تقرير Follow-up Compliance لجميع المهندسين */
+export async function getFollowupComplianceReport(startDate?: string, endDate?: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const allEngineers = await db.select().from(engineers).where(eq(engineers.status, 'active'));
+  const results = await Promise.all(allEngineers.map(async eng => {
+    const kpi = await getFollowupKPI(eng.id, startDate, endDate);
+    return { ...kpi, engineerId: eng.id, engineerName: eng.name };
+  }));
+  return results.sort((a, b) => b.complianceRate - a.complianceRate);
 }

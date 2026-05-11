@@ -108,6 +108,9 @@ import {
   // Accounting Month
   setDealAccountingMonth,
   getCollectionPeriodAnalysis,
+  // Deal Tasks (Next Step → Task System)
+  createDealTask, getOverdueDealTasks, getPendingDealTasks, markDealTaskDone,
+  getFollowupKPI, getFollowupComplianceReport,
 } from "./db";
 import { ACTIVITY_KEYS, ACTIVITY_LABELS as ACT_LABELS_EN, ACTIVITY_LABELS_AR, ACTIVITY_WEIGHTS, ACTIVITY_ICONS, ACTIVITY_COLORS } from '../shared/activityTypes';
 
@@ -615,18 +618,42 @@ export const appRouter = router({
     updateStage: publicProcedure.input(z.object({
       id: z.number(), stage: z.enum(['proposal', 'negotiation', 'contract_sent', 'closed_won', 'closed_lost']).optional(),
       nextAction: z.string().optional(), nextActionDate: z.string().optional(), notes: z.string().optional(),
-      value: z.number().positive().optional(),
+      value: z.number().min(0).optional(),
       discountPercent: z.number().min(0).max(100).optional(),
       discountValue: z.number().min(0).optional(),
       discountNote: z.string().optional(),
+      lostReason: z.string().optional(),
+      lostReasonNote: z.string().optional(),
+      accountingMonth: z.number().min(1).max(12).optional(), // شهر احتساب الصفقة
+      accountingYear: z.number().min(2020).max(2030).optional(),  // سنة احتساب الصفقة
+      engineerId: z.string().optional(), // لإنشاء Task تلقائياً
+      clientName: z.string().optional(), // لإنشاء Task تلقائياً
     })).mutation(async ({ input }) => { await updateDealFull(input.id, input); return { success: true }; }),
     // ─── Discount System ────────────────────────────────────────────────────────────────────────────────────────
-    discountSummary: publicProcedure.input(z.object({ year: z.number().optional(), month: z.number().optional() })).query(async ({ input }) => getDiscountSummary(input.year, input.month)),
+    discountSummary: publicProcedure.input(z.object({
+      year: z.number().optional(),
+      month: z.number().optional(),
+      startDate: z.string().optional(), // ISO date string
+      endDate: z.string().optional(),   // ISO date string
+    })).query(async ({ input }) => {
+      const start = input.startDate ? new Date(input.startDate) : undefined;
+      const end = input.endDate ? new Date(input.endDate) : undefined;
+      return getDiscountSummary(input.year, input.month, start, end);
+    }),
     validateDiscount: publicProcedure.input(z.object({
       dealId: z.number().optional(),
       discountValue: z.number().min(0),
     })).query(async ({ input }) => validateDealDiscount(input.dealId, input.discountValue)),
-    engineerDiscountSummary: publicProcedure.query(async () => getEngineerDiscountSummary()),
+    engineerDiscountSummary: publicProcedure.input(z.object({
+      year: z.number().optional(),
+      month: z.number().optional(),
+      startDate: z.string().optional(),
+      endDate: z.string().optional(),
+    })).query(async ({ input }) => {
+      const start = input.startDate ? new Date(input.startDate) : undefined;
+      const end = input.endDate ? new Date(input.endDate) : undefined;
+      return getEngineerDiscountSummary(input.year, input.month, start, end);
+    }),
     // ─── New Deal-Level Discount Distribution ──────────────────────────────────────
     dealAllocations: publicProcedure.input(z.object({ engineerId: z.number() }))
       .query(async ({ input }) => distributeDiscountToDeals(input.engineerId)),
@@ -2194,6 +2221,56 @@ export const appRouter = router({
     // جلب الـ Module Sections المتاحة
     moduleSections: publicProcedure
       .query(async () => MODULE_SECTIONS),
+  }),
+
+  // ─── Deal Tasks (Next Step → Task System) ─────────────────────────────────────────────
+  dealTasks: router({
+    // إنشاء task جديدة مرتبطة بصفقة
+    create: publicProcedure
+      .input(z.object({
+        dealId: z.number(),
+        engineerId: z.number(),
+        title: z.string().min(1),
+        description: z.string().optional(),
+        dueDate: z.string(), // YYYY-MM-DD
+        createdBy: z.string().optional(),
+        clientName: z.string().optional(),
+        dealStage: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        await createDealTask(input);
+        return { success: true };
+      }),
+    // جلب المهام المتأخرة (overdue)
+    listOverdue: publicProcedure
+      .input(z.object({ engineerId: z.number().optional() }))
+      .query(async ({ input }) => getOverdueDealTasks(input.engineerId)),
+    // جلب المهام المعلقة (pending)
+    listPending: publicProcedure
+      .input(z.object({ engineerId: z.number().optional() }))
+      .query(async ({ input }) => getPendingDealTasks(input.engineerId)),
+    // تحديد task كـ Done
+    markDone: publicProcedure
+      .input(z.object({ taskId: z.number() }))
+      .mutation(async ({ input }) => {
+        await markDealTaskDone(input.taskId);
+        return { success: true };
+      }),
+    // Follow-up KPI لمهندس
+    followupKPI: publicProcedure
+      .input(z.object({
+        engineerId: z.number(),
+        startDate: z.string().optional(),
+        endDate: z.string().optional(),
+      }))
+      .query(async ({ input }) => getFollowupKPI(input.engineerId, input.startDate, input.endDate)),
+    // تقرير Follow-up Compliance لجميع المهندسين
+    complianceReport: publicProcedure
+      .input(z.object({
+        startDate: z.string().optional(),
+        endDate: z.string().optional(),
+      }))
+      .query(async ({ input }) => getFollowupComplianceReport(input.startDate, input.endDate)),
   }),
 });
 export type AppRouter = typeof appRouter;

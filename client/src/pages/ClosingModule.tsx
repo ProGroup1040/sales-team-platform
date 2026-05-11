@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import { useSectionPermission } from "@/hooks/useSectionPermission";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DateRangePicker, getCurrentMonthFilter, type DateFilter } from "@/components/DateRangePicker";
+import { DateRangePicker, getCurrentMonthFilter, dateFilterToParams, type DateFilter } from "@/components/DateRangePicker";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -62,6 +62,8 @@ type UpdateDealState = {
   lostReason?: string; lostReasonNote?: string;
   engineerId: string; // Assigned Engineer
   isLocked?: number;  // 1 = locked after closed
+  accountingMonth?: number; // شهر احتساب الصفقة
+  accountingYear?: number;  // سنة احتساب الصفقة
 };
 type LostReasonState = {
   dealId: number;
@@ -89,17 +91,30 @@ export default function ClosingModule() {
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
   // ─── Date Filter (DateRangePicker) ───────────────────────────────────────────
   const [dateFilter, setDateFilter] = useState<DateFilter>(getCurrentMonthFilter());
-  const filterYear = dateFilter.mode === 'month' ? dateFilter.year : dateFilter.startDate.getFullYear();
-  const filterMonth = dateFilter.mode === 'month' ? dateFilter.month : dateFilter.startDate.getMonth() + 1;
+  const filterParams = useMemo(() => dateFilterToParams(dateFilter), [dateFilter]);
+  const filterYear = filterParams.year;
+  const filterMonth = filterParams.month;
   const MONTHS_AR = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
   const utils = trpc.useUtils();
+
+  // ─── Discount query params مرتبطة بالـ date range ─────────────────────────────
+  const discountQueryParams = useMemo(() => ({
+    year: filterParams.year,
+    month: filterParams.month,
+    startDate: filterParams.startDate,
+    endDate: filterParams.endDate,
+  }), [filterParams]);
 
   const { data: stats } = trpc.closing.stats.useQuery({ year: filterYear, month: filterMonth });
   const { data: dealsData } = trpc.closing.list.useQuery({ limit: 200, stage: filterStage !== 'all' ? filterStage : undefined, year: filterYear, month: filterMonth });
   const { data: engineers } = trpc.engineers.list.useQuery();
-  const { data: discountSummary } = trpc.closing.discountSummary.useQuery({ year: filterYear, month: filterMonth });
-  const { data: engDiscounts } = trpc.closing.engineerDiscountSummary.useQuery();
+  // ─── Discount queries تتحدث تلقائياً عند تغيير الفترة ───────────────────────
+  const { data: discountSummary } = trpc.closing.discountSummary.useQuery(discountQueryParams);
+  const { data: engDiscounts } = trpc.closing.engineerDiscountSummary.useQuery(discountQueryParams);
   const { data: lostAnalysis } = trpc.closing.lostDealsAnalysis.useQuery({ year: filterYear, month: filterMonth });
+  // ─── Deal Tasks (Next Step → Task System) ─────────────────────────────────────────────
+  const { data: overdueTasks, refetch: refetchOverdue } = trpc.dealTasks.listOverdue.useQuery({});
+  const { data: pendingTasks, refetch: refetchPending } = trpc.dealTasks.listPending.useQuery({});
 
   // ─── Deal-Level Discount Distribution ───────────────────────────────────────
   const [discountSubTab, setDiscountSubTab] = useState<'overview' | 'deal_distribution'>('overview');
@@ -138,8 +153,29 @@ export default function ClosingModule() {
     onError: (e) => toast.error(e.message || 'حدث خطأ'),
   });
   const updateMutation = trpc.closing.updateStage.useMutation({
-    onSuccess: () => { toast.success('تم تحديث الصفقة'); setUpdateDeal(null); invalidateAll(); },
+    onSuccess: async (_, variables) => {
+      // إنشاء task تلقائياً عند حفظ Next Step
+      if (variables.nextAction && variables.nextActionDate && variables.engineerId) {
+        try {
+          await createTaskMutation.mutateAsync({
+            dealId: variables.id,
+            engineerId: Number(variables.engineerId),
+            title: variables.nextAction,
+            description: variables.notes,
+            dueDate: variables.nextActionDate,
+            createdBy: session?.username ?? 'النظام',
+            dealStage: variables.stage,
+          });
+        } catch (_) { /* ignore task creation errors */ }
+      }
+      toast.success('تم تحديث الصفقة'); setUpdateDeal(null); invalidateAll();
+      refetchOverdue(); refetchPending();
+    },
     onError: (e) => toast.error(e.message || 'حدث خطأ'),
+  });
+  const createTaskMutation = trpc.dealTasks.create.useMutation();
+  const markDoneMutation = trpc.dealTasks.markDone.useMutation({
+    onSuccess: () => { refetchOverdue(); refetchPending(); toast.success('تم تحديد المهمة كمنجزة'); },
   });
   const updateDealStageMutation = trpc.closing.updateDealStage.useMutation({
     onSuccess: () => {
@@ -215,42 +251,27 @@ export default function ClosingModule() {
 
   const handleUpdate = () => {
     if (!updateDeal) return;
-    // إذا closed_lost: نحدث الصفقة مباشرة مع lostReason من الـ Dialog
-    if (updateDeal.stage === 'closed_lost') {
-      if (!updateDeal.lostReason) {
-        toast.error('يرجى تحديد سبب الخسارة');
-        return;
-      }
-      updateDealStageMutation.mutate({
-        id: updateDeal.id,
-        stage: 'closed_lost',
-        lostReason: updateDeal.lostReason as any,
-        lostReasonNote: updateDeal.lostReasonNote || undefined,
-      });
-      // تحديث باقي الحقول بعد ذلك
-      updateMutation.mutate({
-        id: updateDeal.id,
-        stage: 'closed_lost' as any,
-        nextAction: updateDeal.nextAction || undefined,
-        nextActionDate: updateDeal.nextActionDate || undefined,
-        notes: updateDeal.notes || undefined,
-        value: parseFloat(updateDeal.value) || undefined,
-        discountPercent: parseFloat(updateDeal.discountPercent) || 0,
-        discountValue: parseFloat(updateDeal.discountValue) || 0,
-        discountNote: updateDeal.discountNote || undefined,
-      });
+    // التحقق من سبب الخسارة إذا كانت المرحلة closed_lost
+    if (updateDeal.stage === 'closed_lost' && !updateDeal.lostReason) {
+      toast.error('يرجى تحديد سبب الخسارة');
       return;
     }
+    // استدعاء mutation واحد يشمل كل الحقول بما فيها lostReason وشهر الاحتساب
     updateMutation.mutate({
       id: updateDeal.id,
       stage: updateDeal.stage as any,
       nextAction: updateDeal.nextAction || undefined,
       nextActionDate: updateDeal.nextActionDate || undefined,
       notes: updateDeal.notes || undefined,
-      value: parseFloat(updateDeal.value) || undefined,
+      value: parseFloat(updateDeal.value) > 0 ? parseFloat(updateDeal.value) : undefined,
       discountPercent: parseFloat(updateDeal.discountPercent) || 0,
       discountValue: parseFloat(updateDeal.discountValue) || 0,
       discountNote: updateDeal.discountNote || undefined,
+      lostReason: updateDeal.lostReason || undefined,
+      lostReasonNote: updateDeal.lostReasonNote || undefined,
+      accountingMonth: updateDeal.accountingMonth,
+      accountingYear: updateDeal.accountingYear,
+      engineerId: updateDeal.engineerId || undefined, // لإنشاء Task تلقائياً
     });
   };
 
@@ -307,6 +328,40 @@ export default function ClosingModule() {
         </CardContent></Card>
       </div>
 
+      {/* Overdue Tasks Alert Panel */}
+      {overdueTasks && overdueTasks.length > 0 && (
+        <Card className="border-red-500/50 bg-red-950/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold text-red-400 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4" />
+              تنبيه: {overdueTasks.length} خطوة متأخرة تحتاج متابعة
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {overdueTasks.map(task => (
+                <div key={task.id} className="flex items-center justify-between p-2 rounded-lg bg-red-900/20 border border-red-800/30">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-red-300 truncate">{task.title}</p>
+                    <p className="text-xs text-red-400/70">
+                      {task.clientName && <span>{task.clientName} · </span>}
+                      استحق: {new Date(task.dueDate).toLocaleDateString('ar-EG')}
+                      {(task.delayDays ?? 0) > 0 && <span className="text-red-500 font-bold"> · متأخر {task.delayDays} يوم</span>}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm" variant="ghost"
+                    className="text-xs text-emerald-400 hover:text-emerald-300 shrink-0"
+                    onClick={() => markDoneMutation.mutate({ taskId: task.id })}
+                  >
+                    تم ✓
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
       {/* Tabs */}
       <div className="flex gap-0 border-b border-border overflow-x-auto">
         {[
@@ -1096,6 +1151,41 @@ export default function ClosingModule() {
               <div><Label>الخطوة التالية</Label><Input value={updateDeal.nextAction} onChange={e => setUpdateDeal(d => d ? { ...d, nextAction: e.target.value } : null)} /></div>
               <div><Label>تاريخ الخطوة التالية</Label><Input type="date" value={updateDeal.nextActionDate} onChange={e => setUpdateDeal(d => d ? { ...d, nextActionDate: e.target.value } : null)} /></div>
               <div><Label>ملاحظات</Label><Textarea value={updateDeal.notes} onChange={e => setUpdateDeal(d => d ? { ...d, notes: e.target.value } : null)} rows={2} /></div>
+              {/* ─── شهر احتساب الصفقة (للإدارة فقط) ─── */}
+              {canEdit && (
+                <div className="border border-indigo-800/30 rounded-lg p-3 bg-indigo-950/10 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-indigo-400">تحسب الصفقة في مبيعات شهر</span>
+                    <span className="text-xs text-muted-foreground">للإدارة فقط</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs">الشهر</Label>
+                      <Select
+                        value={String(updateDeal?.accountingMonth ?? new Date().getMonth() + 1)}
+                        onValueChange={v => setUpdateDeal(d => d ? { ...d, accountingMonth: parseInt(v) } : null)}
+                      >
+                        <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {MONTHS_AR.map((m, i) => <SelectItem key={i+1} value={String(i+1)}>{m}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-xs">السنة</Label>
+                      <Select
+                        value={String(updateDeal?.accountingYear ?? new Date().getFullYear())}
+                        onValueChange={v => setUpdateDeal(d => d ? { ...d, accountingYear: parseInt(v) } : null)}
+                      >
+                        <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {[2024, 2025, 2026, 2027].map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+              )}
               {/* Discount */}
               <div className="border border-amber-800/30 rounded-lg p-3 bg-amber-950/10 space-y-2">
                 <div className="flex items-center gap-2">

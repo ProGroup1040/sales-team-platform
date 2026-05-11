@@ -316,6 +316,13 @@
       "when": 1778441347804,
       "tag": "0044_fine_skaar",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "5",
+      "when": 1778457544694,
+      "tag": "0045_complete_wild_child",
+      "breakpoints": true
     }
   ]
 }

@@ -1266,3 +1266,56 @@
 - [x] CollectionsModule: تحليل زمني كامل في analytics tab (إجمالي التحصيل + حسب الشهر + حسب نوع الدفعة + المتأخرات)
 - [x] Historical Tracking: مراجعة أي فترة ماضية في كل Module
 - [x] Vitest tests لـ DateRangePicker utilities (305 اختبار ناجح)
+
+## نظام الخصومات الزمني (Time-Based Discount System)
+- [ ] إعادة بناء getDiscountSummary لدعم startDate/endDate بدلاً من month/year فقط
+- [ ] إعادة بناء getEngineerDiscountSummary لدعم date range
+- [ ] إعادة بناء getDiscountBonusSummary لدعم date range
+- [ ] تحديث discountSummary procedure لتمرير startDate/endDate
+- [ ] تحديث engineerDiscountSummary procedure لتمرير date range
+- [ ] ربط ClosingModule discount tab بالـ DateRangePicker (تغيير الفترة يغير الخصومات)
+- [ ] إصلاح bug تحديث الصفقة (updateStage لا يقبل lostReason)
+
+## شهر احتساب الصفقة (Accounting Month)
+- [ ] إصلاح syntax error في db.ts (getEngineerDiscountSummary)
+- [x] إضافة حقل accountingMonth/accountingYear في deals table (migration)
+- [x] إضافة حقل "تحسب في شهر" في dialog تحديث الصفقة (Admin فقط)
+- [ ] ربط getDiscountSummary بـ accountingMonth بدلاً من closingMonth
+- [ ] ربط getEngineerDiscountSummary بـ date range
+- [ ] تحديث discountSummary procedure لتمرير startDate/endDate
+- [ ] تحديث engineerDiscountSummary procedure لتمرير date range
+- [ ] تسجيل تغيير شهر الاحتساب في Activity Log
+- [ ] ربط KPI + Commission + Reports بـ accountingMonth
+
+## نظام Tasks + Alerts + KPI للـ Next Step (الطلب الجديد)
+- [x] إنشاء deal_tasks table في Schema + Migration
+- [x] إضافة DB functions: createDealTask, listOverdueTasks, getFollowupKPI
+- [x] إضافة procedures في routers.ts: dealTasks.create, listOverdue, markDone
+- [x] تحديث ClosingModule: إنشاء task تلقائياً عند حفظ Next Step
+- [x] عرض Overdue Alerts بالأحمر في ClosingModule
+- [x] إضافة Follow-up Compliance KPI في KPIModule
+- [x] تقارير: Follow-up Compliance, Delayed Follow-ups, Engineer Response Tracking
+- [ ] تسجيل Next Step في Activity Timeline
+
+## ربط الخصومات بالـ Calendar (الطلب الجديد)
+- [x] إعادة بناء getDiscountSummary لدعم startDate/endDate
+- [x] إعادة بناء getEngineerDiscountSummary لدعم date range
+- [x] تحديث discountSummary procedure لتمرير startDate/endDate
+- [x] تحديث engineerDiscountSummary procedure لتمرير startDate/endDate
+- [x] تحديث ClosingModule لاستخدام discountQueryParams مرتبطة بالـ dateFilter
+- [x] إضافة حقل "تحسب في شهر" في dialog تحديث الصفقة (للإدارة فقط)
+- [x] إضافة accountingMonth/accountingYear في updateDealFull
+
+## إصلاح bug تحديث الصفقة
+- [x] إصلاح updateStage procedure: إضافة lostReason وإصلاح value validation
+- [x] إصلاح handleUpdate في ClosingModule: توحيد الـ mutation
+
+## Dynamic Performance-Based Discount Engine (المرحلة القادمة)
+- [ ] إعادة بناء Discount Pool بناءً على Calendar + Accounting Month
+- [ ] معادلة توزيع الخصومات على المهندسين (Score-Based: Sales 40% + Pipeline 20% + Closing 20% + KPI 10% - Lost 10%)
+- [ ] توزيع خصم المهندس على الصفقات حسب قيمة كل صفقة (Deal Weight)
+- [ ] منع ترحيل الخصومات بين الشهور
+- [ ] ربط الصفقات الخاسرة بـ Discount Weight
+- [ ] ربط Company Closing KPI بـ Discount Flexibility
+- [ ] واجهة عرض: Discount Pool + Used + Remaining + Pipeline + Closed
+- [ ] تطبيق النظام فقط على Sales Engineer + Sales Specialist

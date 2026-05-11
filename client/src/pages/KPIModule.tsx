@@ -111,7 +111,12 @@ export default function KPIModule() {
   const { data: discountDist } = trpc.kpi.scoreBasedDiscountDistribution.useQuery({ year, month });
   const { data: allEarnings } = trpc.kpi.allEngineersEarnings.useQuery({ year, month, teamKPIPool: 2000 });
   const { data: companyClosingBonus } = trpc.kpi.companyClosingBonus.useQuery({ year, month });
-  const [kpiTab, setKpiTab] = useState<'sales'|'tele'|'site'|'closing'|'earnings'|'rewards'|'lost'|'performance'|'activities'>('sales');
+  const [kpiTab, setKpiTab] = useState<'sales'|'tele'|'site'|'closing'|'earnings'|'rewards'|'lost'|'performance'|'activities'|'followup'>('sales');
+  // Follow-up Compliance data
+  const { data: followupReport } = trpc.dealTasks.complianceReport.useQuery({
+    startDate: `${year}-${String(month).padStart(2,'0')}-01`,
+    endDate: `${year}-${String(month).padStart(2,'0')}-${new Date(year, month, 0).getDate()}`,
+  });
   const [activityEngId, setActivityEngId] = useState<number | null>(null);
   const { canViewSection } = useSectionPermission();
   const { data: allPerfScores } = trpc.planning.allEngineersPerformanceScores.useQuery({ year, month });
@@ -801,6 +806,7 @@ export default function KPIModule() {
           { id: 'lost', label: 'تأثير الصفقات الخاسرة', section: 'lost_deals_impact' },
           { id: 'performance', label: '🎯 التقييم الشامل', section: 'overall_evaluation' },
           { id: 'activities', label: '📊 تحليل الأنشطة', section: 'activities_analysis' },
+          { id: 'followup', label: '🔄 التزام المتابعة', section: 'followup_compliance' },
         ] as const).filter(tab => canViewSection('kpi', tab.section)).map(tab => (
           <button key={tab.id} onClick={() => setKpiTab(tab.id)}
             className={`px-3 py-1.5 text-xs font-semibold rounded-full border transition-colors ${
@@ -1580,6 +1586,86 @@ export default function KPIModule() {
 
       {sorted.length === 0 && !isLoading && kpiTab === 'sales' && (
         <div className="text-center py-12 text-muted-foreground">لا توجد بيانات لهذا الشهر</div>
+      )}
+
+      {/* ─── TAB: Follow-up Compliance ─── */}
+      {kpiTab === 'followup' && (
+        <div className="space-y-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Clock className="w-4 h-4 text-indigo-500" />
+                تقرير التزام المتابعة (Follow-up Compliance)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {!followupReport || followupReport.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">لا توجد بيانات متاحة لهذا الشهر</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-xs text-muted-foreground">
+                        <th className="text-right py-2 px-3">المهندس</th>
+                        <th className="text-right py-2 px-3">إجمالي المهام</th>
+                        <th className="text-right py-2 px-3">منجزة</th>
+                        <th className="text-right py-2 px-3">متأخرة</th>
+                        <th className="text-right py-2 px-3">معلقة</th>
+                        <th className="text-right py-2 px-3">نسبة الالتزام</th>
+                        <th className="text-right py-2 px-3">تأثير KPI</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {followupReport.map((eng: any) => {
+                        const complianceColor = eng.complianceRate >= 80 ? 'text-emerald-500' : eng.complianceRate >= 60 ? 'text-amber-500' : 'text-red-500';
+                        const kpiImpact = eng.overdueCount > 3 ? 'تأثير سلبي عالي' : eng.overdueCount > 1 ? 'تأثير سلبي متوسط' : 'طبيعي';
+                        const kpiImpactColor = eng.overdueCount > 3 ? 'text-red-500' : eng.overdueCount > 1 ? 'text-amber-500' : 'text-emerald-500';
+                        return (
+                          <tr key={eng.engineerId} className="border-b hover:bg-muted/30">
+                            <td className="py-2.5 px-3 font-semibold">{eng.engineerName}</td>
+                            <td className="py-2.5 px-3">{eng.totalTasks}</td>
+                            <td className="py-2.5 px-3 text-emerald-500">{eng.completedTasks}</td>
+                            <td className="py-2.5 px-3 text-red-500">{eng.overdueCount}</td>
+                            <td className="py-2.5 px-3 text-amber-500">{eng.pendingTasks}</td>
+                            <td className="py-2.5 px-3">
+                              <span className={`font-bold ${complianceColor}`}>{eng.complianceRate}%</span>
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <span className={`text-xs font-medium ${kpiImpactColor}`}>{kpiImpact}</span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Summary Cards */}
+          {followupReport && followupReport.length > 0 && (() => {
+            const totalOverdue = followupReport.reduce((s: number, e: any) => s + e.overdueCount, 0);
+            const avgCompliance = Math.round(followupReport.reduce((s: number, e: any) => s + e.complianceRate, 0) / followupReport.length);
+            const highRisk = followupReport.filter((e: any) => e.overdueCount > 3).length;
+            return (
+              <div className="grid grid-cols-3 gap-3">
+                <Card><CardContent className="p-4">
+                  <p className="text-xs text-muted-foreground">متوسط الالتزام</p>
+                  <p className={`text-2xl font-bold ${avgCompliance >= 80 ? 'text-emerald-500' : avgCompliance >= 60 ? 'text-amber-500' : 'text-red-500'}`}>{avgCompliance}%</p>
+                </CardContent></Card>
+                <Card><CardContent className="p-4">
+                  <p className="text-xs text-muted-foreground">إجمالي المتأخرات</p>
+                  <p className="text-2xl font-bold text-red-500">{totalOverdue}</p>
+                </CardContent></Card>
+                <Card><CardContent className="p-4">
+                  <p className="text-xs text-muted-foreground">مهندسون عاليو الخطر</p>
+                  <p className="text-2xl font-bold text-orange-500">{highRisk}</p>
+                </CardContent></Card>
+              </div>
+            );
+          })()}
+        </div>
       )}
     </div>
   );

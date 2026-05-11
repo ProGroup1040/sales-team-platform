@@ -1051,3 +1051,34 @@ export const sectionPermissions = mysqlTable("section_permissions", {
 });
 export type SectionPermission = typeof sectionPermissions.$inferSelect;
 export type InsertSectionPermission = typeof sectionPermissions.$inferInsert;
+
+// ─── Deal Tasks (Next Step → Task System) ────────────────────────────────────
+export const dealTasks = mysqlTable("deal_tasks", {
+  id: int("id").autoincrement().primaryKey(),
+  dealId: int("dealId").notNull(),
+  engineerId: int("engineerId").notNull(),
+  // محتوى المهمة
+  title: varchar("title", { length: 255 }).notNull(),          // الخطوة التالية
+  description: text("description"),                             // ملاحظات إضافية
+  // التواريخ
+  dueDate: date("dueDate").notNull(),                          // تاريخ الاستحقاق
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  completedAt: timestamp("completedAt"),
+  // الحالة
+  // pending = لم تُنفَّذ بعد
+  // done    = تم تنفيذها
+  // overdue = تجاوزت تاريخ الاستحقاق
+  status: mysqlEnum("status", ["pending", "done", "overdue"]).notNull().default("pending"),
+  // عدد أيام التأخير (يُحسب تلقائياً)
+  delayDays: int("delayDays").default(0).notNull(),
+  // من أنشأ المهمة
+  createdBy: varchar("createdBy", { length: 128 }),
+  // اسم العميل (للعرض السريع)
+  clientName: varchar("clientName", { length: 255 }),
+  // الصفقة المرتبطة (للعرض السريع)
+  dealStage: varchar("dealStage", { length: 64 }),
+  // هل تم تسجيلها في Activity Timeline
+  loggedToTimeline: int("loggedToTimeline").default(0).notNull(),
+});
+export type DealTask = typeof dealTasks.$inferSelect;
+export type InsertDealTask = typeof dealTasks.$inferInsert;
