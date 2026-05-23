@@ -45,18 +45,24 @@ export function DeleteConfirmDialog({
   description = "هل أنت متأكد من حذف هذا العنصر؟ لن يظهر في القوائم لكنه سيبقى محفوظاً في قاعدة البيانات.",
   isLoading = false,
 }: DeleteConfirmDialogProps) {
-  const [reason, setReason] = useState<DeleteReason>("data_entry_error");
+  const [reason, setReason] = useState<DeleteReason | "">("");
   const [reasonCustom, setReasonCustom] = useState("");
 
   const handleConfirm = () => {
-    onConfirm(reason, reason === "other" ? reasonCustom : undefined);
+    if (!reason) return;
+    onConfirm(reason as DeleteReason, reason === "other" ? reasonCustom : undefined);
   };
 
   const handleClose = () => {
-    setReason("data_entry_error");
+    setReason("");
     setReasonCustom("");
     onClose();
   };
+
+  const isConfirmDisabled =
+    isLoading ||
+    !reason ||
+    (reason === "other" && !reasonCustom.trim());
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -74,7 +80,7 @@ export function DeleteConfirmDialog({
             <Label>سبب الحذف *</Label>
             <Select value={reason} onValueChange={(v) => setReason(v as DeleteReason)}>
               <SelectTrigger>
-                <SelectValue placeholder="اختر سبب الحذف" />
+                <SelectValue placeholder="اختر سبب الحذف..." />
               </SelectTrigger>
               <SelectContent>
                 {(Object.entries(REASON_LABELS) as [DeleteReason, string][]).map(([val, label]) => (
@@ -88,7 +94,7 @@ export function DeleteConfirmDialog({
 
           {reason === "other" && (
             <div className="space-y-2">
-              <Label>اكتب السبب</Label>
+              <Label>اكتب السبب *</Label>
               <Textarea
                 value={reasonCustom}
                 onChange={(e) => setReasonCustom(e.target.value)}
@@ -106,7 +112,7 @@ export function DeleteConfirmDialog({
           <Button
             variant="destructive"
             onClick={handleConfirm}
-            disabled={isLoading || (reason === "other" && !reasonCustom.trim())}
+            disabled={isConfirmDisabled}
           >
             {isLoading ? "جاري الحذف..." : "تأكيد الحذف"}
           </Button>

@@ -589,7 +589,7 @@ export async function getDealsStats(year: number, month: number) {
   return { open, closedWon, closedLost, totalValue, closedValue, conversionRate, byStage };
 }
 
-export async function getDealsList(limit = 20, offset = 0, stage?: string, year?: number, month?: number) {
+export async function getDealsList(limit = 20, offset = 0, stage?: string, year?: number, month?: number, engineerId?: number) {
   const db = await getDb();
   if (!db) return { data: [], total: 0 };
   // CRITICAL: Priority order for closed deals:
@@ -597,7 +597,9 @@ export async function getDealsList(limit = 20, offset = 0, stage?: string, year?
   // 2. closingMonth/closingYear (set automatically when deal closes)
   // 3. closedAt date range (fallback)
   // Pipeline deals: use createdAt
-  let whereClause: any = eq(deals.isDeleted, 0);
+  let whereClause: any = engineerId
+    ? and(eq(deals.isDeleted, 0), eq(deals.engineerId, engineerId))
+    : eq(deals.isDeleted, 0);
   if (year && month) {
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 0, 23, 59, 59);
@@ -761,14 +763,18 @@ export async function getEngineersKPI(year: number, month: number) {
     ));
 
   const results = engList.map(eng => {
-    // ── 1) Tasks & Execution Score (55%) ──────────────────────────────────────
+    // ── 1) Tasks & Execution Score (55%) ──────────────────────────────────────────────
     const engTasks = allTasks.filter(t => t.engineerId === eng.id);
     const planned = engTasks.length;
     const completed = engTasks.filter(t => t.status === 'completed').length;
     const delayed = engTasks.filter(t => t.status === 'delayed').length;
     const notDone = engTasks.filter(t => t.status === 'not_done').length;
-    // Raw execution: completed=1pt, delayed=0.5pt, not_done=0pt
-    const rawExecution = planned > 0 ? ((completed + 0.5 * delayed) / planned) * 100 : 0;
+    const clientDelay = engTasks.filter(t => t.status === 'client_delay').length;
+    // المهام القابلة للتقييم: تستثني client_delay (تأخير من العميل) وplanned التي لم تبدأ بعد
+    const scorableTasks = engTasks.filter(t => t.status !== 'client_delay' && t.status !== 'planned');
+    const scorableCount = scorableTasks.length;
+    // Raw execution: completed=1pt, delayed=0.5pt, not_done=0pt (من المهام القابلة فقط)
+    const rawExecution = scorableCount > 0 ? ((completed + 0.5 * delayed) / scorableCount) * 100 : (planned > 0 ? 100 : 0);
 
     // Efficiency: visits per closed deal (ideal ≤ 3, penalty if > 3)
     const engVisits = allVisits.filter(v => v.engineerId === eng.id);
@@ -1297,10 +1303,16 @@ export async function getSalesControlStats(year: number, month: number) {
   const startDate = new Date(year, month - 1, 1);
   const endDate = new Date(year, month, 0, 23, 59, 59);
 
-  // الهدف الشهري الإجمالي
-  const targetRow = await db.select().from(monthlyTargets)
+  // الهدف الشهري الإجمالي - يُقرأ من company_goals أولاً، ثم monthly_targets كـ fallback
+  const goalRow = await db.select().from(companyGoals)
+    .where(and(eq(companyGoals.year, year), eq(companyGoals.month, month))).limit(1);
+  const legacyTargetRow = await db.select().from(monthlyTargets)
     .where(and(eq(monthlyTargets.year, year), eq(monthlyTargets.month, month))).limit(1);
-  const totalTarget = targetRow.length > 0 ? parseFloat(targetRow[0].targetAmount) : 0;
+  const totalTarget = goalRow.length > 0
+    ? parseFloat(goalRow[0].revenueTarget)
+    : legacyTargetRow.length > 0 ? parseFloat(legacyTargetRow[0].targetAmount) : 0;
+  const companyClosingRateTarget = goalRow.length > 0 ? parseFloat(goalRow[0].closingRateTarget) : 35;
+  const requiredDeals = goalRow.length > 0 ? (goalRow[0].requiredDeals ?? 0) : 0;
 
   // المبيعات الفعلية - Priority: accountingMonth > closingMonth > closedAt
   const wonDeals = await db.select().from(deals)

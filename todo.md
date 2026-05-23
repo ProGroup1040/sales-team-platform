@@ -1365,3 +1365,15 @@
 - [x] إضافة onError handler مع رسائل خطأ واضحة
 - [x] إصلاح getCompanyGoalProgress لاستخدام accountingMonth كأولوية أولى
 - [x] إضافة utils.invalidate() شامل بعد حفظ الهدف لتحديث جميع الموديولات
+
+## إزالة القيم الافتراضية من النماذج (مايو 2026)
+- [x] إصلاح softDelete.engineer - تحويل إلى publicProcedure مع localAuth ✅
+- [x] إصلاح softDelete.deal - تحويل إلى publicProcedure مع localAuth ✅
+- [x] إخفاء المهندس المحذوف من جميع Dropdowns (isDeleted=0 filter) ✅
+- [x] إعادة حساب KPI/Ranking بعد الحذف (utils.invalidate شامل) ✅
+- [x] إزالة القيمة الافتراضية من DeleteConfirmDialog (reason = '') وإضافة placeholder ✅
+- [x] إزالة القيم الافتراضية من EMPTY_FORM في TasksModule (priority='', plannedHours='') ✅
+- [x] إزالة القيم الافتراضية من WorkDistribution (activityType='', durationMinutes=0) + validation ✅
+- [x] إزالة القيم الافتراضية من PlanningModule (avgDealValue='', closingRateTarget='', manpower='') + placeholders ✅
+- [x] إزالة القيمة الافتراضية من SalesModule (manpower='') + placeholder ✅
+- [x] إزالة القيم الافتراضية من ClosingModule (discountPercent='', discountValue='') ✅

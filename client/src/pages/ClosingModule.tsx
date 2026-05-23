@@ -80,13 +80,14 @@ export default function ClosingModule() {
   const { canViewSection } = useSectionPermission();
   const [showAdd, setShowAdd] = useState(false);
   const [filterStage, setFilterStage] = useState("all");
+  const [filterEngineerId, setFilterEngineerId] = useState<number | undefined>(undefined);
   const [searchQuery, setSearchQuery] = useState("");
   const [updateDeal, setUpdateDeal] = useState<UpdateDealState | null>(null);
   const [lostReasonDialog, setLostReasonDialog] = useState<LostReasonState | null>(null);
   const [newDeal, setNewDeal] = useState<NewDealState>({
     engineerId: '', clientName: '', value: '',
     nextAction: '', nextActionDate: '', notes: '',
-    discountPercent: '0', discountValue: '0', discountNote: '',
+    discountPercent: '', discountValue: '', discountNote: '',
   });
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
   // ─── Date Filter (DateRangePicker) ───────────────────────────────────────────
@@ -106,7 +107,7 @@ export default function ClosingModule() {
   }), [filterParams]);
 
   const { data: stats } = trpc.closing.stats.useQuery({ year: filterYear, month: filterMonth });
-  const { data: dealsData } = trpc.closing.list.useQuery({ limit: 200, stage: filterStage !== 'all' ? filterStage : undefined, year: filterYear, month: filterMonth });
+  const { data: dealsData } = trpc.closing.list.useQuery({ limit: 200, stage: filterStage !== 'all' ? filterStage : undefined, year: filterYear, month: filterMonth, engineerId: filterEngineerId });
   const { data: engineers } = trpc.engineers.list.useQuery();
   // ─── Discount queries تتحدث تلقائياً عند تغيير الفترة ───────────────────────
   const { data: discountSummary } = trpc.closing.discountSummary.useQuery(discountQueryParams);
@@ -416,15 +417,24 @@ export default function ClosingModule() {
           <Card>
             <CardHeader className="pb-3">
               <div className="flex flex-col gap-2">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
                   <CardTitle className="text-base">قائمة الصفقات</CardTitle>
-                  <Select value={filterStage} onValueChange={setFilterStage}>
-                    <SelectTrigger className="w-40 h-8 text-sm"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">الكل</SelectItem>
-                      {Object.entries(STAGE_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  <div className="flex items-center gap-2">
+                    <Select value={filterEngineerId ? String(filterEngineerId) : 'all'} onValueChange={v => setFilterEngineerId(v === 'all' ? undefined : Number(v))}>
+                      <SelectTrigger className="w-36 h-8 text-sm"><SelectValue placeholder="كل المهندسين" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">كل المهندسين</SelectItem>
+                        {(engineers ?? []).map(e => <SelectItem key={e.id} value={String(e.id)}>{e.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <Select value={filterStage} onValueChange={setFilterStage}>
+                      <SelectTrigger className="w-36 h-8 text-sm"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">كل المراحل</SelectItem>
+                        {Object.entries(STAGE_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
                 <Input
                   placeholder="🔍 بحث باسم العميل..."

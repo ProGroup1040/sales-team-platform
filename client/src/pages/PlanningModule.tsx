@@ -60,8 +60,8 @@ function CompanyGoalsTab({ year, month }: { year: number; month: number }) {
   const { data: trendData } = trpc.sales.trend.useQuery({ months: 6 });
 
   const [revenueTarget, setRevenueTarget] = useState('');
-  const [avgDealValue, setAvgDealValue] = useState('85000');
-  const [closingRateTarget, setClosingRateTarget] = useState('35');
+  const [avgDealValue, setAvgDealValue] = useState('');
+  const [closingRateTarget, setClosingRateTarget] = useState('');
   const [periodFrom, setPeriodFrom] = useState('');
   const [periodTo, setPeriodTo] = useState('');
   const [notes, setNotes] = useState('');
@@ -236,11 +236,11 @@ function CompanyGoalsTab({ year, month }: { year: number; month: number }) {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>متوسط قيمة الصفقة (ج.م)</Label>
-                <Input type="number" value={avgDealValue} onChange={e => setAvgDealValue(e.target.value)} className="mt-1" />
+                <Input type="number" value={avgDealValue} onChange={e => setAvgDealValue(e.target.value)} className="mt-1" placeholder="مثال: 85000" />
               </div>
               <div>
                 <Label>نسبة الإغلاق المستهدفة (%)</Label>
-                <Input type="number" value={closingRateTarget} onChange={e => setClosingRateTarget(e.target.value)} min="1" max="100" className="mt-1" />
+                <Input type="number" value={closingRateTarget} onChange={e => setClosingRateTarget(e.target.value)} min="1" max="100" className="mt-1" placeholder="مثال: 35" />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -419,16 +419,16 @@ function IndividualGoalsTab({ year, month }: { year: number; month: number }) {
   const [editingFinancial, setEditingFinancial] = useState(false);
   const [editingOperational, setEditingOperational] = useState(false);
   const [financialTarget, setFinancialTarget] = useState('');
-  const [manpower, setManpower] = useState('1');
+  const [manpower, setManpower] = useState('');
   const [opTargets, setOpTargets] = useState<Record<string, string>>({});
   const [showDistPreview, setShowDistPreview] = useState(false);
 
   // Personal Development state
   const [showAddGoalForm, setShowAddGoalForm] = useState(false);
   const [newObjective, setNewObjective] = useState('');
-  const [newArea, setNewArea] = useState('other');
-  const [newMethod, setNewMethod] = useState('manager_review');
-  const [newReviewerRole, setNewReviewerRole] = useState('manager');
+  const [newArea, setNewArea] = useState('');
+  const [newMethod, setNewMethod] = useState('');
+  const [newReviewerRole, setNewReviewerRole] = useState('');
   const [editingGoalId, setEditingGoalId] = useState<number | null>(null);
   const [editScore, setEditScore] = useState('');
   const [editNotes, setEditNotes] = useState('');
@@ -517,7 +517,7 @@ function IndividualGoalsTab({ year, month }: { year: number; month: number }) {
     const eng = perfData?.find((e: any) => e.engineerId === id);
     if (eng) {
       setFinancialTarget(eng.targetAmount > 0 ? String(eng.targetAmount) : '');
-      setManpower(String(eng.manpower ?? 1));
+      setManpower(eng.manpower ? String(eng.manpower) : '');
     }
   };
 
@@ -734,7 +734,7 @@ function IndividualGoalsTab({ year, month }: { year: number; month: number }) {
                       </div>
                       <div>
                         <Label className="text-xs">عدد الأفراد</Label>
-                        <Input type="number" value={manpower} onChange={e => setManpower(e.target.value)} className="h-8 text-sm mt-1" min="0.5" step="0.5" />
+                        <Input type="number" value={manpower} onChange={e => setManpower(e.target.value)} className="h-8 text-sm mt-1" min="0.5" step="0.5" placeholder="مثال: 1" />
                       </div>
                     </div>
                     <Button
@@ -996,12 +996,14 @@ function IndividualGoalsTab({ year, month }: { year: number; month: number }) {
                       <div>
                         <Label className="text-xs">مجال التطوير</Label>
                         <select value={newArea} onChange={e => setNewArea(e.target.value)} className="w-full h-8 text-sm border rounded-md px-2 bg-background mt-1">
+                          <option value="" disabled>— اختر مجال التطوير —</option>
                           {Object.entries(DEVELOPMENT_AREAS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                         </select>
                       </div>
                       <div>
                         <Label className="text-xs">طريقة التقييم</Label>
                         <select value={newMethod} onChange={e => setNewMethod(e.target.value)} className="w-full h-8 text-sm border rounded-md px-2 bg-background mt-1">
+                          <option value="" disabled>— اختر طريقة التقييم —</option>
                           {Object.entries(EVALUATION_METHODS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                         </select>
                       </div>
@@ -1009,6 +1011,7 @@ function IndividualGoalsTab({ year, month }: { year: number; month: number }) {
                     <div>
                       <Label className="text-xs">المراجع</Label>
                       <select value={newReviewerRole} onChange={e => setNewReviewerRole(e.target.value)} className="w-full h-8 text-sm border rounded-md px-2 bg-background mt-1">
+                        <option value="" disabled>— اختر المراجع —</option>
                         <option value="manager">المدير المباشر</option>
                         <option value="admin">الإدارة العليا</option>
                       </select>
@@ -1114,9 +1117,9 @@ function PersonalDevelopmentTab({ year, month }: { year: number; month: number }
   );
 
   const [newObjective, setNewObjective] = useState('');
-  const [newArea, setNewArea] = useState('other');
-  const [newMethod, setNewMethod] = useState('manager_review');
-  const [newReviewerRole, setNewReviewerRole] = useState('manager');
+  const [newArea, setNewArea] = useState('');
+  const [newMethod, setNewMethod] = useState('');
+  const [newReviewerRole, setNewReviewerRole] = useState('');
   const [editingGoalId, setEditingGoalId] = useState<number | null>(null);
   const [editScore, setEditScore] = useState('');
   const [editNotes, setEditNotes] = useState('');
@@ -1320,12 +1323,14 @@ function PersonalDevelopmentTab({ year, month }: { year: number; month: number }
                   <div>
                     <Label className="text-xs">مجال التطوير</Label>
                     <select value={newArea} onChange={e => setNewArea(e.target.value)} className="w-full h-8 text-sm border rounded-md px-2 bg-background mt-1">
+                      <option value="" disabled>— اختر مجال التطوير —</option>
                       {Object.entries(DEVELOPMENT_AREAS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                     </select>
                   </div>
                   <div>
                     <Label className="text-xs">طريقة التقييم</Label>
                     <select value={newMethod} onChange={e => setNewMethod(e.target.value)} className="w-full h-8 text-sm border rounded-md px-2 bg-background mt-1">
+                      <option value="" disabled>— اختر طريقة التقييم —</option>
                       {Object.entries(EVALUATION_METHODS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                     </select>
                   </div>
@@ -1333,6 +1338,7 @@ function PersonalDevelopmentTab({ year, month }: { year: number; month: number }
                 <div>
                   <Label className="text-xs">المراجع</Label>
                   <select value={newReviewerRole} onChange={e => setNewReviewerRole(e.target.value)} className="w-full h-8 text-sm border rounded-md px-2 bg-background mt-1">
+                    <option value="" disabled>— اختر المراجع —</option>
                     <option value="manager">المدير المباشر</option>
                     <option value="admin">الإدارة العليا</option>
                   </select>

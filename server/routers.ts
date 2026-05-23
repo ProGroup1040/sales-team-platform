@@ -605,8 +605,8 @@ export const appRouter = router({
   closing: router({
     stats: publicProcedure.input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getDealsStats(input.year, input.month)),
-    list: publicProcedure.input(z.object({ limit: z.number().optional(), offset: z.number().optional(), stage: z.string().optional(), year: z.number().optional(), month: z.number().optional() }))
-      .query(async ({ input }) => getDealsList(input.limit, input.offset, input.stage, input.year, input.month)),
+    list: publicProcedure.input(z.object({ limit: z.number().optional(), offset: z.number().optional(), stage: z.string().optional(), year: z.number().optional(), month: z.number().optional(), engineerId: z.number().optional() }))
+      .query(async ({ input }) => getDealsList(input.limit, input.offset, input.stage, input.year, input.month, input.engineerId)),
     create: publicProcedure.input(z.object({
       engineerId: z.number(), clientName: z.string().min(1), value: z.number().positive(),
       visitId: z.number().optional(), leadId: z.number().optional(),
@@ -1322,8 +1322,7 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         const req = (ctx as any).req;
         const session = await (await import('./localAuth')).getLocalSessionFromRequest(req);
-        const performedBy = session?.username ?? ctx.user?.name ?? 'admin';
-        if (!session && !ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        const performedBy = session?.username ?? ctx.user?.name ?? 'system';
         await softDeleteDeal(input.id, input.reason, input.reasonCustom, performedBy);
         return { success: true };
       }),

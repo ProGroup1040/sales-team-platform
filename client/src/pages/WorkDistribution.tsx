@@ -99,9 +99,9 @@ function LogActivityDialog({
   const today = new Date().toISOString().split("T")[0];
 
   const [form, setForm] = useState({
-    activityType: "meeting_2d" as (typeof ACTIVITY_TYPES)[number],
+    activityType: "" as (typeof ACTIVITY_TYPES)[number] | "",
     logDate: today,
-    durationMinutes: 60,
+    durationMinutes: 0,
     clientName: "",
     notes: "",
   });
@@ -136,7 +136,7 @@ function LogActivityDialog({
               onValueChange={(v) => setForm({ ...form, activityType: v as typeof form.activityType })}
             >
               <SelectTrigger>
-                <SelectValue />
+                <SelectValue placeholder="— اختر نوع النشاط —" />
               </SelectTrigger>
               <SelectContent>
                 {ACTIVITY_TYPES.map((t) => (
@@ -183,7 +183,7 @@ function LogActivityDialog({
           </div>
           <Button
             className="w-full"
-            disabled={logMutation.isPending}
+            disabled={logMutation.isPending || !form.activityType || form.durationMinutes <= 0}
             onClick={() =>
               logMutation.mutate({
                 engineerId,

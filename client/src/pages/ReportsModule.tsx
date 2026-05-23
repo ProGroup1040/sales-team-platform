@@ -12,11 +12,11 @@ import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Legend,
   LineChart, Line,
 } from "recharts";
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import {
   TrendingUp, TrendingDown, Target, Users, Award, AlertTriangle,
   BarChart2, Calendar, ChevronDown, ChevronUp, Activity, Zap,
-  CheckCircle2, XCircle, Clock, Star, ArrowRight,
+  CheckCircle2, XCircle, Clock, Star, ArrowRight, Download,
 } from "lucide-react";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -244,9 +244,37 @@ function WeeklyReportTab() {
 
 // ─── Monthly Report Tab ────────────────────────────────────────────
 function MonthlyReportTab() {
+  const reportRef = useRef<HTMLDivElement>(null);
   const [dateFilter, setDateFilter] = useState<DateFilter>(getCurrentMonthFilter());
   const year = dateFilter.mode === 'month' ? dateFilter.year : dateFilter.startDate.getFullYear();
   const month = dateFilter.mode === 'month' ? dateFilter.month : dateFilter.startDate.getMonth() + 1;
+
+  const handleExportPDF = async () => {
+    if (!reportRef.current) return;
+    try {
+      const { default: html2canvas } = await import('html2canvas');
+      const { jsPDF } = await import('jspdf');
+      const canvas = await html2canvas(reportRef.current, { scale: 1.5, useCORS: true, backgroundColor: '#ffffff' });
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      if (pdfHeight <= pdf.internal.pageSize.getHeight()) {
+        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      } else {
+        let yOffset = 0;
+        const pageH = pdf.internal.pageSize.getHeight();
+        while (yOffset < pdfHeight) {
+          if (yOffset > 0) pdf.addPage();
+          pdf.addImage(imgData, 'PNG', 0, -yOffset, pdfWidth, pdfHeight);
+          yOffset += pageH;
+        }
+      }
+      pdf.save(`تقرير-شهري-${month}-${year}.pdf`);
+    } catch (e) {
+      console.error('PDF export failed', e);
+    }
+  };
   const { data, isLoading } = trpc.reports.monthlyKPI.useQuery({ year, month });
 
   if (isLoading) return <div className="flex items-center justify-center h-40"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>;
@@ -265,10 +293,17 @@ function MonthlyReportTab() {
   return (
     <div className="space-y-6">
       {/* Date Range Picker */}
-      <div className="flex items-center gap-3">
-        <DateRangePicker value={dateFilter} onChange={setDateFilter} />
-        <Badge variant="outline">{MONTHS_AR[month - 1]} {year}</Badge>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <DateRangePicker value={dateFilter} onChange={setDateFilter} />
+          <Badge variant="outline">{MONTHS_AR[month - 1]} {year}</Badge>
+        </div>
+        <Button variant="outline" size="sm" onClick={handleExportPDF} className="flex items-center gap-2">
+          <Download className="h-4 w-4" />
+          تصدير PDF
+        </Button>
       </div>
+      <div ref={reportRef}>
 
       {/* Comparison Chart */}
       <Card>
@@ -363,11 +398,11 @@ function MonthlyReportTab() {
             ))}
           </CardContent>
         </Card>
-      )}
+       )}
+      </div>{/* end reportRef */}
     </div>
   );
 }
-
 // ─── Quarterly Report Tab ────────────────────────────────────────────────────
 function QuarterlyReportTab() {
   const now = new Date();

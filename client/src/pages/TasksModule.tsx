@@ -224,7 +224,7 @@ function UpdateStatusDialog({ task, onDone }: { task: any; onDone: () => void })
 // ─── Add Task Dialog ──────────────────────────────────────────────────────────
 function AddTaskDialog({ engineers, dateStr, onDone }: { engineers: any[]; dateStr: string; onDone: () => void }) {
   const [open, setOpen] = useState(false);
-  const EMPTY_FORM = { engineerId: "", title: "", description: "", priority: "medium", plannedHours: "1", taskType: "", meetingRecordingLink: "" };
+  const EMPTY_FORM = { engineerId: "", title: "", description: "", priority: "", plannedHours: "", taskType: "", meetingRecordingLink: "" };
   const [form, setForm] = useState(EMPTY_FORM);
   const utils = trpc.useUtils();
 
@@ -352,7 +352,7 @@ function AddTaskDialog({ engineers, dateStr, onDone }: { engineers: any[]; dateS
               <div className="space-y-2">
                 <Label className="text-white/70">الأولوية</Label>
                 <Select value={form.priority} onValueChange={v => setForm(f => ({ ...f, priority: v }))}>
-                  <SelectTrigger className="bg-white/5 border-white/10 text-white"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="bg-white/5 border-white/10 text-white"><SelectValue placeholder="اختر الأولوية" /></SelectTrigger>
                   <SelectContent className="bg-slate-900 border-white/10">
                     {Object.entries(PRIORITY_CONFIG).map(([k, v]) => <SelectItem key={k} value={k} className="text-white hover:bg-white/10">{v.label}</SelectItem>)}
                   </SelectContent>
@@ -391,7 +391,7 @@ function AddTaskDialog({ engineers, dateStr, onDone }: { engineers: any[]; dateS
 // ─── Manage Engineers Dialog ──────────────────────────────────────────────────
 function ManageEngineersDialog({ engineers, onDone }: { engineers: any[]; onDone: () => void }) {
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", phone: "", department: "", role: "engineer" });
+  const [form, setForm] = useState({ name: "", phone: "", department: "", role: "" });
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
   const [editTarget, setEditTarget] = useState<any | null>(null);
   const [editForm, setEditForm] = useState({ name: "", department: "", role: "", phone: "" });
@@ -399,7 +399,7 @@ function ManageEngineersDialog({ engineers, onDone }: { engineers: any[]; onDone
   const createMut = trpc.tasks.createEngineer.useMutation({
     onSuccess: () => {
       utils.tasks.engineers.invalidate(); toast.success("تمت إضافة المهندس");
-      setForm({ name: "", phone: "", department: "", role: "engineer" }); onDone();
+      setForm({ name: "", phone: "", department: "", role: "" }); onDone();
     },
     onError: () => toast.error("حدث خطأ"),
   });
@@ -458,7 +458,7 @@ function ManageEngineersDialog({ engineers, onDone }: { engineers: any[]; onDone
                   </SelectContent>
                 </Select>
                 <Select value={form.role} onValueChange={v => setForm(f => ({ ...f, role: v }))}>
-                  <SelectTrigger className="bg-white/5 border-white/10 text-white text-sm"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="bg-white/5 border-white/10 text-white text-sm"><SelectValue placeholder="اختر الدور *" /></SelectTrigger>
                   <SelectContent className="bg-slate-900 border-white/10">
                     <SelectItem value="engineer" className="text-white hover:bg-white/10">مهندس</SelectItem>
                     <SelectItem value="admin" className="text-white hover:bg-white/10">مدير</SelectItem>

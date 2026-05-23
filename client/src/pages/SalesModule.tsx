@@ -56,7 +56,7 @@ export default function SalesModule() {
   const [showCommissionDialog, setShowCommissionDialog] = useState(false);
   const [selectedEngineerId, setSelectedEngineerId] = useState<number | null>(null);
   const [targetAmount, setTargetAmount] = useState("");
-  const [manpower, setManpower] = useState("1");
+  const [manpower, setManpower] = useState("");
   const [dMin, setDMin] = useState(""); const [dMax, setDMax] = useState(""); const [dPct, setDPct] = useState(""); const [dLabel, setDLabel] = useState("");
   const [cMin, setCMin] = useState(""); const [cMax, setCMax] = useState(""); const [cPct, setCPct] = useState(""); const [cLabel, setCLabel] = useState("");
 
@@ -312,7 +312,7 @@ export default function SalesModule() {
                     </Select>
                   </div>
                   <div><Label>الهدف الشهري (ج.م)</Label><Input type="number" placeholder="مثال: 500000" value={targetAmount} onChange={(e) => setTargetAmount(e.target.value)} /></div>
-                  <div><Label>Manpower</Label><Input type="number" placeholder="1" value={manpower} onChange={(e) => setManpower(e.target.value)} /></div>
+                  <div><Label>Manpower</Label><Input type="number" placeholder="أدخل عدد الموظفين" value={manpower} onChange={(e) => setManpower(e.target.value)} /></div>
                   <Button className="w-full" disabled={!selectedEngineerId || !targetAmount || setTargetMut.isPending}
                     onClick={() => { if (!selectedEngineerId || !targetAmount) return; setTargetMut.mutate({ engineerId: selectedEngineerId, year, month, targetAmount: Number(targetAmount), manpower: Number(manpower) || 1 }); }}>
                     {setTargetMut.isPending ? "جاري الحفظ..." : "حفظ الهدف"}
