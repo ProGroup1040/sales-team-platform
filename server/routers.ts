@@ -15,7 +15,7 @@ import {
   getMonthlySalesStats, getMonthlySalesTrend,
   getEngineersKPI,
   getCollectionsStats, getCollectionsList, createCollection, updateCollection,
-  getAdminSalesTasks, updateAdminSalesTaskStatus, getOrCreateWeekMeeting, updateWeekMeeting, getAdminSalesStats,
+  getAdminSalesTasks, updateAdminSalesTaskStatus, createAdminSalesTask, updateAdminSalesTaskFull, getOrCreateWeekMeeting, updateWeekMeeting, getAdminSalesStats,
   logLeadFollowup, getLeadFollowupLogs, getAdminSalesFollowupKPI, getTelesalesFollowupKPI, getAllTelesalesFollowupStats,
   getMonthlyTarget, upsertMonthlyTarget,
   getSalesControlStats, getEngineersSalesPerformance,
@@ -42,7 +42,7 @@ import {
   upsertLeadDailyStats, getLeadDailyStatsList, getLeadSummaryStats,
   getDiscountSummary, validateDealDiscount, createDealWithDiscount, updateDealFull, getEngineerDiscountSummary,
   distributeDiscountToDeals, getDiscountSummaryForEngineer, calculateDiscountBonus, getDiscountBonusSummary, getDiscountDashboard, setDiscountBonusCap,
-  getLostDealsAnalysis, getTasksCalendarView, LOST_REASON_LABELS,
+  getLostDealsAnalysis, getTasksCalendarView, getAdminSalesCalendarView, LOST_REASON_LABELS,
   getEngineersTrend, getWeeklyReport,
   logWorkActivity, getWorkDistribution, getAllEngineersDistribution,
   getWeeklyDistribution, getCriticalInsights, getEngineerRankingFull,
@@ -417,6 +417,10 @@ export const appRouter = router({
     critical: publicProcedure.query(async () => getCriticalTasks()),
     calendarView: publicProcedure.input(z.object({ engineerId: z.number().optional() }))
       .query(async ({ input }) => getTasksCalendarView(input.engineerId)),
+    // جلب مهام Admin Sales للتقويم الزمني
+    calendarViewAdmin: publicProcedure
+      .input(z.object({ engineerId: z.number().optional(), month: z.string().optional() }))
+      .query(async ({ input }) => getAdminSalesCalendarView(input.engineerId, input.month)),
     engineers: publicProcedure.query(async () => getEngineersWithRole()),
     createEngineer: publicProcedure.input(z.object({
       name: z.string().min(1), email: z.string().optional(), phone: z.string().optional(),
@@ -1292,6 +1296,40 @@ export const appRouter = router({
     getStats: publicProcedure
       .input(z.object({ engineerId: z.number(), month: z.string() }))
       .query(async ({ input }) => getAdminSalesStats(input.engineerId, input.month)),
+    // إضافة مهمة يدوية لـ Admin Sales
+    create: publicProcedure
+      .input(z.object({
+        engineerId: z.number(),
+        taskTitle: z.string().min(1),
+        taskType: z.enum(['daily', 'weekly', 'monthly', 'meeting']),
+        taskDate: z.string(),
+        category: z.enum(['crm_data', 'financial_collection', 'operations', 'reporting', 'coordination', 'meetings']).optional(),
+        notes: z.string().optional(),
+        kpiWeight: z.number().optional(),
+        kpiImpact: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        await createAdminSalesTask(input);
+        return { success: true };
+      }),
+    // تحديث مهمة Admin Sales بالكامل
+    updateFull: publicProcedure
+      .input(z.object({
+        id: z.number(),
+        taskTitle: z.string().optional(),
+        taskType: z.enum(['daily', 'weekly', 'monthly', 'meeting']).optional(),
+        taskDate: z.string().optional(),
+        category: z.enum(['crm_data', 'financial_collection', 'operations', 'reporting', 'coordination', 'meetings']).optional(),
+        notes: z.string().optional(),
+        kpiWeight: z.number().optional(),
+        kpiImpact: z.string().optional(),
+        status: z.enum(['pending', 'done', 'delayed', 'not_done']).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        await updateAdminSalesTaskFull(id, data);
+        return { success: true };
+      }),
   }),
 
   // ─── Lead Followup Tracking ────────────────────────────────────────────────────────────────────────────────

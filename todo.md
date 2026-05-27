@@ -1455,3 +1455,17 @@
 - [x] المهام المضافة من التقويم تظهر في Daily Tasks ✅
 - [x] المهام تدخل في KPI و Performance ✅
 - [x] Reminder System: reminderMinutes field ✅
+
+## فصل Workflows حسب Role في التقويم - مايو 2026
+- [x] إضافة getAdminSalesCalendarView في db.ts (يجلب من adminSalesTasks)
+- [x] إضافة procedure tasks.calendarViewAdmin في routers.ts
+- [x] تحديث InteractiveCalendar ليدعم roleFilter (sales_engineer / admin_sales / specialist)
+- [x] عند اختيار Admin Sales → جلب من adminSalesTasks
+- [x] عند اختيار Sales Engineer → جلب من daily_tasks (الحالي)
+- [x] فصل ألوان وأنواع المهام حسب Role
+- [x] Admin Sales KPI لا يدخل في KPI Sales Engineers
+- [x] فلتر Role في التقويم يُغيّر مصدر البيانات تلقائياً
+- [x] إضافة مهام Admin Sales من التقويم (createAdminSalesTask procedure)
+- [x] تحديث handleDrop لدعم نقل مهام Admin Sales
+- [x] عرض معلومات KPI و category في TaskDetailModal لمهام Admin Sales
+- [x] 21 Vitest tests للتحقق من فصل الـ Roles

@@ -144,7 +144,10 @@ export async function getDailyTasksStats(dateStr: string) {
   const engList = await db.select().from(engineers)
     .where(and(eq(engineers.status, 'active'), eq(engineers.isDeleted, 0)))
     .orderBy(engineers.name);
-  const byEngineer = engList.map(eng => {
+  // استثناء Admin Sales من إحصائيات المهام اليومية (لديهم جدول منفصل)
+  const EXCLUDED_ROLES_STATS = ['admin_sales', 'admin', 'group_admin', 'pro_group', 'system_user'];
+  const filteredEngList = engList.filter((e: any) => !EXCLUDED_ROLES_STATS.includes(e.role ?? '') && !EXCLUDED_ROLES_STATS.includes(e.department ?? ''));
+  const byEngineer = filteredEngList.map(eng => {
     const engTasks = allTasks.filter(t => t.engineerId === eng.id);
     const scorableTasks = engTasks.filter(t => t.status !== 'client_delay' && t.status !== 'planned');
     const ePlanned = engTasks.length;
@@ -1908,6 +1911,64 @@ export async function getAdminSalesTasks(engineerId: number, date: string) {
   };
 }
 
+/** إنشاء مهمة يدوية لـ Admin Sales */
+export async function createAdminSalesTask(data: {
+  engineerId: number;
+  taskTitle: string;
+  taskType: 'daily' | 'weekly' | 'monthly' | 'meeting';
+  taskDate: string;
+  category?: 'crm_data' | 'financial_collection' | 'operations' | 'reporting' | 'coordination' | 'meetings';
+  notes?: string;
+  kpiWeight?: number;
+  kpiImpact?: string;
+}) {
+  const db = await getDb();
+  if (!db) return;
+  // توليد taskKey فريد
+  const taskKey = `custom_${Date.now()}`;
+  await db.insert(adminSalesTasks).values({
+    engineerId: data.engineerId,
+    taskTitle: data.taskTitle,
+    taskType: data.taskType,
+    taskKey,
+    taskDate: new Date(data.taskDate + 'T00:00:00'),
+    category: (data.category as any) ?? 'operations',
+    notes: data.notes ?? null,
+    kpiWeight: data.kpiWeight ?? 0,
+    kpiImpact: data.kpiImpact ?? null,
+    status: 'pending',
+  });
+}
+/** تحديث مهمة Admin Sales بالكامل */
+export async function updateAdminSalesTaskFull(
+  taskId: number,
+  data: {
+    taskTitle?: string;
+    taskType?: 'daily' | 'weekly' | 'monthly' | 'meeting';
+    taskDate?: string;
+    category?: 'crm_data' | 'financial_collection' | 'operations' | 'reporting' | 'coordination' | 'meetings';
+    notes?: string;
+    kpiWeight?: number;
+    kpiImpact?: string;
+    status?: 'pending' | 'done' | 'delayed' | 'not_done';
+  }
+) {
+  const db = await getDb();
+  if (!db) return;
+  const updateData: any = {};
+  if (data.taskTitle !== undefined) updateData.taskTitle = data.taskTitle;
+  if (data.taskType !== undefined) updateData.taskType = data.taskType;
+  if (data.taskDate !== undefined) updateData.taskDate = new Date(data.taskDate + 'T00:00:00');
+  if (data.category !== undefined) updateData.category = data.category;
+  if (data.notes !== undefined) updateData.notes = data.notes;
+  if (data.kpiWeight !== undefined) updateData.kpiWeight = data.kpiWeight;
+  if (data.kpiImpact !== undefined) updateData.kpiImpact = data.kpiImpact;
+  if (data.status !== undefined) {
+    updateData.status = data.status;
+    updateData.completedAt = data.status === 'done' ? new Date() : null;
+  }
+  await db.update(adminSalesTasks).set(updateData).where(eq(adminSalesTasks.id, taskId));
+}
 /** تحديث حالة مهمة Admin Sales */
 export async function updateAdminSalesTaskStatus(
   taskId: number,
@@ -11605,4 +11666,137 @@ export async function getFollowupComplianceReport(startDate?: string, endDate?: 
     return { ...kpi, engineerId: eng.id, engineerName: eng.name };
   }));
   return results.sort((a, b) => b.complianceRate - a.complianceRate);
+}
+
+// ─── Admin Sales Calendar View ─────────────────────────────────────────────────────────────────────
+/**
+ * جلب مهام Admin Sales للتقويم الزمني
+ * يُحوّل adminSalesTasks إلى نفس هيكل getTasksCalendarView (days array)
+ * حتى يتمكن InteractiveCalendar من عرضها بنفس الطريقة
+ */
+export async function getAdminSalesCalendarView(engineerId?: number, month?: string) {
+  const db = await getDb();
+  if (!db) return { days: [], summary: { total: 0, completed: 0, delayed: 0, not_done: 0, planned: 0, client_delay: 0 } };
+
+  const now = new Date();
+  let year = now.getFullYear();
+  let monthNum = now.getMonth() + 1;
+
+  // دعم month parameter بصيغة "YYYY-MM"
+  if (month) {
+    const parts = month.split('-');
+    if (parts.length === 2) {
+      year = parseInt(parts[0]);
+      monthNum = parseInt(parts[1]);
+    }
+  }
+
+  const monthStart = new Date(year, monthNum - 1, 1);
+  const monthEnd = new Date(year, monthNum, 0, 23, 59, 59); // آخر يوم في الشهر
+
+  const conditions: any[] = [
+    gte(adminSalesTasks.taskDate, monthStart),
+    lte(adminSalesTasks.taskDate, monthEnd),
+  ];
+  if (engineerId) conditions.push(eq(adminSalesTasks.engineerId, engineerId));
+
+  const tasks = await db
+    .select()
+    .from(adminSalesTasks)
+    .where(and(...conditions))
+    .orderBy(adminSalesTasks.taskDate, adminSalesTasks.taskType);
+
+  // جلب أسماء المهندسين
+  const allEngineers = await db.select({ id: engineers.id, name: engineers.name }).from(engineers).where(eq(engineers.isDeleted, 0));
+  const engMap = new Map(allEngineers.map(e => [e.id, e.name]));
+
+  // تجميع المهام حسب اليوم
+  const dayMap = new Map<string, any[]>();
+
+  // إنشاء أعمدة لكل يوم في الشهر
+  const daysInMonth = new Date(year, monthNum, 0).getDate();
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dayDate = new Date(year, monthNum - 1, d);
+    const key = dayDate.toISOString().split('T')[0];
+    dayMap.set(key, []);
+  }
+
+  // تحويل adminSalesTasks إلى CalendarTask format
+  const CATEGORY_TYPE_MAP: Record<string, string> = {
+    crm_data: 'crm_update',
+    financial_collection: 'collection_followup',
+    operations: 'operations',
+    reporting: 'reporting',
+    coordination: 'coordination',
+    meetings: 'meeting_admin',
+  };
+
+  for (const task of tasks) {
+    const key = new Date(task.taskDate).toISOString().split('T')[0];
+    if (dayMap.has(key)) {
+      // تحويل status من adminSalesTasks إلى daily_tasks format
+      let mappedStatus: string = task.status;
+      // adminSalesTasks: pending/done/delayed/not_done
+      // daily_tasks: planned/completed/delayed/not_done/client_delay
+      if (task.status === 'pending') mappedStatus = 'planned';
+      if (task.status === 'done') mappedStatus = 'completed';
+
+      dayMap.get(key)!.push({
+        id: task.id,
+        title: task.taskTitle,
+        status: mappedStatus,
+        priority: 'medium', // adminSalesTasks لا يحتوي على priority
+        taskDate: task.taskDate,
+        engineerId: task.engineerId,
+        engineerName: engMap.get(task.engineerId) || 'غير معروف',
+        description: task.notes,
+        plannedHours: null,
+        notes: task.notes,
+        category: task.category,
+        taskType: task.taskType, // daily/weekly/monthly/meeting
+        isCritical: 0,
+        startTime: null,
+        endTime: null,
+        clientName: null,
+        reminderMinutes: null,
+        // حقول إضافية خاصة بـ Admin Sales
+        isAdminSalesTask: true,
+        taskKey: task.taskKey,
+        kpiWeight: task.kpiWeight,
+        kpiImpact: task.kpiImpact,
+        adminCategory: task.category,
+        originalStatus: task.status, // الحالة الأصلية قبل التحويل
+      });
+    }
+  }
+
+  // ترتيب المهام داخل كل يوم
+  const days = Array.from(dayMap.entries()).map(([date, dayTasks]) => ({
+    date,
+    dayNum: new Date(date).getDate(),
+    dayName: new Date(date).toLocaleDateString('ar-EG', { weekday: 'short' }),
+    isToday: date === now.toISOString().split('T')[0],
+    tasks: dayTasks,
+    summary: {
+      total: dayTasks.length,
+      completed: dayTasks.filter((t: any) => t.status === 'completed').length,
+      delayed: dayTasks.filter((t: any) => t.status === 'delayed').length,
+      not_done: dayTasks.filter((t: any) => t.status === 'not_done').length,
+      planned: dayTasks.filter((t: any) => t.status === 'planned').length,
+      client_delay: 0,
+    },
+  }));
+
+  // ملخص إجمالي
+  const summary = {
+    total: tasks.length,
+    completed: tasks.filter(t => t.status === 'done').length,
+    delayed: tasks.filter(t => t.status === 'delayed').length,
+    not_done: tasks.filter(t => t.status === 'not_done').length,
+    planned: tasks.filter(t => t.status === 'pending').length,
+    client_delay: 0,
+    completionRate: tasks.length > 0 ? Math.round((tasks.filter(t => t.status === 'done').length / tasks.length) * 100) : 0,
+  };
+
+  return { days, summary };
 }

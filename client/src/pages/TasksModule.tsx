@@ -2207,7 +2207,10 @@ export default function TasksModule() {
       )}
       {/* ── Tab: Admin Sales Tasks ── */}
       {activeTab === "admin_sales" && (
-        <AdminSalesTab engineers={engineers} currentDate={currentDate} />
+        <AdminSalesTab
+          engineers={engineers.filter((e: any) => e.role === 'admin_sales' || e.department === 'admin_sales')}
+          currentDate={currentDate}
+        />
       )}
 
       {/* Delete Task Confirm */}

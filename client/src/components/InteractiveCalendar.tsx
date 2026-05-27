@@ -50,12 +50,19 @@ interface CalendarTask {
   plannedHours?: number | null;
   notes?: string | null;
   category?: string | null;
-  taskType?: TaskType | null;
+  taskType?: TaskType | string | null;
   isCritical?: number;
   startTime?: string | null;
   endTime?: string | null;
   clientName?: string | null;
   reminderMinutes?: number | null;
+  // Admin Sales specific fields
+  isAdminSalesTask?: boolean;
+  taskKey?: string | null;
+  kpiWeight?: number | null;
+  kpiImpact?: string | null;
+  adminCategory?: string | null;
+  originalStatus?: string | null;
 }
 
 interface Engineer {
@@ -87,6 +94,18 @@ const TASK_TYPE_CONFIG: Record<string, { label: string; color: string; bg: strin
   meeting_3d:           { label: 'اجتماع 3D',        color: 'text-pink-300',   bg: 'bg-pink-900/60',   border: 'border-pink-500' },
   meeting_quotation:    { label: 'اجتماع عرض سعر',   color: 'text-gray-300',   bg: 'bg-gray-700/60',   border: 'border-gray-500' },
   negotiation:          { label: 'تفاوض',            color: 'text-amber-300',  bg: 'bg-amber-900/60',  border: 'border-amber-500' },
+  // Admin Sales Task Types (from adminSalesTasks.taskType)
+  daily:                { label: 'مهمة يومية',       color: 'text-violet-300', bg: 'bg-violet-900/60', border: 'border-violet-500' },
+  weekly:               { label: 'مهمة أسبوعية',     color: 'text-indigo-300', bg: 'bg-indigo-900/60', border: 'border-indigo-500' },
+  monthly:              { label: 'مهمة شهرية',       color: 'text-fuchsia-300',bg: 'bg-fuchsia-900/60',border: 'border-fuchsia-500' },
+  meeting:              { label: 'اجتماع إداري',     color: 'text-rose-300',   bg: 'bg-rose-900/60',   border: 'border-rose-500' },
+  // Admin Sales Categories (for color differentiation)
+  crm_data:             { label: 'CRM بيانات',        color: 'text-sky-300',    bg: 'bg-sky-900/60',    border: 'border-sky-500' },
+  financial_collection: { label: 'تحصيل مالي',       color: 'text-emerald-300',bg: 'bg-emerald-900/60',border: 'border-emerald-500' },
+  operations:           { label: 'عمليات',            color: 'text-orange-300', bg: 'bg-orange-900/60', border: 'border-orange-500' },
+  reporting:            { label: 'تقارير',            color: 'text-lime-300',   bg: 'bg-lime-900/60',   border: 'border-lime-500' },
+  coordination:         { label: 'تنسيق',             color: 'text-cyan-300',   bg: 'bg-cyan-900/60',   border: 'border-cyan-500' },
+  meetings:             { label: 'اجتماعات',          color: 'text-rose-300',   bg: 'bg-rose-900/60',   border: 'border-rose-500' },
 };
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string }> = {
@@ -171,7 +190,14 @@ function minutesToTime(m: number): string {
 }
 
 function getTaskColor(task: CalendarTask) {
-  const type = task.taskType || 'other';
+  // Admin Sales tasks: use category for color if available
+  if (task.isAdminSalesTask) {
+    const cat = task.adminCategory || task.category || '';
+    if (cat && TASK_TYPE_CONFIG[cat]) return TASK_TYPE_CONFIG[cat];
+    const type = task.taskType as string || 'daily';
+    return TASK_TYPE_CONFIG[type] || TASK_TYPE_CONFIG['daily'];
+  }
+  const type = task.taskType as string || 'other';
   return TASK_TYPE_CONFIG[type] || TASK_TYPE_CONFIG['other'];
 }
 
@@ -207,6 +233,7 @@ function TaskBlock({
           {task.title}
         </span>
         {task.isCritical === 1 && <span className="text-red-400 text-xs flex-shrink-0">🔴</span>}
+        {task.isAdminSalesTask && <span className="text-violet-400 text-[9px] flex-shrink-0 bg-violet-900/40 px-1 rounded">إداري</span>}
       </div>
       {!compact && (
         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
@@ -277,18 +304,21 @@ interface TaskModalProps {
   onSaved: () => void;
   currentUserRole?: string;
   currentEngineerId?: number;
+  isAdminSalesMode?: boolean;
+  adminSalesEngineerId?: number;
 }
 
 function TaskModal({
   open, onClose, task, defaultDate, defaultStartTime,
   engineers, onSaved, currentUserRole, currentEngineerId,
+  isAdminSalesMode, adminSalesEngineerId,
 }: TaskModalProps) {
   const isAdmin = currentUserRole === 'admin';
   const isEdit = !!task;
 
   const [form, setForm] = useState({
     title: '',
-    taskType: '' as TaskType | '',
+    taskType: '' as TaskType | string | '',
     engineerId: '' as string,
     clientName: '',
     taskDate: '',
@@ -338,6 +368,39 @@ function TaskModal({
     }
   }, [open, task, defaultDate, defaultStartTime]);
 
+  // Admin Sales form state
+  const [adminForm, setAdminForm] = useState({
+    taskTitle: '',
+    taskType: 'daily' as 'daily' | 'weekly' | 'monthly' | 'meeting',
+    taskDate: '',
+    category: 'operations' as 'crm_data' | 'financial_collection' | 'operations' | 'reporting' | 'coordination' | 'meetings',
+    notes: '',
+    kpiWeight: '0',
+  });
+  useEffect(() => {
+    if (open && isAdminSalesMode) {
+      if (task && task.isAdminSalesTask) {
+        const d = safeDate(task.taskDate);
+        setAdminForm({
+          taskTitle: task.title || '',
+          taskType: (task.taskType as any) || 'daily',
+          taskDate: d ? toDateStr(d) : '',
+          category: (task.adminCategory as any) || 'operations',
+          notes: task.notes || '',
+          kpiWeight: String(task.kpiWeight || 0),
+        });
+      } else {
+        setAdminForm({
+          taskTitle: '',
+          taskType: 'daily',
+          taskDate: defaultDate || toDateStr(new Date()),
+          category: 'operations',
+          notes: '',
+          kpiWeight: '0',
+        });
+      }
+    }
+  }, [open, task, defaultDate, isAdminSalesMode]);
   const createMutation = trpc.tasks.createWithTime.useMutation({
     onSuccess: () => { toast.success('تم إضافة المهمة'); onSaved(); onClose(); },
     onError: (e) => toast.error(e.message || 'خطأ في الإضافة'),
@@ -347,9 +410,28 @@ function TaskModal({
     onError: (e) => toast.error(e.message || 'خطأ في التحديث'),
   });
 
-  const isSaving = createMutation.isPending || updateMutation.isPending;
-
+   const createAdminMutation = trpc.adminSalesTasks.create.useMutation({
+    onSuccess: () => { toast.success('تم إضافة مهمة Admin Sales'); onSaved(); onClose(); },
+    onError: (e) => toast.error(e.message || 'خطأ في الإضافة'),
+  });
+  const updateAdminMutation = trpc.adminSalesTasks.updateFull.useMutation({
+    onSuccess: () => { toast.success('تم تحديث مهمة Admin Sales'); onSaved(); onClose(); },
+    onError: (e) => toast.error(e.message || 'خطأ في التحديث'),
+  });
+  const isSaving = createMutation.isPending || updateMutation.isPending || createAdminMutation.isPending || updateAdminMutation.isPending;
   const handleSave = () => {
+    if (isAdminSalesMode) {
+      if (!adminForm.taskTitle.trim()) { toast.error('يجب إدخال عنوان المهمة'); return; }
+      if (!adminForm.taskDate) { toast.error('يجب تحديد تاريخ المهمة'); return; }
+      const engId = adminSalesEngineerId || task?.engineerId;
+      if (!engId) { toast.error('يجب تحديد مهندس Admin Sales'); return; }
+      if (isEdit && task && task.isAdminSalesTask) {
+        updateAdminMutation.mutate({ id: task.id, taskTitle: adminForm.taskTitle.trim(), taskType: adminForm.taskType, taskDate: adminForm.taskDate, category: adminForm.category, notes: adminForm.notes || undefined, kpiWeight: Number(adminForm.kpiWeight) || 0 });
+      } else {
+        createAdminMutation.mutate({ engineerId: engId, taskTitle: adminForm.taskTitle.trim(), taskType: adminForm.taskType, taskDate: adminForm.taskDate, category: adminForm.category, notes: adminForm.notes || undefined, kpiWeight: Number(adminForm.kpiWeight) || 0 });
+      }
+      return;
+    }
     if (!form.title.trim()) { toast.error('يجب إدخال عنوان المهمة'); return; }
     if (!form.engineerId) { toast.error('يجب اختيار المهندس'); return; }
     if (!form.taskDate) { toast.error('يجب تحديد تاريخ المهمة'); return; }
@@ -399,6 +481,88 @@ function TaskModal({
         </DialogHeader>
 
         <div className="space-y-4">
+          {isAdminSalesMode ? (
+            /* ── Admin Sales Form ── */
+            <>
+              {/* Task Title */}
+              <div>
+                <Label className="text-slate-300 text-sm">عنوان المهمة *</Label>
+                <Input
+                  value={adminForm.taskTitle}
+                  onChange={e => setAdminForm(f => ({ ...f, taskTitle: e.target.value }))}
+                  placeholder="أدخل عنوان المهمة..."
+                  className="bg-slate-800 border-slate-600 text-white mt-1"
+                />
+              </div>
+              {/* Task Type */}
+              <div>
+                <Label className="text-slate-300 text-sm">نوع المهمة</Label>
+                <Select value={adminForm.taskType} onValueChange={v => setAdminForm(f => ({ ...f, taskType: v as any }))}>
+                  <SelectTrigger className="bg-slate-800 border-slate-600 text-white mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-800 border-slate-600">
+                    <SelectItem value="daily" className="text-white">يومية</SelectItem>
+                    <SelectItem value="weekly" className="text-white">أسبوعية</SelectItem>
+                    <SelectItem value="monthly" className="text-white">شهرية</SelectItem>
+                    <SelectItem value="meeting" className="text-white">اجتماع</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {/* Category */}
+              <div>
+                <Label className="text-slate-300 text-sm">التصنيف</Label>
+                <Select value={adminForm.category} onValueChange={v => setAdminForm(f => ({ ...f, category: v as any }))}>
+                  <SelectTrigger className="bg-slate-800 border-slate-600 text-white mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-800 border-slate-600">
+                    <SelectItem value="crm_data" className="text-white">بيانات CRM</SelectItem>
+                    <SelectItem value="financial_collection" className="text-white">تحصيل مالي</SelectItem>
+                    <SelectItem value="operations" className="text-white">عمليات</SelectItem>
+                    <SelectItem value="reporting" className="text-white">تقارير</SelectItem>
+                    <SelectItem value="coordination" className="text-white">تنسيق</SelectItem>
+                    <SelectItem value="meetings" className="text-white">اجتماعات</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {/* Date */}
+              <div>
+                <Label className="text-slate-300 text-sm">تاريخ التنفيذ *</Label>
+                <Input
+                  type="date"
+                  value={adminForm.taskDate}
+                  onChange={e => setAdminForm(f => ({ ...f, taskDate: e.target.value }))}
+                  className="bg-slate-800 border-slate-600 text-white mt-1"
+                />
+              </div>
+              {/* KPI Weight */}
+              <div>
+                <Label className="text-slate-300 text-sm">وزن KPI (%)</Label>
+                <Input
+                  type="number"
+                  min="0" max="100"
+                  value={adminForm.kpiWeight}
+                  onChange={e => setAdminForm(f => ({ ...f, kpiWeight: e.target.value }))}
+                  className="bg-slate-800 border-slate-600 text-white mt-1"
+                  placeholder="0"
+                />
+              </div>
+              {/* Notes */}
+              <div>
+                <Label className="text-slate-300 text-sm">ملاحظات</Label>
+                <Textarea
+                  value={adminForm.notes}
+                  onChange={e => setAdminForm(f => ({ ...f, notes: e.target.value }))}
+                  placeholder="أدخل ملاحظات إضافية..."
+                  className="bg-slate-800 border-slate-600 text-white mt-1 resize-none"
+                  rows={3}
+                />
+              </div>
+            </>
+          ) : (
+            /* ── Sales Engineer Form ── */
+            <>
           {/* Title */}
           <div>
             <Label className="text-slate-300 text-sm">عنوان المهمة *</Label>
@@ -559,10 +723,11 @@ function TaskModal({
               placeholder="أدخل ملاحظات إضافية..."
               className="bg-slate-800 border-slate-600 text-white mt-1 resize-none"
               rows={3}
-            />
+             />
           </div>
+            </>
+          )}
         </div>
-
         <DialogFooter className="gap-2 flex-row-reverse">
           <Button onClick={handleSave} disabled={isSaving} className="bg-blue-600 hover:bg-blue-700 text-white">
             {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
@@ -670,6 +835,29 @@ function TaskDetailModal({
               <div className="text-white text-xs">قبل {task.reminderMinutes} دقيقة</div>
             </div>
           ) : null}
+          {/* Admin Sales specific info */}
+          {task.isAdminSalesTask && (
+            <>
+              {task.adminCategory && (
+                <div className="bg-slate-800 rounded-lg p-2">
+                  <div className="text-slate-400 text-xs mb-1">تصنيف Admin Sales</div>
+                  <div className="text-violet-300">{TASK_TYPE_CONFIG[task.adminCategory]?.label || task.adminCategory}</div>
+                </div>
+              )}
+              {task.kpiWeight && task.kpiWeight > 0 ? (
+                <div className="bg-slate-800 rounded-lg p-2">
+                  <div className="text-slate-400 text-xs mb-1">وزن KPI</div>
+                  <div className="text-emerald-300">{task.kpiWeight}%</div>
+                </div>
+              ) : null}
+              {task.kpiImpact && (
+                <div className="bg-slate-800 rounded-lg p-2">
+                  <div className="text-slate-400 text-xs mb-1">تأثير KPI</div>
+                  <div className="text-yellow-300 text-xs">{task.kpiImpact}</div>
+                </div>
+              )}
+            </>
+          )}
         </div>
 
         {canEdit && (
@@ -987,31 +1175,55 @@ function TimelineView({
 // ─── Main Component ─────────────────────────────────────────────────────────────
 export default function InteractiveCalendar({ engineers, currentUserRole, currentEngineerId }: Props) {
   const isAdmin = currentUserRole === 'admin';
-
   // State
   const [viewMode, setViewMode] = useState<ViewMode>('timeline');
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [filterEngineerId, setFilterEngineerId] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterType, setFilterType] = useState<string>('all');
-
   // Modals
   const [taskModal, setTaskModal] = useState<{ open: boolean; task?: CalendarTask | null; defaultDate?: string; defaultStartTime?: string }>({ open: false });
   const [detailModal, setDetailModal] = useState<{ open: boolean; task: CalendarTask | null }>({ open: false, task: null });
   const [editingTask, setEditingTask] = useState<CalendarTask | null>(null);
-
   // Drag
   const [activeTask, setActiveTask] = useState<CalendarTask | null>(null);
 
-  // Query
+  // تحديد Role المهندس المختار لتحديد مصدر البيانات
   const queryEngineerId = filterEngineerId === 'all' ? undefined : Number(filterEngineerId);
-  const { data, isLoading, isError, refetch } = trpc.tasks.calendarView.useQuery(
+  const selectedEngineerObj = filterEngineerId === 'all' ? null : engineers.find(e => e.id === queryEngineerId);
+  const isAdminSalesMode = selectedEngineerObj?.role === 'admin_sales';
+
+  // الشهر الحالي للفلتر
+  const currentMonth = useMemo(() => {
+    const y = currentDate.getFullYear();
+    const m = String(currentDate.getMonth() + 1).padStart(2, '0');
+    return `${y}-${m}`;
+  }, [currentDate]);
+
+  // Query للمهندسين العاديين (Sales Engineers / Specialists)
+  const { data: salesData, isLoading: salesLoading, isError: salesError, refetch: salesRefetch } = trpc.tasks.calendarView.useQuery(
     { engineerId: queryEngineerId },
-    { refetchOnWindowFocus: false }
+    { enabled: !isAdminSalesMode, refetchOnWindowFocus: false }
   );
+
+  // Query للمهندسين الإداريين (Admin Sales)
+  const { data: adminData, isLoading: adminLoading, isError: adminError, refetch: adminRefetch } = trpc.tasks.calendarViewAdmin.useQuery(
+    { engineerId: queryEngineerId, month: currentMonth },
+    { enabled: isAdminSalesMode, refetchOnWindowFocus: false }
+  );
+
+  // توحيد البيانات
+  const data = isAdminSalesMode ? adminData : salesData;
+  const isLoading = isAdminSalesMode ? adminLoading : salesLoading;
+  const isError = isAdminSalesMode ? adminError : salesError;
+  const refetch = isAdminSalesMode ? adminRefetch : salesRefetch;
 
   const moveMutation = trpc.tasks.moveTask.useMutation({
     onSuccess: () => { toast.success('تم نقل المهمة'); refetch(); },
+    onError: (e) => toast.error(e.message || 'خطأ في نقل المهمة'),
+  });
+  const moveAdminMutation = trpc.adminSalesTasks.updateFull.useMutation({
+    onSuccess: () => { toast.success('تم نقل مهمة Admin Sales'); refetch(); },
     onError: (e) => toast.error(e.message || 'خطأ في نقل المهمة'),
   });
 
@@ -1085,7 +1297,14 @@ export default function InteractiveCalendar({ engineers, currentUserRole, curren
   };
 
   const handleDeleteTask = () => {
-    if (detailModal.task && window.confirm('هل تريد حذف هذه المهمة؟')) {
+    if (!detailModal.task) return;
+    if (!window.confirm('هل تريد حذف هذه المهمة؟')) return;
+    if (detailModal.task.isAdminSalesTask) {
+      // Admin Sales tasks: تحديث الحالة إلى not_done بدلاً من الحذف (للحفاظ على سجل KPI)
+      moveAdminMutation.mutate({ id: detailModal.task.id, status: 'not_done' });
+      toast.info('تم تحديث حالة المهمة إلى لم تُنفذ');
+      setDetailModal({ open: false, task: null });
+    } else {
       deleteMutation.mutate({ id: detailModal.task.id });
     }
   };
@@ -1122,11 +1341,11 @@ export default function InteractiveCalendar({ engineers, currentUserRole, curren
 
     if (newDate === currentDateStr && newTime === (task.startTime || undefined)) return;
 
-    moveMutation.mutate({
-      id: task.id,
-      newDate,
-      newStartTime: newTime,
-    });
+    if (task.isAdminSalesTask) {
+      moveAdminMutation.mutate({ id: task.id, taskDate: newDate });
+    } else {
+      moveMutation.mutate({ id: task.id, newDate, newStartTime: newTime });
+    }
   };
 
   // Header title
@@ -1229,11 +1448,28 @@ export default function InteractiveCalendar({ engineers, currentUserRole, curren
           </SelectTrigger>
           <SelectContent className="bg-slate-800 border-slate-600">
             <SelectItem value="all" className="text-slate-300 text-xs">جميع الأنواع</SelectItem>
-            {TASK_TYPES.map(t => (
-              <SelectItem key={t.value} value={t.value} className="text-white text-xs">{t.label}</SelectItem>
-            ))}
+            {isAdminSalesMode ? (
+              // Admin Sales task types
+              <>
+                <SelectItem value="daily" className="text-violet-300 text-xs">مهام يومية</SelectItem>
+                <SelectItem value="weekly" className="text-indigo-300 text-xs">مهام أسبوعية</SelectItem>
+                <SelectItem value="monthly" className="text-fuchsia-300 text-xs">مهام شهرية</SelectItem>
+                <SelectItem value="meeting" className="text-rose-300 text-xs">اجتماعات</SelectItem>
+              </>
+            ) : (
+              // Sales Engineer / Specialist task types
+              TASK_TYPES.map(t => (
+                <SelectItem key={t.value} value={t.value} className="text-white text-xs">{t.label}</SelectItem>
+              ))
+            )}
           </SelectContent>
         </Select>
+        {/* Admin Sales mode indicator */}
+        {isAdminSalesMode && (
+          <Badge className="bg-violet-900/50 text-violet-300 text-xs h-6 border border-violet-700">
+            📊 تقويم Admin Sales
+          </Badge>
+        )}
 
         {/* Summary badges */}
         {summary && (
@@ -1354,6 +1590,8 @@ export default function InteractiveCalendar({ engineers, currentUserRole, curren
         onSaved={() => refetch()}
         currentUserRole={currentUserRole}
         currentEngineerId={currentEngineerId}
+        isAdminSalesMode={isAdminSalesMode}
+        adminSalesEngineerId={isAdminSalesMode ? queryEngineerId : undefined}
       />
 
       <TaskDetailModal
