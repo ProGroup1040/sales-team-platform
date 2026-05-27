@@ -505,8 +505,11 @@ export const appRouter = router({
       startTime: z.string().optional(),
       endTime: z.string().optional(),
       taskType: z.enum(['design_2d','design_3d','render','quotation','meeting_modeling','meeting_presentation','meeting_closing','contract','work_order','meeting_2d','meeting_3d','meeting_quotation','closing','negotiation','other']).optional(),
+      clientName: z.string().optional(),
+      notes: z.string().optional(),
+      reminderMinutes: z.number().optional(),
     })).mutation(async ({ input }) => {
-      const { startTime, endTime, taskType, ...rest } = input;
+      const { startTime, endTime, taskType, clientName, notes, reminderMinutes, ...rest } = input;
       // Check overlap if times provided
       if (startTime && endTime) {
         const overlap = await checkTimeOverlap({ engineerId: input.engineerId, taskDate: input.taskDate, startTime, endTime });
@@ -514,7 +517,63 @@ export const appRouter = router({
           throw new Error(`تداخل زمني مع مهمة: ${overlap.conflictingTask?.title} (${overlap.conflictingTask?.startTime} - ${overlap.conflictingTask?.endTime})`);
         }
       }
-      await createTask({ ...rest, startTime, endTime, taskType } as any);
+      await createTask({ ...rest, startTime, endTime, taskType, clientName, notes, reminderMinutes } as any);
+      return { success: true };
+    }),
+    // ─── Move Task (Drag & Drop) ─────────────────────────────────────────────────────────────────
+    moveTask: publicProcedure.input(z.object({
+      id: z.number(),
+      newDate: z.string().optional(),
+      newStartTime: z.string().optional(),
+      newEndTime: z.string().optional(),
+      newEngineerId: z.number().optional(),
+    })).mutation(async ({ input }) => {
+      const { id, newDate, newStartTime, newEndTime, newEngineerId } = input;
+      const updates: Record<string, unknown> = {};
+      if (newDate) updates.taskDate = newDate;
+      if (newStartTime !== undefined) updates.startTime = newStartTime;
+      if (newEndTime !== undefined) updates.endTime = newEndTime;
+      if (newEngineerId) updates.engineerId = newEngineerId;
+      if (Object.keys(updates).length > 0) {
+        const { getDb } = await import('./db');
+        const { dailyTasks } = await import('../drizzle/schema');
+        const { eq } = await import('drizzle-orm');
+        const db = await getDb();
+        if (!db) return { success: false };
+        await db.update(dailyTasks).set(updates).where(eq(dailyTasks.id, id));
+      }
+      return { success: true };
+    }),
+    // ─── Update Full Task (Edit from Calendar) ─────────────────────────────────────────────────────────
+    updateFull: publicProcedure.input(z.object({
+      id: z.number(),
+      title: z.string().min(1).optional(),
+      description: z.string().optional(),
+      taskDate: z.string().optional(),
+      startTime: z.string().optional(),
+      endTime: z.string().optional(),
+      taskType: z.enum(['design_2d','design_3d','render','quotation','meeting_modeling','meeting_presentation','meeting_closing','contract','work_order','meeting_2d','meeting_3d','meeting_quotation','closing','negotiation','other']).optional(),
+      priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
+      status: z.enum(['planned', 'completed', 'delayed', 'not_done', 'client_delay']).optional(),
+      clientName: z.string().optional(),
+      notes: z.string().optional(),
+      reminderMinutes: z.number().optional(),
+      engineerId: z.number().optional(),
+      plannedHours: z.number().optional(),
+    })).mutation(async ({ input }) => {
+      const { id, ...updates } = input;
+      const cleanUpdates: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(updates)) {
+        if (v !== undefined) cleanUpdates[k] = v;
+      }
+      if (Object.keys(cleanUpdates).length > 0) {
+        const { getDb } = await import('./db');
+        const { dailyTasks } = await import('../drizzle/schema');
+        const { eq } = await import('drizzle-orm');
+        const db = await getDb();
+        if (!db) return { success: false };
+        await db.update(dailyTasks).set(cleanUpdates).where(eq(dailyTasks.id, id));
+      }
       return { success: true };
     }),
   }),

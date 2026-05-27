@@ -1395,3 +1395,63 @@
 - [x] إضافة taskType و startTime و endTime لـ getTasksCalendarView في db.ts ✅
 - [x] رسالة فارغة محترمة عند عدم وجود مهام ✅
 - [x] زر إعادة المحاولة عند فشل التحميل ✅
+
+## Interactive Business Calendar - Google Calendar Style (مايو 2026)
+
+### Backend / Schema
+- [x] إضافة حقل reminderMinutes لجدول daily_tasks + migration ✅
+- [x] إضافة procedure: tasks.moveTask (نقل مهمة لتاريخ/وقت مختلف) ✅
+- [x] إضافة procedure: tasks.updateFull (تحديث كامل للمهمة) ✅
+- [x] تثبيت @dnd-kit/core + @dnd-kit/sortable للـ Drag & Drop ✅
+
+### Calendar Engine
+- [x] بناء InteractiveCalendar.tsx جديد (يستبدل TaskCalendarView) ✅
+- [x] Day View: عرض ساعات 8AM-10PM مع Time Slots بمنطق Google Calendar ✅
+- [x] Week View: 7 أيام × ساعات مع Task blocks ✅
+- [x] Month View: شبكة الشهر مع عدد المهام لكل يوم ✅
+- [x] Timeline/جدول View: عرض زمني للمهام ✅
+
+### Task Interaction
+- [x] Drag & Drop: سحب مهمة لتاريخ/وقت مختلف مع تحديث DB ✅
+- [x] Click on time slot: فتح Modal لإضافة مهمة جديدة ✅
+- [x] Click on task: فتح Task Detail/Edit Modal ✅
+
+### Task Modal (Add/Edit)
+- [x] حقل: اسم المهمة ✅
+- [x] حقل: نوع المهمة (2D/3D/Render/Quotation/Meeting/Presentation/Closing/Follow Up/Site Visit/Call) ✅
+- [x] حقل: المهندس المسؤول ✅
+- [x] حقل: العميل المرتبط ✅
+- [x] حقل: تاريخ التنفيذ ✅
+- [x] حقل: وقت البداية ✅
+- [x] حقل: وقت النهاية ✅
+- [x] حقل: الأولوية ✅
+- [x] حقل: حالة المهمة ✅
+- [x] حقل: ملاحظات ✅
+- [x] حقل: Reminder (بدون/15/30/60/120 دقيقة) ✅
+
+### ألوان المهام
+- [x] Meeting → أزرق ✅
+- [x] Closing → أخضر ✅
+- [x] Render → بنفسجي ✅
+- [x] Presentation → برتقالي ✅
+- [x] Follow Up → أصفر ✅
+- [x] 2D Design → سماوي ✅
+- [x] 3D Modeling → وردي ✅
+- [x] Quotation → رمادي ✅
+- [x] Site Visit → أحمر ✅
+- [x] Call → أخضر فاتح ✅
+
+### الفلاتر
+- [x] فلتر المهندس (Admin فقط) ✅
+- [x] فلتر نوع المهمة ✅
+- [x] فلتر الحالة ✅
+- [x] فلتر الشهر/الأسبوع (navigation) ✅
+
+### الصلاحيات
+- [x] Admin: إضافة/تعديل/حذف/نقل أي مهمة ✅
+- [x] Engineer: تعديل مهامه فقط ✅
+
+### ربط بالنظام
+- [x] المهام المضافة من التقويم تظهر في Daily Tasks ✅
+- [x] المهام تدخل في KPI و Performance ✅
+- [x] Reminder System: reminderMinutes field ✅

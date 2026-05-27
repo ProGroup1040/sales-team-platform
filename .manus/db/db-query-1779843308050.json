@@ -1,0 +1,9 @@
+{
+  "query": "ALTER TABLE `daily_tasks` ADD `reminderMinutes` int DEFAULT 0;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user fZydmv6Jueen1GW.d1ac4e774f80 --database 9B5dXFSohC6AundZRCEr3i --execute ALTER TABLE `daily_tasks` ADD `reminderMinutes` int DEFAULT 0;",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 1985
+}

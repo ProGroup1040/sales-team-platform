@@ -99,6 +99,8 @@ export const dailyTasks = mysqlTable("daily_tasks", {
   category: varchar("category", { length: 80 }), // e.g. 'closing', 'meeting', 'general'
   meetingRecordingLink: varchar("meetingRecordingLink", { length: 500 }),
   recordingSubmittedAt: timestamp("recordingSubmittedAt"),
+  // ─── Reminder ─────────────────────────────────────────────────────────────
+  reminderMinutes: int("reminderMinutes").default(0), // 0=none, 15, 30, 60
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 export type DailyTask = typeof dailyTasks.$inferSelect;

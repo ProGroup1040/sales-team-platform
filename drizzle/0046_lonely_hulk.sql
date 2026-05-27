@@ -1,0 +1,1 @@
+ALTER TABLE `daily_tasks` ADD `reminderMinutes` int DEFAULT 0;

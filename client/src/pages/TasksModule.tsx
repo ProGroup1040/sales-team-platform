@@ -15,7 +15,7 @@ import {
   Flame, Trophy, TrendingDown, UserCog, Trash2, Calendar, Star,
   ClipboardList, BarChart2, CalendarDays, Video, Target
 } from "lucide-react";
-import TaskCalendarView from "@/components/TaskCalendarView";
+import InteractiveCalendar from "@/components/InteractiveCalendar";
 import TimeFilterBar, { type TimeFilterValue } from "@/components/TimeFilterBar";
 import DailyTimeline from "@/components/DailyTimeline";
 import { LayoutList, LayoutGrid, Filter, X, Pencil } from "lucide-react";
@@ -2192,11 +2192,13 @@ export default function TasksModule() {
 
       {/* ── Tab: Calendar View ── */}
       {activeTab === "calendar" && (
-        <TaskCalendarView
-          viewMode={viewMode}
-          engineers={engineers}
-          currentEngineerIdForEngineerView={viewMode === "engineer" && selectedEngineer ? Number(selectedEngineer) : undefined}
-        />
+        <div className="h-[calc(100vh-200px)] min-h-[600px]">
+          <InteractiveCalendar
+            engineers={engineers}
+            currentUserRole={viewMode === "admin" ? "admin" : "engineer"}
+            currentEngineerId={viewMode === "engineer" && selectedEngineer ? Number(selectedEngineer) : undefined}
+          />
+        </div>
       )}
 
       {/* ── Tab: Work Distribution (Actual vs Target) ── */}
