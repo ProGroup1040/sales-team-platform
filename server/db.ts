@@ -3339,9 +3339,12 @@ export async function getTasksCalendarView(engineerId?: number) {
       delayDays: dailyTasks.delayDays,
       notes: dailyTasks.notes,
       category: dailyTasks.category,
+      taskType: dailyTasks.taskType,
       isCritical: dailyTasks.isCritical,
       completedAt: dailyTasks.completedAt,
       meetingRecordingLink: dailyTasks.meetingRecordingLink,
+      startTime: dailyTasks.startTime,
+      endTime: dailyTasks.endTime,
     })
     .from(dailyTasks)
     .where(and(...conditions))

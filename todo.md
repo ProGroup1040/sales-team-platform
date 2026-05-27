@@ -1377,3 +1377,21 @@
 - [x] إزالة القيم الافتراضية من PlanningModule (avgDealValue='', closingRateTarget='', manpower='') + placeholders ✅
 - [x] إزالة القيمة الافتراضية من SalesModule (manpower='') + placeholder ✅
 - [x] إزالة القيم الافتراضية من ClosingModule (discountPercent='', discountValue='') ✅
+
+## إصلاح Calendar View - مايو 2026
+
+- [x] تشخيص سبب الـ Crash الجذري: كود مقطوع في السطر 246 من TaskCalendarView.tsx يُسبب SyntaxError ✅
+- [x] إعادة بناء TaskCalendarView.tsx بالكامل مع Error Boundary كامل ✅
+- [x] إضافة Validation لكل task قبل العرض (validateTask function) ✅
+- [x] إضافة safeDate function لمنع أخطاء Date parsing ✅
+- [x] إضافة 3 أوضاع عرض: Timeline / أسبوع / شهر ✅
+- [x] إضافة فلتر المهندس (Admin فقط) ✅
+- [x] إضافة فلتر الحالة (مخططة/منجزة/متأخرة/لم تُنفذ/تأخير العميل/جارية) ✅
+- [x] إضافة فلتر نوع المهمة (اجتماعات/إغلاق/عروض أسعار/2D/3D/رندر) ✅
+- [x] عرض اسم المهندس + نوع المهمة + حالة المهمة في كل task block ✅
+- [x] إضافة MTD Summary Bar (إجمالي/منجزة/متأخرة/لم تُنفذ/مخططة/نسبة الإنجاز) ✅
+- [x] إضافة Task Detail Dialog عند الضغط على أي مهمة ✅
+- [x] إصلاح خطأ Select empty string (filterEngineerId = "all" بدلاً من "") ✅
+- [x] إضافة taskType و startTime و endTime لـ getTasksCalendarView في db.ts ✅
+- [x] رسالة فارغة محترمة عند عدم وجود مهام ✅
+- [x] زر إعادة المحاولة عند فشل التحميل ✅
