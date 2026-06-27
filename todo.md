@@ -1469,3 +1469,14 @@
 - [x] تحديث handleDrop لدعم نقل مهام Admin Sales
 - [x] عرض معلومات KPI و category في TaskDetailModal لمهام Admin Sales
 - [x] 21 Vitest tests للتحقق من فصل الـ Roles
+
+## نظام شرائح الخصومات — Performance-Based (2026-06-27)
+- [x] calcCompositeDiscountScore: 40% مبيعات + 30% Pipeline + 20% Closing + 10% KPI
+- [x] getEngineerCompositeDiscountScore: حساب Score لكل مهندس
+- [x] getTeamCompositeDiscountScore: حساب Score للفريق كاملاً
+- [x] شرط Gate: لا خصم بدون تحقيق فعلي (1%→لازم 20%, 3%→لازم 40%, ...)
+- [x] Pipeline وحده لا يفتح شريحة عالية
+- [x] عرض سبب الرفض لكل شريحة في Dashboard
+- [x] تحديث getDiscountSummary و getDiscountSummaryForEngineer لاستخدام Composite Score
+- [x] الخصم المسموح يُحسب على المبيعات الفعلية فقط (ليس totalVolume)
+- [x] 12 Vitest tests تؤكد صحة المنطق الجديد

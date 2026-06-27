@@ -112,6 +112,11 @@ export default function ClosingModule() {
   // ─── Discount queries تتحدث تلقائياً عند تغيير الفترة ───────────────────────
   const { data: discountSummary } = trpc.closing.discountSummary.useQuery(discountQueryParams);
   const { data: engDiscounts } = trpc.closing.engineerDiscountSummary.useQuery(discountQueryParams);
+  // ─── Composite Discount Score (Performance-Based) ─────────────────────────────────
+  const { data: compositeScore } = trpc.kpi.teamCompositeDiscountScore.useQuery({
+    year: filterYear,
+    month: filterMonth,
+  });
   const { data: lostAnalysis } = trpc.closing.lostDealsAnalysis.useQuery({ year: filterYear, month: filterMonth });
   // ─── Deal Tasks (Next Step → Task System) ─────────────────────────────────────────────
   const { data: overdueTasks, refetch: refetchOverdue } = trpc.dealTasks.listOverdue.useQuery({});
@@ -633,49 +638,158 @@ export default function ClosingModule() {
             </CardContent>
           </Card>
 
-          {/* Tiers Table */}
-          <Card>
-            <CardHeader><CardTitle className="text-sm">جدول شرائح الخصم</CardTitle></CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border text-muted-foreground text-xs">
-                      <th className="text-right py-2 px-3">الشريحة</th>
-                      <th className="text-right py-2 px-3">الحجم</th>
-                      <th className="text-right py-2 px-3">نسبة الخصم</th>
-                      <th className="text-right py-2 px-3">الحالة</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[
-                      { label: 'شريحة 1', range: 'أقل من 1M', pct: 1, min: 0, max: 1_000_000 },
-                      { label: 'شريحة 2', range: '1M - 2M', pct: 3, min: 1_000_000, max: 2_000_000 },
-                      { label: 'شريحة 3', range: '2M - 3M', pct: 5, min: 2_000_000, max: 3_000_000 },
-                      { label: 'شريحة 4', range: '3M - 5M', pct: 7, min: 3_000_000, max: 5_000_000 },
-                      { label: 'شريحة 5', range: 'أكثر من 5M', pct: 10, min: 5_000_000, max: Infinity },
-                    ].map(tier => {
-                      const tv = discountSummary?.totalVolume ?? 0;
-                      const isActive = tv >= tier.min && tv < tier.max;
-                      return (
-                        <tr key={tier.label} className={`border-b border-border/30 ${isActive ? 'bg-primary/10' : ''}`}>
+          {/* Performance-Based Composite Score */}
+          {compositeScore && (
+            <Card className="border-2 border-amber-500/30 bg-amber-950/10">
+              <CardHeader>
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <BarChart3 className="h-4 w-4 text-amber-400" />
+                  نظام شرائح الخصم — Performance-Based
+                  <Badge className="mr-auto text-xs bg-amber-500/20 text-amber-400 border-amber-500/30">
+                    Score: {compositeScore.compositeScore}/100
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Composite Score Breakdown */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="bg-emerald-950/30 border border-emerald-700/30 rounded-lg p-3">
+                    <div className="text-xs text-muted-foreground mb-1">تحقيق المبيعات (40%)</div>
+                    <div className="text-lg font-bold text-emerald-400">{compositeScore.salesAchievementPct.toFixed(1)}%</div>
+                    <div className="text-xs text-muted-foreground">مساهمة: {compositeScore.salesScore.toFixed(0)}/40</div>
+                    <div className="w-full bg-muted rounded-full h-1.5 mt-1">
+                      <div className="h-1.5 rounded-full bg-emerald-500 transition-all" style={{ width: `${Math.min(100, compositeScore.salesAchievementPct)}%` }} />
+                    </div>
+                  </div>
+                  <div className="bg-blue-950/30 border border-blue-700/30 rounded-lg p-3">
+                    <div className="text-xs text-muted-foreground mb-1">قوة Pipeline (30%)</div>
+                    <div className="text-lg font-bold text-blue-400">{(compositeScore.pipelineRatio * 100).toFixed(0)}%</div>
+                    <div className="text-xs text-muted-foreground">مساهمة: {compositeScore.pipelineScore.toFixed(0)}/30</div>
+                    <div className="w-full bg-muted rounded-full h-1.5 mt-1">
+                      <div className="h-1.5 rounded-full bg-blue-500 transition-all" style={{ width: `${Math.min(100, compositeScore.pipelineRatio * 100)}%` }} />
+                    </div>
+                  </div>
+                  <div className="bg-purple-950/30 border border-purple-700/30 rounded-lg p-3">
+                    <div className="text-xs text-muted-foreground mb-1">نسبة الإغلاق (20%)</div>
+                    <div className="text-lg font-bold text-purple-400">{compositeScore.closingRatePct.toFixed(1)}%</div>
+                    <div className="text-xs text-muted-foreground">مساهمة: {compositeScore.closingScore.toFixed(0)}/20</div>
+                    <div className="w-full bg-muted rounded-full h-1.5 mt-1">
+                      <div className="h-1.5 rounded-full bg-purple-500 transition-all" style={{ width: `${Math.min(100, compositeScore.closingRatePct)}%` }} />
+                    </div>
+                  </div>
+                  <div className="bg-indigo-950/30 border border-indigo-700/30 rounded-lg p-3">
+                    <div className="text-xs text-muted-foreground mb-1">KPI التشغيلي (10%)</div>
+                    <div className="text-lg font-bold text-indigo-400">{compositeScore.kpiScore.toFixed(1)}%</div>
+                    <div className="text-xs text-muted-foreground">مساهمة: {compositeScore.kpiComponent.toFixed(0)}/10</div>
+                    <div className="w-full bg-muted rounded-full h-1.5 mt-1">
+                      <div className="h-1.5 rounded-full bg-indigo-500 transition-all" style={{ width: `${Math.min(100, compositeScore.kpiScore)}%` }} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Overall Score Bar */}
+                <div className="bg-muted/20 rounded-lg p-3">
+                  <div className="flex justify-between text-xs text-muted-foreground mb-2">
+                    <span>النتيجة الكلية (Composite Score)</span>
+                    <span className={`font-bold ${
+                      compositeScore.compositeScore >= 70 ? 'text-emerald-400' :
+                      compositeScore.compositeScore >= 40 ? 'text-amber-400' : 'text-red-400'
+                    }`}>{compositeScore.compositeScore}/100</span>
+                  </div>
+                  <div className="w-full bg-muted rounded-full h-3">
+                    <div className={`h-3 rounded-full transition-all ${
+                      compositeScore.compositeScore >= 70 ? 'bg-emerald-500' :
+                      compositeScore.compositeScore >= 40 ? 'bg-amber-500' : 'bg-red-500'
+                    }`} style={{ width: `${compositeScore.compositeScore}%` }} />
+                  </div>
+                  <div className="flex justify-between text-xs mt-1">
+                    <span className="text-muted-foreground">الشريحة المفعّلة:</span>
+                    <span className={`font-bold ${
+                      compositeScore.activeDiscountPct > 0 ? 'text-emerald-400' : 'text-red-400'
+                    }`}>
+                      {compositeScore.activeDiscountPct > 0 ? `${compositeScore.activeDiscountPct}% ✔` : 'لا توجد شريحة مفعّلة'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Tier Breakdown Table */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border text-muted-foreground text-xs">
+                        <th className="text-right py-2 px-3">الشريحة</th>
+                        <th className="text-right py-2 px-3">تحقيق المبيعات</th>
+                        <th className="text-right py-2 px-3">Pipeline</th>
+                        <th className="text-right py-2 px-3">Score</th>
+                        <th className="text-right py-2 px-3">الحالة</th>
+                        <th className="text-right py-2 px-3">سبب الرفض</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {compositeScore.tierBreakdown.map((tier: any) => (
+                        <tr key={tier.pct} className={`border-b border-border/30 ${
+                          tier.isActive ? 'bg-emerald-950/30' : tier.isLocked ? 'bg-red-950/10' : ''
+                        }`}>
                           <td className="py-2 px-3 font-medium">
-                            {tier.label}
-                            {isActive && <Badge className="mr-1 text-xs bg-primary/20 text-primary border-primary/30">الحالية</Badge>}
+                            <span className="font-bold text-indigo-400">{tier.pct}%</span>
+                            <span className="text-xs text-muted-foreground mr-1">{tier.label}</span>
                           </td>
-                          <td className="py-2 px-3 text-muted-foreground">{tier.range}</td>
-                          <td className="py-2 px-3 font-bold text-indigo-400">{tier.pct}%</td>
                           <td className="py-2 px-3">
-                            {isActive ? <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">نشطة</Badge> : <span className="text-muted-foreground text-xs">-</span>}
+                            <div className="flex flex-col">
+                              <span className={`text-xs font-medium ${
+                                tier.requirements.salesMet ? 'text-emerald-400' : 'text-red-400'
+                              }`}>
+                                {tier.requirements.currentSalesAchievement.toFixed(0)}% / {tier.requirements.minSalesAchievement}%
+                                {tier.requirements.salesMet ? ' ✔' : ' ✘'}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-2 px-3">
+                            <span className={`text-xs font-medium ${
+                              tier.requirements.pipelineMet ? 'text-emerald-400' : 'text-amber-400'
+                            }`}>
+                              {(tier.requirements.currentPipelineRatio * 100).toFixed(0)}% / {(tier.requirements.minPipelineRatio * 100).toFixed(0)}%
+                              {tier.requirements.pipelineMet ? ' ✔' : ' ✘'}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3">
+                            <span className={`text-xs font-medium ${
+                              tier.requirements.scoreMet ? 'text-emerald-400' : 'text-red-400'
+                            }`}>
+                              {tier.requirements.currentScore}/{tier.requirements.minScore}
+                              {tier.requirements.scoreMet ? ' ✔' : ' ✘'}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3">
+                            {tier.isActive ? (
+                              <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">مفعّلة ✔</Badge>
+                            ) : tier.isLocked ? (
+                              <Badge className="bg-red-500/20 text-red-400 border-red-500/30">مقفلة ✘</Badge>
+                            ) : (
+                              <Badge className="bg-muted/50 text-muted-foreground">غير متاحة</Badge>
+                            )}
+                          </td>
+                          <td className="py-2 px-3 text-xs text-red-400 max-w-48">
+                            {tier.lockReason || (tier.isActive ? <span className="text-emerald-400">جميع الشروط متحققة</span> : '-')}
                           </td>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Safety Warning */}
+                <div className="bg-amber-950/20 border border-amber-700/30 rounded-lg p-3 text-xs text-amber-300">
+                  <div className="font-bold mb-1">⚠️ قواعد الأمان:</div>
+                  <ul className="space-y-1 list-disc list-inside">
+                    <li>Pipeline وحده لا يفتح شريحة خصم عالية</li>
+                    <li>الخصم العالي يُمنح فقط عند وجود أداء فعلي</li>
+                    <li>لا توجد شريحة بدون تحقيق الحد الأدنى من المبيعات الفعلية</li>
+                  </ul>
+                </div>
+              </CardContent>
+            </Card>
+          )}
           </>)}
 
           {/* Sub-Tab: توزيع على الصفقات */}

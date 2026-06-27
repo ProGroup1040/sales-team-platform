@@ -563,168 +563,168 @@ function TaskModal({
           ) : (
             /* ── Sales Engineer Form ── */
             <>
-          {/* Title */}
-          <div>
-            <Label className="text-slate-300 text-sm">عنوان المهمة *</Label>
-            <Input
-              value={form.title}
-              onChange={e => set('title', e.target.value)}
-              placeholder="أدخل عنوان المهمة..."
-              className="bg-slate-800 border-slate-600 text-white mt-1"
-            />
-          </div>
+              {/* Title */}
+              <div>
+                <Label className="text-slate-300 text-sm">عنوان المهمة *</Label>
+                <Input
+                  value={form.title}
+                  onChange={e => set('title', e.target.value)}
+                  placeholder="أدخل عنوان المهمة..."
+                  className="bg-slate-800 border-slate-600 text-white mt-1"
+                />
+              </div>
 
-          {/* Task Type */}
-          <div>
-            <Label className="text-slate-300 text-sm">نوع المهمة</Label>
-            <Select value={form.taskType || 'all'} onValueChange={v => set('taskType', v === 'all' ? '' : v)}>
-              <SelectTrigger className="bg-slate-800 border-slate-600 text-white mt-1">
-                <SelectValue placeholder="اختر نوع المهمة..." />
-              </SelectTrigger>
-              <SelectContent className="bg-slate-800 border-slate-600">
-                <SelectItem value="all" className="text-slate-400">— اختر نوع المهمة —</SelectItem>
-                {TASK_TYPES.map(t => (
-                  <SelectItem key={t.value} value={t.value} className="text-white">{t.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Engineer */}
-          <div>
-            <Label className="text-slate-300 text-sm">المهندس المسؤول *</Label>
-            <Select
-              value={form.engineerId || 'none'}
-              onValueChange={v => set('engineerId', v === 'none' ? '' : v)}
-              disabled={!isAdmin && !!currentEngineerId}
-            >
-              <SelectTrigger className="bg-slate-800 border-slate-600 text-white mt-1">
-                <SelectValue placeholder="اختر المهندس..." />
-              </SelectTrigger>
-              <SelectContent className="bg-slate-800 border-slate-600">
-                <SelectItem value="none" className="text-slate-400">— اختر المهندس —</SelectItem>
-                {engineers.map(e => (
-                  <SelectItem key={e.id} value={String(e.id)} className="text-white">{e.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Client */}
-          <div>
-            <Label className="text-slate-300 text-sm">العميل المرتبط</Label>
-            <Input
-              value={form.clientName}
-              onChange={e => set('clientName', e.target.value)}
-              placeholder="اسم العميل (اختياري)..."
-              className="bg-slate-800 border-slate-600 text-white mt-1"
-            />
-          </div>
-
-          {/* Date */}
-          <div>
-            <Label className="text-slate-300 text-sm">تاريخ التنفيذ *</Label>
-            <Input
-              type="date"
-              value={form.taskDate}
-              onChange={e => set('taskDate', e.target.value)}
-              className="bg-slate-800 border-slate-600 text-white mt-1"
-            />
-          </div>
-
-          {/* Time */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-slate-300 text-sm">وقت البداية</Label>
-              <Input
-                type="time"
-                value={form.startTime}
-                onChange={e => set('startTime', e.target.value)}
-                className="bg-slate-800 border-slate-600 text-white mt-1"
-              />
-            </div>
-            <div>
-              <Label className="text-slate-300 text-sm">وقت النهاية</Label>
-              <Input
-                type="time"
-                value={form.endTime}
-                onChange={e => set('endTime', e.target.value)}
-                className="bg-slate-800 border-slate-600 text-white mt-1"
-              />
-            </div>
-          </div>
-
-          {/* Duration display */}
-          {form.startTime && form.endTime && (
-            <div className="text-xs text-slate-400 text-center">
-              المدة: {Math.max(0, timeToMinutes(form.endTime) - timeToMinutes(form.startTime))} دقيقة
-            </div>
-          )}
-
-          {/* Priority & Status */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-slate-300 text-sm">الأولوية</Label>
-              <Select value={form.priority || 'none'} onValueChange={v => set('priority', v === 'none' ? '' : v)}>
-                <SelectTrigger className="bg-slate-800 border-slate-600 text-white mt-1">
-                  <SelectValue placeholder="اختر الأولوية..." />
-                </SelectTrigger>
-                <SelectContent className="bg-slate-800 border-slate-600">
-                  <SelectItem value="none" className="text-slate-400">— اختر —</SelectItem>
-                  <SelectItem value="urgent" className="text-red-400">عاجلة 🔴</SelectItem>
-                  <SelectItem value="high" className="text-orange-400">عالية 🟠</SelectItem>
-                  <SelectItem value="medium" className="text-yellow-400">متوسطة 🟡</SelectItem>
-                  <SelectItem value="low" className="text-green-400">منخفضة 🟢</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-slate-300 text-sm">الحالة</Label>
-              <Select value={form.status} onValueChange={v => set('status', v as TaskStatus)}>
-                <SelectTrigger className="bg-slate-800 border-slate-600 text-white mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-slate-800 border-slate-600">
-                  <SelectItem value="planned" className="text-blue-400">مخططة</SelectItem>
-                  <SelectItem value="completed" className="text-green-400">منجزة</SelectItem>
-                  <SelectItem value="delayed" className="text-red-400">متأخرة</SelectItem>
-                  <SelectItem value="not_done" className="text-gray-400">لم تُنفذ</SelectItem>
-                  <SelectItem value="client_delay" className="text-yellow-400">تأخير عميل</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {/* Reminder */}
-          <div>
-            <Label className="text-slate-300 text-sm flex items-center gap-1">
-              <Bell className="w-3.5 h-3.5" /> تنبيه قبل المهمة
-            </Label>
-            <Select value={form.reminderMinutes} onValueChange={v => set('reminderMinutes', v)}>
-              <SelectTrigger className="bg-slate-800 border-slate-600 text-white mt-1">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-slate-800 border-slate-600">
-                <SelectItem value="0" className="text-slate-400">بدون تنبيه</SelectItem>
-                <SelectItem value="15" className="text-white">قبل 15 دقيقة</SelectItem>
-                <SelectItem value="30" className="text-white">قبل 30 دقيقة</SelectItem>
-                <SelectItem value="60" className="text-white">قبل ساعة</SelectItem>
-                <SelectItem value="120" className="text-white">قبل ساعتين</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Notes */}
-          <div>
-            <Label className="text-slate-300 text-sm">ملاحظات</Label>
-            <Textarea
-              value={form.notes}
-              onChange={e => set('notes', e.target.value)}
-              placeholder="أدخل ملاحظات إضافية..."
-              className="bg-slate-800 border-slate-600 text-white mt-1 resize-none"
-              rows={3}
-             />
-          </div>
+              {/* Task Type */}
+              <div>
+                <Label className="text-slate-300 text-sm">نوع المهمة</Label>
+                <Select value={form.taskType || 'all'} onValueChange={v => set('taskType', v === 'all' ? '' : v)}>
+                  <SelectTrigger className="bg-slate-800 border-slate-600 text-white mt-1">
+                    <SelectValue placeholder="اختر نوع المهمة..." />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-800 border-slate-600">
+                    <SelectItem value="all" className="text-slate-400">— اختر نوع المهمة —</SelectItem>
+                    {TASK_TYPES.map(t => (
+                      <SelectItem key={t.value} value={t.value} className="text-white">{t.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+    
+              {/* Engineer */}
+              <div>
+                <Label className="text-slate-300 text-sm">المهندس المسؤول *</Label>
+                <Select
+                  value={form.engineerId || 'none'}
+                  onValueChange={v => set('engineerId', v === 'none' ? '' : v)}
+                  disabled={!isAdmin && !!currentEngineerId}
+                >
+                  <SelectTrigger className="bg-slate-800 border-slate-600 text-white mt-1">
+                    <SelectValue placeholder="اختر المهندس..." />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-800 border-slate-600">
+                    <SelectItem value="none" className="text-slate-400">— اختر المهندس —</SelectItem>
+                    {engineers.map(e => (
+                      <SelectItem key={e.id} value={String(e.id)} className="text-white">{e.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+    
+              {/* Client */}
+              <div>
+                <Label className="text-slate-300 text-sm">العميل المرتبط</Label>
+                <Input
+                  value={form.clientName}
+                  onChange={e => set('clientName', e.target.value)}
+                  placeholder="اسم العميل (اختياري)..."
+                  className="bg-slate-800 border-slate-600 text-white mt-1"
+                />
+              </div>
+    
+              {/* Date */}
+              <div>
+                <Label className="text-slate-300 text-sm">تاريخ التنفيذ *</Label>
+                <Input
+                  type="date"
+                  value={form.taskDate}
+                  onChange={e => set('taskDate', e.target.value)}
+                  className="bg-slate-800 border-slate-600 text-white mt-1"
+                />
+              </div>
+    
+              {/* Time */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-slate-300 text-sm">وقت البداية</Label>
+                  <Input
+                    type="time"
+                    value={form.startTime}
+                    onChange={e => set('startTime', e.target.value)}
+                    className="bg-slate-800 border-slate-600 text-white mt-1"
+                  />
+                </div>
+                <div>
+                  <Label className="text-slate-300 text-sm">وقت النهاية</Label>
+                  <Input
+                    type="time"
+                    value={form.endTime}
+                    onChange={e => set('endTime', e.target.value)}
+                    className="bg-slate-800 border-slate-600 text-white mt-1"
+                  />
+                </div>
+              </div>
+    
+              {/* Duration display */}
+              {form.startTime && form.endTime && (
+                <div className="text-xs text-slate-400 text-center">
+                  المدة: {Math.max(0, timeToMinutes(form.endTime) - timeToMinutes(form.startTime))} دقيقة
+                </div>
+              )}
+    
+              {/* Priority & Status */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-slate-300 text-sm">الأولوية</Label>
+                  <Select value={form.priority || 'none'} onValueChange={v => set('priority', v === 'none' ? '' : v)}>
+                    <SelectTrigger className="bg-slate-800 border-slate-600 text-white mt-1">
+                      <SelectValue placeholder="اختر الأولوية..." />
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-800 border-slate-600">
+                      <SelectItem value="none" className="text-slate-400">— اختر —</SelectItem>
+                      <SelectItem value="urgent" className="text-red-400">عاجلة 🔴</SelectItem>
+                      <SelectItem value="high" className="text-orange-400">عالية 🟠</SelectItem>
+                      <SelectItem value="medium" className="text-yellow-400">متوسطة 🟡</SelectItem>
+                      <SelectItem value="low" className="text-green-400">منخفضة 🟢</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-slate-300 text-sm">الحالة</Label>
+                  <Select value={form.status} onValueChange={v => set('status', v as TaskStatus)}>
+                    <SelectTrigger className="bg-slate-800 border-slate-600 text-white mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-800 border-slate-600">
+                      <SelectItem value="planned" className="text-blue-400">مخططة</SelectItem>
+                      <SelectItem value="completed" className="text-green-400">منجزة</SelectItem>
+                      <SelectItem value="delayed" className="text-red-400">متأخرة</SelectItem>
+                      <SelectItem value="not_done" className="text-gray-400">لم تُنفذ</SelectItem>
+                      <SelectItem value="client_delay" className="text-yellow-400">تأخير عميل</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+    
+              {/* Reminder */}
+              <div>
+                <Label className="text-slate-300 text-sm flex items-center gap-1">
+                  <Bell className="w-3.5 h-3.5" /> تنبيه قبل المهمة
+                </Label>
+                <Select value={form.reminderMinutes} onValueChange={v => set('reminderMinutes', v)}>
+                  <SelectTrigger className="bg-slate-800 border-slate-600 text-white mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-800 border-slate-600">
+                    <SelectItem value="0" className="text-slate-400">بدون تنبيه</SelectItem>
+                    <SelectItem value="15" className="text-white">قبل 15 دقيقة</SelectItem>
+                    <SelectItem value="30" className="text-white">قبل 30 دقيقة</SelectItem>
+                    <SelectItem value="60" className="text-white">قبل ساعة</SelectItem>
+                    <SelectItem value="120" className="text-white">قبل ساعتين</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+    
+              {/* Notes */}
+              <div>
+                <Label className="text-slate-300 text-sm">ملاحظات</Label>
+                <Textarea
+                  value={form.notes}
+                  onChange={e => set('notes', e.target.value)}
+                  placeholder="أدخل ملاحظات إضافية..."
+                  className="bg-slate-800 border-slate-600 text-white mt-1 resize-none"
+                  rows={3}
+                 />
+              </div>
             </>
           )}
         </div>

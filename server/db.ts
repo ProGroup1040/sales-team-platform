@@ -3037,12 +3037,19 @@ export async function getDiscountSummary(year?: number, month?: number, startDat
     pipelineDeals = allDeals.filter(d => !['closed_won', 'closed_lost'].includes(d.stage));
     lostDeals = allDeals.filter(d => d.stage === 'closed_lost');
   }
-  // ─── الحسابات ─────────────────────────────────────────────────────────────
+  // ─── الحسابات ─────────────────────────────────────────────────────────────────────────────
   const actualSales = closedDeals.reduce((s, d) => s + parseFloat((d.netValue as string) || d.value || '0'), 0);
   const pipeline = pipelineDeals.reduce((s, d) => s + parseFloat(d.value as string), 0);
   const totalVolume = actualSales + pipeline;
-  const { tierLabel, discountPct } = getDiscountTierInfo(totalVolume);
-  const allowedDiscount = totalVolume * (discountPct / 100);
+  // ─── Composite Score (Performance-Based) ────────────────────────────────
+  const nowForDiscount = new Date();
+  const teamComposite = await getTeamCompositeDiscountScore(
+    nowForDiscount.getFullYear(), nowForDiscount.getMonth() + 1
+  );
+  const discountPct = teamComposite?.activeDiscountPct ?? 0;
+  const tierLabel = teamComposite?.tierBreakdown?.find((t: any) => t.isActive)?.label ?? 'لا توجد شريحة مفعّلة';
+  // الخصم المسموح يُحسب على المبيعات الفعلية فقط (ليس totalVolume)
+  const allowedDiscount = actualSales * (discountPct / 100);
   const usedDiscount = closedDeals.reduce((s, d) => s + parseFloat(d.discountValue as string || '0'), 0);
   const remainingDiscount = Math.max(0, allowedDiscount - usedDiscount);
   const realizedDiscount = usedDiscount;
@@ -9297,18 +9304,13 @@ export async function getDiscountSummaryForEngineer(engineerId: number) {
     ));
   const pipeline = pipelineDeals.reduce((s, d) => s + parseFloat(d.value as string || '0'), 0);
 
-  // جلب شرائح الخصم
-  const discTiers = await db.select().from(discountTiers).orderBy(discountTiers.minSales);
+  // ─── Composite Score (Performance-Based) ────────────────────────────────
+  const now2 = new Date();
+  const compositeResult = await getEngineerCompositeDiscountScore(engineerId);
+  const discountPct = compositeResult?.activeDiscountPct ?? 0;
   const totalVolume = actualSales + pipeline;
-  const tier = getDiscountTier(totalVolume, discTiers.map(t => ({
-    minSales: t.minSales as string,
-    maxSales: t.maxSales as string | null,
-    maxDiscountPct: t.maxDiscountPct,
-    label: t.label,
-  })));
-
-  const discountPct = tier?.maxDiscountPct ?? getDiscountTierInfo(totalVolume).discountPct;
-  const allowedDiscount = totalVolume * (discountPct / 100);
+  // الخصم المسموح يُحسب على المبيعات الفعلية فقط (ليس totalVolume)
+  const allowedDiscount = actualSales * (discountPct / 100);
 
   // الخصم المستخدم على الصفقات المغلقة
   const usedDiscount = closedDeals.reduce((s, d) => s + parseFloat(d.discountValue as string || '0'), 0);
@@ -11799,4 +11801,378 @@ export async function getAdminSalesCalendarView(engineerId?: number, month?: str
   };
 
   return { days, summary };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PERFORMANCE-BASED DISCOUNT TIER ENGINE
+// المنطق الجديد: الشريحة تعتمد على أداء فعلي مركب وليس Pipeline فقط
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** تعريف شريحة خصم مع شروطها */
+export interface DiscountTierDef {
+  pct: number;           // نسبة الخصم
+  label: string;         // اسم الشريحة
+  minScore: number;      // الحد الأدنى للـ Score المركب (0-100)
+  minSalesAchievement: number; // الحد الأدنى لنسبة تحقيق المبيعات الفعلية (Gate Condition)
+  minPipelineRatio: number;    // الحد الأدنى لنسبة Pipeline / Target
+  description: string;  // وصف الشريحة
+}
+
+/** شرائح الخصم الجديدة - Performance-Based */
+export const PERFORMANCE_DISCOUNT_TIERS: DiscountTierDef[] = [
+  {
+    pct: 1,
+    label: 'شريحة 1%',
+    minScore: 20,
+    minSalesAchievement: 20,
+    minPipelineRatio: 0.5,
+    description: 'تحقيق 20% من الهدف + Pipeline لا يقل عن 50% من الهدف',
+  },
+  {
+    pct: 3,
+    label: 'شريحة 3%',
+    minScore: 40,
+    minSalesAchievement: 40,
+    minPipelineRatio: 1.0,
+    description: 'تحقيق 40% من الهدف + Pipeline لا يقل عن 100% من الهدف',
+  },
+  {
+    pct: 5,
+    label: 'شريحة 5%',
+    minScore: 55,
+    minSalesAchievement: 60,
+    minPipelineRatio: 1.5,
+    description: 'تحقيق 60% من الهدف + Pipeline لا يقل عن 150% من الهدف',
+  },
+  {
+    pct: 7,
+    label: 'شريحة 7%',
+    minScore: 70,
+    minSalesAchievement: 80,
+    minPipelineRatio: 2.0,
+    description: 'تحقيق 80% من الهدف + Pipeline لا يقل عن 200% من الهدف',
+  },
+  {
+    pct: 10,
+    label: 'شريحة 10%',
+    minScore: 85,
+    minSalesAchievement: 100,
+    minPipelineRatio: 3.0,
+    description: 'تحقيق 100% من الهدف + Pipeline لا يقل عن 300% من الهدف',
+  },
+];
+
+/** مدخلات حساب الـ Composite Discount Score */
+export interface CompositeDiscountInput {
+  actualSales: number;       // المبيعات الفعلية (closed_won)
+  targetAmount: number;      // الهدف الشهري
+  pipelineValue: number;     // قيمة الـ Pipeline الحالي
+  closingRate: number;       // Company Closing Rate (0-1)
+  kpiScore: number;          // KPI التشغيلي (0-100)
+}
+
+/** نتيجة حساب الـ Composite Discount Score */
+export interface CompositeDiscountResult {
+  compositeScore: number;    // الـ Score المركب (0-100)
+  salesAchievementPct: number;  // نسبة تحقيق المبيعات الفعلية (%)
+  pipelineRatio: number;     // نسبة Pipeline / Target
+  closingRatePct: number;    // Company Closing Rate (%)
+  kpiScore: number;          // KPI التشغيلي (0-100)
+  // تفاصيل المكونات
+  salesScore: number;        // مكون المبيعات (0-100) - وزن 40%
+  pipelineScore: number;     // مكون الـ Pipeline (0-100) - وزن 30%
+  closingScore: number;      // مكون الـ Closing Rate (0-100) - وزن 20%
+  kpiComponent: number;      // مكون الـ KPI (0-100) - وزن 10%
+  // الشريحة المفعلة
+  activeTier: DiscountTierDef | null;
+  activeDiscountPct: number;
+  // تفاصيل كل شريحة
+  tierBreakdown: TierBreakdownItem[];
+}
+
+/** تفاصيل شريحة واحدة */
+export interface TierBreakdownItem {
+  pct: number;
+  label: string;
+  description: string;
+  isActive: boolean;
+  isLocked: boolean;
+  lockReason: string | null;
+  requirements: {
+    minScore: number;
+    currentScore: number;
+    scoreMet: boolean;
+    minSalesAchievement: number;
+    currentSalesAchievement: number;
+    salesMet: boolean;
+    minPipelineRatio: number;
+    currentPipelineRatio: number;
+    pipelineMet: boolean;
+  };
+}
+
+/**
+ * حساب الـ Composite Discount Score
+ * المعادلة: 40% مبيعات فعلية + 30% Pipeline + 20% Closing Rate + 10% KPI
+ */
+export function calcCompositeDiscountScore(input: CompositeDiscountInput): CompositeDiscountResult {
+  const { actualSales, targetAmount, pipelineValue, closingRate, kpiScore } = input;
+
+  // ── 1. Sales Achievement Score (40%) ──────────────────────────────────────
+  // نسبة تحقيق الهدف (0-100%)، مُحدودة بـ 100
+  const salesAchievementPct = targetAmount > 0
+    ? Math.min(100, (actualSales / targetAmount) * 100)
+    : 0;
+  // تحويل النسبة إلى Score (0-100)
+  const salesScore = salesAchievementPct; // 100% تحقيق = Score 100
+
+  // ── 2. Pipeline Score (30%) ────────────────────────────────────────────────
+  // نسبة Pipeline / Target، مُحدودة بـ 300% (3x target = Score 100)
+  const pipelineRatio = targetAmount > 0 ? pipelineValue / targetAmount : 0;
+  const pipelineScore = Math.min(100, (pipelineRatio / 3) * 100);
+
+  // ── 3. Closing Rate Score (20%) ────────────────────────────────────────────
+  // Closing Rate 50%+ = Score 100، 30% = Score 60، 0% = Score 0
+  const closingRatePct = Math.round(closingRate * 100);
+  const closingScore = Math.min(100, closingRatePct * 2); // 50% closing = 100 score
+
+  // ── 4. KPI Component (10%) ────────────────────────────────────────────────
+  const kpiComponent = Math.min(100, kpiScore);
+
+  // ── Composite Score ────────────────────────────────────────────────────────
+  const compositeScore = Math.round(
+    salesScore * 0.40 +
+    pipelineScore * 0.30 +
+    closingScore * 0.20 +
+    kpiComponent * 0.10
+  );
+
+  // ── تحديد الشريحة المفعلة ─────────────────────────────────────────────────
+  // GATE CONDITION: لا خصم بدون تحقيق مبيعات فعلية
+  let activeTier: DiscountTierDef | null = null;
+  const tierBreakdown: TierBreakdownItem[] = [];
+
+  for (const tier of PERFORMANCE_DISCOUNT_TIERS) {
+    const scoreMet = compositeScore >= tier.minScore;
+    const salesMet = salesAchievementPct >= tier.minSalesAchievement;
+    const pipelineMet = pipelineRatio >= tier.minPipelineRatio;
+    const isActive = scoreMet && salesMet && pipelineMet;
+
+    let lockReason: string | null = null;
+    if (!salesMet) {
+      lockReason = `تحقيق المبيعات الفعلية ${salesAchievementPct.toFixed(0)}% أقل من المطلوب ${tier.minSalesAchievement}%`;
+    } else if (!pipelineMet) {
+      lockReason = `نسبة Pipeline ${(pipelineRatio * 100).toFixed(0)}% من الهدف أقل من المطلوب ${(tier.minPipelineRatio * 100).toFixed(0)}%`;
+    } else if (!scoreMet) {
+      lockReason = `الـ Score المركب ${compositeScore} أقل من المطلوب ${tier.minScore}`;
+    }
+
+    tierBreakdown.push({
+      pct: tier.pct,
+      label: tier.label,
+      description: tier.description,
+      isActive,
+      isLocked: !isActive,
+      lockReason,
+      requirements: {
+        minScore: tier.minScore,
+        currentScore: compositeScore,
+        scoreMet,
+        minSalesAchievement: tier.minSalesAchievement,
+        currentSalesAchievement: Math.round(salesAchievementPct),
+        salesMet,
+        minPipelineRatio: tier.minPipelineRatio,
+        currentPipelineRatio: Math.round(pipelineRatio * 100) / 100,
+        pipelineMet,
+      },
+    });
+
+    if (isActive) activeTier = tier;
+  }
+
+  return {
+    compositeScore,
+    salesAchievementPct: Math.round(salesAchievementPct),
+    pipelineRatio: Math.round(pipelineRatio * 100) / 100,
+    closingRatePct,
+    kpiScore: Math.round(kpiScore),
+    salesScore: Math.round(salesScore),
+    pipelineScore: Math.round(pipelineScore),
+    closingScore: Math.round(closingScore),
+    kpiComponent: Math.round(kpiComponent),
+    activeTier,
+    activeDiscountPct: activeTier?.pct ?? 0,
+    tierBreakdown,
+  };
+}
+
+/**
+ * جلب الـ Composite Discount Score الكامل لمهندس محدد
+ * يجمع: مبيعاته + Pipeline + KPI + Company Closing Rate
+ */
+export async function getEngineerCompositeDiscountScore(engineerId: number): Promise<CompositeDiscountResult | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const since60 = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
+
+  // ── 1. المبيعات الفعلية (آخر 60 يوم) ─────────────────────────────────────
+  const closedDeals = await db.select().from(deals).where(and(
+    eq(deals.engineerId, engineerId),
+    eq(deals.stage, 'closed_won'),
+    eq(deals.isDeleted, 0),
+    gte(deals.closedAt, since60),
+  ));
+  const actualSales = closedDeals.reduce((s, d) => s + parseFloat((d.netValue ?? d.value) as string || '0'), 0);
+
+  // ── 2. Pipeline ────────────────────────────────────────────────────────────
+  const pipelineDeals = await db.select().from(deals).where(and(
+    eq(deals.engineerId, engineerId),
+    eq(deals.isDeleted, 0),
+    inArray(deals.stage, ['proposal', 'negotiation', 'contract_sent']),
+  ));
+  const pipelineValue = pipelineDeals.reduce((s, d) => s + parseFloat(d.value as string || '0'), 0);
+
+  // ── 3. الهدف الشهري ────────────────────────────────────────────────────────
+  const targetRows = await db.select().from(engineerTargets)
+    .where(and(eq(engineerTargets.engineerId, engineerId), eq(engineerTargets.year, year), eq(engineerTargets.month, month)))
+    .limit(1);
+  const targetAmount = targetRows[0] ? parseFloat(targetRows[0].targetAmount as string) : 0;
+
+  // ── 4. Company Closing Rate (آخر 60 يوم - كل المهندسين) ──────────────────
+  const allRecentDeals = await db.select().from(deals).where(and(
+    eq(deals.isDeleted, 0),
+    gte(deals.createdAt, since60),
+    inArray(deals.stage, ['closed_won', 'closed_lost']),
+  ));
+  const totalClosed = allRecentDeals.length;
+  const totalWon = allRecentDeals.filter(d => d.stage === 'closed_won').length;
+  const companyClosingRate = totalClosed > 0 ? totalWon / totalClosed : 0;
+
+  // ── 5. KPI التشغيلي للمهندس ────────────────────────────────────────────────
+  // نستخدم getEngineersKPI ونجلب فقط بيانات المهندس المطلوب
+  const kpiData = await getEngineersKPI(year, month);
+  const engKPI = kpiData.find((e: any) => e.engineerId === engineerId);
+  const kpiScore = engKPI?.kpiScore ?? 50; // افتراضي 50 إذا لم تتوفر بيانات
+
+  return calcCompositeDiscountScore({
+    actualSales,
+    targetAmount,
+    pipelineValue,
+    closingRate: companyClosingRate,
+    kpiScore,
+  });
+}
+
+/**
+ * جلب الـ Composite Discount Score الكامل لجميع المهندسين (Team-Level)
+ * يستخدم المبيعات الإجمالية للفريق + Pipeline الإجمالي + Company Closing Rate
+ */
+export async function getTeamCompositeDiscountScore(year?: number, month?: number, startDate?: Date, endDate?: Date): Promise<CompositeDiscountResult & {
+  actualSales: number;
+  pipelineValue: number;
+  targetAmount: number;
+  allowedDiscount: number;
+  usedDiscount: number;
+  remainingDiscount: number;
+  closedCount: number;
+  lostCount: number;
+  pipelineCount: number;
+  lostValue: number;
+  realizedDiscount: number;
+  potentialDiscount: number;
+} | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  const now = new Date();
+  const y = year ?? now.getFullYear();
+  const m = month ?? (now.getMonth() + 1);
+
+  // ── نطاق التاريخ ──────────────────────────────────────────────────────────
+  let rangeStart: Date | undefined;
+  let rangeEnd: Date | undefined;
+  if (startDate && endDate) {
+    rangeStart = startDate;
+    rangeEnd = endDate;
+  } else {
+    rangeStart = new Date(y, m - 1, 1);
+    rangeEnd = new Date(y, m, 0, 23, 59, 59);
+  }
+
+  // ── جلب الصفقات ───────────────────────────────────────────────────────────
+  const closedDealAttribution = or(
+    and(eq(deals.accountingMonth as any, m), eq(deals.accountingYear as any, y)),
+    and(isNull(deals.accountingMonth as any), eq(deals.closingMonth as any, m), eq(deals.closingYear as any, y)),
+    and(isNull(deals.accountingMonth as any), isNull(deals.closingMonth as any), between(deals.closedAt as any, rangeStart!, rangeEnd!))
+  );
+
+  const closedDeals = await db.select().from(deals).where(
+    and(eq(deals.isDeleted, 0), eq(deals.stage, 'closed_won'), closedDealAttribution)
+  );
+  const pipelineDeals = await db.select().from(deals).where(
+    and(eq(deals.isDeleted, 0), not(inArray(deals.stage, ['closed_won', 'closed_lost'])))
+  );
+  const lostDeals = await db.select().from(deals).where(
+    and(eq(deals.isDeleted, 0), eq(deals.stage, 'closed_lost'), closedDealAttribution)
+  );
+
+  // ── الحسابات الأساسية ─────────────────────────────────────────────────────
+  const actualSales = closedDeals.reduce((s, d) => s + parseFloat((d.netValue ?? d.value) as string || '0'), 0);
+  const pipelineValue = pipelineDeals.reduce((s, d) => s + parseFloat(d.value as string || '0'), 0);
+  const lostValue = lostDeals.reduce((s, d) => s + parseFloat(d.value as string || '0'), 0);
+
+  // ── الهدف الشهري الإجمالي ─────────────────────────────────────────────────
+  const targetRows = await db.select().from(monthlyTargets)
+    .where(and(eq(monthlyTargets.year, y), eq(monthlyTargets.month, m)))
+    .limit(1);
+  const targetAmount = targetRows[0] ? parseFloat(targetRows[0].targetAmount as string) : 0;
+
+  // ── Company Closing Rate ───────────────────────────────────────────────────
+  const totalClosed = closedDeals.length + lostDeals.length;
+  const companyClosingRate = totalClosed > 0 ? closedDeals.length / totalClosed : 0;
+
+  // ── KPI التشغيلي للفريق (متوسط) ───────────────────────────────────────────
+  const kpiData = await getEngineersKPI(y, m);
+  const salesEngKPI = kpiData.filter((e: any) => e.role === 'engineer' || e.role === 'specialist');
+  const avgKPI = salesEngKPI.length > 0
+    ? salesEngKPI.reduce((s: number, e: any) => s + (e.kpiScore ?? 0), 0) / salesEngKPI.length
+    : 50;
+
+  // ── حساب الـ Composite Score ───────────────────────────────────────────────
+  const scoreResult = calcCompositeDiscountScore({
+    actualSales,
+    targetAmount,
+    pipelineValue,
+    closingRate: companyClosingRate,
+    kpiScore: avgKPI,
+  });
+
+  // ── حساب الخصومات المسموح بها ─────────────────────────────────────────────
+  const activeDiscountPct = scoreResult.activeDiscountPct;
+  // الخصم المسموح به = فقط على المبيعات الفعلية (ليس Pipeline)
+  const allowedDiscount = actualSales * (activeDiscountPct / 100);
+  const usedDiscount = closedDeals.reduce((s, d) => s + parseFloat(d.discountValue as string || '0'), 0);
+  const remainingDiscount = Math.max(0, allowedDiscount - usedDiscount);
+  const realizedDiscount = usedDiscount;
+  const potentialDiscount = pipelineDeals.reduce((s, d) => s + parseFloat(d.discountValue as string || '0'), 0);
+
+  return {
+    ...scoreResult,
+    actualSales,
+    pipelineValue,
+    targetAmount,
+    allowedDiscount: Math.round(allowedDiscount),
+    usedDiscount: Math.round(usedDiscount),
+    remainingDiscount: Math.round(remainingDiscount),
+    closedCount: closedDeals.length,
+    lostCount: lostDeals.length,
+    pipelineCount: pipelineDeals.length,
+    lostValue: Math.round(lostValue),
+    realizedDiscount: Math.round(realizedDiscount),
+    potentialDiscount: Math.round(potentialDiscount),
+  };
 }

@@ -42,6 +42,7 @@ import {
   upsertLeadDailyStats, getLeadDailyStatsList, getLeadSummaryStats,
   getDiscountSummary, validateDealDiscount, createDealWithDiscount, updateDealFull, getEngineerDiscountSummary,
   distributeDiscountToDeals, getDiscountSummaryForEngineer, calculateDiscountBonus, getDiscountBonusSummary, getDiscountDashboard, setDiscountBonusCap,
+  getTeamCompositeDiscountScore, getEngineerCompositeDiscountScore, PERFORMANCE_DISCOUNT_TIERS,
   getLostDealsAnalysis, getTasksCalendarView, getAdminSalesCalendarView, LOST_REASON_LABELS,
   getEngineersTrend, getWeeklyReport,
   logWorkActivity, getWorkDistribution, getAllEngineersDistribution,
@@ -919,7 +920,22 @@ export const appRouter = router({
     lostDealsImpact: publicProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getLostDealsImpact(input.year, input.month)),
-    // ─── Score-Based Discount Distribution ────────────────────────────────────
+    // ─── Performance-Based Composite Discount Score (NEW) ──────────────────────
+    // جلب الـ Composite Discount Score للفريق (شرائح مبنية على أداء فعلي)
+    teamCompositeDiscountScore: publicProcedure
+      .input(z.object({
+        year: z.number().optional(),
+        month: z.number().optional(),
+      }))
+      .query(async ({ input }) => getTeamCompositeDiscountScore(input.year, input.month)),
+    // جلب الـ Composite Discount Score لمهندس محدد
+    engineerCompositeDiscountScore: publicProcedure
+      .input(z.object({ engineerId: z.number() }))
+      .query(async ({ input }) => getEngineerCompositeDiscountScore(input.engineerId)),
+    // جلب تعريفات شرائح الخصوم الجديدة
+    performanceDiscountTiers: publicProcedure
+      .query(async () => PERFORMANCE_DISCOUNT_TIERS),
+    // ─── Score-Based Discount Distribution ────────────────────────────────────────────
     scoreBasedDiscountDistribution: publicProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => calcScoreBasedDiscountDistribution(input.year, input.month)),
