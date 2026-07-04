@@ -701,7 +701,7 @@ export async function getMonthlySalesStats(year: number, month: number) {
 
   const wonDeals = await db.select().from(deals)
     .where(and(eq(deals.stage, 'closed_won'), between(deals.closedAt as any, startDate, endDate)));
-  const actual = wonDeals.reduce((s, d) => s + parseFloat(d.value), 0);
+  const actual = wonDeals.reduce((s, d) => s + parseFloat((d.netValue as string) || d.value || '0'), 0);
 
   const achievementRate = target > 0 ? Math.round((actual / target) * 100) : 0;
   const remaining = Math.max(0, target - actual);
@@ -1260,7 +1260,7 @@ export async function getEngineersSalesPerformance(year: number, month: number) 
     const targetAmount = targetRow ? parseFloat(targetRow.targetAmount) : 0;
     const manpower = targetRow?.manpower ?? 1;
     const engWonDeals = wonDeals.filter(d => d.engineerId === eng.id);
-    const actualSales = engWonDeals.reduce((s, d) => s + parseFloat(d.value), 0);;
+    const actualSales = engWonDeals.reduce((s, d) => s + parseFloat((d.netValue as string) || d.value || '0'), 0);
     const achievementPct = targetAmount > 0 ? Math.round((actualSales / targetAmount) * 100) : 0;
     const remaining = Math.max(0, targetAmount - actualSales);
 
@@ -1328,7 +1328,7 @@ export async function getSalesControlStats(year: number, month: number) {
         and(isNull(deals.accountingMonth as any), isNull(deals.closingMonth as any), between(deals.closedAt as any, startDate, endDate))
       )
     ));
-  const actualSales = wonDeals.reduce((s, d) => s + parseFloat(d.value), 0);
+  const actualSales = wonDeals.reduce((s, d) => s + parseFloat((d.netValue as string) || d.value || '0'), 0);
   const achievementRate = totalTarget > 0 ? Math.round((actualSales / totalTarget) * 100) : 0;
   const remaining = Math.max(0, totalTarget - actualSales);
 
@@ -3149,12 +3149,24 @@ export async function updateDealFull(id: number, data: {
   // Auto-update grossValue and netValue
   if (data.value !== undefined) updateData.grossValue = data.value.toString();
   if (data.value !== undefined || data.discountValue !== undefined) {
-    // Fetch current deal to get latest values if only one is being updated
     // netValue = grossValue - discountValue
+    // If only one side is updated, fetch the current deal to get the other side
     const gv = data.value;
     const dv = data.discountValue;
-    if (gv !== undefined && dv !== undefined) updateData.netValue = (gv - dv).toString();
-    else if (gv !== undefined) updateData.netValue = gv.toString(); // no discount info, use gross
+    if (gv !== undefined && dv !== undefined) {
+      // Both provided
+      updateData.netValue = (gv - dv).toString();
+    } else if (gv !== undefined) {
+      // Only value updated — fetch current discountValue from DB
+      const currentDeal = await db.select({ discountValue: deals.discountValue }).from(deals).where(eq(deals.id, id)).limit(1);
+      const currentDv = parseFloat((currentDeal[0]?.discountValue as string) || '0');
+      updateData.netValue = (gv - currentDv).toString();
+    } else if (dv !== undefined) {
+      // Only discountValue updated — fetch current grossValue from DB
+      const currentDeal = await db.select({ grossValue: deals.grossValue, value: deals.value }).from(deals).where(eq(deals.id, id)).limit(1);
+      const currentGv = parseFloat((currentDeal[0]?.grossValue as string) || (currentDeal[0]?.value as string) || '0');
+      updateData.netValue = (currentGv - dv).toString();
+    }
   }
   // Lock deal after closing
   if (data.stage === 'closed_won' || data.stage === 'closed_lost') {
@@ -3504,8 +3516,8 @@ export async function getEngineersTrend(year: number, month: number) {
   ]);
 
   return engList.map(eng => {
-    const currSales = currDeals.filter(d => d.engineerId === eng.id && d.stage === 'closed_won').reduce((s, d) => s + parseFloat(d.value), 0);
-    const prevSales = prevDeals.filter(d => d.engineerId === eng.id && d.stage === 'closed_won').reduce((s, d) => s + parseFloat(d.value), 0);
+    const currSales = currDeals.filter(d => d.engineerId === eng.id && d.stage === 'closed_won').reduce((s, d) => s + parseFloat((d.netValue as string) || d.value || '0'), 0);
+    const prevSales = prevDeals.filter(d => d.engineerId === eng.id && d.stage === 'closed_won').reduce((s, d) => s + parseFloat((d.netValue as string) || d.value || '0'), 0);
 
     const currCompleted = currTasks.filter(t => t.engineerId === eng.id && t.status === 'completed').length;
     const currPlanned   = currTasks.filter(t => t.engineerId === eng.id).length;
@@ -3581,8 +3593,8 @@ export async function getWeeklyReport() {
   ]);
 
   // Totals
-  const totalSales     = weekDeals.filter(d => d.stage === 'closed_won').reduce((s, d) => s + parseFloat(d.value), 0);
-  const prevTotalSales = prevWeekDeals.filter(d => d.stage === 'closed_won').reduce((s, d) => s + parseFloat(d.value), 0);
+  const totalSales     = weekDeals.filter(d => d.stage === 'closed_won').reduce((s, d) => s + parseFloat((d.netValue as string) || d.value || '0'), 0);
+  const prevTotalSales = prevWeekDeals.filter(d => d.stage === 'closed_won').reduce((s, d) => s + parseFloat((d.netValue as string) || d.value || '0'), 0);
   const salesGrowth    = prevTotalSales > 0 ? Math.round(((totalSales - prevTotalSales) / prevTotalSales) * 100) : (totalSales > 0 ? 100 : 0);
 
   const totalTasks     = weekTasks.length;
@@ -3601,7 +3613,7 @@ export async function getWeeklyReport() {
   // Per engineer summary
   const engineerSummary = engList.map(eng => {
     const engDeals    = weekDeals.filter(d => d.engineerId === eng.id);
-    const engSales    = engDeals.filter(d => d.stage === 'closed_won').reduce((s, d) => s + parseFloat(d.value), 0);
+    const engSales    = engDeals.filter(d => d.stage === 'closed_won').reduce((s, d) => s + parseFloat((d.netValue as string) || d.value || '0'), 0);
     const engTasks    = weekTasks.filter(t => t.engineerId === eng.id);
     const engDone     = engTasks.filter(t => t.status === 'completed').length;
     const engDelayed  = engTasks.filter(t => t.status === 'delayed').length;
@@ -4468,7 +4480,7 @@ export async function getEngineerPerformanceReport(year: number, month: number) 
 
     // ─── Sales ────────────────────────────────────────────────────────────────
     const closedWonDeals = engDeals.filter(d => d.stage === "closed_won");
-    const sales = closedWonDeals.reduce((s, d) => s + parseFloat(String(d.value || 0)), 0);
+    const sales = closedWonDeals.reduce((s, d) => s + parseFloat(String((d.netValue as string) || d.value || 0)), 0);
     const closedDeals = closedWonDeals.length;
     const targetAmount = parseFloat(String(engTarget?.targetAmount ?? 0));
     const achievementPct = targetAmount > 0 ? Math.min(999, Math.round((sales / targetAmount) * 100)) : 0;
@@ -4591,7 +4603,7 @@ export async function getWeeklyPerformanceAnalysis() {
 
     const distributionScore = calcDistributionScore(catMinutes);
     const closedWon = engDeals.filter(d => d.stage === "closed_won");
-    const sales = closedWon.reduce((s, d) => s + parseFloat(String(d.value || 0)), 0);
+    const sales = closedWon.reduce((s, d) => s + parseFloat(String((d.netValue as string) || d.value || 0)), 0);
     const closedDeals = closedWon.length;
     const targetAmount = parseFloat(String(engTarget?.targetAmount ?? 0));
     const achievementPct = targetAmount > 0 ? Math.min(999, Math.round((sales / targetAmount) * 100)) : 0;
@@ -4706,7 +4718,7 @@ export async function getEngineerPipelineStats(engineerId?: number) {
     const proposal = engDeals.filter(d => d.stage === 'proposal' || d.stage === 'contract_sent');
     const closedLost = engDeals.filter(d => d.stage === 'closed_lost');
 
-    const closedWonValue = closedWon.reduce((s, d) => s + parseFloat(d.value as string), 0);
+    const closedWonValue = closedWon.reduce((s, d) => s + parseFloat((d.netValue as string) || (d.value as string) || '0'), 0);
     const negotiationValue = negotiation.reduce((s, d) => s + parseFloat(d.value as string), 0);
     const proposalValue = proposal.reduce((s, d) => s + parseFloat(d.value as string), 0);
     const closedLostValue = closedLost.reduce((s, d) => s + parseFloat(d.value as string), 0);
@@ -5409,7 +5421,7 @@ export async function getFunnelAnalysis(engineerId?: number) {
     },
     lostReasonsArray,
     totalLostValue: closedLost.reduce((s, d) => s + parseFloat(d.value as string || '0'), 0),
-    totalWonValue: closedWon.reduce((s, d) => s + parseFloat(d.value as string || '0'), 0),
+    totalWonValue: closedWon.reduce((s, d) => s + parseFloat((d.netValue as string) || (d.value as string) || '0'), 0),
   };
 }
 
@@ -6713,7 +6725,7 @@ export async function getManagementDecisionDashboard() {
 
     const engDeals = allDeals.filter(d => d.engineerId === eng.id);
     const closedWon = engDeals.filter(d => d.stage === "closed_won");
-    const actualSales = closedWon.reduce((s, d) => s + parseFloat(d.value as string), 0);
+    const actualSales = closedWon.reduce((s, d) => s + parseFloat((d.netValue as string) || (d.value as string) || '0'), 0);
     const salesAchievementPct = targetSales > 0 ? Math.round((actualSales / targetSales) * 100) : 0;
     const closingRate = engDeals.length > 0 ? Math.round((closedWon.length / engDeals.length) * 100) : 0;
 
@@ -9220,8 +9232,13 @@ export async function distributeDiscountToDeals(engineerId: number): Promise<{
 
   const result = [];
   for (const deal of activeDeals) {
-    const dealValue = parseFloat(deal.value as string || '0');
-    const allocationPct = totalDealValue > 0 ? (dealValue / totalDealValue) * 100 : 0;
+    const grossVal = parseFloat(deal.grossValue as string || deal.value as string || '0');
+    const netVal = parseFloat(deal.netValue as string || deal.value as string || '0');
+    // للصفقات المغلقة: استخدم netValue (بعد الخصم) كقيمة الصفقة المعروضة
+    // للـ pipeline: استخدم grossValue (لأنها لم تُغلق بعد)
+    const isClosed = deal.stage === 'closed_won';
+    const dealValue = isClosed ? netVal : grossVal;
+    const allocationPct = totalDealValue > 0 ? (grossVal / totalDealValue) * 100 : 0;
     const allocatedMax = totalAllowedDiscount * (allocationPct / 100);
     const usedDiscount = parseFloat(deal.discountValue as string || '0');
     const dealType: 'pipeline' | 'closed' = deal.stage === 'closed_won' ? 'closed' : 'pipeline';
@@ -9874,7 +9891,7 @@ export async function getEngineerEarningsBreakdown(engineerId: number, year: num
       eq(deals.isDeleted, 0),
       between(deals.closedAt as any, startDate, endDate)
     ));
-  const actualSales = wonDeals.reduce((s, d) => s + parseFloat(d.value as string || '0'), 0);
+  const actualSales = wonDeals.reduce((s, d) => s + parseFloat((d.netValue as string) || (d.value as string) || '0'), 0);
 
   // الهدف
   const [targetRow] = await db.select().from(engineerTargets)

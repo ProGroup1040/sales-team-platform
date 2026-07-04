@@ -835,23 +835,30 @@ export default function ClosingModule() {
                           <table className="w-full text-sm">
                             <thead><tr className="border-b border-border text-muted-foreground text-xs">
                               <th className="text-right py-2 px-3">العميل</th>
-                              <th className="text-right py-2 px-3">قيمة الصفقة</th>
+                              <th className="text-right py-2 px-3">قيمة البيع (بعد الخصم)</th>
+                              <th className="text-right py-2 px-3">الخصم المُطبَّق</th>
                               <th className="text-right py-2 px-3">نسبة التخصيص</th>
                               <th className="text-right py-2 px-3">الحد الأقصى</th>
-                              <th className="text-right py-2 px-3">المستخدم</th>
                               <th className="text-right py-2 px-3">المتبقي</th>
-                              <th className="text-right py-2 px-3">صافي</th>
                             </tr></thead>
                             <tbody>
                               {discountDashboard.closedDeals.map(d => (
                                 <tr key={d.dealId} className="border-b border-border/30 hover:bg-muted/20">
                                   <td className="py-2 px-3 font-medium">{d.clientName}</td>
-                                  <td className="py-2 px-3">{fmt(d.dealValue)} ج.م</td>
+                                  <td className="py-2 px-3">
+                                    <div className="font-bold text-emerald-400">{fmt(d.netValue)} ج.م</div>
+                                    {d.grossValue !== d.netValue && (
+                                      <div className="text-xs text-muted-foreground line-through">{fmt(d.grossValue)} إجمالي</div>
+                                    )}
+                                  </td>
+                                  <td className="py-2 px-3">
+                                    {d.usedDiscount > 0 ? (
+                                      <span className="text-amber-400">{fmt(d.usedDiscount)} ج.م ({d.discountPct}%)</span>
+                                    ) : <span className="text-muted-foreground">—</span>}
+                                  </td>
                                   <td className="py-2 px-3 text-indigo-400">{d.allocationPct}%</td>
                                   <td className="py-2 px-3 text-emerald-400">{fmt(d.allocatedDiscountMax)} ج.م</td>
-                                  <td className="py-2 px-3 text-red-400">{fmt(d.usedDiscount)} ج.م ({d.discountPct}%)</td>
                                   <td className="py-2 px-3 text-amber-400">{fmt(d.remainingDiscount)} ج.م</td>
-                                  <td className="py-2 px-3 font-bold text-emerald-400">{fmt(d.netValue)} ج.م</td>
                                 </tr>
                               ))}
                             </tbody>

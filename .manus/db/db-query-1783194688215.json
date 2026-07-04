@@ -1,0 +1,55 @@
+{
+  "query": "SELECT id, clientName, value, netValue, discountValue, discountPercent, stage FROM deals WHERE stage = 'closed_won' LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user fZydmv6Jueen1GW.d1ac4e774f80 --database 9B5dXFSohC6AundZRCEr3i --execute SELECT id, clientName, value, netValue, discountValue, discountPercent, stage FROM deals WHERE stage = 'closed_won' LIMIT 5;",
+  "rows": [
+    {
+      "id": "60002",
+      "clientName": "م.أحمد ابو المجد -القطاميه ",
+      "value": "226000.00",
+      "netValue": "226000.00",
+      "discountValue": "0.00",
+      "discountPercent": "0.00",
+      "stage": "closed_won"
+    },
+    {
+      "id": "90001",
+      "clientName": "احمد العربي",
+      "value": "272000.00",
+      "netValue": "272000.00",
+      "discountValue": "0.00",
+      "discountPercent": "0.00",
+      "stage": "closed_won"
+    },
+    {
+      "id": "120003",
+      "clientName": "حسام مصطفي - التجمع ",
+      "value": "60580.00",
+      "netValue": "60580.00",
+      "discountValue": "0.00",
+      "discountPercent": "0.00",
+      "stage": "closed_won"
+    },
+    {
+      "id": "150001",
+      "clientName": "عزه احمد - حدائق الاهرام ",
+      "value": "260000.00",
+      "netValue": "260000.00",
+      "discountValue": "0.00",
+      "discountPercent": "0.00",
+      "stage": "closed_won"
+    },
+    {
+      "id": "210001",
+      "clientName": "مينا صفوت - التجمع ",
+      "value": "318000.00",
+      "netValue": "318000.00",
+      "discountValue": "0.00",
+      "discountPercent": "0.00",
+      "stage": "closed_won"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tclientName\tvalue\tnetValue\tdiscountValue\tdiscountPercent\tstage\n60002\tم.أحمد ابو المجد -القطاميه \t226000.00\t226000.00\t0.00\t0.00\tclosed_won\n90001\tاحمد العربي\t272000.00\t272000.00\t0.00\t0.00\tclosed_won\n120003\tحسام مصطفي - التجمع \t60580.00\t60580.00\t0.00\t0.00\tclosed_won\n150001\tعزه احمد - حدائق الاهرام \t260000.00\t260000.00\t0.00\t0.00\tclosed_won\n210001\tمينا صفوت - التجمع \t318000.00\t318000.00\t0.00\t0.00\tclosed_won\n",
+  "stderr": "",
+  "execution_time_ms": 1846
+}
