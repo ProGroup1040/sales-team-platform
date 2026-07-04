@@ -586,7 +586,12 @@ export async function getDealsStats(year: number, month: number) {
   allDeals.forEach(d => {
     if (!stageMap[d.stage]) stageMap[d.stage] = { count: 0, value: 0 };
     stageMap[d.stage].count++;
-    stageMap[d.stage].value += parseFloat(d.value);
+    // CRITICAL: Use netValue (after discount) for closed deals, grossValue for pipeline
+    const isClosedDeal = d.stage === 'closed_won' || d.stage === 'closed_lost';
+    const displayValue = isClosedDeal
+      ? parseFloat((d.netValue as string) || d.value || '0')
+      : parseFloat(d.value || '0');
+    stageMap[d.stage].value += displayValue;
   });
   const byStage = Object.entries(stageMap).map(([stage, data]) => ({ stage, ...data }));
   return { open, closedWon, closedLost, totalValue, closedValue, conversionRate, byStage };
