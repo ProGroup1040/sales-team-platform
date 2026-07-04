@@ -398,13 +398,19 @@ export default function WorkDistribution() {
   const [selectedEngineerId, setSelectedEngineerId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<"my" | "team" | "ranking" | "insights">("my");
 
-  // Fetch engineers list for adminn
+  // Fetch engineers list for admin - Sales Engineers + Sales Specialists only
   const engineersQuery = trpc.engineers.list.useQuery(undefined, { enabled: isAdmin });
+  // فلترة Sales Engineers + Sales Specialists فقط (بدون Admin Sales / Pro Group Admin)
+  const salesEngineersOnly = (engineersQuery.data ?? []).filter(
+    (e) =>
+      !['admin', 'admin_sales', 'manager'].includes(e.role ?? '') &&
+      !['admin_sales', 'manager'].includes(e.department ?? '')
+  );
 
   // Get current engineer ID
-  const myEngineerId = engineersQuery.data?.find(
+  const myEngineerId = salesEngineersOnly.find(
     (e: { name: string; id: number }) => e.name === user?.name
-  )?.id ?? (engineersQuery.data?.[0]?.id ?? 0);
+  )?.id ?? (salesEngineersOnly[0]?.id ?? 0);
 
   const targetEngineerId = isAdmin
     ? (selectedEngineerId ?? myEngineerId)
@@ -508,7 +514,7 @@ export default function WorkDistribution() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">الكل</SelectItem>
-                {engineersQuery.data?.map((e: { id: number; name: string }) => (
+                {salesEngineersOnly.map((e: { id: number; name: string }) => (
                   <SelectItem key={e.id} value={String(e.id)}>{e.name}</SelectItem>
                 ))}
               </SelectContent>

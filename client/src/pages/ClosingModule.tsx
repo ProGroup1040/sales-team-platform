@@ -459,7 +459,7 @@ export default function ClosingModule() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-semibold text-sm">{deal.clientName}</span>
                         <Badge className={`text-xs ${STAGE_COLORS[deal.stage]}`}>{STAGE_LABELS[deal.stage]}</Badge>
-                        <span className="text-sm font-bold text-indigo-400">{fmt(parseFloat((deal as any).netValue as string || deal.value as string))} ج.م صافي</span>
+                        <span className="text-sm font-bold text-emerald-400">{fmt(parseFloat((deal as any).netValue as string || deal.value as string))} ج.م</span>
                         {(deal as any).grossValue && parseFloat((deal as any).grossValue) !== parseFloat((deal as any).netValue ?? '0') && (
                           <span className="text-xs text-muted-foreground line-through">{fmt(parseFloat((deal as any).grossValue as string))} إجمالي</span>
                         )}

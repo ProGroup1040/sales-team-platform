@@ -1,0 +1,24 @@
+{
+  "query": "SELECT id, name, username, role, status FROM engineers WHERE role IN ('admin', 'admin_sales', 'manager') AND isDeleted = 0 LIMIT 10;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user fZydmv6Jueen1GW.d1ac4e774f80 --database 9B5dXFSohC6AundZRCEr3i --execute SELECT id, name, username, role, status FROM engineers WHERE role IN ('admin', 'admin_sales', 'manager') AND isDeleted = 0 LIMIT 10;",
+  "rows": [
+    {
+      "id": "120001",
+      "name": "Pro Group Admin",
+      "username": "admin",
+      "role": "admin",
+      "status": "active"
+    },
+    {
+      "id": "120002",
+      "name": "Admin Sales",
+      "username": "admin_sales",
+      "role": "admin_sales",
+      "status": "active"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\tusername\trole\tstatus\n120001\tPro Group Admin\tadmin\tadmin\tactive\n120002\tAdmin Sales\tadmin_sales\tadmin_sales\tactive\n",
+  "stderr": "",
+  "execution_time_ms": 1819
+}
