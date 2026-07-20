@@ -1,0 +1,31 @@
+{
+  "query": "\n-- المبيعات الفعلية (closed_won) مع netValue\nSELECT \n  'closed_won' as type,\n  COUNT(*) as count,\n  SUM(CAST(value AS DECIMAL(14,2))) as total_gross,\n  SUM(CAST(COALESCE(netValue, value) AS DECIMAL(14,2))) as total_net,\n  SUM(CAST(COALESCE(discountValue, 0) AS DECIMAL(14,2))) as total_discount\nFROM deals WHERE stage = 'closed_won' AND isDeleted = 0\n\nUNION ALL\n\n-- Pipeline (صفقات شغالة)\nSELECT \n  'pipeline' as type,\n  COUNT(*) as count,\n  SUM(CAST(value AS DECIMAL(14,2))) as total_gross,\n  SUM(CAST(value AS DECIMAL(14,2))) as total_net,\n  SUM(CAST(COALESCE(discountValue, 0) AS DECIMAL(14,2))) as total_discount\nFROM deals WHERE stage NOT IN ('closed_won', 'closed_lost') AND isDeleted = 0\n\nUNION ALL\n\n-- الخاسرة (closed_lost)\nSELECT \n  'closed_lost' as type,\n  COUNT(*) as count,\n  SUM(CAST(value AS DECIMAL(14,2))) as total_gross,\n  SUM(CAST(COALESCE(netValue, value) AS DECIMAL(14,2))) as total_net,\n  SUM(CAST(COALESCE(discountValue, 0) AS DECIMAL(14,2))) as total_discount\nFROM deals WHERE stage = 'closed_lost' AND isDeleted = 0;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user fZydmv6Jueen1GW.d1ac4e774f80 --database 9B5dXFSohC6AundZRCEr3i --execute \n-- المبيعات الفعلية (closed_won) مع netValue\nSELECT \n  'closed_won' as type,\n  COUNT(*) as count,\n  SUM(CAST(value AS DECIMAL(14,2))) as total_gross,\n  SUM(CAST(COALESCE(netValue, value) AS DECIMAL(14,2))) as total_net,\n  SUM(CAST(COALESCE(discountValue, 0) AS DECIMAL(14,2))) as total_discount\nFROM deals WHERE stage = 'closed_won' AND isDeleted = 0\n\nUNION ALL\n\n-- Pipeline (صفقات شغالة)\nSELECT \n  'pipeline' as type,\n  COUNT(*) as count,\n  SUM(CAST(value AS DECIMAL(14,2))) as total_gross,\n  SUM(CAST(value AS DECIMAL(14,2))) as total_net,\n  SUM(CAST(COALESCE(discountValue, 0) AS DECIMAL(14,2))) as total_discount\nFROM deals WHERE stage NOT IN ('closed_won', 'closed_lost') AND isDeleted = 0\n\nUNION ALL\n\n-- الخاسرة (closed_lost)\nSELECT \n  'closed_lost' as type,\n  COUNT(*) as count,\n  SUM(CAST(value AS DECIMAL(14,2))) as total_gross,\n  SUM(CAST(COALESCE(netValue, value) AS DECIMAL(14,2))) as total_net,\n  SUM(CAST(COALESCE(discountValue, 0) AS DECIMAL(14,2))) as total_discount\nFROM deals WHERE stage = 'closed_lost' AND isDeleted = 0;\n",
+  "rows": [
+    {
+      "type": "closed_lost",
+      "count": "27",
+      "total_gross": "6127800.00",
+      "total_net": "6029017.55",
+      "total_discount": "98782.45"
+    },
+    {
+      "type": "pipeline",
+      "count": "56",
+      "total_gross": "14943442.00",
+      "total_net": "14943442.00",
+      "total_discount": "208405.72"
+    },
+    {
+      "type": "closed_won",
+      "count": "40",
+      "total_gross": "13152445.00",
+      "total_net": "13011350.00",
+      "total_discount": "141095.00"
+    }
+  ],
+  "messages": [],
+  "stdout": "type\tcount\ttotal_gross\ttotal_net\ttotal_discount\nclosed_lost\t27\t6127800.00\t6029017.55\t98782.45\npipeline\t56\t14943442.00\t14943442.00\t208405.72\nclosed_won\t40\t13152445.00\t13011350.00\t141095.00\n",
+  "stderr": "",
+  "execution_time_ms": 3387
+}

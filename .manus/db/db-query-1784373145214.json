@@ -1,0 +1,16 @@
+{
+  "query": "\n-- المبيعات الفعلية لشهر يوليو 2026 فقط (بنفس منطق النظام)\nSELECT \n  COUNT(*) as count,\n  SUM(CAST(COALESCE(netValue, value) AS DECIMAL(14,2))) as actual_sales,\n  SUM(CAST(value AS DECIMAL(14,2))) as gross_sales,\n  SUM(CAST(COALESCE(discountValue, 0) AS DECIMAL(14,2))) as total_discount\nFROM deals \nWHERE stage = 'closed_won' \n  AND isDeleted = 0\n  AND (\n    -- Priority 1: accountingMonth override\n    (accountingMonth = 7 AND accountingYear = 2026)\n    OR\n    -- Priority 2: closingMonth\n    (accountingMonth IS NULL AND closingMonth = 7 AND closingYear = 2026)\n    OR\n    -- Priority 3: closedAt fallback\n    (accountingMonth IS NULL AND closingMonth IS NULL AND closedAt BETWEEN '2026-07-01' AND '2026-07-31 23:59:59')\n  );\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user fZydmv6Jueen1GW.d1ac4e774f80 --database 9B5dXFSohC6AundZRCEr3i --execute \n-- المبيعات الفعلية لشهر يوليو 2026 فقط (بنفس منطق النظام)\nSELECT \n  COUNT(*) as count,\n  SUM(CAST(COALESCE(netValue, value) AS DECIMAL(14,2))) as actual_sales,\n  SUM(CAST(value AS DECIMAL(14,2))) as gross_sales,\n  SUM(CAST(COALESCE(discountValue, 0) AS DECIMAL(14,2))) as total_discount\nFROM deals \nWHERE stage = 'closed_won' \n  AND isDeleted = 0\n  AND (\n    -- Priority 1: accountingMonth override\n    (accountingMonth = 7 AND accountingYear = 2026)\n    OR\n    -- Priority 2: closingMonth\n    (accountingMonth IS NULL AND closingMonth = 7 AND closingYear = 2026)\n    OR\n    -- Priority 3: closedAt fallback\n    (accountingMonth IS NULL AND closingMonth IS NULL AND closedAt BETWEEN '2026-07-01' AND '2026-07-31 23:59:59')\n  );\n",
+  "rows": [
+    {
+      "count": "13",
+      "actual_sales": "5145370.00",
+      "gross_sales": "5145370.00",
+      "total_discount": "0.00"
+    }
+  ],
+  "messages": [],
+  "stdout": "count\tactual_sales\tgross_sales\ttotal_discount\n13\t5145370.00\t5145370.00\t0.00\n",
+  "stderr": "",
+  "execution_time_ms": 2379
+}

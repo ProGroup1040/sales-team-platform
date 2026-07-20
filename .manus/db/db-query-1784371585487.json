@@ -1,0 +1,94 @@
+{
+  "query": "SELECT id, minSales, maxSales, maxDiscountPct, label FROM discount_tiers ORDER BY minSales;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user fZydmv6Jueen1GW.d1ac4e774f80 --database 9B5dXFSohC6AundZRCEr3i --execute SELECT id, minSales, maxSales, maxDiscountPct, label FROM discount_tiers ORDER BY minSales;",
+  "rows": [
+    {
+      "id": "1",
+      "minSales": "0.00",
+      "maxSales": "2000000.00",
+      "maxDiscountPct": "5",
+      "label": "شريحة البداية (0 - 2م)"
+    },
+    {
+      "id": "4",
+      "minSales": "0.00",
+      "maxSales": "2000000.00",
+      "maxDiscountPct": "5",
+      "label": "شريحة البداية (0 - 2م)"
+    },
+    {
+      "id": "7",
+      "minSales": "0.00",
+      "maxSales": "2000000.00",
+      "maxDiscountPct": "5",
+      "label": "شريحة البداية (0 - 2م)"
+    },
+    {
+      "id": "10",
+      "minSales": "0.00",
+      "maxSales": "2000000.00",
+      "maxDiscountPct": "5",
+      "label": "شريحة البداية (0 - 2م)"
+    },
+    {
+      "id": "2",
+      "minSales": "2000000.00",
+      "maxSales": "3000000.00",
+      "maxDiscountPct": "8",
+      "label": "شريحة المتوسط (2م - 3م)"
+    },
+    {
+      "id": "5",
+      "minSales": "2000000.00",
+      "maxSales": "3000000.00",
+      "maxDiscountPct": "8",
+      "label": "شريحة المتوسط (2م - 3م)"
+    },
+    {
+      "id": "8",
+      "minSales": "2000000.00",
+      "maxSales": "3000000.00",
+      "maxDiscountPct": "8",
+      "label": "شريحة المتوسط (2م - 3م)"
+    },
+    {
+      "id": "11",
+      "minSales": "2000000.00",
+      "maxSales": "3000000.00",
+      "maxDiscountPct": "8",
+      "label": "شريحة المتوسط (2م - 3م)"
+    },
+    {
+      "id": "3",
+      "minSales": "3000000.00",
+      "maxSales": "NULL",
+      "maxDiscountPct": "12",
+      "label": "شريحة المتميز (أكثر من 3م)"
+    },
+    {
+      "id": "6",
+      "minSales": "3000000.00",
+      "maxSales": "NULL",
+      "maxDiscountPct": "12",
+      "label": "شريحة المتميز (أكثر من 3م)"
+    },
+    {
+      "id": "9",
+      "minSales": "3000000.00",
+      "maxSales": "NULL",
+      "maxDiscountPct": "12",
+      "label": "شريحة المتميز (أكثر من 3م)"
+    },
+    {
+      "id": "12",
+      "minSales": "3000000.00",
+      "maxSales": "NULL",
+      "maxDiscountPct": "12",
+      "label": "شريحة المتميز (أكثر من 3م)"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tminSales\tmaxSales\tmaxDiscountPct\tlabel\n1\t0.00\t2000000.00\t5\tشريحة البداية (0 - 2م)\n4\t0.00\t2000000.00\t5\tشريحة البداية (0 - 2م)\n7\t0.00\t2000000.00\t5\tشريحة البداية (0 - 2م)\n10\t0.00\t2000000.00\t5\tشريحة البداية (0 - 2م)\n2\t2000000.00\t3000000.00\t8\tشريحة المتوسط (2م - 3م)\n5\t2000000.00\t3000000.00\t8\tشريحة المتوسط (2م - 3م)\n8\t2000000.00\t3000000.00\t8\tشريحة المتوسط (2م - 3م)\n11\t2000000.00\t3000000.00\t8\tشريحة المتوسط (2م - 3م)\n3\t3000000.00\tNULL\t12\tشريحة المتميز (أكثر من 3م)\n6\t3000000.00\tNULL\t12\tشريحة المتميز (أكثر من 3م)\n9\t3000000.00\tNULL\t12\tشريحة المتميز (أكثر من 3م)\n12\t3000000.00\tNULL\t12\tشريحة المتميز (أكثر من 3م)\n",
+  "stderr": "",
+  "execution_time_ms": 1839
+}

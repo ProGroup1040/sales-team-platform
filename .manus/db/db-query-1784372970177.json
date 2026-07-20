@@ -1,0 +1,15 @@
+{
+  "query": "\n-- الهدف الشهري الإجمالي لكل المهندسين\nSELECT \n  SUM(targetAmount) as total_target,\n  year, month\nFROM engineer_targets \nWHERE year = 2026 AND month = 7\nGROUP BY year, month;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user fZydmv6Jueen1GW.d1ac4e774f80 --database 9B5dXFSohC6AundZRCEr3i --execute \n-- الهدف الشهري الإجمالي لكل المهندسين\nSELECT \n  SUM(targetAmount) as total_target,\n  year, month\nFROM engineer_targets \nWHERE year = 2026 AND month = 7\nGROUP BY year, month;\n",
+  "rows": [
+    {
+      "total_target": "8000000.00",
+      "year": "2026",
+      "month": "7"
+    }
+  ],
+  "messages": [],
+  "stdout": "total_target\tyear\tmonth\n8000000.00\t2026\t7\n",
+  "stderr": "",
+  "execution_time_ms": 2709
+}

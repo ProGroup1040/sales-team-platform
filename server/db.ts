@@ -12135,24 +12135,28 @@ export async function getTeamCompositeDiscountScore(year?: number, month?: numbe
   const closedDeals = await db.select().from(deals).where(
     and(eq(deals.isDeleted, 0), eq(deals.stage, 'closed_won'), closedDealAttribution)
   );
+   // CRITICAL: Pipeline يُحسب على صفقات الشهر الحالي فقط (createdAt في نطاق الشهر)
+  // الصفقات القديمة من شهور سابقة لا تُحسب لأنها عادةً خرجت أو انتهت
   const pipelineDeals = await db.select().from(deals).where(
-    and(eq(deals.isDeleted, 0), not(inArray(deals.stage, ['closed_won', 'closed_lost'])))
+    and(
+      eq(deals.isDeleted, 0),
+      not(inArray(deals.stage, ['closed_won', 'closed_lost'])),
+      between(deals.createdAt, rangeStart!, rangeEnd!)
+    )
   );
   const lostDeals = await db.select().from(deals).where(
     and(eq(deals.isDeleted, 0), eq(deals.stage, 'closed_lost'), closedDealAttribution)
   );
-
   // ── الحسابات الأساسية ─────────────────────────────────────────────────────
   const actualSales = closedDeals.reduce((s, d) => s + parseFloat((d.netValue ?? d.value) as string || '0'), 0);
   const pipelineValue = pipelineDeals.reduce((s, d) => s + parseFloat(d.value as string || '0'), 0);
   const lostValue = lostDeals.reduce((s, d) => s + parseFloat(d.value as string || '0'), 0);
-
-  // ── الهدف الشهري الإجمالي ─────────────────────────────────────────────────
-  const targetRows = await db.select().from(monthlyTargets)
-    .where(and(eq(monthlyTargets.year, y), eq(monthlyTargets.month, m)))
-    .limit(1);
-  const targetAmount = targetRows[0] ? parseFloat(targetRows[0].targetAmount as string) : 0;
-
+  // ── الهدف الشهري الإجمالي ─────────────────────────────────────────────────────
+  // CRITICAL FIX: monthly_targets فارغ - الأهداف مخزنة في engineer_targets
+  // نجمع أهداف كل المهندسين للحصول على الهدف الشهري الإجمالي
+  const engTargetRows = await db.select().from(engineerTargets)
+    .where(and(eq(engineerTargets.year, y), eq(engineerTargets.month, m)));
+  const targetAmount = engTargetRows.reduce((s, r) => s + parseFloat(r.targetAmount as string || '0'), 0);
   // ── Company Closing Rate ───────────────────────────────────────────────────
   const totalClosed = closedDeals.length + lostDeals.length;
   const companyClosingRate = totalClosed > 0 ? closedDeals.length / totalClosed : 0;
