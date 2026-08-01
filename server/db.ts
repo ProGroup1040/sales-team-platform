@@ -482,15 +482,34 @@ export async function getVisitsStats(year: number, month: number) {
   };
 }
 
-export async function getVisitsList(limit = 20, offset = 0, status?: string) {
+// filterType: 'booking' | 'execution' | 'upload' | 'collection' - يحدد أي تاريخ يُستخدم للفلترة
+export async function getVisitsList(
+  limit = 50, offset = 0, status?: string,
+  year?: number, month?: number,
+  filterType: 'booking' | 'execution' | 'upload' | 'collection' = 'booking',
+  engineerId?: number
+) {
   const db = await getDb();
   if (!db) return { data: [], total: 0 };
-  const conditions = status ? [eq(visits.status, status as any)] : [];
+  const conditions: any[] = [eq(visits.isDeleted, 0)];
+  if (status) conditions.push(eq(visits.status, status as any));
+  if (engineerId) conditions.push(eq(visits.engineerId, engineerId));
+  if (year && month) {
+    if (filterType === 'booking') {
+      conditions.push(eq(visits.bookingYear, year), eq(visits.bookingMonth, month));
+    } else if (filterType === 'execution') {
+      conditions.push(eq(visits.executionYear, year), eq(visits.executionMonth, month));
+    } else if (filterType === 'upload') {
+      conditions.push(eq(visits.uploadYear, year), eq(visits.uploadMonth, month));
+    } else if (filterType === 'collection') {
+      conditions.push(eq(visits.collectionYear, year), eq(visits.collectionMonth, month));
+    }
+  }
   const data = await db.select().from(visits)
-    .where(conditions.length ? and(...conditions) : undefined)
+    .where(and(...conditions))
     .orderBy(desc(visits.scheduledAt)).limit(limit).offset(offset);
   const [{ total }] = await db.select({ total: count() }).from(visits)
-    .where(conditions.length ? and(...conditions) : undefined);
+    .where(and(...conditions));
   return { data, total };
 }
 
@@ -2653,21 +2672,52 @@ export async function updateVisitWithAdminTracking(id: number, data: {
   if (!db) return;
   const updateData: any = { lastUpdatedByAdminAt: new Date() };
   if (data.scheduledAt) updateData.scheduledAt = data.scheduledAt;
-  if (data.status) { updateData.status = data.status; if (['completed', 'delayed'].includes(data.status)) updateData.actualAt = new Date(); }
+  if (data.status) {
+    updateData.status = data.status;
+    if (['completed', 'delayed'].includes(data.status)) {
+      const execDate = new Date();
+      updateData.actualAt = execDate;
+      updateData.executedAt = execDate;
+      updateData.executionMonth = execDate.getMonth() + 1;
+      updateData.executionYear = execDate.getFullYear();
+    }
+  }
   if (data.quality) updateData.quality = data.quality;
   if (data.delayMinutes !== undefined) updateData.delayMinutes = data.delayMinutes;
   if (data.notes !== undefined) updateData.notes = data.notes;
   if (data.confirmationStatus) { updateData.confirmationStatus = data.confirmationStatus; updateData.confirmedAt = new Date(); }
   if (data.confirmationDelayHours !== undefined) updateData.confirmationDelayHours = data.confirmationDelayHours;
-  if (data.uploadStatus) { updateData.uploadStatus = data.uploadStatus; updateData.uploadedAt = new Date(); }
+  if (data.uploadStatus && data.uploadStatus !== 'not_uploaded') {
+    const uploadDate = new Date();
+    updateData.uploadStatus = data.uploadStatus;
+    updateData.uploadedAt = uploadDate;
+    updateData.uploadMonth = uploadDate.getMonth() + 1;
+    updateData.uploadYear = uploadDate.getFullYear();
+  } else if (data.uploadStatus) {
+    updateData.uploadStatus = data.uploadStatus;
+  }
   if (data.deliveredToAdmin !== undefined) updateData.deliveredToAdmin = data.deliveredToAdmin ? 1 : 0;
   if (data.deliveryDelayHours !== undefined) updateData.deliveryDelayHours = data.deliveryDelayHours;
   if (data.groupStatus) updateData.groupStatus = data.groupStatus;
   if (data.assignedToDesigner !== undefined) updateData.assignedToDesigner = data.assignedToDesigner ? 1 : 0;
   if (data.feeAmount !== undefined) updateData.feeAmount = String(data.feeAmount);
-  if (data.feeCollected !== undefined) updateData.feeCollected = data.feeCollected ? 1 : 0;
+  if (data.feeCollected !== undefined) {
+    updateData.feeCollected = data.feeCollected ? 1 : 0;
+    if (data.feeCollected) {
+      const collectDate = new Date();
+      updateData.collectedAt = collectDate;
+      updateData.collectionMonth = collectDate.getMonth() + 1;
+      updateData.collectionYear = collectDate.getFullYear();
+    }
+  }
   if (data.paymentScreenshotUrl) updateData.paymentScreenshotUrl = data.paymentScreenshotUrl;
-  if (data.paymentDate) updateData.paymentDate = data.paymentDate;
+  if (data.paymentDate) {
+    updateData.paymentDate = data.paymentDate;
+    const pd = new Date(data.paymentDate);
+    updateData.collectedAt = pd;
+    updateData.collectionMonth = pd.getMonth() + 1;
+    updateData.collectionYear = pd.getFullYear();
+  }
   if (data.bookingStatus) updateData.bookingStatus = data.bookingStatus;
   if (data.adminSalesId !== undefined) updateData.adminSalesId = data.adminSalesId;
   if (data.debtFollowedUp !== undefined) updateData.debtFollowedUp = data.debtFollowedUp ? 1 : 0;

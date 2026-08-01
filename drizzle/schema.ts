@@ -137,6 +137,8 @@ export const visits = mysqlTable("visits", {
   clientPhone: varchar("clientPhone", { length: 30 }),
   address: text("address"),
   scheduledAt: timestamp("scheduledAt").notNull(),
+  bookingMonth: int("bookingMonth"),                                 // شهر الحجز (1-12)
+  bookingYear: int("bookingYear"),                                   // سنة الحجز
   actualAt: timestamp("actualAt"),
 
   // ── Admin Sales Tracking ────────────────────────────────────────────────────────────────────────────────
@@ -154,12 +156,17 @@ export const visits = mysqlTable("visits", {
 
   // ── 3. Execution ─────────────────────────────────────────────────────────────
   status: mysqlEnum("status", ["scheduled", "completed", "delayed", "cancelled", "rescheduled"]).default("scheduled").notNull(),
+  executedAt: timestamp("executedAt"),                              // تاريخ التنفيذ الفعلي
+  executionMonth: int("executionMonth"),                             // شهر التنفيذ (1-12)
+  executionYear: int("executionYear"),                               // سنة التنفيذ
   delayMinutes: int("delayMinutes").default(0),
   rescheduledFromId: int("rescheduledFromId"),
 
   // ── 4. Upload & Delivery ─────────────────────────────────────────────────────
   uploadStatus: mysqlEnum("uploadStatus", ["uploaded_same_day", "uploaded_late", "not_uploaded"]).default("not_uploaded").notNull(),
   uploadedAt: timestamp("uploadedAt"),
+  uploadMonth: int("uploadMonth"),                                   // شهر الرفع (1-12)
+  uploadYear: int("uploadYear"),                                     // سنة الرفع
   deliveredToAdmin: int("deliveredToAdmin").default(0).notNull(),  // 1 = نعم
   deliveryDelayHours: int("deliveryDelayHours").default(0).notNull(),
 
@@ -175,6 +182,9 @@ export const visits = mysqlTable("visits", {
   feeCollected: int("feeCollected").default(0).notNull(),
   paymentScreenshotUrl: varchar("paymentScreenshotUrl", { length: 500 }),
   paymentDate: timestamp("paymentDate"),
+  collectedAt: timestamp("collectedAt"),                             // تاريخ التحصيل الفعلي
+  collectionMonth: int("collectionMonth"),                           // شهر التحصيل (1-12)
+  collectionYear: int("collectionYear"),                             // سنة التحصيل
   debtFollowedUp: int("debtFollowedUp").default(0).notNull(),       // 1 = تمت متابعة المديونية
 
   // ── 8. Soft Delete ────────────────────────────────────────────────────────────────────────────────

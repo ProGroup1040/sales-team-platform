@@ -603,8 +603,17 @@ export const appRouter = router({
   visits: router({
     stats: publicProcedure.input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getVisitsStats(input.year, input.month)),
-    list: publicProcedure.input(z.object({ limit: z.number().optional(), offset: z.number().optional(), status: z.string().optional() }))
-      .query(async ({ input }) => getVisitsList(input.limit, input.offset, input.status)),
+    list: publicProcedure.input(z.object({
+      limit: z.number().optional(), offset: z.number().optional(), status: z.string().optional(),
+      year: z.number().optional(), month: z.number().optional(),
+      filterType: z.enum(['booking', 'execution', 'upload', 'collection']).optional(),
+      engineerId: z.number().optional(),
+    })).query(async ({ input }) => getVisitsList(
+      input.limit, input.offset, input.status,
+      input.year, input.month,
+      input.filterType ?? 'booking',
+      input.engineerId
+    )),
     create: publicProcedure.input(z.object({
       engineerId: z.number(), clientName: z.string().min(1), clientPhone: z.string().optional(),
       address: z.string().optional(), scheduledAt: z.date(), leadId: z.number().optional(), notes: z.string().optional(),

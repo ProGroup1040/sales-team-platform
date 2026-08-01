@@ -346,8 +346,19 @@ export default function VisitsModule() {
   const YEAR = dateFilter.mode === 'month' ? dateFilter.year : dateFilter.startDate.getFullYear();
   const MONTH = dateFilter.mode === 'month' ? dateFilter.month : dateFilter.startDate.getMonth() + 1;
   const { data: stats } = trpc.visits.stats.useQuery({ year: YEAR, month: MONTH });
+  // فلترة القائمة حسب الـ tab النشط - كل tab يستخدم filterType مختلف
+  const listFilterType = useMemo(() => {
+    if (activeTab === 'execution') return 'execution' as const;
+    if (activeTab === 'upload') return 'upload' as const;
+    if (activeTab === 'financial') return 'collection' as const;
+    return 'booking' as const;
+  }, [activeTab]);
   const { data: visitsData } = trpc.visits.list.useQuery({
-    limit: 50, status: filterStatus !== 'all' ? filterStatus : undefined
+    limit: 100,
+    status: filterStatus !== 'all' ? filterStatus : undefined,
+    year: YEAR,
+    month: MONTH,
+    filterType: listFilterType,
   });
   const { data: engineers } = trpc.engineers.list.useQuery();
   const { data: alerts } = trpc.visits.alerts.useQuery();
@@ -824,6 +835,15 @@ export default function VisitsModule() {
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
                 <BarChart3 className="w-4 h-4" />قائمة المعاينات
+                <Badge variant="outline" className="text-xs font-normal">
+                  {listFilterType === 'booking' ? 'حسب شهر الحجز' :
+                   listFilterType === 'execution' ? 'حسب شهر التنفيذ' :
+                   listFilterType === 'upload' ? 'حسب شهر الرفع' :
+                   'حسب شهر التحصيل'}
+                </Badge>
+                <Badge className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                  {new Date(YEAR, MONTH - 1).toLocaleDateString('ar-EG', { month: 'long', year: 'numeric' })}
+                </Badge>
               </CardTitle>
               <Select value={filterStatus} onValueChange={setFilterStatus}>
                 <SelectTrigger className="w-36 h-8 text-sm"><SelectValue /></SelectTrigger>
