@@ -501,8 +501,9 @@ function IndividualGoalsTab({ year, month }: { year: number; month: number }) {
     onError: () => toast.error('حدث خطأ'),
   });
 
+  // عرض مهندسي المبيعات فقط (بدون admin_sales أو manager)
   const salesEngineers = (engineers ?? []).filter((e: any) =>
-    !['admin', 'system_user'].includes(e.role ?? '')
+    e.department === 'sales_engineer'
   );
 
   const selectedEng = selectedEngId
@@ -551,8 +552,14 @@ function IndividualGoalsTab({ year, month }: { year: number; month: number }) {
                 <div>
                   <p className="font-semibold text-sm text-indigo-800 dark:text-indigo-200">توزيع تلقائي جاهز</p>
                   <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-0.5">
-                    إيراد الشركة: {distPreview.companyGoal.revenueTarget.toLocaleString('ar-EG')} ج.م → كل مهندس: {distPreview.perEngineer.targetAmount.toLocaleString('ar-EG')} ج.م
+                    إيراد الشركة: {distPreview.companyGoal.revenueTarget.toLocaleString('ar-EG')} ج.م → {distPreview.engineerCount} مهندس مبيعات ({distPreview.seniorCount ?? 0} Senior + {distPreview.juniorCount ?? 0} Junior)
                   </p>
+                  {distPreview.perSenior && distPreview.perJunior && (
+                    <div className="flex gap-3 mt-1 text-xs">
+                      <span className="text-amber-600 dark:text-amber-400">🥇 Senior: {distPreview.perSenior.targetAmount.toLocaleString('ar-EG')} ج.م</span>
+                      <span className="text-blue-600 dark:text-blue-400">🥈 Junior: {distPreview.perJunior.targetAmount.toLocaleString('ar-EG')} ج.م</span>
+                    </div>
+                  )}
                   <div className="flex flex-wrap gap-3 mt-2 text-xs text-indigo-700 dark:text-indigo-300">
                     <span>📊 {distPreview.companyGoal.dealsNeeded} صفقة مطلوبة</span>
                     <span>👤 {distPreview.companyGoal.leadsNeeded} عميل محتمل</span>
@@ -583,23 +590,45 @@ function IndividualGoalsTab({ year, month }: { year: number; month: number }) {
             {/* Distribution Preview Table */}
             {showDistPreview && (
               <div className="mt-4 pt-4 border-t border-indigo-200 dark:border-indigo-800/50">
-                <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 mb-3">معاينة التوزيع لكل مهندس:</p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                  {[
-                    { label: 'الهدف المالي', value: `${(distPreview.perEngineer.targetAmount / 1000).toFixed(0)}k ج.م`, color: 'indigo' },
-                    { label: 'الصفقات', value: distPreview.perEngineer.targetDeals, color: 'emerald' },
-                    { label: 'العملاء المحتملين', value: distPreview.perEngineer.targetLeads, color: 'amber' },
-                    { label: 'الاجتماعات', value: distPreview.perEngineer.targetMeetings, color: 'purple' },
-                    { label: 'عروض الأسعار', value: distPreview.perEngineer.targetQuotations, color: 'rose' },
-                    { label: 'العروض التقديمية', value: distPreview.perEngineer.targetPresentations, color: 'cyan' },
-                    { label: 'Render', value: distPreview.perEngineer.targetRender, color: 'orange' },
-                    { label: 'الإغلاقات', value: distPreview.perEngineer.targetClosings, color: 'green' },
-                  ].map((item, i) => (
-                    <div key={i} className="p-2 rounded-lg bg-white dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-800/30 text-center">
-                      <p className="text-sm font-bold text-indigo-700 dark:text-indigo-300">{item.value}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{item.label}</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Senior */}
+                  {distPreview.perSenior && (
+                    <div>
+                      <p className="text-xs font-semibold text-amber-600 dark:text-amber-400 mb-2">🥇 Senior ({distPreview.seniorCount ?? 0} مهندس)</p>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {[
+                          { label: 'الهدف المالي', value: `${(distPreview.perSenior.targetAmount / 1000).toFixed(0)}k ج.م` },
+                          { label: 'الصفقات', value: distPreview.perSenior.targetDeals },
+                          { label: 'العملاء', value: distPreview.perSenior.targetLeads },
+                          { label: 'الاجتماعات', value: distPreview.perSenior.targetMeetings },
+                        ].map((item, i) => (
+                          <div key={i} className="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-800/30 text-center">
+                            <p className="text-sm font-bold text-amber-700 dark:text-amber-300">{item.value}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">{item.label}</p>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  ))}
+                  )}
+                  {/* Junior */}
+                  {distPreview.perJunior && (
+                    <div>
+                      <p className="text-xs font-semibold text-blue-600 dark:text-blue-400 mb-2">🥈 Junior ({distPreview.juniorCount ?? 0} مهندس)</p>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {[
+                          { label: 'الهدف المالي', value: `${(distPreview.perJunior.targetAmount / 1000).toFixed(0)}k ج.م` },
+                          { label: 'الصفقات', value: distPreview.perJunior.targetDeals },
+                          { label: 'العملاء', value: distPreview.perJunior.targetLeads },
+                          { label: 'الاجتماعات', value: distPreview.perJunior.targetMeetings },
+                        ].map((item, i) => (
+                          <div key={i} className="p-2 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-800/30 text-center">
+                            <p className="text-sm font-bold text-blue-700 dark:text-blue-300">{item.value}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">{item.label}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -1143,8 +1172,9 @@ function PersonalDevelopmentTab({ year, month }: { year: number; month: number }
     onError: () => toast.error('حدث خطأ'),
   });
 
+  // عرض مهندسي المبيعات فقط (بدون admin_sales أو manager)
   const salesEngineers = (engineers ?? []).filter((e: any) =>
-    !['admin', 'system_user'].includes(e.role ?? '')
+    e.department === 'sales_engineer'
   );
 
   const scoredGoals = (goals ?? []).filter((g: any) => g.score !== null);

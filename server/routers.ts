@@ -426,6 +426,7 @@ export const appRouter = router({
     createEngineer: publicProcedure.input(z.object({
       name: z.string().min(1), email: z.string().optional(), phone: z.string().optional(),
       department: z.string().optional(), role: z.enum(['admin', 'engineer']).optional(),
+      seniority: z.enum(['senior', 'junior']).optional(),
     })).mutation(async ({ input }) => { await createEngineerWithRole(input); return { success: true }; }),
     deleteEngineer: publicProcedure.input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => { await deleteEngineer(input.id); return { success: true }; }),
@@ -436,6 +437,7 @@ export const appRouter = router({
       role: z.string().optional(),
       phone: z.string().optional(),
       email: z.string().optional(),
+      seniority: z.enum(['senior', 'junior']).optional(),
     })).mutation(async ({ input }) => {
       const { id, ...data } = input;
       await updateEngineerProfile(id, data);

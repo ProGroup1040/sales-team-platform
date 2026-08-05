@@ -1,0 +1,1 @@
+ALTER TABLE `engineers` ADD `seniority` enum('senior','junior') DEFAULT 'junior';

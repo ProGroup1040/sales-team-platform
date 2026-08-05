@@ -391,15 +391,15 @@ function AddTaskDialog({ engineers, dateStr, onDone }: { engineers: any[]; dateS
 // ─── Manage Engineers Dialog ──────────────────────────────────────────────────
 function ManageEngineersDialog({ engineers, onDone }: { engineers: any[]; onDone: () => void }) {
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", phone: "", department: "", role: "" });
+  const [form, setForm] = useState({ name: "", phone: "", department: "", role: "", seniority: "junior" });
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
   const [editTarget, setEditTarget] = useState<any | null>(null);
-  const [editForm, setEditForm] = useState({ name: "", department: "", role: "", phone: "" });
+  const [editForm, setEditForm] = useState({ name: "", department: "", role: "", phone: "", seniority: "junior" });
   const utils = trpc.useUtils();
   const createMut = trpc.tasks.createEngineer.useMutation({
     onSuccess: () => {
       utils.tasks.engineers.invalidate(); toast.success("تمت إضافة المهندس");
-      setForm({ name: "", phone: "", department: "", role: "" }); onDone();
+      setForm({ name: "", phone: "", department: "", role: "", seniority: "junior" }); onDone();
     },
     onError: () => toast.error("حدث خطأ"),
   });
@@ -464,10 +464,21 @@ function ManageEngineersDialog({ engineers, onDone }: { engineers: any[]; onDone
                     <SelectItem value="admin" className="text-white hover:bg-white/10">مدير</SelectItem>
                   </SelectContent>
                 </Select>
+                {/* خانة Senior/Junior - تظهر فقط لمهندس المبيعات */}
+                {form.department === 'sales_engineer' && (
+                  <Select value={form.seniority} onValueChange={v => setForm(f => ({ ...f, seniority: v }))}
+                    >
+                    <SelectTrigger className="bg-white/5 border-white/10 text-white text-sm col-span-2"><SelectValue placeholder="مستوى الخبرة *" /></SelectTrigger>
+                    <SelectContent className="bg-slate-900 border-white/10">
+                      <SelectItem value="senior" className="text-white hover:bg-white/10">🥇 Senior - مهندس مبيعات أول</SelectItem>
+                      <SelectItem value="junior" className="text-white hover:bg-white/10">🥈 Junior - مهندس مبيعات</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
               <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700 gap-2 w-full"
                 disabled={!form.name || createMut.isPending}
-                onClick={() => createMut.mutate({ name: form.name, phone: form.phone || undefined, department: form.department || undefined, role: form.role as any })}>
+                onClick={() => createMut.mutate({ name: form.name, phone: form.phone || undefined, department: form.department || undefined, role: form.role as any, seniority: form.department === 'sales_engineer' ? form.seniority as any : undefined })}>
                 <Plus className="h-3 w-3" /> إضافة
               </Button>
             </div>
@@ -502,7 +513,7 @@ function ManageEngineersDialog({ engineers, onDone }: { engineers: any[]; onDone
                   </div>
                   <div className="flex items-center gap-1">
                     <Button size="sm" variant="ghost" className="text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 h-8 w-8 p-0"
-                      onClick={() => { setEditTarget(eng); setEditForm({ name: eng.name, department: eng.department ?? '', role: eng.role ?? '', phone: eng.phone ?? '' }); }}>
+                      onClick={() => { setEditTarget(eng); setEditForm({ name: eng.name, department: eng.department ?? '', role: eng.role ?? '', phone: eng.phone ?? '', seniority: eng.seniority ?? 'junior' }); }}>
                       <Pencil className="h-3.5 w-3.5" />
                     </Button>
                     <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-300 hover:bg-red-500/10 h-8 w-8 p-0"
@@ -551,9 +562,19 @@ function ManageEngineersDialog({ engineers, onDone }: { engineers: any[]; onDone
                 <SelectItem value="site_engineer" className="text-white hover:bg-white/10">مهندس معاينات</SelectItem>
               </SelectContent>
             </Select>
+            {/* خانة Senior/Junior في نموذج التعديل */}
+            {(editForm.department === 'sales_engineer' || editTarget?.department === 'sales_engineer') && (
+              <Select value={editForm.seniority} onValueChange={v => setEditForm(f => ({ ...f, seniority: v }))}>
+                <SelectTrigger className="bg-white/5 border-white/10 text-white"><SelectValue placeholder="مستوى الخبرة" /></SelectTrigger>
+                <SelectContent className="bg-slate-900 border-white/10">
+                  <SelectItem value="senior" className="text-white hover:bg-white/10">🥇 Senior - مهندس مبيعات أول</SelectItem>
+                  <SelectItem value="junior" className="text-white hover:bg-white/10">🥈 Junior - مهندس مبيعات</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
             <div className="flex gap-2 pt-2">
               <Button className="flex-1 bg-indigo-600 hover:bg-indigo-700" disabled={!editForm.name || updateMut.isPending}
-                onClick={() => editTarget && updateMut.mutate({ id: editTarget.id, name: editForm.name, department: editForm.department || undefined, role: editForm.role || undefined, phone: editForm.phone || undefined })}>
+                onClick={() => editTarget && updateMut.mutate({ id: editTarget.id, name: editForm.name, department: editForm.department || undefined, role: editForm.role || undefined, phone: editForm.phone || undefined, seniority: (editForm.department === 'sales_engineer' || editTarget?.department === 'sales_engineer') ? editForm.seniority as any : undefined })}>
                 {updateMut.isPending ? 'جاري الحفظ...' : 'حفظ التعديلات'}
               </Button>
               <Button variant="outline" className="border-white/20" onClick={() => setEditTarget(null)}>إلغاء</Button>

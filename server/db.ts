@@ -92,7 +92,7 @@ export async function getEngineerById(id: number) {
   const [eng] = await db.select().from(engineers).where(eq(engineers.id, id));
   return eng ?? null;
 }
-export async function updateEngineerProfile(id: number, data: { name?: string; department?: string; role?: string; phone?: string; email?: string }) {
+export async function updateEngineerProfile(id: number, data: { name?: string; department?: string; role?: string; phone?: string; email?: string; seniority?: string }) {
   const db = await getDb();
   if (!db) return;
   const updates: Record<string, any> = {};
@@ -101,6 +101,7 @@ export async function updateEngineerProfile(id: number, data: { name?: string; d
   if (data.role !== undefined) updates.role = data.role as any;
   if (data.phone !== undefined) updates.phone = data.phone;
   if (data.email !== undefined) updates.email = data.email;
+  if (data.seniority !== undefined) updates.seniority = data.seniority as any;
   if (Object.keys(updates).length > 0) {
     await db.update(engineers).set(updates).where(eq(engineers.id, id));
   }
@@ -319,10 +320,16 @@ export async function getEngineersWithRole() {
     .orderBy(engineers.name);
 }
 
-export async function createEngineerWithRole(data: { name: string; email?: string; phone?: string; department?: string; role?: string }) {
+export async function createEngineerWithRole(data: { name: string; email?: string; phone?: string; department?: string; role?: string; seniority?: string }) {
   const db = await getDb();
   if (!db) return;
-  await db.insert(engineers).values({ ...data, department: (data.department as any) ?? 'sales_engineer', role: (data.role as any) ?? 'sales_engineer', status: 'active' });
+  await db.insert(engineers).values({
+    ...data,
+    department: (data.department as any) ?? 'sales_engineer',
+    role: (data.role as any) ?? 'sales_engineer',
+    seniority: (data.seniority as any) ?? 'junior',
+    status: 'active'
+  });
 }
 
 export async function deleteEngineer(id: number) {
@@ -11174,23 +11181,43 @@ export async function calcAutoDistribution(year: number, month: number) {
   const presentationsNeeded = leadsNeeded;
   const rendersNeeded = leadsNeeded;
 
-  // جلب المهندسين النشطين
-  const engList = await getEngineers();
-  const activeCount = engList.length;
-  if (activeCount === 0) return null;
+    // جلب مهندسي المبيعات النشطين فقط (department = sales_engineer)
+  const allEngineers = await getEngineers();
+  const salesEngs = allEngineers.filter((e: any) => e.department === 'sales_engineer');
+  if (salesEngs.length === 0) return null;
 
-  // التوزيع المتساوي (يمكن تطويره لاحقاً بناءً على الأداء)
-  const perEng = {
-    targetAmount:       Math.round(revenueTarget / activeCount),
-    targetDeals:        Math.ceil(dealsNeeded / activeCount),
-    targetLeads:        Math.ceil(leadsNeeded / activeCount),
-    targetMeetings:     Math.ceil(meetingsNeeded / activeCount),
-    targetQuotations:   Math.ceil(quotationsNeeded / activeCount),
-    targetPresentations:Math.ceil(presentationsNeeded / activeCount),
-    targetRender:       Math.ceil(rendersNeeded / activeCount),
-    target2D:           Math.ceil(leadsNeeded / activeCount),
-    target3D:           Math.ceil(leadsNeeded / activeCount),
-    targetClosings:     Math.ceil(dealsNeeded / activeCount),
+  // توزيع بنسبة 1.5 للـ Senior و 1 للـ Junior
+  const seniorCount = salesEngs.filter((e: any) => e.seniority === 'senior').length;
+  const juniorCount = salesEngs.filter((e: any) => e.seniority !== 'senior').length;
+  // عدد الحصص الكلية = (senior × 1.5) + (junior × 1)
+  const totalShares = seniorCount * 1.5 + juniorCount * 1;
+  const shareUnit = totalShares > 0 ? 1 / totalShares : 1;
+  const seniorShare = 1.5 * shareUnit; // نسبة السينيور من الإجمالي
+  const juniorShare = 1.0 * shareUnit; // نسبة الجونيور من الإجمالي
+
+  const perSenior = {
+    targetAmount:        Math.round(revenueTarget * seniorShare),
+    targetDeals:         Math.ceil(dealsNeeded * seniorShare),
+    targetLeads:         Math.ceil(leadsNeeded * seniorShare),
+    targetMeetings:      Math.ceil(meetingsNeeded * seniorShare),
+    targetQuotations:    Math.ceil(quotationsNeeded * seniorShare),
+    targetPresentations: Math.ceil(presentationsNeeded * seniorShare),
+    targetRender:        Math.ceil(rendersNeeded * seniorShare),
+    target2D:            Math.ceil(leadsNeeded * seniorShare),
+    target3D:            Math.ceil(leadsNeeded * seniorShare),
+    targetClosings:      Math.ceil(dealsNeeded * seniorShare),
+  };
+  const perJunior = {
+    targetAmount:        Math.round(revenueTarget * juniorShare),
+    targetDeals:         Math.ceil(dealsNeeded * juniorShare),
+    targetLeads:         Math.ceil(leadsNeeded * juniorShare),
+    targetMeetings:      Math.ceil(meetingsNeeded * juniorShare),
+    targetQuotations:    Math.ceil(quotationsNeeded * juniorShare),
+    targetPresentations: Math.ceil(presentationsNeeded * juniorShare),
+    targetRender:        Math.ceil(rendersNeeded * juniorShare),
+    target2D:            Math.ceil(leadsNeeded * juniorShare),
+    target3D:            Math.ceil(leadsNeeded * juniorShare),
+    targetClosings:      Math.ceil(dealsNeeded * juniorShare),
   };
 
   return {
@@ -11205,9 +11232,13 @@ export async function calcAutoDistribution(year: number, month: number) {
       presentationsNeeded,
       rendersNeeded,
     },
-    engineerCount: activeCount,
-    perEngineer: perEng,
-    engineers: engList.map(eng => ({ id: eng.id, name: eng.name })),
+    engineerCount: salesEngs.length,
+    seniorCount,
+    juniorCount,
+    perEngineer: perJunior, // للتوافق مع الـ UI الحالي (يعرض الجونيور كمرجع)
+    perSenior,
+    perJunior,
+    engineers: salesEngs.map((eng: any) => ({ id: eng.id, name: eng.name, seniority: eng.seniority ?? 'junior' })),
   };
 }
 
@@ -11219,16 +11250,18 @@ export async function applyAutoDistribution(year: number, month: number) {
   const dist = await calcAutoDistribution(year, month);
   if (!dist) return { success: false, message: 'لا يوجد هدف للشركة لهذا الشهر' };
 
-  const { perEngineer, engineers: engList } = dist;
-
+    const { perSenior, perJunior, engineers: engList } = dist;
   for (const eng of engList) {
+    // تحديد الحصة حسب مستوى الخبرة
+    const isSenior = eng.seniority === 'senior';
+    const perEngineer = isSenior ? perSenior : perJunior;
+    const weight = isSenior ? 1.5 : 1.0;
     const existing = await db.select().from(engineerTargets)
       .where(and(
         eq(engineerTargets.engineerId, eng.id),
         eq(engineerTargets.year, year),
         eq(engineerTargets.month, month)
       )).limit(1);
-
     const vals = {
       targetAmount:        perEngineer.targetAmount.toString(),
       targetDeals:         perEngineer.targetDeals,
@@ -11241,7 +11274,7 @@ export async function applyAutoDistribution(year: number, month: number) {
       target3D:            perEngineer.target3D,
       targetClosings:      perEngineer.targetClosings,
       isAutoDistributed:   1,
-      distributionWeight:  (1 / engList.length).toFixed(4),
+      distributionWeight:  weight.toFixed(4),
     };
 
     if (existing.length > 0) {
@@ -11256,9 +11289,8 @@ export async function applyAutoDistribution(year: number, month: number) {
     }
   }
 
-  return { success: true, count: engList.length, perEngineer };
+    return { success: true, count: engList.length, perSenior, perJunior };
 }
-
 /** تحديث هدف مهندس يدوياً (Manual Override) */
 export async function manualOverrideEngineerTarget(data: {
   engineerId: number; year: number; month: number;

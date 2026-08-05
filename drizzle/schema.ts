@@ -30,7 +30,9 @@ export const engineers = mysqlTable("engineers", {
   username: varchar("username", { length: 64 }).unique(),
   passwordHash: varchar("passwordHash", { length: 255 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  // ─── Soft Delete ──────────────────────────────────────────────────────────
+  // مستوى الخبرة - ينطبق فقط على sales_engineer
+  seniority: mysqlEnum("seniority", ["senior", "junior"]).default("junior"),
+  // ─── Soft Delete ───────────────────────────────────────────────────────────────────────────────────
   isDeleted: int("isDeleted").default(0).notNull(),
   deletedAt: timestamp("deletedAt"),
   deleteReason: mysqlEnum("deleteReason", ["data_entry_error", "duplicate", "client_cancelled", "other"]),
