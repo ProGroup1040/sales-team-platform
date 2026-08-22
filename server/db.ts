@@ -12449,6 +12449,106 @@ export async function updateProjectStageConfig(id: number, data: Partial<{
   return { success: true };
 }
 
+export type HistoricalProjectTimelineRow = {
+  projectCode?: string;
+  contractNumber?: string;
+  stageKey: string;
+  stageName?: string;
+  department?: string;
+  previousStageKey?: string;
+  previousDepartment?: string;
+  enteredAt?: string;
+  plannedCompletionDate?: string;
+  actualCompletionDate?: string;
+  plannedHandoverDate?: string;
+  actualHandoverDate?: string;
+  actualReceiptDate?: string;
+  slaDays?: number;
+  delayDays?: number;
+  delayOwnerCode?: string;
+  delayReasonCode?: string;
+  notes?: string;
+  isCurrent?: boolean;
+};
+
+export async function importHistoricalProjectTimeline(rows: HistoricalProjectTimelineRow[], performedBy: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const [existingProjects, stages, existingMovements] = await Promise.all([
+    db.select().from(projects),
+    getProjectStages(),
+    db.select().from(projectMovements),
+  ]);
+  const projectByCode = new Map(existingProjects.map((project) => [project.projectCode.trim().toLowerCase(), project]));
+  const projectByContract = new Map(existingProjects.filter((project) => project.contractNumber).map((project) => [project.contractNumber!.trim().toLowerCase(), project]));
+  const stageByKey = new Map(stages.map((stage) => [stage.stageKey, stage]));
+  const movementKeys = new Set(existingMovements.map((movement) => `${movement.projectId}:${movement.stageKey}:${projectDateOnly(movement.enteredAt)}`));
+  const validOwnerCodes = new Set<string>(PROJECT_DELAY_OWNERS.map((owner) => owner.code));
+  const validReasonCodes = new Set((await db.select().from(projectDelayReasons)).map((reason) => reason.code));
+  const result = { importedMovements: 0, importedDelays: 0, updatedProjects: 0, skippedUnmatched: 0, skippedDuplicates: 0, errors: [] as string[] };
+
+  for (const row of rows) {
+    try {
+      const project = (row.projectCode ? projectByCode.get(row.projectCode.trim().toLowerCase()) : undefined)
+        ?? (row.contractNumber ? projectByContract.get(row.contractNumber.trim().toLowerCase()) : undefined);
+      if (!project) { result.skippedUnmatched += 1; continue; }
+      const stage = stageByKey.get(row.stageKey) ?? stageByKey.get("sales");
+      if (!stage) { result.errors.push(`تعذر تحديد المرحلة للمشروع ${project.projectCode}`); continue; }
+      const enteredAt = row.enteredAt ? projectDate(row.enteredAt) : projectDate(project.contractDate);
+      const movementKey = `${project.id}:${stage.stageKey}:${projectDateOnly(enteredAt)}`;
+      if (movementKeys.has(movementKey)) { result.skippedDuplicates += 1; continue; }
+      const plannedCompletionDate = row.plannedCompletionDate ? projectDateOnly(row.plannedCompletionDate) : projectDateOnly(addProjectDays(enteredAt, row.slaDays ?? stage.defaultSlaDays));
+      const actualCompletionDate = row.actualCompletionDate ? projectDate(row.actualCompletionDate) : null;
+      const actualDurationDays = actualCompletionDate ? Math.max(0, projectDayDiff(enteredAt, actualCompletionDate)) : Math.max(0, projectDayDiff(enteredAt));
+      const calculatedDelay = actualCompletionDate ? Math.max(0, projectDayDiff(plannedCompletionDate, actualCompletionDate)) : Math.max(0, projectDayDiff(plannedCompletionDate));
+      const delayDays = Math.max(0, row.delayDays ?? calculatedDelay);
+      const isCurrent = Boolean(row.isCurrent) || (!actualCompletionDate && row.stageKey === project.currentStageKey);
+      if (isCurrent) await db.update(projectMovements).set({ status: "completed", actualCompletionDate: new Date(), actualHandoverDate: new Date() }).where(and(eq(projectMovements.projectId, project.id), eq(projectMovements.status, "active")));
+      const inserted = await db.insert(projectMovements).values({
+        projectId: project.id,
+        stageKey: stage.stageKey,
+        stageName: row.stageName?.trim() || stage.nameAr,
+        department: row.department?.trim() || stage.department,
+        previousStageKey: row.previousStageKey,
+        previousDepartment: row.previousDepartment,
+        enteredAt,
+        plannedCompletionDate,
+        actualCompletionDate,
+        plannedHandoverDate: row.plannedHandoverDate ? projectDateOnly(row.plannedHandoverDate) : plannedCompletionDate,
+        actualHandoverDate: row.actualHandoverDate ? projectDate(row.actualHandoverDate) : actualCompletionDate,
+        actualReceiptDate: row.actualReceiptDate ? projectDate(row.actualReceiptDate) : enteredAt,
+        slaDays: row.slaDays ?? stage.defaultSlaDays,
+        actualDurationDays,
+        delayDays,
+        inheritedDelayDays: project.totalDelayDays,
+        generatedDelayDays: delayDays,
+        delayOwnerCode: row.delayOwnerCode && validOwnerCodes.has(row.delayOwnerCode) ? row.delayOwnerCode : null,
+        delayReasonCode: row.delayReasonCode && validReasonCodes.has(row.delayReasonCode) ? row.delayReasonCode : null,
+        notes: row.notes,
+        status: isCurrent ? "active" : "completed",
+        updatedBy: performedBy,
+      } as any);
+      const movementId = Number((inserted as any)[0]?.insertId ?? 0) || undefined;
+      movementKeys.add(movementKey);
+      result.importedMovements += 1;
+      if (delayDays > 0) {
+        const ownerCode = row.delayOwnerCode && validOwnerCodes.has(row.delayOwnerCode) ? row.delayOwnerCode : "other";
+        const reasonCode = row.delayReasonCode && validReasonCodes.has(row.delayReasonCode) ? row.delayReasonCode : "other";
+        await addProjectDelay({ projectId: project.id, movementId, delayDate: projectDateOnly(actualCompletionDate ?? new Date()), delayDays, ownerCode: ownerCode as any, reasonCode, notes: row.notes ?? "استيراد من ملف Time Line التاريخي", createdBy: performedBy });
+        result.importedDelays += 1;
+      }
+      if (isCurrent) {
+        await db.update(projects).set({ currentStageKey: stage.stageKey, currentDepartment: row.department?.trim() || stage.department, currentStageEnteredAt: enteredAt, lastUpdatedAt: new Date(), lastUpdatedBy: performedBy }).where(eq(projects.id, project.id));
+        result.updatedProjects += 1;
+      }
+      await writeProjectAudit({ projectId: project.id, entityType: "project_movement", entityId: movementId, action: "historical_timeline_imported", newValue: row, reason: "استيراد تاريخي من Time Line", performedBy });
+    } catch (error) {
+      result.errors.push(error instanceof Error ? error.message : "خطأ غير معروف أثناء الاستيراد");
+    }
+  }
+  return result;
+}
+
 export async function ensureProjectFromClosedDeal(dealId: number, performedBy = "system") {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
@@ -12922,8 +13022,32 @@ export async function getProjectTimelineList(filters: {
   const engineerById = new Map(allEngineers.map((engineer) => [engineer.id, engineer]));
   const movementByProject = new Map(activeMovements.map((movement) => [movement.projectId, movement]));
   const reasonByCode = new Map(reasons.map((reason) => [reason.code, reason]));
+  const now = new Date();
+  const runtimeProjects = refreshed.map((project) => {
+    const movement = movementByProject.get(project.id);
+    const currentStageDelayDays = movement ? Math.max(0, projectDayDiff(movement.plannedCompletionDate, now)) : 0;
+    const plannedExit = movement?.plannedCompletionDate ? projectDate(movement.plannedCompletionDate) : null;
+    const agreedDelivery = project.agreedDeliveryDate ? projectDate(project.agreedDeliveryDate) : null;
+    const referenceDate = agreedDelivery && (!plannedExit || agreedDelivery < plannedExit) ? agreedDelivery : plannedExit;
+    const daysUntilReference = referenceDate ? projectDayDiff(now, referenceDate) : Number.POSITIVE_INFINITY;
+    const projectStatus = calculateProjectStatus({
+      isOnHold: Boolean(project.isOnHold),
+      currentStageKey: project.currentStageKey,
+      actualCompletionDate: project.actualCompletionDate,
+      stageDelayDays: currentStageDelayDays,
+      stageSlaDays: movement?.slaDays,
+      daysUntilReference,
+    });
+    const updateStatus = ["closed", "completed"].includes(projectStatus)
+      ? "not_required"
+      : calculateRequiredProjectUpdateStatus(project.lastUpdatedAt, now);
+    const expectedProjectCompletionDate = project.plannedProjectCompletionDate
+      ? addProjectDays(project.plannedProjectCompletionDate, project.totalDelayDays)
+      : project.expectedProjectCompletionDate;
+    return { ...project, projectStatus, currentStageDelayDays, updateStatus, expectedProjectCompletionDate };
+  });
 
-  return refreshed.filter((project) => {
+  return runtimeProjects.filter((project) => {
     const query = filters.search?.trim().toLowerCase();
     const matchesSearch = !query || [project.projectCode, project.clientName, project.contractNumber ?? ""].some((value) => value.toLowerCase().includes(query));
     const matchesEngineer = !filters.engineerId || project.salesEngineerId === filters.engineerId;
@@ -12992,5 +13116,105 @@ export async function getProjectTimelineDashboard(filters: Parameters<typeof get
     delayByDepartment, delayByOwner, delayByReason,
     criticalProjects: projectsList.filter((project) => project.projectStatus === "critical_delay" || project.updateStatus === "missing")
       .sort((a, b) => (b.totalDelayDays - a.totalDelayDays) || (b.currentStageDelayDays - a.currentStageDelayDays)).slice(0, 10),
+  };
+}
+
+export async function getProjectTimelineAnalytics(filters: Parameters<typeof getProjectTimelineList>[0] = {}) {
+  const db = await getDb();
+  if (!db) return { departmentPerformance: [], handoverCompliance: [], delayByEngineer: [], delayTrend: [], cycle: { averageProjectCycleDays: 0, averageProjectDelayDays: 0 } };
+  const visibleProjects = await getProjectTimelineList(filters);
+  const projectIds = new Set(visibleProjects.map((project) => project.id));
+  const [allMovements, allLedger] = await Promise.all([
+    db.select().from(projectMovements),
+    db.select().from(projectDelayLedger),
+  ]);
+  const movements = allMovements.filter((movement) => projectIds.has(movement.projectId));
+  const ledger = allLedger.filter((entry) => projectIds.has(entry.projectId));
+  const now = new Date();
+
+  const departmentMap = new Map<string, { department: string; targetDuration: number; actualDurations: number[]; delays: number[]; received: number; completed: number; onTime: number }>();
+  for (const movement of movements) {
+    const stat = departmentMap.get(movement.department) ?? { department: movement.department, targetDuration: 0, actualDurations: [], delays: [], received: 0, completed: 0, onTime: 0 };
+    const actualDuration = movement.actualDurationDays ?? projectDayDiff(movement.enteredAt, movement.actualCompletionDate ?? now);
+    const delay = movement.delayDays ?? Math.max(0, projectDayDiff(movement.plannedCompletionDate, movement.actualCompletionDate ?? now));
+    stat.targetDuration += movement.slaDays;
+    stat.actualDurations.push(Math.max(0, actualDuration));
+    stat.delays.push(Math.max(0, delay));
+    stat.received += 1;
+    if (movement.status === "completed") stat.completed += 1;
+    if (delay <= 0) stat.onTime += 1;
+    departmentMap.set(movement.department, stat);
+  }
+  const departmentPerformance = Array.from(departmentMap.values()).map((stat) => {
+    const count = Math.max(1, stat.received);
+    const averageActualDuration = Math.round((stat.actualDurations.reduce((sum: number, value: number) => sum + value, 0) / count) * 10) / 10;
+    const averageDelay = Math.round((stat.delays.reduce((sum: number, value: number) => sum + value, 0) / count) * 10) / 10;
+    const targetDuration = Math.round((stat.targetDuration / count) * 10) / 10;
+    return {
+      department: stat.department,
+      targetDuration,
+      averageActualDuration,
+      averageDelay,
+      projectsReceived: stat.received,
+      projectsCompleted: stat.completed,
+      projectsDelayed: stat.delays.filter((value: number) => value > 0).length,
+      onTimePct: Math.round((stat.onTime / count) * 100),
+      status: averageDelay >= Math.max(7, targetDuration * 0.7) ? "critical" : averageDelay > 0 ? "above_sla" : "within_sla",
+    };
+  }).sort((a, b) => b.averageDelay - a.averageDelay);
+
+  const handoverMap = new Map<string, { from: string; to: string; total: number; onTime: number; delayDays: number }>();
+  for (const movement of movements.filter((item) => item.previousDepartment)) {
+    const key = `${movement.previousDepartment}→${movement.department}`;
+    const stat = handoverMap.get(key) ?? { from: movement.previousDepartment!, to: movement.department, total: 0, onTime: 0, delayDays: 0 };
+    const delay = movement.plannedHandoverDate
+      ? (movement.actualHandoverDate ? Math.max(0, projectDayDiff(movement.plannedHandoverDate, movement.actualHandoverDate)) : Math.max(0, projectDayDiff(movement.plannedHandoverDate, now)))
+      : 0;
+    stat.total += 1;
+    stat.delayDays += delay;
+    if (delay === 0) stat.onTime += 1;
+    handoverMap.set(key, stat);
+  }
+  const handoverCompliance = Array.from(handoverMap.values()).map((stat) => ({
+    from: stat.from,
+    to: stat.to,
+    totalHandovers: stat.total,
+    onTimePct: Math.round((stat.onTime / Math.max(1, stat.total)) * 100),
+    averageHandoverDelay: Math.round((stat.delayDays / Math.max(1, stat.total)) * 10) / 10,
+    lateHandovers: stat.total - stat.onTime,
+  })).sort((a, b) => b.averageHandoverDelay - a.averageHandoverDelay);
+
+  const delayByEngineerMap = visibleProjects.reduce((result, project) => {
+    const engineer = project.salesEngineer?.name ?? "غير محدد";
+    const current = result.get(engineer) ?? { engineer, projects: 0, delayedProjects: 0, totalDelayDays: 0 };
+    current.projects += 1;
+    current.totalDelayDays += project.totalDelayDays;
+    if (["delayed", "critical_delay"].includes(project.projectStatus)) current.delayedProjects += 1;
+    result.set(engineer, current);
+    return result;
+  }, new Map<string, { engineer: string; projects: number; delayedProjects: number; totalDelayDays: number }>());
+  const delayByEngineerRows = Array.from(delayByEngineerMap.values()).sort((a, b) => b.totalDelayDays - a.totalDelayDays);
+
+  const trendMap = new Map<string, { month: string; company: number; client: number; external: number; total: number }>();
+  for (const entry of ledger) {
+    const month = projectDateOnly(entry.delayDate).slice(0, 7);
+    const row = trendMap.get(month) ?? { month, company: 0, client: 0, external: 0, total: 0 };
+    const days = Math.max(0, entry.delayDays ?? 0);
+    row[entry.delayCategory] += days;
+    row.total += days;
+    trendMap.set(month, row);
+  }
+  const delayTrend = Array.from(trendMap.values()).sort((a, b) => a.month.localeCompare(b.month));
+  const cycleDurations = visibleProjects.map((project) => projectDayDiff(project.contractDate, project.actualCompletionDate ?? now));
+
+  return {
+    departmentPerformance,
+    handoverCompliance,
+    delayByEngineer: delayByEngineerRows,
+    delayTrend,
+    cycle: {
+      averageProjectCycleDays: cycleDurations.length ? Math.round((cycleDurations.reduce((sum, value) => sum + value, 0) / cycleDurations.length) * 10) / 10 : 0,
+      averageProjectDelayDays: visibleProjects.length ? Math.round((visibleProjects.reduce((sum, project) => sum + project.totalDelayDays, 0) / visibleProjects.length) * 10) / 10 : 0,
+    },
   };
 }

@@ -114,7 +114,7 @@ import {
   getFollowupKPI, getFollowupComplianceReport,
   // Project Timeline Control System
   PROJECT_DELAY_OWNERS, PROJECT_STATUS_META,
-  getProjectTimelineConfig, getProjectTimelineList, getProjectTimelineDashboard,
+  getProjectTimelineConfig, getProjectTimelineList, getProjectTimelineDashboard, getProjectTimelineAnalytics, importHistoricalProjectTimeline,
   getProjectTimelineDetail, syncProjectsFromClosedDeals, transitionProjectStage,
   addProjectDelay, updateProjectReview, setProjectHold, updateProjectStageConfig,
 } from "./db";
@@ -915,6 +915,13 @@ export const appRouter = router({
       if (!PROJECT_TIMELINE_MANAGER_ROLES.has(caller.role)) scopedInput.engineerId = caller.id;
       return getProjectTimelineDashboard(scopedInput);
     }),
+    analytics: publicProcedure.input(z.object({
+      engineerId: z.number().optional(), department: z.string().optional(), stageKey: z.string().optional(),
+      status: z.string().optional(), delayedOnly: z.boolean().optional(), criticalOnly: z.boolean().optional(),
+    }).optional()).query(async ({ input, ctx }) => {
+      const caller = await assertProjectTimelineAccess(ctx, undefined, true);
+      return getProjectTimelineAnalytics(input ?? {});
+    }),
     detail: publicProcedure.input(z.object({ projectId: z.number() }))
       .query(async ({ input, ctx }) => {
         await assertProjectTimelineAccess(ctx, input.projectId);
@@ -925,6 +932,19 @@ export const appRouter = router({
         const caller = await assertProjectTimelineAccess(ctx, undefined, true);
         return syncProjectsFromClosedDeals(caller.name);
       }),
+    importHistorical: publicProcedure.input(z.object({
+      rows: z.array(z.object({
+        projectCode: z.string().optional(), contractNumber: z.string().optional(), stageKey: z.string().min(1),
+        stageName: z.string().optional(), department: z.string().optional(), previousStageKey: z.string().optional(), previousDepartment: z.string().optional(),
+        enteredAt: z.string().optional(), plannedCompletionDate: z.string().optional(), actualCompletionDate: z.string().optional(),
+        plannedHandoverDate: z.string().optional(), actualHandoverDate: z.string().optional(), actualReceiptDate: z.string().optional(),
+        slaDays: z.number().int().min(0).optional(), delayDays: z.number().int().min(0).optional(), delayOwnerCode: z.string().optional(),
+        delayReasonCode: z.string().optional(), notes: z.string().optional(), isCurrent: z.boolean().optional(),
+      })).min(1).max(2000),
+    })).mutation(async ({ input, ctx }) => {
+      const caller = await assertProjectTimelineAccess(ctx, undefined, true);
+      return importHistoricalProjectTimeline(input.rows, caller.name);
+    }),
     transition: publicProcedure.input(z.object({
       projectId: z.number(),
       nextStageKey: z.string().min(1),

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { trpc } from "@/lib/trpc";
+import * as XLSX from "xlsx";
 import { useLocalAuth } from "@/hooks/useLocalAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,6 +18,7 @@ import {
   CheckCircle2,
   CirclePause,
   Clock3,
+  Download,
   Filter,
   GitBranch,
   Loader2,
@@ -26,6 +28,8 @@ import {
   ShieldAlert,
   TimerReset,
   TriangleAlert,
+  Printer,
+  Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -48,6 +52,28 @@ const formatDate = (value: unknown) => {
   return Number.isNaN(date.getTime()) ? "—" : date.toLocaleDateString("ar-EG", { day: "numeric", month: "short", year: "numeric" });
 };
 const toDateInput = (value: unknown) => value ? new Date(String(value)).toISOString().slice(0, 10) : "";
+const normalizeHeader = (value: unknown) => String(value ?? "").trim().toLowerCase().replace(/[\s_\-./]/g, "");
+const pickSpreadsheetValue = (record: Record<string, unknown>, aliases: string[]) => {
+  const normalized = new Map(Object.entries(record).map(([key, value]) => [normalizeHeader(key), value]));
+  return aliases.map(normalizeHeader).map((alias) => normalized.get(alias)).find((value) => value !== undefined && String(value).trim() !== "");
+};
+const spreadsheetDate = (value: unknown) => {
+  if (!value) return undefined;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
+  const parsed = new Date(String(value));
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString().slice(0, 10);
+};
+
+function downloadCsv(filename: string, rows: Array<Array<string | number | null | undefined>>) {
+  const escape = (value: string | number | null | undefined) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+  const content = `\uFEFF${rows.map((row) => row.map(escape).join(",")).join("\n")}`;
+  const url = URL.createObjectURL(new Blob([content], { type: "text/csv;charset=utf-8;" }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
 
 function StatusBadge({ status }: { status: string }) {
   const meta = STATUS_META[status] ?? { label: status, className: "bg-muted text-muted-foreground" };
@@ -118,6 +144,10 @@ export default function ProjectTimelineModule() {
   const [holdReason, setHoldReason] = useState("site_not_ready");
   const [holdResumeDate, setHoldResumeDate] = useState("");
   const [holdNotes, setHoldNotes] = useState("");
+  const [exportReport, setExportReport] = useState("timeline");
+  const [importOpen, setImportOpen] = useState(false);
+  const [importRows, setImportRows] = useState<any[]>([]);
+  const [importFileName, setImportFileName] = useState("");
 
   const configQuery = trpc.projectTimeline.config.useQuery();
   const engineersQuery = trpc.engineers.list.useQuery();
@@ -149,12 +179,21 @@ export default function ProjectTimelineModule() {
     criticalOnly: queryInput.criticalOnly,
     missingUpdateOnly: queryInput.missingUpdateOnly,
   }, { refetchOnWindowFocus: false });
+  const analyticsQuery = trpc.projectTimeline.analytics.useQuery({
+    engineerId: queryInput.engineerId,
+    department: queryInput.department,
+    stageKey: queryInput.stageKey,
+    status: queryInput.status,
+    delayedOnly: queryInput.delayedOnly,
+    criticalOnly: queryInput.criticalOnly,
+  }, { enabled: isManager, refetchOnWindowFocus: false, retry: false });
   const detailQuery = trpc.projectTimeline.detail.useQuery({ projectId: detailId ?? 0 }, { enabled: !!detailId });
 
   const refresh = async () => {
     await Promise.all([
       utils.projectTimeline.list.invalidate(),
       utils.projectTimeline.dashboard.invalidate(),
+      utils.projectTimeline.analytics.invalidate(),
       detailId ? utils.projectTimeline.detail.invalidate({ projectId: detailId }) : Promise.resolve(),
     ]);
   };
@@ -189,6 +228,15 @@ export default function ProjectTimelineModule() {
     },
     onError: (error) => toast.error(error.message),
   });
+  const importMutation = trpc.projectTimeline.importHistorical.useMutation({
+    onSuccess: async (result) => {
+      await refresh();
+      setImportRows([]);
+      setImportFileName("");
+      toast.success(`تم استيراد ${result.importedMovements} حركة و${result.importedDelays} سجل تأخير`);
+    },
+    onError: (error) => toast.error(error.message),
+  });
 
   const config = configQuery.data as any;
   const stages = (config?.stages ?? []) as any[];
@@ -197,6 +245,7 @@ export default function ProjectTimelineModule() {
   const engineers = (engineersQuery.data ?? []) as any[];
   const projects = (listQuery.data ?? []) as any[];
   const dashboard = dashboardQuery.data as any;
+  const analytics = analyticsQuery.data as any;
   const detail = detailQuery.data as any;
   const selectedProject = detail?.project as any;
 
@@ -213,6 +262,60 @@ export default function ProjectTimelineModule() {
   const canTransition = nextStageKey && detailId;
   const filteredReasons = reasons.filter((reason) => delayOwner === "all" || reason.ownerCode === delayOwner || reason.category === owners.find((owner) => owner.code === delayOwner)?.category);
   const filteredHoldReasons = reasons.filter((reason) => reason.ownerCode === holdOwner || reason.category === owners.find((owner) => owner.code === holdOwner)?.category);
+  const parseTimelineFile = async (file?: File) => {
+    if (!file) return;
+    try {
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const sourceRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "", raw: false, dateNF: "yyyy-mm-dd" });
+      const stageByName = new Map(stages.map((stage) => [normalizeHeader(stage.nameAr), stage.stageKey]));
+      const parsedRows = sourceRows.map((source) => {
+        const rawStage = String(pickSpreadsheetValue(source, ["stagekey", "stage", "المرحلة", "المرحلة الحالية", "current stage"]) ?? "").trim();
+        const stageKey = stages.some((stage) => stage.stageKey === rawStage) ? rawStage : (stageByName.get(normalizeHeader(rawStage)) ?? "sales");
+        const currentValue = String(pickSpreadsheetValue(source, ["iscurrent", "الحالية", "current"]) ?? "").trim().toLowerCase();
+        return {
+          projectCode: String(pickSpreadsheetValue(source, ["projectcode", "projectid", "رقم المشروع", "كود المشروع", "project"]) ?? "").trim() || undefined,
+          contractNumber: String(pickSpreadsheetValue(source, ["contractnumber", "contract", "رقم العقد", "العقد"]) ?? "").trim() || undefined,
+          stageKey,
+          stageName: rawStage || undefined,
+          department: String(pickSpreadsheetValue(source, ["department", "الإدارة", "currentdepartment"]) ?? "").trim() || undefined,
+          previousStageKey: String(pickSpreadsheetValue(source, ["previousstage", "المرحلة السابقة"]) ?? "").trim() || undefined,
+          previousDepartment: String(pickSpreadsheetValue(source, ["previousdepartment", "الإدارة السابقة"]) ?? "").trim() || undefined,
+          enteredAt: spreadsheetDate(pickSpreadsheetValue(source, ["enteredat", "تاريخ الدخول", "تاريخ بداية المرحلة", "stage start"])),
+          plannedCompletionDate: spreadsheetDate(pickSpreadsheetValue(source, ["plannedcompletiondate", "تاريخ الخروج المخطط", "موعد الخروج", "planned completion"])),
+          actualCompletionDate: spreadsheetDate(pickSpreadsheetValue(source, ["actualcompletiondate", "تاريخ الخروج الفعلي", "actual completion"])),
+          plannedHandoverDate: spreadsheetDate(pickSpreadsheetValue(source, ["plannedhandoverdate", "تاريخ التسليم المخطط", "planned handover"])),
+          actualHandoverDate: spreadsheetDate(pickSpreadsheetValue(source, ["actualhandoverdate", "تاريخ التسليم الفعلي", "actual handover"])),
+          actualReceiptDate: spreadsheetDate(pickSpreadsheetValue(source, ["actualreceiptdate", "تاريخ الاستلام", "actual receipt"])),
+          slaDays: Number(pickSpreadsheetValue(source, ["sladays", "sla", "مدة المرحلة"])) || undefined,
+          delayDays: Number(pickSpreadsheetValue(source, ["delaydays", "أيام التأخير", "delay"])) || undefined,
+          delayOwnerCode: String(pickSpreadsheetValue(source, ["delayownercode", "مسؤول التأخير", "delay owner"]) ?? "").trim() || undefined,
+          delayReasonCode: String(pickSpreadsheetValue(source, ["delayreasoncode", "سبب التأخير", "delay reason"]) ?? "").trim() || undefined,
+          notes: String(pickSpreadsheetValue(source, ["notes", "ملاحظات"]) ?? "").trim() || undefined,
+          isCurrent: ["true", "yes", "نعم", "1", "current", "الحالية"].includes(currentValue),
+        };
+      }).filter((row) => row.projectCode || row.contractNumber);
+      setImportRows(parsedRows);
+      setImportFileName(file.name);
+      toast.success(`تمت قراءة ${parsedRows.length} حركة قابلة للمراجعة`);
+    } catch {
+      toast.error("تعذر قراءة الملف. استخدم Excel أو CSV يحتوي على رقم المشروع أو رقم العقد.");
+    }
+  };
+  const exportCurrentReport = () => {
+    const ownerLabel = (code: string | null | undefined) => owners.find((owner) => owner.code === code)?.labelAr ?? code ?? "غير محدد";
+    const projectRows = (items: any[]) => [["رقم المشروع", "العميل", "العقد", "مهندس المبيعات", "قيمة التعاقد", "المرحلة الحالية", "الإدارة الحالية", "الحالة", "إجمالي التأخير", "تأخير المرحلة", "مسؤول التأخير", "سبب التأخير", "آخر تحديث"], ...items.map((project) => [project.projectCode, project.clientName, project.contractNumber, project.salesEngineer?.name, project.contractValue, project.currentStageKey, project.currentDepartment, STATUS_META[project.projectStatus]?.label ?? project.projectStatus, project.totalDelayDays, project.currentStageDelayDays, ownerLabel(project.mainDelayOwnerCode), project.delayReason?.labelAr ?? "غير محدد", formatDate(project.lastUpdatedAt)])];
+    const names: Record<string, string> = { timeline: "project_timeline", delayed: "delayed_projects", client: "client_delay_projects", production: "production_delay_projects", engineer: "sales_engineer_projects", departments: "department_performance", handover: "handover_compliance" };
+    if (exportReport === "departments") {
+      downloadCsv(`${names[exportReport]}.csv`, [["الإدارة", "مدة SLA", "متوسط المدة الفعلية", "متوسط التأخير", "المشاريع المستلمة", "المكتملة", "المتأخرة", "On Time %", "الحالة"], ...(analytics?.departmentPerformance ?? []).map((row: any) => [row.department, row.targetDuration, row.averageActualDuration, row.averageDelay, row.projectsReceived, row.projectsCompleted, row.projectsDelayed, `${row.onTimePct}%`, row.status])]);
+    } else if (exportReport === "handover") {
+      downloadCsv(`${names[exportReport]}.csv`, [["من", "إلى", "عدد التسليمات", "On Time %", "متوسط تأخير التسليم", "عدد المتأخرة"], ...(analytics?.handoverCompliance ?? []).map((row: any) => [row.from, row.to, row.totalHandovers, `${row.onTimePct}%`, row.averageHandoverDelay, row.lateHandovers])]);
+    } else {
+      const scoped = exportReport === "delayed" ? projects.filter((project) => ["delayed", "critical_delay"].includes(project.projectStatus)) : exportReport === "client" ? projects.filter((project) => project.clientDelayDays > 0) : exportReport === "production" ? projects.filter((project) => project.mainDelayOwnerCode === "production") : projects;
+      downloadCsv(`${names[exportReport]}.csv`, projectRows(scoped));
+    }
+    toast.success("تم تجهيز ملف التقرير للتنزيل");
+  };
 
   return (
     <div dir="rtl" className="min-h-full bg-background px-4 py-5 md:px-6 lg:px-8">
@@ -229,6 +332,7 @@ export default function ProjectTimelineModule() {
               <Button variant="outline" onClick={() => { void refresh(); }} disabled={listQuery.isFetching || dashboardQuery.isFetching}>
                 <RefreshCw className={`ml-2 h-4 w-4 ${(listQuery.isFetching || dashboardQuery.isFetching) ? "animate-spin" : ""}`} />تحديث البيانات
               </Button>
+              {isManager ? <><Select value={exportReport} onValueChange={setExportReport}><SelectTrigger className="w-[190px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="timeline">تقرير كل المشاريع</SelectItem><SelectItem value="delayed">المشاريع المتأخرة</SelectItem><SelectItem value="client">تأخير العميل</SelectItem><SelectItem value="production">تأخير الإنتاج</SelectItem><SelectItem value="engineer">مشاريع مهندسي المبيعات</SelectItem><SelectItem value="departments">أداء الإدارات</SelectItem><SelectItem value="handover">امتثال التسليم</SelectItem></SelectContent></Select><Button variant="outline" onClick={exportCurrentReport}><Download className="ml-2 h-4 w-4" />Excel / CSV</Button><Button variant="outline" onClick={() => window.print()}><Printer className="ml-2 h-4 w-4" />طباعة / PDF</Button><Button variant="outline" onClick={() => setImportOpen(true)}><Upload className="ml-2 h-4 w-4" />استيراد Time Line</Button></> : null}
               {isManager ? <Button variant="outline" onClick={() => setStageSettingsOpen(true)}><Settings2 className="ml-2 h-4 w-4" />إعدادات المراحل وSLA</Button> : null}
               {isManager ? <Button onClick={() => syncMutation.mutate({ updatedBy })} disabled={syncMutation.isPending}>
                 {syncMutation.isPending ? <Loader2 className="ml-2 h-4 w-4 animate-spin" /> : <ArrowLeftRight className="ml-2 h-4 w-4" />}مزامنة الصفقات المغلقة
@@ -247,6 +351,13 @@ export default function ProjectTimelineModule() {
           <MetricCard title="تحديث مفقود" value={dashboard?.totals?.missingUpdates ?? 0} icon={TimerReset} tone="purple" />
           <MetricCard title="إجمالي أيام التأخير" value={dashboard?.totals?.totalDelayDays ?? 0} icon={CalendarClock} tone="red" subtitle={`شركة ${dashboard?.totals?.companyDelayDays ?? 0} · عميل ${dashboard?.totals?.clientDelayDays ?? 0} · خارجي ${dashboard?.totals?.externalDelayDays ?? 0}`} />
         </section>
+
+        {isManager && analytics ? <section className="grid gap-4 xl:grid-cols-3">
+          <Card className="xl:col-span-2 border-border/70"><CardHeader className="pb-3"><CardTitle className="text-base">أداء الإدارات · Department Performance</CardTitle></CardHeader><CardContent className="overflow-x-auto"><table className="w-full min-w-[700px] text-right text-xs"><thead className="border-b text-muted-foreground"><tr><th className="pb-2">الإدارة</th><th className="pb-2">المستهدف</th><th className="pb-2">الفعلي</th><th className="pb-2">متوسط التأخير</th><th className="pb-2">المستلمة</th><th className="pb-2">On Time</th><th className="pb-2">الحالة</th></tr></thead><tbody className="divide-y">{(analytics.departmentPerformance ?? []).slice(0, 6).map((row: any) => <tr key={row.department}><td className="py-3 font-medium">{row.department}</td><td>{row.targetDuration} يوم</td><td>{row.averageActualDuration} يوم</td><td className={row.averageDelay > 0 ? "font-bold text-amber-300" : "text-emerald-400"}>{row.averageDelay} يوم</td><td>{row.projectsReceived}</td><td>{row.onTimePct}%</td><td><Badge variant="outline" className={row.status === "within_sla" ? "border-emerald-500/30 text-emerald-300" : row.status === "critical" ? "border-rose-500/30 text-rose-300" : "border-amber-500/30 text-amber-300"}>{row.status === "within_sla" ? "ضمن SLA" : row.status === "critical" ? "حرج" : "فوق SLA"}</Badge></td></tr>)}</tbody></table></CardContent></Card>
+          <Card className="border-border/70"><CardHeader className="pb-3"><CardTitle className="text-base">امتثال التسليم · Handover</CardTitle></CardHeader><CardContent className="space-y-3">{(analytics.handoverCompliance ?? []).slice(0, 5).map((row: any) => <div key={`${row.from}-${row.to}`} className="rounded-xl border border-border/70 p-3"><div className="flex items-center justify-between gap-2"><span className="text-xs font-medium">{row.from} ← {row.to}</span><span className={row.onTimePct >= 80 ? "text-sm font-bold text-emerald-400" : "text-sm font-bold text-amber-300"}>{row.onTimePct}%</span></div><p className="mt-1 text-[11px] text-muted-foreground">{row.lateHandovers} تسليم متأخر · متوسط {row.averageHandoverDelay} يوم</p></div>)}{!(analytics.handoverCompliance ?? []).length ? <p className="py-5 text-center text-sm text-muted-foreground">تظهر البيانات بعد توثيق انتقالات الإدارات.</p> : null}</CardContent></Card>
+        </section> : null}
+
+        {isManager && (dashboard?.criticalProjects ?? []).length ? <Card className="border-rose-500/25 bg-rose-500/[0.035]"><CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base text-rose-200"><ShieldAlert className="h-4 w-4" />مشاريع حرجة تحتاج قراراً الآن</CardTitle></CardHeader><CardContent className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">{dashboard.criticalProjects.slice(0, 6).map((project: any) => <button key={project.id} className="rounded-xl border border-rose-500/15 bg-background/40 p-3 text-right transition hover:border-rose-400/50" onClick={() => setDetailId(project.id)}><div className="flex items-center justify-between gap-2"><span className="font-semibold">{project.clientName}</span><StatusBadge status={project.projectStatus} /></div><p className="mt-1 text-xs text-muted-foreground">{project.projectCode} · {project.currentDepartment}</p><div className="mt-2 flex items-center justify-between text-xs"><span className="text-rose-300">تأخير المرحلة: {project.currentStageDelayDays} يوم</span><span className="text-violet-300">{project.updateStatus === "missing" ? "تحديث مفقود" : "راجع المشروع"}</span></div></button>)}</CardContent></Card> : null}
 
         <Card className="border-border/70">
           <CardContent className="p-4 md:p-5">
@@ -328,6 +439,18 @@ export default function ProjectTimelineModule() {
         <DialogContent dir="rtl" className="max-h-[88vh] max-w-4xl overflow-y-auto">
           <DialogHeader className="text-right"><DialogTitle>إعدادات المراحل وSLA</DialogTitle><DialogDescription>تعديل المدد التخطيطية للمراحل. التغيير يطبق على الحركات الجديدة؛ ولا يعدّل سجل المشاريع التاريخي تلقائياً.</DialogDescription></DialogHeader>
           <div className="overflow-x-auto rounded-xl border"><table className="w-full min-w-[700px] text-right text-sm"><thead className="bg-muted/50 text-xs text-muted-foreground"><tr><th className="px-3 py-3">الترتيب</th><th className="px-3 py-3">المرحلة</th><th className="px-3 py-3">الإدارة</th><th className="px-3 py-3">SLA بالأيام</th><th className="px-3 py-3">اللون</th><th className="px-3 py-3"></th></tr></thead><tbody className="divide-y">{stages.map((stage) => <StageConfigRow key={stage.id} stage={stage} updatedBy={updatedBy} saving={stageConfigMutation.isPending} onSave={(payload) => stageConfigMutation.mutate(payload as any)} />)}</tbody></table></div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={importOpen} onOpenChange={setImportOpen}>
+        <DialogContent dir="rtl" className="max-h-[88vh] max-w-3xl overflow-y-auto">
+          <DialogHeader className="text-right"><DialogTitle>استيراد Time Line التاريخي</DialogTitle><DialogDescription>يتم الربط برقم المشروع أو رقم العقد فقط، ويُحتفَظ بالحركات القديمة دون حذف بيانات النظام الحالية.</DialogDescription></DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-xl border border-dashed border-primary/35 bg-primary/5 p-4"><Label htmlFor="timeline-file" className="mb-2 block">ملف Excel أو CSV</Label><Input id="timeline-file" type="file" accept=".xlsx,.xls,.csv" onChange={(event) => void parseTimelineFile(event.target.files?.[0])} /><p className="mt-2 text-xs text-muted-foreground">الأعمدة المدعومة: رقم المشروع أو رقم العقد، المرحلة، الإدارة، تواريخ الدخول/الخروج/التسليم، أيام التأخير، مسؤول وسبب التأخير.</p></div>
+            {importFileName ? <div className="rounded-lg bg-muted/50 p-3 text-sm">{importFileName} · {importRows.length} سجل صالح للمعاينة</div> : null}
+            {importRows.length ? <div className="overflow-x-auto rounded-xl border"><table className="w-full min-w-[700px] text-right text-xs"><thead className="bg-muted/50 text-muted-foreground"><tr><th className="p-2">المشروع</th><th className="p-2">العقد</th><th className="p-2">المرحلة</th><th className="p-2">الإدارة</th><th className="p-2">الدخول</th><th className="p-2">التأخير</th></tr></thead><tbody className="divide-y">{importRows.slice(0, 8).map((row, index) => <tr key={`${row.projectCode}-${index}`}><td className="p-2">{row.projectCode ?? "—"}</td><td className="p-2">{row.contractNumber ?? "—"}</td><td className="p-2">{row.stageKey}</td><td className="p-2">{row.department ?? "—"}</td><td className="p-2">{row.enteredAt ?? "—"}</td><td className="p-2">{row.delayDays ?? 0}</td></tr>)}</tbody></table></div> : null}
+            <Button className="w-full" disabled={!importRows.length || importMutation.isPending} onClick={() => importMutation.mutate({ rows: importRows })}>{importMutation.isPending ? <Loader2 className="ml-2 h-4 w-4 animate-spin" /> : <Upload className="ml-2 h-4 w-4" />}استيراد {importRows.length} حركة تاريخية</Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
