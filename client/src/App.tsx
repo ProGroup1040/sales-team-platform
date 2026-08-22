@@ -23,6 +23,7 @@ import ReportsModule from "./pages/ReportsModule";
 import SalesExecutionSystem from "./pages/SalesExecutionSystem";
 import UserManagement from "@/pages/UserManagement";
 import PermissionsPanel from "@/pages/PermissionsPanel";
+import ProjectTimelineModule from "@/pages/ProjectTimelineModule";
 
 function withLayout(Component: React.ComponentType) {
   return (
@@ -51,6 +52,7 @@ function Router() {
       <Route path={"/promotion-system"}>{withLayout(PromotionSystem)}</Route>
       <Route path={"/reports"}>{withLayout(ReportsModule)}</Route>
       <Route path={"/sales-execution"}>{withLayout(SalesExecutionSystem)}</Route>
+      <Route path={"/project-timeline"}>{withLayout(ProjectTimelineModule)}</Route>
       <Route path={"/user-management"}>{withLayout(UserManagement)}</Route>
       <Route path={"/permissions"}>{withLayout(PermissionsPanel)}</Route>
 

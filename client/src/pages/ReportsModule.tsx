@@ -16,7 +16,7 @@ import React, { useState, useMemo, useRef } from "react";
 import {
   TrendingUp, TrendingDown, Target, Users, Award, AlertTriangle,
   BarChart2, Calendar, ChevronDown, ChevronUp, Activity, Zap,
-  CheckCircle2, XCircle, Clock, Star, ArrowRight, Download,
+  CheckCircle2, XCircle, Clock, Star, ArrowRight, Download, GitBranch,
 } from "lucide-react";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -593,6 +593,26 @@ function QuarterlyReportTab() {
 }
 
 // ─── Main Component ──────────────────────────────────────────────────────────
+function ProjectTimelineReportSnapshot() {
+  const { data } = trpc.projectTimeline.dashboard.useQuery(undefined, { retry: false, refetchOnWindowFocus: false });
+  if (!data) return null;
+  const totals = (data as any).totals;
+  return (
+    <Card className="border-primary/20 bg-gradient-to-l from-primary/10 via-card to-card">
+      <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><GitBranch className="h-4 w-4 text-primary" />مؤشرات تنفيذ المشاريع</CardTitle></CardHeader>
+      <CardContent><div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+        {[
+          { label: "مشاريع نشطة", value: totals.activeProjects ?? 0, cls: "text-primary" },
+          { label: "في الموعد", value: totals.onTime ?? 0, cls: "text-emerald-500" },
+          { label: "متأخرة", value: totals.delayed ?? 0, cls: "text-amber-500" },
+          { label: "حرجة", value: totals.critical ?? 0, cls: "text-red-500" },
+          { label: "تحديثات مفقودة", value: totals.missingUpdates ?? 0, cls: "text-violet-500" },
+        ].map((metric) => <div key={metric.label} className="rounded-lg border bg-background/60 p-3 text-center"><p className={`text-xl font-bold ${metric.cls}`}>{metric.value}</p><p className="mt-1 text-xs text-muted-foreground">{metric.label}</p></div>)}
+      </div></CardContent>
+    </Card>
+  );
+}
+
 export default function ReportsModule() {
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto" dir="rtl">
@@ -612,6 +632,8 @@ export default function ReportsModule() {
           Output-Based KPI
         </Badge>
       </div>
+
+      <ProjectTimelineReportSnapshot />
 
       {/* Tabs */}
       <Tabs defaultValue="weekly">

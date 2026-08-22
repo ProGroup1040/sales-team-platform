@@ -30,6 +30,13 @@ import {
   appUsers, userPermissions, activityLogs,
   rolePermissions, sectionPermissions,
   dealTasks, DealTask, InsertDealTask,
+  projectStages, ProjectStage, InsertProjectStage,
+  projects, Project, InsertProject,
+  projectMovements, ProjectMovement, InsertProjectMovement,
+  projectDelayLedger, ProjectDelayLedgerEntry, InsertProjectDelayLedgerEntry,
+  projectUpdates, ProjectUpdate, InsertProjectUpdate,
+  projectAuditLogs, ProjectAuditLog, InsertProjectAuditLog,
+  projectDelayReasons, ProjectDelayReason, InsertProjectDelayReason,
   type AppUser, type InsertAppUser, type UserPermission, type RolePermission, type SectionPermission
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
@@ -717,6 +724,9 @@ export async function updateDealStage(id: number, stage: string, nextAction?: st
   if (notes !== undefined) updateData.notes = notes;
   if (stage === 'closed_won' || stage === 'closed_lost') updateData.closedAt = new Date();
   await db.update(deals).set(updateData).where(eq(deals.id, id));
+  if (stage === 'closed_won') {
+    await ensureProjectFromClosedDeal(id, 'system:deal_stage_update');
+  }
 }
 
 // ─── Monthly Sales ────────────────────────────────────────────────────────────
@@ -3265,6 +3275,7 @@ export async function updateDealFull(id: number, data: {
         // تحديث قيمة العقد إذا تغيرت قيمة الصفقة
         await db.update(collections).set({ contractAmount: data.value.toString() }).where(eq(collections.dealId, id));
       }
+      await ensureProjectFromClosedDeal(id, 'system:deal_closed_won');
     }
   }
   // إذا تغيرت القيمة فقط لصفقة closed_won موجودة بالفعل
@@ -12282,5 +12293,704 @@ export async function getTeamCompositeDiscountScore(year?: number, month?: numbe
     lostValue: Math.round(lostValue),
     realizedDiscount: Math.round(realizedDiscount),
     potentialDiscount: Math.round(potentialDiscount),
+  };
+}
+
+// ─── Project Timeline Control System ─────────────────────────────────────────
+// يجمع هذا القسم بين رحلة المشروع التشغيلية وسجل الحركات والتأخيرات بدون
+// تغيير منطق الصفقات الحالي. كل مشروع ينشأ من صفقة closed_won واحدة.
+
+export const PROJECT_DELAY_OWNERS = [
+  { code: "sales_engineer", labelAr: "مهندس المبيعات", category: "company" },
+  { code: "sales", labelAr: "إدارة المبيعات", category: "company" },
+  { code: "technical_office", labelAr: "المكتب الفني", category: "company" },
+  { code: "procurement", labelAr: "المشتريات", category: "company" },
+  { code: "production", labelAr: "الإنتاج", category: "company" },
+  { code: "installation", labelAr: "التركيبات", category: "company" },
+  { code: "quality", labelAr: "الجودة", category: "company" },
+  { code: "client", labelAr: "العميل", category: "client" },
+  { code: "supplier", labelAr: "المورد", category: "external" },
+  { code: "management", labelAr: "الإدارة العليا", category: "company" },
+  { code: "external", labelAr: "طرف خارجي", category: "external" },
+  { code: "force_majeure", labelAr: "قوة قاهرة", category: "external" },
+  { code: "other", labelAr: "أخرى", category: "company" },
+] as const;
+
+export const PROJECT_STATUS_META = {
+  on_time: { labelAr: "في الموعد", labelEn: "On Time", color: "emerald" },
+  at_risk: { labelAr: "معرّض للتأخير", labelEn: "At Risk", color: "amber" },
+  delayed: { labelAr: "متأخر", labelEn: "Delayed", color: "orange" },
+  critical_delay: { labelAr: "تأخير حرج", labelEn: "Critical Delay", color: "red" },
+  on_hold: { labelAr: "موقوف", labelEn: "On Hold", color: "slate" },
+  completed: { labelAr: "مكتمل", labelEn: "Completed", color: "blue" },
+  closed: { labelAr: "مغلق", labelEn: "Closed", color: "slate" },
+} as const;
+
+function projectDate(value: Date | string | null | undefined): Date {
+  if (!value) return new Date();
+  const date = value instanceof Date ? new Date(value) : new Date(`${value}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? new Date() : date;
+}
+
+function projectDateOnly(value: Date | string): string {
+  const date = projectDate(value);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function addProjectDays(value: Date | string, days: number): string {
+  const date = projectDate(value);
+  date.setDate(date.getDate() + Math.max(0, days));
+  return projectDateOnly(date);
+}
+
+function projectDayDiff(from: Date | string, to: Date | string = new Date()): number {
+  const start = projectDate(from);
+  const end = projectDate(to);
+  start.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+  return Math.max(0, Math.floor((end.getTime() - start.getTime()) / 86_400_000));
+}
+
+export function getProjectDelayCategory(ownerCode?: string | null): "company" | "client" | "external" {
+  const owner = PROJECT_DELAY_OWNERS.find((item) => item.code === ownerCode);
+  return (owner?.category ?? "company") as "company" | "client" | "external";
+}
+
+export function calculateRequiredProjectUpdateStatus(lastUpdatedAt: Date | null | undefined, now = new Date()): "up_to_date" | "missing" {
+  const reference = new Date(now);
+  reference.setHours(0, 0, 0, 0);
+  while (reference.getDay() !== 1 && reference.getDay() !== 3) {
+    reference.setDate(reference.getDate() - 1);
+  }
+  return lastUpdatedAt && new Date(lastUpdatedAt).getTime() >= reference.getTime() ? "up_to_date" : "missing";
+}
+
+export function calculateProjectStatus(input: {
+  isOnHold: boolean;
+  currentStageKey: string;
+  actualCompletionDate?: Date | string | null;
+  stageDelayDays: number;
+  stageSlaDays?: number | null;
+  daysUntilReference?: number | null;
+}): keyof typeof PROJECT_STATUS_META {
+  if (input.isOnHold) return "on_hold";
+  if (input.currentStageKey === "closed") return "closed";
+  if (input.actualCompletionDate) return "completed";
+  if (input.stageDelayDays >= Math.max(7, Math.floor((input.stageSlaDays ?? 1) * 0.70))) return "critical_delay";
+  if (input.stageDelayDays > 0) return "delayed";
+  if ((input.daysUntilReference ?? Number.POSITIVE_INFINITY) <= 1) return "at_risk";
+  return "on_time";
+}
+
+async function writeProjectAudit(input: {
+  projectId: number;
+  entityType: string;
+  entityId?: number;
+  action: string;
+  fieldName?: string;
+  oldValue?: unknown;
+  newValue?: unknown;
+  reason?: string;
+  performedBy: string;
+}) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(projectAuditLogs).values({
+    projectId: input.projectId,
+    entityType: input.entityType,
+    entityId: input.entityId,
+    action: input.action,
+    fieldName: input.fieldName,
+    oldValue: input.oldValue === undefined ? undefined : JSON.stringify(input.oldValue),
+    newValue: input.newValue === undefined ? undefined : JSON.stringify(input.newValue),
+    reason: input.reason,
+    performedBy: input.performedBy,
+  });
+}
+
+export async function getProjectTimelineConfig() {
+  const db = await getDb();
+  if (!db) return { stages: [], reasons: [], owners: PROJECT_DELAY_OWNERS };
+  const [stages, reasons] = await Promise.all([
+    db.select().from(projectStages).where(eq(projectStages.isActive, 1)).orderBy(projectStages.sequence),
+    db.select().from(projectDelayReasons).where(eq(projectDelayReasons.isActive, 1)).orderBy(projectDelayReasons.ownerCode, projectDelayReasons.labelAr),
+  ]);
+  return { stages, reasons, owners: PROJECT_DELAY_OWNERS };
+}
+
+export async function getProjectStages() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(projectStages).where(eq(projectStages.isActive, 1)).orderBy(projectStages.sequence);
+}
+
+export async function updateProjectStageConfig(id: number, data: Partial<{
+  nameAr: string; nameEn: string; department: string; sequence: number; defaultSlaDays: number;
+  defaultHandoverDays: number; color: string; isActive: number;
+}>, performedBy: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const [before] = await db.select().from(projectStages).where(eq(projectStages.id, id));
+  if (!before) throw new Error("Project stage not found");
+  await db.update(projectStages).set(data as any).where(eq(projectStages.id, id));
+  // مراحل الإعدادات ليس لديها Project محدد؛ نسجل التعديل في Audit الخاص بالإعدادات برقم 0.
+  await db.insert(projectAuditLogs).values({
+    projectId: 0,
+    entityType: "project_stage_config",
+    entityId: id,
+    action: "stage_config_updated",
+    oldValue: JSON.stringify(before),
+    newValue: JSON.stringify(data),
+    performedBy,
+  });
+  return { success: true };
+}
+
+export async function ensureProjectFromClosedDeal(dealId: number, performedBy = "system") {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const [existing] = await db.select().from(projects).where(eq(projects.dealId, dealId)).limit(1);
+  if (existing) return existing;
+
+  const [deal] = await db.select().from(deals).where(and(eq(deals.id, dealId), eq(deals.isDeleted, 0))).limit(1);
+  if (!deal || deal.stage !== "closed_won") throw new Error("لا يمكن إنشاء مشروع إلا من صفقة مغلقة بنجاح");
+  const stages = await getProjectStages();
+  const salesStage = stages.find((stage) => stage.stageKey === "sales") ?? stages[0];
+  if (!salesStage) throw new Error("لم يتم إعداد مراحل المشروع بعد");
+
+  const contractDate = projectDate(deal.closedAt ?? deal.createdAt);
+  const totalSlaDays = stages.filter((stage) => stage.stageKey !== "closed").reduce((sum, stage) => sum + stage.defaultSlaDays, 0);
+  const plannedCompletionDate = addProjectDays(contractDate, totalSlaDays);
+  const [created] = await db.insert(projects).values({
+    projectCode: `PRJ-${deal.id}`,
+    dealId: deal.id,
+    clientName: deal.clientName,
+    contractNumber: `CTR-${deal.id}`,
+    salesEngineerId: deal.engineerId,
+    contractValue: String(deal.netValue ?? deal.value ?? "0"),
+    contractDate: projectDateOnly(contractDate),
+    currentStageKey: salesStage.stageKey,
+    currentDepartment: salesStage.department,
+    currentResponsibleId: deal.engineerId,
+    currentStageEnteredAt: contractDate,
+    plannedProjectCompletionDate: plannedCompletionDate,
+    expectedProjectCompletionDate: plannedCompletionDate,
+    nextPlannedHandover: addProjectDays(contractDate, salesStage.defaultSlaDays),
+    lastUpdatedAt: contractDate,
+    lastUpdatedBy: performedBy,
+    updateStatus: "up_to_date",
+  } as any).$returningId();
+
+  const projectId = created.id;
+  const plannedStageDate = addProjectDays(contractDate, salesStage.defaultSlaDays);
+  const [movement] = await db.insert(projectMovements).values({
+    projectId,
+    stageKey: salesStage.stageKey,
+    stageName: salesStage.nameAr,
+    department: salesStage.department,
+    enteredAt: contractDate,
+    plannedCompletionDate: plannedStageDate,
+    plannedHandoverDate: plannedStageDate,
+    slaDays: salesStage.defaultSlaDays,
+    updatedBy: performedBy,
+  } as any).$returningId();
+
+  await writeProjectAudit({
+    projectId,
+    entityType: "project",
+    entityId: projectId,
+    action: "project_created_from_deal",
+    newValue: { dealId, stageKey: salesStage.stageKey, movementId: movement.id },
+    performedBy,
+  });
+  const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
+  return project;
+}
+
+export async function syncProjectsFromClosedDeals(performedBy = "system") {
+  const db = await getDb();
+  if (!db) return { created: 0, existing: 0, failed: 0 };
+  const wonDeals = await db.select().from(deals).where(and(eq(deals.stage, "closed_won"), eq(deals.isDeleted, 0)));
+  let created = 0;
+  let existing = 0;
+  let failed = 0;
+  for (const deal of wonDeals) {
+    try {
+      const [project] = await db.select().from(projects).where(eq(projects.dealId, deal.id)).limit(1);
+      if (project) { existing += 1; continue; }
+      await ensureProjectFromClosedDeal(deal.id, performedBy);
+      created += 1;
+    } catch (error) {
+      console.error("[Project Timeline] Failed to sync deal", deal.id, error);
+      failed += 1;
+    }
+  }
+  return { created, existing, failed };
+}
+
+export async function recalculateProjectRuntime(projectId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [project] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
+  if (!project) return null;
+
+  const [activeMovement] = await db.select().from(projectMovements)
+    .where(and(eq(projectMovements.projectId, projectId), eq(projectMovements.status, "active")))
+    .orderBy(desc(projectMovements.enteredAt)).limit(1);
+  const ledger = await db.select().from(projectDelayLedger).where(eq(projectDelayLedger.projectId, projectId));
+
+  const categoryTotals = ledger.reduce((totals, entry) => {
+    const days = Math.max(0, entry.delayDays ?? 0);
+    totals[entry.delayCategory] += days;
+    return totals;
+  }, { company: 0, client: 0, external: 0 } as Record<"company" | "client" | "external", number>);
+  const totalDelay = categoryTotals.company + categoryTotals.client + categoryTotals.external;
+  const ownerTotals = ledger.reduce((totals, entry) => {
+    totals[entry.ownerCode] = (totals[entry.ownerCode] ?? 0) + Math.max(0, entry.delayDays ?? 0);
+    return totals;
+  }, {} as Record<string, number>);
+  const mainOwner = Object.entries(ownerTotals).sort((a, b) => b[1] - a[1])[0]?.[0] ?? project.mainDelayOwnerCode;
+  const mainReason = ledger.slice().sort((a, b) => (b.delayDays ?? 0) - (a.delayDays ?? 0))[0]?.reasonCode ?? project.mainDelayReasonCode;
+
+  const now = new Date();
+  const currentStageDays = activeMovement ? projectDayDiff(activeMovement.enteredAt, now) : 0;
+  const stageDelay = activeMovement ? Math.max(0, projectDayDiff(activeMovement.plannedCompletionDate, now)) : 0;
+  const expectedCompletion = project.plannedProjectCompletionDate
+    ? addProjectDays(project.plannedProjectCompletionDate, totalDelay)
+    : project.expectedProjectCompletionDate;
+  const updateStatus = project.projectStatus === "closed" || project.projectStatus === "completed"
+    ? "not_required"
+    : calculateRequiredProjectUpdateStatus(project.lastUpdatedAt, now);
+  const plannedExit = activeMovement?.plannedCompletionDate ? projectDate(activeMovement.plannedCompletionDate) : null;
+  const agreedDelivery = project.agreedDeliveryDate ? projectDate(project.agreedDeliveryDate) : null;
+  const referenceDate = agreedDelivery && (!plannedExit || agreedDelivery < plannedExit) ? agreedDelivery : plannedExit;
+  const daysRemaining = referenceDate ? projectDayDiff(now, referenceDate) : Number.POSITIVE_INFINITY;
+  const status = calculateProjectStatus({
+    isOnHold: Boolean(project.isOnHold),
+    currentStageKey: project.currentStageKey,
+    actualCompletionDate: project.actualCompletionDate,
+    stageDelayDays: stageDelay,
+    stageSlaDays: activeMovement?.slaDays,
+    daysUntilReference: daysRemaining,
+  });
+
+  await db.update(projects).set({
+    projectStatus: status as any,
+    totalDelayDays: totalDelay,
+    companyDelayDays: categoryTotals.company,
+    clientDelayDays: categoryTotals.client,
+    externalDelayDays: categoryTotals.external,
+    currentStageDelayDays: stageDelay,
+    mainDelayOwnerCode: mainOwner,
+    mainDelayReasonCode: mainReason,
+    expectedProjectCompletionDate: expectedCompletion as any,
+    updateStatus: updateStatus as any,
+  }).where(eq(projects.id, projectId));
+
+  if (activeMovement) {
+    await db.update(projectMovements).set({
+      actualDurationDays: currentStageDays,
+      delayDays: stageDelay,
+      generatedDelayDays: stageDelay,
+    }).where(eq(projectMovements.id, activeMovement.id));
+  }
+  const [fresh] = await db.select().from(projects).where(eq(projects.id, projectId));
+  return fresh ?? null;
+}
+
+export async function addProjectDelay(input: {
+  projectId: number; movementId?: number; delayDate?: string; delayDays: number;
+  ownerCode: string; responsibleId?: number; reasonCode: string; notes?: string;
+  isHoldPeriod?: boolean; createdBy: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  if (!Number.isInteger(input.delayDays) || input.delayDays <= 0) throw new Error("عدد أيام التأخير يجب أن يكون أكبر من صفر");
+  if (input.reasonCode === "other" && !input.notes?.trim()) throw new Error("الملاحظات إلزامية عند اختيار سبب آخر");
+  const category = getProjectDelayCategory(input.ownerCode);
+  const [entry] = await db.insert(projectDelayLedger).values({
+    projectId: input.projectId,
+    movementId: input.movementId,
+    delayDate: input.delayDate ?? projectDateOnly(new Date()),
+    delayDays: input.delayDays,
+    delayCategory: category,
+    ownerCode: input.ownerCode,
+    responsibleId: input.responsibleId,
+    reasonCode: input.reasonCode,
+    notes: input.notes,
+    isHoldPeriod: input.isHoldPeriod ? 1 : 0,
+    createdBy: input.createdBy,
+  } as any).$returningId();
+  await writeProjectAudit({
+    projectId: input.projectId,
+    entityType: "delay_ledger",
+    entityId: entry.id,
+    action: "delay_recorded",
+    newValue: { ...input, category },
+    performedBy: input.createdBy,
+  });
+  await recalculateProjectRuntime(input.projectId);
+  return entry;
+}
+
+export async function transitionProjectStage(input: {
+  projectId: number; nextStageKey: string; responsibleId?: number; notes?: string;
+  delayOwnerCode?: string; delayReasonCode?: string; delayNotes?: string; updatedBy: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const [project] = await db.select().from(projects).where(eq(projects.id, input.projectId)).limit(1);
+  if (!project) throw new Error("المشروع غير موجود");
+  if (project.isOnHold) throw new Error("لا يمكن نقل مشروع موقوف قبل استئنافه");
+  if (project.currentStageKey === input.nextStageKey) throw new Error("المشروع موجود بالفعل في هذه المرحلة");
+  const stages = await getProjectStages();
+  const nextStage = stages.find((stage) => stage.stageKey === input.nextStageKey);
+  if (!nextStage) throw new Error("المرحلة المطلوبة غير متاحة");
+  const currentStage = stages.find((stage) => stage.stageKey === project.currentStageKey);
+  if (currentStage && nextStage.sequence < currentStage.sequence) throw new Error("لا يمكن نقل المشروع إلى مرحلة سابقة من سجل المتابعة");
+  const now = new Date();
+  const [currentMovement] = await db.select().from(projectMovements)
+    .where(and(eq(projectMovements.projectId, project.id), eq(projectMovements.status, "active")))
+    .orderBy(desc(projectMovements.enteredAt)).limit(1);
+
+  let generatedDelay = 0;
+  if (currentMovement) {
+    generatedDelay = Math.max(0, projectDayDiff(currentMovement.plannedCompletionDate, now));
+    if (generatedDelay > 0 && (!input.delayOwnerCode || !input.delayReasonCode)) {
+      throw new Error("المشروع تجاوز SLA؛ يجب تحديد مسؤول وسبب التأخير قبل توثيق الانتقال");
+    }
+    if (generatedDelay > 0 && input.delayReasonCode === "other" && !input.delayNotes?.trim()) {
+      throw new Error("ملاحظات التأخير إلزامية عند اختيار سبب آخر");
+    }
+    const actualDuration = projectDayDiff(currentMovement.enteredAt, now);
+    await db.update(projectMovements).set({
+      status: "completed",
+      actualCompletionDate: now,
+      actualHandoverDate: now,
+      actualDurationDays: actualDuration,
+      delayDays: generatedDelay,
+      generatedDelayDays: generatedDelay,
+      delayOwnerCode: input.delayOwnerCode,
+      delayReasonCode: input.delayReasonCode,
+      notes: input.notes,
+      updatedBy: input.updatedBy,
+    }).where(eq(projectMovements.id, currentMovement.id));
+    if (generatedDelay > 0) {
+      await addProjectDelay({
+        projectId: project.id,
+        movementId: currentMovement.id,
+        delayDate: projectDateOnly(now),
+        delayDays: generatedDelay,
+        ownerCode: input.delayOwnerCode!,
+        reasonCode: input.delayReasonCode!,
+        notes: input.delayNotes ?? input.notes,
+        createdBy: input.updatedBy,
+      });
+    }
+  }
+
+  const nextPlanned = addProjectDays(now, nextStage.defaultSlaDays);
+  const [movement] = await db.insert(projectMovements).values({
+    projectId: project.id,
+    stageKey: nextStage.stageKey,
+    stageName: nextStage.nameAr,
+    department: nextStage.department,
+    previousStageKey: project.currentStageKey,
+    previousDepartment: project.currentDepartment,
+    enteredAt: now,
+    plannedCompletionDate: nextPlanned,
+    plannedHandoverDate: nextPlanned,
+    actualReceiptDate: now,
+    slaDays: nextStage.defaultSlaDays,
+    inheritedDelayDays: project.totalDelayDays,
+    notes: input.notes,
+    updatedBy: input.updatedBy,
+    status: nextStage.stageKey === "closed" ? "completed" : "active",
+  } as any).$returningId();
+
+  const isClosed = nextStage.stageKey === "closed";
+  await db.update(projects).set({
+    currentStageKey: nextStage.stageKey,
+    currentDepartment: nextStage.department,
+    currentResponsibleId: input.responsibleId,
+    currentStageEnteredAt: now,
+    inheritedDelayDays: project.totalDelayDays,
+    nextPlannedHandover: isClosed ? null : nextPlanned,
+    actualCompletionDate: isClosed ? projectDateOnly(now) : project.actualCompletionDate,
+    projectStatus: isClosed ? "closed" : project.projectStatus,
+    lastUpdatedAt: now,
+    lastUpdatedBy: input.updatedBy,
+    updateStatus: isClosed ? "not_required" : "up_to_date",
+  } as any).where(eq(projects.id, project.id));
+  await writeProjectAudit({
+    projectId: project.id,
+    entityType: "project_movement",
+    entityId: movement.id,
+    action: "stage_transition",
+    fieldName: "currentStageKey",
+    oldValue: project.currentStageKey,
+    newValue: nextStage.stageKey,
+    reason: input.notes,
+    performedBy: input.updatedBy,
+  });
+  return recalculateProjectRuntime(project.id);
+}
+
+export async function updateProjectReview(input: {
+  projectId: number; updateType?: "status_update" | "monday_review" | "wednesday_review";
+  currentStatus?: string; nextAction?: string; expectedCompletionDate?: string; hasBlocker?: boolean;
+  delayOwnerCode?: string; delayReasonCode?: string; notes?: string; updatedBy: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const [project] = await db.select().from(projects).where(eq(projects.id, input.projectId)).limit(1);
+  if (!project) throw new Error("المشروع غير موجود");
+  const [movement] = await db.select().from(projectMovements)
+    .where(and(eq(projectMovements.projectId, input.projectId), eq(projectMovements.status, "active")))
+    .orderBy(desc(projectMovements.enteredAt)).limit(1);
+  const now = new Date();
+  const [update] = await db.insert(projectUpdates).values({
+    projectId: input.projectId,
+    movementId: movement?.id,
+    updateType: input.updateType ?? "status_update",
+    currentStatus: input.currentStatus,
+    currentStageKey: project.currentStageKey,
+    nextAction: input.nextAction,
+    expectedCompletionDate: input.expectedCompletionDate,
+    hasBlocker: input.hasBlocker ? 1 : 0,
+    delayOwnerCode: input.delayOwnerCode,
+    delayReasonCode: input.delayReasonCode,
+    notes: input.notes,
+    updatedBy: input.updatedBy,
+  } as any).$returningId();
+  await db.update(projects).set({
+    nextRequiredAction: input.nextAction,
+    expectedProjectCompletionDate: input.expectedCompletionDate ?? project.expectedProjectCompletionDate,
+    mainDelayOwnerCode: input.delayOwnerCode ?? project.mainDelayOwnerCode,
+    mainDelayReasonCode: input.delayReasonCode ?? project.mainDelayReasonCode,
+    lastUpdatedAt: now,
+    lastUpdatedBy: input.updatedBy,
+    updateStatus: "up_to_date",
+  } as any).where(eq(projects.id, input.projectId));
+  await writeProjectAudit({
+    projectId: input.projectId,
+    entityType: "project_update",
+    entityId: update.id,
+    action: "project_review_created",
+    newValue: input,
+    performedBy: input.updatedBy,
+  });
+  return recalculateProjectRuntime(input.projectId);
+}
+
+export async function setProjectHold(input: {
+  projectId: number; isOnHold: boolean; holdOwnerCode?: string; holdReasonCode?: string;
+  expectedResumeDate?: string; notes?: string; updatedBy: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const [project] = await db.select().from(projects).where(eq(projects.id, input.projectId)).limit(1);
+  if (!project) throw new Error("المشروع غير موجود");
+  const [movement] = await db.select().from(projectMovements)
+    .where(and(eq(projectMovements.projectId, input.projectId), eq(projectMovements.status, input.isOnHold ? "active" : "on_hold")))
+    .orderBy(desc(projectMovements.enteredAt)).limit(1);
+  const now = new Date();
+  if (input.isOnHold) {
+    if (!input.holdOwnerCode || !input.holdReasonCode) throw new Error("مسؤول وسبب الإيقاف إلزاميان");
+    if (input.holdReasonCode === "other" && !input.notes?.trim()) throw new Error("الملاحظات إلزامية عند اختيار سبب آخر");
+    await db.update(projects).set({
+      isOnHold: 1,
+      projectStatus: "on_hold",
+      holdStartedAt: now,
+      holdExpectedResumeDate: input.expectedResumeDate,
+      holdOwnerCode: input.holdOwnerCode,
+      holdReasonCode: input.holdReasonCode,
+      holdNotes: input.notes,
+      lastUpdatedAt: now,
+      lastUpdatedBy: input.updatedBy,
+      updateStatus: "up_to_date",
+    } as any).where(eq(projects.id, input.projectId));
+    if (movement) await db.update(projectMovements).set({ status: "on_hold", updatedBy: input.updatedBy }).where(eq(projectMovements.id, movement.id));
+  } else {
+    const holdDays = project.holdStartedAt ? Math.max(1, projectDayDiff(project.holdStartedAt, now)) : 0;
+    if (holdDays > 0 && project.holdOwnerCode && project.holdReasonCode) {
+      await addProjectDelay({
+        projectId: input.projectId,
+        movementId: movement?.id,
+        delayDate: projectDateOnly(now),
+        delayDays: holdDays,
+        ownerCode: project.holdOwnerCode,
+        reasonCode: project.holdReasonCode,
+        notes: project.holdNotes ?? "فترة إيقاف للمشروع",
+        isHoldPeriod: true,
+        createdBy: input.updatedBy,
+      });
+    }
+    await db.update(projects).set({
+      isOnHold: 0,
+      holdStartedAt: null,
+      holdExpectedResumeDate: null,
+      lastUpdatedAt: now,
+      lastUpdatedBy: input.updatedBy,
+      updateStatus: "up_to_date",
+    } as any).where(eq(projects.id, input.projectId));
+    if (movement) await db.update(projectMovements).set({ status: "active", updatedBy: input.updatedBy }).where(eq(projectMovements.id, movement.id));
+  }
+  await db.insert(projectUpdates).values({
+    projectId: input.projectId,
+    movementId: movement?.id,
+    updateType: input.isOnHold ? "hold" : "resume",
+    currentStageKey: project.currentStageKey,
+    nextAction: input.isOnHold ? "إيقاف مؤقت" : "استئناف المشروع",
+    delayOwnerCode: input.isOnHold ? input.holdOwnerCode : project.holdOwnerCode,
+    delayReasonCode: input.isOnHold ? input.holdReasonCode : project.holdReasonCode,
+    notes: input.notes,
+    updatedBy: input.updatedBy,
+  } as any);
+  await writeProjectAudit({
+    projectId: input.projectId,
+    entityType: "project",
+    entityId: input.projectId,
+    action: input.isOnHold ? "project_held" : "project_resumed",
+    newValue: input,
+    performedBy: input.updatedBy,
+  });
+  return recalculateProjectRuntime(input.projectId);
+}
+
+export async function getProjectTimelineDetail(projectId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  await recalculateProjectRuntime(projectId);
+  const [project] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
+  if (!project) return null;
+  const [movements, delayLedger, updates, auditTrail, stages, reasons, allEngineers] = await Promise.all([
+    db.select().from(projectMovements).where(eq(projectMovements.projectId, projectId)).orderBy(projectMovements.enteredAt),
+    db.select().from(projectDelayLedger).where(eq(projectDelayLedger.projectId, projectId)).orderBy(desc(projectDelayLedger.createdAt)),
+    db.select().from(projectUpdates).where(eq(projectUpdates.projectId, projectId)).orderBy(desc(projectUpdates.createdAt)),
+    db.select().from(projectAuditLogs).where(eq(projectAuditLogs.projectId, projectId)).orderBy(desc(projectAuditLogs.createdAt)),
+    getProjectStages(),
+    db.select().from(projectDelayReasons).where(eq(projectDelayReasons.isActive, 1)),
+    getEngineers(),
+  ]);
+  const engineerById = new Map(allEngineers.map((engineer) => [engineer.id, engineer]));
+  const reasonByCode = new Map(reasons.map((reason) => [reason.code, reason]));
+  const delayBreakdown = delayLedger.reduce((result, entry) => {
+    result[entry.ownerCode] = (result[entry.ownerCode] ?? 0) + entry.delayDays;
+    return result;
+  }, {} as Record<string, number>);
+  return {
+    project,
+    salesEngineer: engineerById.get(project.salesEngineerId) ?? null,
+    currentResponsible: project.currentResponsibleId ? engineerById.get(project.currentResponsibleId) ?? null : null,
+    movements: movements.map((movement) => ({
+      ...movement,
+      delayOwner: movement.delayOwnerCode ? PROJECT_DELAY_OWNERS.find((owner) => owner.code === movement.delayOwnerCode) ?? null : null,
+      delayReason: movement.delayReasonCode ? reasonByCode.get(movement.delayReasonCode) ?? null : null,
+      responsible: movement.delayResponsibleId ? engineerById.get(movement.delayResponsibleId) ?? null : null,
+    })),
+    delayLedger: delayLedger.map((entry) => ({
+      ...entry,
+      owner: PROJECT_DELAY_OWNERS.find((owner) => owner.code === entry.ownerCode) ?? null,
+      reason: reasonByCode.get(entry.reasonCode) ?? null,
+      responsible: entry.responsibleId ? engineerById.get(entry.responsibleId) ?? null : null,
+    })),
+    updates,
+    auditTrail,
+    stages,
+    delayBreakdown,
+  };
+}
+
+export async function getProjectTimelineList(filters: {
+  search?: string; engineerId?: number; department?: string; stageKey?: string; status?: string;
+  delayOwnerCode?: string; delayReasonCode?: string; contractFrom?: string; contractTo?: string;
+  deliveryFrom?: string; deliveryTo?: string; onHoldOnly?: boolean; delayedOnly?: boolean;
+  criticalOnly?: boolean; missingUpdateOnly?: boolean;
+} = {}) {
+  const db = await getDb();
+  if (!db) return [];
+  const refreshed = await db.select().from(projects).orderBy(desc(projects.updatedAt));
+  const [allEngineers, activeMovements, reasons] = await Promise.all([
+    getEngineers(),
+    db.select().from(projectMovements).where(eq(projectMovements.status, "active")),
+    db.select().from(projectDelayReasons).where(eq(projectDelayReasons.isActive, 1)),
+  ]);
+  const engineerById = new Map(allEngineers.map((engineer) => [engineer.id, engineer]));
+  const movementByProject = new Map(activeMovements.map((movement) => [movement.projectId, movement]));
+  const reasonByCode = new Map(reasons.map((reason) => [reason.code, reason]));
+
+  return refreshed.filter((project) => {
+    const query = filters.search?.trim().toLowerCase();
+    const matchesSearch = !query || [project.projectCode, project.clientName, project.contractNumber ?? ""].some((value) => value.toLowerCase().includes(query));
+    const matchesEngineer = !filters.engineerId || project.salesEngineerId === filters.engineerId;
+    const matchesDepartment = !filters.department || project.currentDepartment === filters.department;
+    const matchesStage = !filters.stageKey || project.currentStageKey === filters.stageKey;
+    const matchesStatus = !filters.status || project.projectStatus === filters.status;
+    const matchesOwner = !filters.delayOwnerCode || project.mainDelayOwnerCode === filters.delayOwnerCode;
+    const matchesReason = !filters.delayReasonCode || project.mainDelayReasonCode === filters.delayReasonCode;
+    const matchesHold = !filters.onHoldOnly || Boolean(project.isOnHold);
+    const matchesDelayed = !filters.delayedOnly || ["delayed", "critical_delay"].includes(project.projectStatus);
+    const matchesCritical = !filters.criticalOnly || project.projectStatus === "critical_delay";
+    const matchesMissing = !filters.missingUpdateOnly || project.updateStatus === "missing";
+    const contract = projectDateOnly(project.contractDate);
+    const delivery = project.agreedDeliveryDate ? projectDateOnly(project.agreedDeliveryDate) : "";
+    const matchesContractDate = (!filters.contractFrom || contract >= filters.contractFrom) && (!filters.contractTo || contract <= filters.contractTo);
+    const matchesDeliveryDate = (!filters.deliveryFrom || (delivery && delivery >= filters.deliveryFrom)) && (!filters.deliveryTo || (delivery && delivery <= filters.deliveryTo));
+    return matchesSearch && matchesEngineer && matchesDepartment && matchesStage && matchesStatus && matchesOwner && matchesReason && matchesHold && matchesDelayed && matchesCritical && matchesMissing && matchesContractDate && matchesDeliveryDate;
+  }).map((project) => {
+    const movement = movementByProject.get(project.id);
+    return {
+      ...project,
+      salesEngineer: engineerById.get(project.salesEngineerId) ?? null,
+      currentResponsible: project.currentResponsibleId ? engineerById.get(project.currentResponsibleId) ?? null : null,
+      currentMovement: movement ?? null,
+      daysInCurrentStage: movement ? projectDayDiff(movement.enteredAt) : 0,
+      delayOwner: project.mainDelayOwnerCode ? PROJECT_DELAY_OWNERS.find((owner) => owner.code === project.mainDelayOwnerCode) ?? null : null,
+      delayReason: project.mainDelayReasonCode ? reasonByCode.get(project.mainDelayReasonCode) ?? null : null,
+    };
+  });
+}
+
+export async function getProjectTimelineDashboard(filters: Parameters<typeof getProjectTimelineList>[0] = {}) {
+  const projectsList = await getProjectTimelineList(filters);
+  const total = projectsList.length;
+  const statusCounts = projectsList.reduce((result, project) => {
+    result[project.projectStatus] = (result[project.projectStatus] ?? 0) + 1;
+    return result;
+  }, {} as Record<string, number>);
+  const delayByDepartment = projectsList.reduce((result, project) => {
+    result[project.currentDepartment] = (result[project.currentDepartment] ?? 0) + project.currentStageDelayDays;
+    return result;
+  }, {} as Record<string, number>);
+  const delayByOwner = projectsList.reduce((result, project) => {
+    const key = project.mainDelayOwnerCode ?? "unassigned";
+    result[key] = (result[key] ?? 0) + project.totalDelayDays;
+    return result;
+  }, {} as Record<string, number>);
+  const delayByReason = projectsList.reduce((result, project) => {
+    const key = project.mainDelayReasonCode ?? "unassigned";
+    result[key] = (result[key] ?? 0) + project.totalDelayDays;
+    return result;
+  }, {} as Record<string, number>);
+  const totalDelayDays = projectsList.reduce((sum, project) => sum + project.totalDelayDays, 0);
+  const companyDelayDays = projectsList.reduce((sum, project) => sum + project.companyDelayDays, 0);
+  const clientDelayDays = projectsList.reduce((sum, project) => sum + project.clientDelayDays, 0);
+  const externalDelayDays = projectsList.reduce((sum, project) => sum + project.externalDelayDays, 0);
+  const missingUpdates = projectsList.filter((project) => project.updateStatus === "missing").length;
+  const activeProjects = projectsList.filter((project) => !["closed", "completed"].includes(project.projectStatus)).length;
+  return {
+    totals: {
+      total, activeProjects, onTime: statusCounts.on_time ?? 0, atRisk: statusCounts.at_risk ?? 0,
+      delayed: statusCounts.delayed ?? 0, critical: statusCounts.critical_delay ?? 0,
+      onHold: statusCounts.on_hold ?? 0, missingUpdates, totalDelayDays, companyDelayDays,
+      clientDelayDays, externalDelayDays, averageProjectDelay: total ? Math.round((totalDelayDays / total) * 10) / 10 : 0,
+    },
+    delayByDepartment, delayByOwner, delayByReason,
+    criticalProjects: projectsList.filter((project) => project.projectStatus === "critical_delay" || project.updateStatus === "missing")
+      .sort((a, b) => (b.totalDelayDays - a.totalDelayDays) || (b.currentStageDelayDays - a.currentStageDelayDays)).slice(0, 10),
   };
 }

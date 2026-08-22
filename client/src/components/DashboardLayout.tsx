@@ -15,7 +15,7 @@ import {
 import { useIsMobile } from "@/hooks/useMobile";
 import { useLocalAuth } from "@/hooks/useLocalAuth";
 import { useRoleAccess } from "@/hooks/useRoleAccess";
-import { LayoutDashboard, PanelLeft, BarChart2, CheckSquare, UserPlus, MapPin, Handshake, TrendingUp, Award, DollarSign, Target, LogOut, LogIn, Crown, Zap, FileBarChart, Users, Shield } from "lucide-react";
+import { LayoutDashboard, PanelLeft, BarChart2, CheckSquare, UserPlus, MapPin, Handshake, TrendingUp, Award, DollarSign, Target, LogOut, LogIn, Crown, Zap, FileBarChart, Users, Shield, GitBranch } from "lucide-react";
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
@@ -34,6 +34,7 @@ const menuGroupsConfig = [
       { icon: UserPlus, label: 'العملاء المحتملون', path: '/leads', accessKey: 'canSeeLeads' as const },
       { icon: MapPin, label: 'المعاينات', path: '/visits', accessKey: 'canSeeVisits' as const },
       { icon: Handshake, label: 'الإغلاق والتفاوض', path: '/closing', accessKey: 'canSeeClosing' as const },
+      { icon: GitBranch, label: 'تايم لاين المشاريع', path: '/project-timeline', accessKey: 'canSeeProjectTimeline' as const },
     ]
   },
   {

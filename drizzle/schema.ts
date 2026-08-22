@@ -1096,3 +1096,167 @@ export const dealTasks = mysqlTable("deal_tasks", {
 });
 export type DealTask = typeof dealTasks.$inferSelect;
 export type InsertDealTask = typeof dealTasks.$inferInsert;
+
+// ─── Project Timeline Control System ────────────────────────────────────────
+// نظام مستقل من حيث التتبع، لكنه مرتبط مباشرة بصفقات closed_won عبر dealId.
+// لا يُحذف تاريخ المراحل أو التأخيرات؛ كل انتقال وتحديث يسجل كسجل دائم.
+
+export const projectStages = mysqlTable("project_stages", {
+  id: int("id").autoincrement().primaryKey(),
+  stageKey: varchar("stageKey", { length: 64 }).notNull().unique(),
+  nameAr: varchar("nameAr", { length: 160 }).notNull(),
+  nameEn: varchar("nameEn", { length: 160 }),
+  department: varchar("department", { length: 120 }).notNull(),
+  sequence: int("sequence").notNull(),
+  defaultSlaDays: int("defaultSlaDays").notNull().default(3),
+  defaultHandoverDays: int("defaultHandoverDays").notNull().default(0),
+  color: varchar("color", { length: 32 }).default("#3B82F6"),
+  isActive: int("isActive").notNull().default(1),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type ProjectStage = typeof projectStages.$inferSelect;
+export type InsertProjectStage = typeof projectStages.$inferInsert;
+
+export const projects = mysqlTable("projects", {
+  id: int("id").autoincrement().primaryKey(),
+  projectCode: varchar("projectCode", { length: 64 }).notNull().unique(),
+  dealId: int("dealId").notNull().unique(),
+  clientName: varchar("clientName", { length: 255 }).notNull(),
+  contractNumber: varchar("contractNumber", { length: 120 }),
+  salesEngineerId: int("salesEngineerId").notNull(),
+  contractValue: decimal("contractValue", { precision: 14, scale: 2 }).notNull(),
+  contractDate: date("contractDate").notNull(),
+  agreedDeliveryDate: date("agreedDeliveryDate"),
+  currentStageKey: varchar("currentStageKey", { length: 64 }).notNull().default("sales"),
+  currentDepartment: varchar("currentDepartment", { length: 120 }).notNull().default("إدارة المبيعات"),
+  currentResponsibleId: int("currentResponsibleId"),
+  currentStageEnteredAt: timestamp("currentStageEnteredAt").defaultNow().notNull(),
+  plannedProjectCompletionDate: date("plannedProjectCompletionDate"),
+  expectedProjectCompletionDate: date("expectedProjectCompletionDate"),
+  actualCompletionDate: date("actualCompletionDate"),
+  projectStatus: mysqlEnum("projectStatus", ["on_time", "at_risk", "delayed", "critical_delay", "on_hold", "completed", "closed"]).notNull().default("on_time"),
+  totalDelayDays: int("totalDelayDays").notNull().default(0),
+  companyDelayDays: int("companyDelayDays").notNull().default(0),
+  clientDelayDays: int("clientDelayDays").notNull().default(0),
+  externalDelayDays: int("externalDelayDays").notNull().default(0),
+  currentStageDelayDays: int("currentStageDelayDays").notNull().default(0),
+  inheritedDelayDays: int("inheritedDelayDays").notNull().default(0),
+  mainDelayOwnerCode: varchar("mainDelayOwnerCode", { length: 64 }),
+  mainDelayReasonCode: varchar("mainDelayReasonCode", { length: 96 }),
+  mainDelayResponsibleId: int("mainDelayResponsibleId"),
+  nextRequiredAction: text("nextRequiredAction"),
+  nextPlannedHandover: date("nextPlannedHandover"),
+  lastUpdatedAt: timestamp("lastUpdatedAt"),
+  lastUpdatedBy: varchar("lastUpdatedBy", { length: 120 }),
+  updateStatus: mysqlEnum("updateStatus", ["up_to_date", "missing", "not_required"]).notNull().default("missing"),
+  isOnHold: int("isOnHold").notNull().default(0),
+  holdStartedAt: timestamp("holdStartedAt"),
+  holdExpectedResumeDate: date("holdExpectedResumeDate"),
+  holdOwnerCode: varchar("holdOwnerCode", { length: 64 }),
+  holdReasonCode: varchar("holdReasonCode", { length: 96 }),
+  holdNotes: text("holdNotes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type Project = typeof projects.$inferSelect;
+export type InsertProject = typeof projects.$inferInsert;
+
+export const projectMovements = mysqlTable("project_movements", {
+  id: int("id").autoincrement().primaryKey(),
+  projectId: int("projectId").notNull(),
+  stageKey: varchar("stageKey", { length: 64 }).notNull(),
+  stageName: varchar("stageName", { length: 160 }).notNull(),
+  department: varchar("department", { length: 120 }).notNull(),
+  previousStageKey: varchar("previousStageKey", { length: 64 }),
+  previousDepartment: varchar("previousDepartment", { length: 120 }),
+  enteredAt: timestamp("enteredAt").defaultNow().notNull(),
+  plannedCompletionDate: date("plannedCompletionDate").notNull(),
+  actualCompletionDate: timestamp("actualCompletionDate"),
+  plannedHandoverDate: date("plannedHandoverDate"),
+  actualHandoverDate: timestamp("actualHandoverDate"),
+  actualReceiptDate: timestamp("actualReceiptDate"),
+  slaDays: int("slaDays").notNull(),
+  actualDurationDays: int("actualDurationDays").notNull().default(0),
+  delayDays: int("delayDays").notNull().default(0),
+  inheritedDelayDays: int("inheritedDelayDays").notNull().default(0),
+  generatedDelayDays: int("generatedDelayDays").notNull().default(0),
+  delayOwnerCode: varchar("delayOwnerCode", { length: 64 }),
+  delayResponsibleId: int("delayResponsibleId"),
+  delayReasonCode: varchar("delayReasonCode", { length: 96 }),
+  notes: text("notes"),
+  status: mysqlEnum("status", ["active", "completed", "on_hold"]).notNull().default("active"),
+  updatedBy: varchar("updatedBy", { length: 120 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type ProjectMovement = typeof projectMovements.$inferSelect;
+export type InsertProjectMovement = typeof projectMovements.$inferInsert;
+
+export const projectDelayLedger = mysqlTable("project_delay_ledger", {
+  id: int("id").autoincrement().primaryKey(),
+  projectId: int("projectId").notNull(),
+  movementId: int("movementId"),
+  delayDate: date("delayDate").notNull(),
+  delayDays: int("delayDays").notNull(),
+  delayCategory: mysqlEnum("delayCategory", ["company", "client", "external"]).notNull(),
+  ownerCode: varchar("ownerCode", { length: 64 }).notNull(),
+  responsibleId: int("responsibleId"),
+  reasonCode: varchar("reasonCode", { length: 96 }).notNull(),
+  notes: text("notes"),
+  isHoldPeriod: int("isHoldPeriod").notNull().default(0),
+  createdBy: varchar("createdBy", { length: 120 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type ProjectDelayLedgerEntry = typeof projectDelayLedger.$inferSelect;
+export type InsertProjectDelayLedgerEntry = typeof projectDelayLedger.$inferInsert;
+
+export const projectUpdates = mysqlTable("project_updates", {
+  id: int("id").autoincrement().primaryKey(),
+  projectId: int("projectId").notNull(),
+  movementId: int("movementId"),
+  updateType: mysqlEnum("updateType", ["status_update", "monday_review", "wednesday_review", "handover", "hold", "resume"]).notNull().default("status_update"),
+  currentStatus: varchar("currentStatus", { length: 120 }),
+  currentStageKey: varchar("currentStageKey", { length: 64 }),
+  nextAction: text("nextAction"),
+  expectedCompletionDate: date("expectedCompletionDate"),
+  hasBlocker: int("hasBlocker").notNull().default(0),
+  delayOwnerCode: varchar("delayOwnerCode", { length: 64 }),
+  delayReasonCode: varchar("delayReasonCode", { length: 96 }),
+  notes: text("notes"),
+  updatedBy: varchar("updatedBy", { length: 120 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type ProjectUpdate = typeof projectUpdates.$inferSelect;
+export type InsertProjectUpdate = typeof projectUpdates.$inferInsert;
+
+export const projectAuditLogs = mysqlTable("project_audit_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  projectId: int("projectId").notNull(),
+  entityType: varchar("entityType", { length: 64 }).notNull(),
+  entityId: int("entityId"),
+  action: varchar("action", { length: 64 }).notNull(),
+  fieldName: varchar("fieldName", { length: 128 }),
+  oldValue: text("oldValue"),
+  newValue: text("newValue"),
+  reason: text("reason"),
+  performedBy: varchar("performedBy", { length: 120 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type ProjectAuditLog = typeof projectAuditLogs.$inferSelect;
+export type InsertProjectAuditLog = typeof projectAuditLogs.$inferInsert;
+
+export const projectDelayReasons = mysqlTable("project_delay_reasons", {
+  id: int("id").autoincrement().primaryKey(),
+  code: varchar("code", { length: 96 }).notNull().unique(),
+  ownerCode: varchar("ownerCode", { length: 64 }).notNull(),
+  labelAr: varchar("labelAr", { length: 255 }).notNull(),
+  labelEn: varchar("labelEn", { length: 255 }),
+  category: mysqlEnum("category", ["company", "client", "external"]).notNull().default("company"),
+  requiresNotes: int("requiresNotes").notNull().default(0),
+  isActive: int("isActive").notNull().default(1),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type ProjectDelayReason = typeof projectDelayReasons.$inferSelect;
+export type InsertProjectDelayReason = typeof projectDelayReasons.$inferInsert;

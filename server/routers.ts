@@ -112,6 +112,11 @@ import {
   // Deal Tasks (Next Step → Task System)
   createDealTask, getOverdueDealTasks, getPendingDealTasks, markDealTaskDone,
   getFollowupKPI, getFollowupComplianceReport,
+  // Project Timeline Control System
+  PROJECT_DELAY_OWNERS, PROJECT_STATUS_META,
+  getProjectTimelineConfig, getProjectTimelineList, getProjectTimelineDashboard,
+  getProjectTimelineDetail, syncProjectsFromClosedDeals, transitionProjectStage,
+  addProjectDelay, updateProjectReview, setProjectHold, updateProjectStageConfig,
 } from "./db";
 import { ACTIVITY_KEYS, ACTIVITY_LABELS as ACT_LABELS_EN, ACTIVITY_LABELS_AR, ACTIVITY_WEIGHTS, ACTIVITY_ICONS, ACTIVITY_COLORS } from '../shared/activityTypes';
 
@@ -324,6 +329,30 @@ async function getAdminCallerFromRequest(req: any): Promise<{ id: number; role: 
     };
   }
   return null;
+}
+
+const PROJECT_TIMELINE_MANAGER_ROLES = new Set(["manager", "admin", "system_user"]);
+
+async function getProjectTimelineCaller(ctx: any): Promise<{ id: number; role: string; name: string } | null> {
+  const caller = await getAdminCallerFromRequest(ctx.req);
+  if (caller) return caller;
+  if (ctx.user) return { id: 0, role: "manager", name: ctx.user.name ?? ctx.user.email ?? "Admin" };
+  return null;
+}
+
+async function assertProjectTimelineAccess(ctx: any, projectId?: number, managerOnly = false) {
+  const caller = await getProjectTimelineCaller(ctx);
+  if (!caller) throw new TRPCError({ code: "UNAUTHORIZED", message: "سجّل الدخول للوصول إلى تايم لاين المشاريع" });
+  if (PROJECT_TIMELINE_MANAGER_ROLES.has(caller.role)) return caller;
+  if (managerOnly) throw new TRPCError({ code: "FORBIDDEN", message: "هذه العملية متاحة للإدارة فقط" });
+  if (projectId !== undefined) {
+    const detail = await getProjectTimelineDetail(projectId);
+    const project = detail?.project;
+    if (!project || (project.salesEngineerId !== caller.id && project.currentResponsibleId !== caller.id)) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "لا تملك صلاحية تعديل هذا المشروع" });
+    }
+  }
+  return caller;
 }
 export const appRouter = router({
   system: systemRouter,
@@ -840,6 +869,132 @@ export const appRouter = router({
         discountValue: input.discountValue,
       });
       return result ?? { action: 'skipped', dealId: null };
+    }),
+  }),
+
+  // ── Project Timeline Control System ─────────────────────────────────────────
+  projectTimeline: router({
+    config: publicProcedure.query(async () => ({
+      ...(await getProjectTimelineConfig()),
+      statuses: PROJECT_STATUS_META,
+      delayOwners: PROJECT_DELAY_OWNERS,
+    })),
+    list: publicProcedure.input(z.object({
+      search: z.string().optional(),
+      engineerId: z.number().optional(),
+      department: z.string().optional(),
+      stageKey: z.string().optional(),
+      status: z.string().optional(),
+      delayOwnerCode: z.string().optional(),
+      delayReasonCode: z.string().optional(),
+      contractFrom: z.string().optional(),
+      contractTo: z.string().optional(),
+      deliveryFrom: z.string().optional(),
+      deliveryTo: z.string().optional(),
+      onHoldOnly: z.boolean().optional(),
+      delayedOnly: z.boolean().optional(),
+      criticalOnly: z.boolean().optional(),
+      missingUpdateOnly: z.boolean().optional(),
+    }).optional()).query(async ({ input, ctx }) => {
+      const caller = await assertProjectTimelineAccess(ctx);
+      const scopedInput = { ...(input ?? {}) } as any;
+      if (!PROJECT_TIMELINE_MANAGER_ROLES.has(caller.role)) scopedInput.engineerId = caller.id;
+      return getProjectTimelineList(scopedInput);
+    }),
+    dashboard: publicProcedure.input(z.object({
+      engineerId: z.number().optional(),
+      department: z.string().optional(),
+      stageKey: z.string().optional(),
+      status: z.string().optional(),
+      delayedOnly: z.boolean().optional(),
+      criticalOnly: z.boolean().optional(),
+      missingUpdateOnly: z.boolean().optional(),
+    }).optional()).query(async ({ input, ctx }) => {
+      const caller = await assertProjectTimelineAccess(ctx);
+      const scopedInput = { ...(input ?? {}) } as any;
+      if (!PROJECT_TIMELINE_MANAGER_ROLES.has(caller.role)) scopedInput.engineerId = caller.id;
+      return getProjectTimelineDashboard(scopedInput);
+    }),
+    detail: publicProcedure.input(z.object({ projectId: z.number() }))
+      .query(async ({ input, ctx }) => {
+        await assertProjectTimelineAccess(ctx, input.projectId);
+        return getProjectTimelineDetail(input.projectId);
+      }),
+    syncFromDeals: publicProcedure.input(z.object({ updatedBy: z.string().min(1).default("system") }).optional())
+      .mutation(async ({ ctx }) => {
+        const caller = await assertProjectTimelineAccess(ctx, undefined, true);
+        return syncProjectsFromClosedDeals(caller.name);
+      }),
+    transition: publicProcedure.input(z.object({
+      projectId: z.number(),
+      nextStageKey: z.string().min(1),
+      responsibleId: z.number().optional(),
+      notes: z.string().optional(),
+      delayOwnerCode: z.string().optional(),
+      delayReasonCode: z.string().optional(),
+      delayNotes: z.string().optional(),
+      updatedBy: z.string().min(1),
+    })).mutation(async ({ input, ctx }) => {
+      const caller = await assertProjectTimelineAccess(ctx, input.projectId);
+      return transitionProjectStage({ ...input, updatedBy: caller.name });
+    }),
+    addDelay: publicProcedure.input(z.object({
+      projectId: z.number(),
+      movementId: z.number().optional(),
+      delayDate: z.string().optional(),
+      delayDays: z.number().int().positive(),
+      ownerCode: z.string().min(1),
+      responsibleId: z.number().optional(),
+      reasonCode: z.string().min(1),
+      notes: z.string().optional(),
+      isHoldPeriod: z.boolean().optional(),
+      createdBy: z.string().min(1),
+    })).mutation(async ({ input, ctx }) => {
+      const caller = await assertProjectTimelineAccess(ctx, input.projectId);
+      return addProjectDelay({ ...input, createdBy: caller.name });
+    }),
+    update: publicProcedure.input(z.object({
+      projectId: z.number(),
+      updateType: z.enum(["status_update", "monday_review", "wednesday_review"]).optional(),
+      currentStatus: z.string().optional(),
+      nextAction: z.string().optional(),
+      expectedCompletionDate: z.string().optional(),
+      hasBlocker: z.boolean().optional(),
+      delayOwnerCode: z.string().optional(),
+      delayReasonCode: z.string().optional(),
+      notes: z.string().optional(),
+      updatedBy: z.string().min(1),
+    })).mutation(async ({ input, ctx }) => {
+      const caller = await assertProjectTimelineAccess(ctx, input.projectId);
+      return updateProjectReview({ ...input, updatedBy: caller.name });
+    }),
+    setHold: publicProcedure.input(z.object({
+      projectId: z.number(),
+      isOnHold: z.boolean(),
+      holdOwnerCode: z.string().optional(),
+      holdReasonCode: z.string().optional(),
+      expectedResumeDate: z.string().optional(),
+      notes: z.string().optional(),
+      updatedBy: z.string().min(1),
+    })).mutation(async ({ input, ctx }) => {
+      const caller = await assertProjectTimelineAccess(ctx, input.projectId);
+      return setProjectHold({ ...input, updatedBy: caller.name });
+    }),
+    updateStageConfig: publicProcedure.input(z.object({
+      id: z.number(),
+      nameAr: z.string().min(1).optional(),
+      nameEn: z.string().optional(),
+      department: z.string().min(1).optional(),
+      sequence: z.number().int().positive().optional(),
+      defaultSlaDays: z.number().int().min(0).optional(),
+      defaultHandoverDays: z.number().int().min(0).optional(),
+      color: z.string().optional(),
+      isActive: z.number().int().min(0).max(1).optional(),
+      updatedBy: z.string().min(1),
+    })).mutation(async ({ input, ctx }) => {
+      const caller = await assertProjectTimelineAccess(ctx, undefined, true);
+      const { id, updatedBy, ...data } = input;
+      return updateProjectStageConfig(id, data, caller.name);
     }),
   }),
 

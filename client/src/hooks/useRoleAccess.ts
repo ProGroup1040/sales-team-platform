@@ -29,6 +29,7 @@ const MODULE_TO_ACCESS_KEY: Record<string, keyof RoleAccess> = {
   crm:             "canSeeLeads",
   visits:          "canSeeVisits",
   closing:         "canSeeClosing",
+  project_timeline:"canSeeProjectTimeline",
   sales:           "canSeeSalesModule",
   kpi:             "canSeeKPI",
   collections:     "canSeeCollections",
@@ -47,6 +48,7 @@ export interface RoleAccess {
   canSeeLeads: boolean;
   canSeeVisits: boolean;
   canSeeClosing: boolean;
+  canSeeProjectTimeline: boolean;
   canSeeSalesModule: boolean;
   canSeeKPI: boolean;
   canSeeCollections: boolean;
@@ -89,6 +91,7 @@ function buildDefaultAccess(role: AppRole | null, isLoading = false): RoleAccess
     canSeeLeads: true,
     canSeeVisits: true,
     canSeeClosing: isManager || isSalesTeam,
+    canSeeProjectTimeline: isManager || isSalesTeam,
     canSeeSalesModule: isManager || isSalesTeam,
     canSeeKPI: true,
     canSeeCollections: isManager || isSalesTeam || isAdminSales,
@@ -141,6 +144,7 @@ function buildDynamicAccess(
     canSeeLeads:          getModuleView("crm"),
     canSeeVisits:         getModuleView("visits"),
     canSeeClosing:        getModuleView("closing"),
+    canSeeProjectTimeline:getModuleView("project_timeline") || getModuleView("closing"),
     canSeeSalesModule:    getModuleView("sales"),
     canSeeKPI:            getModuleView("kpi"),
     canSeeCollections:    getModuleView("collections"),
