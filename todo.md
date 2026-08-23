@@ -923,7 +923,7 @@
 - [x] Fix 2: فلترة المهندسين في توزيع المهام - Sales Engineers فقط (بدون Pro Group Admin / Admin Sales)
 - [x] Fix 3: ربط توزيع المهام بنوع المهندس (Sales Engineer = 7 أنواع، باقي الأنواع لا تظهر)
 - [x] Fix 4: Target vs Actual بالنسب (2D=10%, 3D+Render=30%, Quotation=10%, Meetings=50%)
-- [ ] Fix 5: دمج توزيع العمل داخل تبويب في المهام اليومية (مش Module منفصل)
+- [x] Fix 5: دمج توزيع العمل داخل تبويب في المهام اليومية (مش Module منفصل)
 - [ ] Fix 6: ربط بيانات التوزيع بالـ KPI والتقارير
 
 ## Admin Sales Tasks Restructure - Apr 29 2026

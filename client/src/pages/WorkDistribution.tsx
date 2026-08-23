@@ -389,7 +389,7 @@ function MyDistributionView({ dist }: { dist: DistData }) {
 }
 
 // ─── Main Component ────────────────────────────────────────────────────────────
-export default function WorkDistribution() {
+export function WorkDistributionContent({ embedded = false }: { embedded?: boolean }) {
   const { user } = useAuth();
   const isAdmin = (user?.role as string) === "admin" || (user?.role as string) === "admin_sales";
 
@@ -460,9 +460,8 @@ export default function WorkDistribution() {
     ] : []),
   ];
 
-  return (
-    <DashboardLayout>
-      <div className="p-6 space-y-6" dir="rtl">
+  const content = (
+      <div className={embedded ? "space-y-6" : "p-6 space-y-6"} dir="rtl">
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -703,6 +702,11 @@ export default function WorkDistribution() {
           </div>
         )}
       </div>
-    </DashboardLayout>
   );
+
+  return embedded ? content : <DashboardLayout>{content}</DashboardLayout>;
+}
+
+export default function WorkDistribution() {
+  return <WorkDistributionContent />;
 }
