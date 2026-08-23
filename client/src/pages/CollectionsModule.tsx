@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DateRangePicker, getCurrentMonthFilter, type DateFilter } from "@/components/DateRangePicker";
+import { formatLocalDate } from "@shared/dateUtils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -64,11 +65,11 @@ export default function CollectionsModule() {
   const { data: contractsWithComm = [] } = trpc.financial.contractsWithCommission.useQuery({});
   // Period Analysis
   const periodStart = dateFilter.mode === 'month'
-    ? new Date(dateFilter.year, dateFilter.month - 1, 1).toISOString().split('T')[0]
-    : dateFilter.startDate.toISOString().split('T')[0];
+    ? formatLocalDate(new Date(dateFilter.year, dateFilter.month - 1, 1))
+    : formatLocalDate(dateFilter.startDate);
   const periodEnd = dateFilter.mode === 'month'
-    ? new Date(dateFilter.year, dateFilter.month, 0).toISOString().split('T')[0]
-    : dateFilter.endDate.toISOString().split('T')[0];
+    ? formatLocalDate(new Date(dateFilter.year, dateFilter.month, 0))
+    : formatLocalDate(dateFilter.endDate);
   const { data: periodAnalysis } = trpc.financial.periodAnalysis.useQuery({ startDate: periodStart, endDate: periodEnd });
 
   // Filter: Sales Engineers + Sales Specialists + Admin Sales only

@@ -7,6 +7,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Calendar, ChevronLeft, ChevronRight, ChevronDown, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { formatLocalDate } from '@shared/dateUtils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type DateRangeMode = 'month' | 'custom';
@@ -547,8 +548,8 @@ export function dateFilterToParams(filter: DateFilter): {
   return {
     year: v.startDate.getFullYear(),
     month: v.startDate.getMonth() + 1,
-    startDate: v.startDate.toISOString().split('T')[0],
-    endDate: v.endDate.toISOString().split('T')[0],
+    startDate: formatLocalDate(v.startDate),
+    endDate: formatLocalDate(v.endDate),
     isCustomRange: true,
   };
 }

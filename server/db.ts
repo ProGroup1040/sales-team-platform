@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { and, between, count, desc, eq, gte, isNull, lte, or, sql, sum, avg, lt, ne, inArray, notInArray, not } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {

@@ -3,30 +3,13 @@
  * يختبر: dateFilterToParams, getCurrentMonthFilter, getCollectionPeriodAnalysis
  */
 import { describe, it, expect } from 'vitest';
-
-// ─── Inline copies of the utility functions (no import from client) ────────────
-type MonthYearFilter = { mode: 'month'; month: number; year: number };
-type CustomRangeFilter = { mode: 'custom'; startDate: Date; endDate: Date; label?: string };
-type DateFilter = MonthYearFilter | CustomRangeFilter;
-
-function dateFilterToParams(filter: DateFilter) {
-  if (filter.mode === 'month') {
-    return { year: filter.year, month: filter.month, isCustomRange: false };
-  }
-  const v = filter as CustomRangeFilter;
-  return {
-    year: v.startDate.getFullYear(),
-    month: v.startDate.getMonth() + 1,
-    startDate: v.startDate.toISOString().split('T')[0],
-    endDate: v.endDate.toISOString().split('T')[0],
-    isCustomRange: true,
-  };
-}
-
-function getCurrentMonthFilter(): MonthYearFilter {
-  const now = new Date();
-  return { mode: 'month', month: now.getMonth() + 1, year: now.getFullYear() };
-}
+import {
+  dateFilterToParams,
+  getCurrentMonthFilter,
+  type CustomRangeFilter,
+  type MonthYearFilter,
+} from '../client/src/components/DateRangePicker';
+import { formatLocalDate } from '../shared/dateUtils';
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 describe('DateRangePicker utilities', () => {
@@ -120,10 +103,10 @@ describe('CollectionsModule period analysis params', () => {
   it('month mode produces correct period start/end', () => {
     const filter: MonthYearFilter = { mode: 'month', month: 5, year: 2025 };
     const periodStart = filter.mode === 'month'
-      ? new Date(filter.year, filter.month - 1, 1).toISOString().split('T')[0]
+      ? formatLocalDate(new Date(filter.year, filter.month - 1, 1))
       : '';
     const periodEnd = filter.mode === 'month'
-      ? new Date(filter.year, filter.month, 0).toISOString().split('T')[0]
+      ? formatLocalDate(new Date(filter.year, filter.month, 0))
       : '';
     expect(periodStart).toBe('2025-05-01');
     expect(periodEnd).toBe('2025-05-31');
@@ -134,10 +117,10 @@ describe('CollectionsModule period analysis params', () => {
     const end = new Date(2025, 3, 30); // Apr 30
     const filter: CustomRangeFilter = { mode: 'custom', startDate: start, endDate: end };
     const periodStart = filter.mode === 'custom'
-      ? filter.startDate.toISOString().split('T')[0]
+      ? formatLocalDate(filter.startDate)
       : '';
     const periodEnd = filter.mode === 'custom'
-      ? filter.endDate.toISOString().split('T')[0]
+      ? formatLocalDate(filter.endDate)
       : '';
     expect(periodStart).toBe('2025-04-01');
     expect(periodEnd).toBe('2025-04-30');
