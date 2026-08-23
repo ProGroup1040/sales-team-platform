@@ -12422,7 +12422,7 @@ export function calculateProjectStatus(input: {
 
 /** العقد المكتمل محفوظ في CRM، لكنه لا يدخل في متابعة المشاريع الجارية. */
 export function isProjectTimelineExcluded(status: string | null | undefined) {
-  return status === "completed";
+  return status === "completed" || status === "closed";
 }
 
 /** يبدأ SLA فقط بعد تسجيل واعتماد بداية التنفيذ الفعلية. */
@@ -13163,6 +13163,110 @@ export async function updateProjectReview(input: {
     performedBy: input.updatedBy,
   });
   return recalculateProjectRuntime(input.projectId);
+}
+
+export const PROJECT_CLOSING_STATUSES = ["installed", "delivered", "execution_completed", "final_closed", "other"] as const;
+
+export function validateProjectClosingInput(input: { closingStatus: string; closingOtherDescription?: string; closingDate?: string }) {
+  if (!PROJECT_CLOSING_STATUSES.includes(input.closingStatus as typeof PROJECT_CLOSING_STATUSES[number])) {
+    throw new Error("حالة الإغلاق غير صالحة");
+  }
+  if (input.closingStatus === "other" && !input.closingOtherDescription?.trim()) {
+    throw new Error("توضيح حالة الإغلاق مطلوب عند اختيار أخرى");
+  }
+  if (!input.closingDate) throw new Error("تاريخ الإغلاق مطلوب");
+}
+
+export async function closeProject(input: {
+  projectId: number;
+  closingStatus: typeof PROJECT_CLOSING_STATUSES[number];
+  closingOtherDescription?: string;
+  closingDate: string;
+  closingNotes?: string;
+  closedBy: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  validateProjectClosingInput(input);
+  const [project] = await db.select().from(projects).where(eq(projects.id, input.projectId)).limit(1);
+  if (!project) throw new Error("المشروع غير موجود");
+  if (isProjectTimelineExcluded(project.projectStatus)) throw new Error("المشروع مغلق بالفعل ولا يحتاج إلى إغلاق جديد");
+
+  const [movement] = await db.select().from(projectMovements)
+    .where(and(eq(projectMovements.projectId, project.id), eq(projectMovements.status, "active")))
+    .orderBy(desc(projectMovements.enteredAt)).limit(1);
+  const [salesOwner] = await db.select({ id: engineers.id, name: engineers.name }).from(engineers).where(eq(engineers.id, project.salesEngineerId)).limit(1);
+  const [currentResponsible] = project.currentResponsibleId
+    ? await db.select({ id: engineers.id, name: engineers.name }).from(engineers).where(eq(engineers.id, project.currentResponsibleId)).limit(1)
+    : [undefined];
+  const now = new Date();
+  const closingDate = input.closingDate;
+
+  if (movement) {
+    await db.update(projectMovements).set({
+      status: "completed",
+      actualCompletionDate: now,
+      actualHandoverDate: now,
+      updatedBy: input.closedBy,
+      notes: [movement.notes, `إغلاق المشروع: ${input.closingStatus}`, input.closingNotes].filter(Boolean).join(" | "),
+    } as any).where(eq(projectMovements.id, movement.id));
+  }
+
+  const [closeUpdate] = await db.insert(projectUpdates).values({
+    projectId: project.id,
+    movementId: movement?.id,
+    updateType: "status_update",
+    currentStatus: "completed",
+    currentStageKey: project.currentStageKey,
+    currentStageName: "تم إغلاق المشروع",
+    currentDepartment: project.currentDepartment,
+    currentResponsibleId: project.currentResponsibleId,
+    currentResponsibleName: currentResponsible?.name ?? null,
+    salesOwnerId: project.salesEngineerId,
+    salesOwnerName: salesOwner?.name ?? null,
+    daysInCurrentStage: movement ? Math.max(0, projectDayDiff(movement.enteredAt, now)) : 0,
+    plannedExitDate: movement?.plannedCompletionDate ?? null,
+    stageDelayDays: project.currentStageDelayDays ?? 0,
+    inheritedDelayDays: project.inheritedDelayDays ?? 0,
+    totalDelayDays: project.totalDelayDays ?? 0,
+    newDelaySinceLastUpdate: 0,
+    nextAction: "لا توجد متابعة تشغيلية — المشروع مغلق",
+    expectedCompletionDate: closingDate,
+    notes: input.closingNotes ?? `تم الإغلاق: ${input.closingStatus}`,
+    updatedBy: input.closedBy,
+  } as any).$returningId();
+
+  await db.update(projects).set({
+    projectStatus: "completed",
+    actualCompletionDate: closingDate,
+    closingStatus: input.closingStatus,
+    closingOtherDescription: input.closingStatus === "other" ? input.closingOtherDescription?.trim() : null,
+    closingNotes: input.closingNotes?.trim() || null,
+    closedBy: input.closedBy,
+    closedAt: now,
+    previousStageBeforeClose: project.currentStageKey,
+    previousStatusBeforeClose: project.projectStatus,
+    isOnHold: 0,
+    executionClockStatus: "completed",
+    nextRequiredAction: null,
+    nextPlannedHandover: null,
+    lastUpdatedAt: now,
+    lastUpdatedBy: input.closedBy,
+    updateStatus: "not_required",
+  } as any).where(eq(projects.id, project.id));
+
+  await writeProjectAudit({
+    projectId: project.id,
+    entityType: "project_closure",
+    entityId: closeUpdate.id,
+    action: "project_closed",
+    fieldName: "projectStatus",
+    oldValue: { status: project.projectStatus, stage: project.currentStageKey, department: project.currentDepartment },
+    newValue: { status: "completed", closingStatus: input.closingStatus, closingDate, closingNotes: input.closingNotes ?? null },
+    reason: input.closingStatus === "other" ? input.closingOtherDescription : input.closingNotes,
+    performedBy: input.closedBy,
+  });
+  return { id: project.id, projectStatus: "completed" as const, closingDate, closingStatus: input.closingStatus };
 }
 
 export async function setProjectHold(input: {

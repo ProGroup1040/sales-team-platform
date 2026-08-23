@@ -386,6 +386,13 @@
       "when": 1787479637609,
       "tag": "0054_wide_ironclad",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "5",
+      "when": 1787480943778,
+      "tag": "0055_chubby_husk",
+      "breakpoints": true
     }
   ]
 }

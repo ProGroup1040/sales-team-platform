@@ -953,8 +953,8 @@
 - [x] Stage-Based Updates Logic in db.ts
 - [x] Stage-Based Notifications in VisitsModule.tsx
 - [x] Role-Based Access Control: useRoleAccess hook
-- [ ] RBAC: إخفاء Sales Modules عن Admin/Tele/Visits/Interior
-- [ ] RBAC: Manager يرى كل الأقسام
+- [x] RBAC: إخفاء Sales Modules عن Admin/Tele/Visits/Interior
+- [x] RBAC: Manager يرى كل الأقسام
 
 ## Discount System - Full Operational Redesign
 - [ ] Schema: dealDiscountAllocations table (توزيع الخصم على الصفقات)
@@ -1529,3 +1529,8 @@
 - [x] عرض Update History وDelay Breakdown وMovement History ببيانات تاريخية غير قابلة للاستبدال
 - [x] تحسين أعمدة جدول المشاريع لتوضيح مسؤول المبيعات والمرحلة والمسؤول والتأخيرات وآخر تحديث
 - [x] إضافة تحليل تأخير حسب المسؤول والمرحلة والمشروع دون مضاعفة إجمالي التأخير
+
+## Project Timeline — إغلاق المشروع
+- [x] إضافة إجراء مستقل لإغلاق مشروع من أي مرحلة مع حالة إغلاق وتاريخ وملاحظات وتأكيد واضح
+- [x] حفظ بيانات الإغلاق وسجل التدقيق (الحالة والمرحلة السابقة والمنفذ والتاريخ والملاحظات)
+- [x] استبعاد المشروع المغلق فوراً من Project Timeline وجميع مؤشرات المتابعة التشغيلية مع بقاء تاريخه محفوظاً

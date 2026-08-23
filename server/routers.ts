@@ -116,7 +116,7 @@ import {
   PROJECT_DELAY_OWNERS, PROJECT_STATUS_META,
   getProjectTimelineConfig, getProjectTimelineList, getProjectTimelineDashboard, getProjectTimelineAnalytics, importHistoricalProjectTimeline,
   getProjectTimelineDetail, syncProjectsFromClosedDeals, transitionProjectStage,
-  addProjectDelay, updateProjectReview, setProjectHold, updateProjectStageConfig, updateProjectPreExecution, startProjectExecution,
+  addProjectDelay, updateProjectReview, setProjectHold, updateProjectStageConfig, updateProjectPreExecution, startProjectExecution, closeProject,
 } from "./db";
 import { ACTIVITY_KEYS, ACTIVITY_LABELS as ACT_LABELS_EN, ACTIVITY_LABELS_AR, ACTIVITY_WEIGHTS, ACTIVITY_ICONS, ACTIVITY_COLORS } from '../shared/activityTypes';
 
@@ -1024,6 +1024,17 @@ export const appRouter = router({
     })).mutation(async ({ input, ctx }) => {
       const caller = await assertProjectTimelineAccess(ctx, input.projectId);
       return updateProjectReview({ ...input, updatedBy: caller.name });
+    }),
+    close: publicProcedure.input(z.object({
+      projectId: z.number(),
+      closingStatus: z.enum(["installed", "delivered", "execution_completed", "final_closed", "other"]),
+      closingOtherDescription: z.string().optional(),
+      closingDate: z.string().min(1),
+      closingNotes: z.string().optional(),
+      updatedBy: z.string().min(1),
+    })).mutation(async ({ input, ctx }) => {
+      const caller = await assertProjectTimelineAccess(ctx, input.projectId);
+      return closeProject({ ...input, closedBy: caller.name });
     }),
     setHold: publicProcedure.input(z.object({
       projectId: z.number(),

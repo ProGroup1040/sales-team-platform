@@ -11,6 +11,7 @@ import {
   isExecutionSurveyComplete,
   isProjectStageDelayOwnerAllowed,
   calculateNewProjectDelay,
+  validateProjectClosingInput,
 } from "./db";
 
 describe("Project Timeline — Delay ownership", () => {
@@ -67,10 +68,19 @@ describe("Project Timeline — Status calculation", () => {
 describe("Project Timeline — Completed exclusion", () => {
   it("يستبعد Completed من المتابعة فقط، ويُبقي الحالات التشغيلية الأخرى ظاهرة", () => {
     expect(isProjectTimelineExcluded("completed")).toBe(true);
+    expect(isProjectTimelineExcluded("closed")).toBe(true);
     expect(isProjectTimelineExcluded("on_time")).toBe(false);
     expect(isProjectTimelineExcluded("delayed")).toBe(false);
-    expect(isProjectTimelineExcluded("closed")).toBe(false);
     expect(isProjectTimelineExcluded(null)).toBe(false);
+  });
+});
+
+describe("Project Timeline — Project closure validation", () => {
+  it("يتطلب تاريخاً وحالة إغلاق صالحة وتوضيحاً عند اختيار أخرى", () => {
+    expect(() => validateProjectClosingInput({ closingStatus: "installed", closingDate: "2026-08-23" })).not.toThrow();
+    expect(() => validateProjectClosingInput({ closingStatus: "other", closingDate: "2026-08-23" })).toThrow("توضيح حالة الإغلاق مطلوب");
+    expect(() => validateProjectClosingInput({ closingStatus: "other", closingOtherDescription: "إغلاق إداري", closingDate: "2026-08-23" })).not.toThrow();
+    expect(() => validateProjectClosingInput({ closingStatus: "unknown", closingDate: "2026-08-23" })).toThrow("حالة الإغلاق غير صالحة");
   });
 });
 
