@@ -339,6 +339,10 @@ export function canEditProjectTimeline(role: string | null | undefined) {
   return Boolean(role && PROJECT_TIMELINE_EDIT_ROLES.has(role));
 }
 
+export function canManageProjectTimeline(role: string | null | undefined) {
+  return Boolean(role && PROJECT_TIMELINE_MANAGER_ROLES.has(role));
+}
+
 async function getProjectTimelineCaller(ctx: any): Promise<{ id: number; role: string; name: string } | null> {
   const caller = await getAdminCallerFromRequest(ctx.req);
   if (caller) return caller;
@@ -349,7 +353,7 @@ async function getProjectTimelineCaller(ctx: any): Promise<{ id: number; role: s
 async function assertProjectTimelineAccess(ctx: any, projectId?: number, managerOnly = false) {
   const caller = await getProjectTimelineCaller(ctx);
   if (!caller) throw new TRPCError({ code: "UNAUTHORIZED", message: "سجّل الدخول للوصول إلى تايم لاين المشاريع" });
-  if (PROJECT_TIMELINE_MANAGER_ROLES.has(caller.role)) return caller;
+  if (canManageProjectTimeline(caller.role)) return caller;
   if (managerOnly) throw new TRPCError({ code: "FORBIDDEN", message: "هذه العملية متاحة للإدارة فقط" });
   if (projectId !== undefined) {
     const detail = await getProjectTimelineDetail(projectId);

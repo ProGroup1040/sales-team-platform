@@ -242,7 +242,7 @@ export default function ProjectTimelineModule() {
   const { session } = useLocalAuth();
   const utils = trpc.useUtils();
   const updatedBy = session?.username ?? session?.name ?? "Admin";
-  const isManager = ["admin", "manager"].includes(session?.role ?? "admin");
+  const isManager = ["admin", "admin_sales", "manager"].includes(session?.role ?? "admin");
   const canEditProject = ["admin", "admin_sales", "manager"].includes(session?.role ?? "");
   const [quickFilter, setQuickFilter] = useState<FilterKey>("all");
   const [search, setSearch] = useState("");
