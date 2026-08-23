@@ -12347,6 +12347,10 @@ export function isProjectStageDelayOwnerAllowed(stageKey: string, ownerCode: str
   return getProjectStageDelayOwnerCodes(stageKey).includes(ownerCode);
 }
 
+export function calculateNewProjectDelay(currentTotalDelayDays: number, previousTotalDelayDays?: number | null) {
+  return Math.max(0, (currentTotalDelayDays || 0) - (previousTotalDelayDays || 0));
+}
+
 export const PROJECT_STATUS_META = {
   on_time: { labelAr: "في الموعد", labelEn: "On Time", color: "emerald" },
   at_risk: { labelAr: "معرّض للتأخير", labelEn: "At Risk", color: "amber" },
@@ -13094,19 +13098,44 @@ export async function updateProjectReview(input: {
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
+  await recalculateProjectRuntime(input.projectId);
   const [project] = await db.select().from(projects).where(eq(projects.id, input.projectId)).limit(1);
   if (!project) throw new Error("المشروع غير موجود");
   const [movement] = await db.select().from(projectMovements)
     .where(and(eq(projectMovements.projectId, input.projectId), eq(projectMovements.status, "active")))
     .orderBy(desc(projectMovements.enteredAt)).limit(1);
+  const [previousUpdate] = await db.select({ totalDelayDays: projectUpdates.totalDelayDays })
+    .from(projectUpdates).where(eq(projectUpdates.projectId, input.projectId))
+    .orderBy(desc(projectUpdates.createdAt)).limit(1);
+  const stages = await getProjectStages();
+  const currentStage = stages.find((stage) => stage.stageKey === project.currentStageKey);
+  const [salesOwner] = await db.select({ id: engineers.id, name: engineers.name }).from(engineers).where(eq(engineers.id, project.salesEngineerId)).limit(1);
+  const [currentResponsible] = project.currentResponsibleId
+    ? await db.select({ id: engineers.id, name: engineers.name }).from(engineers).where(eq(engineers.id, project.currentResponsibleId)).limit(1)
+    : [undefined];
   const now = new Date();
   if (input.hasBlocker && !input.blockerDescription?.trim()) throw new Error("وصف العائق مطلوب عند وجود عائق");
+  const totalDelayDays = project.totalDelayDays ?? 0;
+  const priorDelay = previousUpdate?.totalDelayDays ?? 0;
+  const daysInCurrentStage = movement ? Math.max(0, projectDayDiff(movement.enteredAt, now)) : 0;
   const [update] = await db.insert(projectUpdates).values({
     projectId: input.projectId,
     movementId: movement?.id,
     updateType: input.updateType ?? "status_update",
     currentStatus: input.currentStatus,
     currentStageKey: project.currentStageKey,
+    currentStageName: currentStage?.nameAr ?? project.currentStageKey,
+    currentDepartment: project.currentDepartment,
+    currentResponsibleId: project.currentResponsibleId,
+    currentResponsibleName: currentResponsible?.name ?? null,
+    salesOwnerId: project.salesEngineerId,
+    salesOwnerName: salesOwner?.name ?? null,
+    daysInCurrentStage,
+    plannedExitDate: movement?.plannedCompletionDate ?? project.nextPlannedHandover ?? null,
+    stageDelayDays: project.currentStageDelayDays ?? 0,
+    inheritedDelayDays: project.inheritedDelayDays ?? 0,
+    totalDelayDays,
+    newDelaySinceLastUpdate: calculateNewProjectDelay(totalDelayDays, priorDelay),
     nextAction: input.nextAction,
     expectedCompletionDate: input.expectedCompletionDate,
     hasBlocker: input.hasBlocker ? 1 : 0,

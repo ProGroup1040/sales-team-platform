@@ -10,6 +10,7 @@ import {
   PRE_EXECUTION_WAITING_STATUSES,
   isExecutionSurveyComplete,
   isProjectStageDelayOwnerAllowed,
+  calculateNewProjectDelay,
 } from "./db";
 
 describe("Project Timeline — Delay ownership", () => {
@@ -28,6 +29,15 @@ describe("Project Timeline — Stage-specific delay owners", () => {
     expect(isProjectStageDelayOwnerAllowed("production", "production")).toBe(true);
     expect(isProjectStageDelayOwnerAllowed("production", "sales_engineer")).toBe(false);
     expect(isProjectStageDelayOwnerAllowed("installation", "client")).toBe(true);
+  });
+});
+
+describe("Project Timeline — Historical delay snapshots", () => {
+  it("يحسب فقط التأخير الجديد منذ آخر Snapshot دون جمع الإجماليات", () => {
+    expect(calculateNewProjectDelay(2, 0)).toBe(2);
+    expect(calculateNewProjectDelay(5, 2)).toBe(3);
+    expect(calculateNewProjectDelay(5, 5)).toBe(0);
+    expect(calculateNewProjectDelay(2, 5)).toBe(0);
   });
 });
 
