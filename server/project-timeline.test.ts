@@ -4,6 +4,7 @@ import {
   calculateRequiredProjectUpdateStatus,
   getProjectDelayCategory,
   isProjectTimelineExcluded,
+  isExecutionSlaRunning,
 } from "./db";
 
 describe("Project Timeline — Delay ownership", () => {
@@ -45,6 +46,18 @@ describe("Project Timeline — Completed exclusion", () => {
     expect(isProjectTimelineExcluded("delayed")).toBe(false);
     expect(isProjectTimelineExcluded("closed")).toBe(false);
     expect(isProjectTimelineExcluded(null)).toBe(false);
+  });
+});
+
+describe("Project Timeline — Pre-Execution execution clock", () => {
+  it("لا يبدأ SLA من تاريخ التعاقد أو من تاريخ جاهزية الموقع وحدهما", () => {
+    expect(isExecutionSlaRunning(null, "not_started")).toBe(false);
+    expect(isExecutionSlaRunning("2026-08-10", "not_started")).toBe(false);
+    expect(isExecutionSlaRunning("2026-08-10", "paused")).toBe(false);
+  });
+
+  it("يبدأ SLA فقط عند Execution Start Date المعتمد وحالة Running", () => {
+    expect(isExecutionSlaRunning("2026-08-10", "running")).toBe(true);
   });
 });
 

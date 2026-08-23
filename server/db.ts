@@ -12390,6 +12390,11 @@ export function isProjectTimelineExcluded(status: string | null | undefined) {
   return status === "completed";
 }
 
+/** يبدأ SLA فقط بعد تسجيل واعتماد بداية التنفيذ الفعلية. */
+export function isExecutionSlaRunning(executionStartDate: string | Date | null | undefined, executionClockStatus: string | null | undefined) {
+  return Boolean(executionStartDate) && executionClockStatus === "running";
+}
+
 async function writeProjectAudit(input: {
   projectId: number;
   entityType: string;
@@ -12563,12 +12568,11 @@ export async function ensureProjectFromClosedDeal(dealId: number, performedBy = 
   const [deal] = await db.select().from(deals).where(and(eq(deals.id, dealId), eq(deals.isDeleted, 0))).limit(1);
   if (!deal || deal.stage !== "closed_won") throw new Error("لا يمكن إنشاء مشروع إلا من صفقة مغلقة بنجاح");
   const stages = await getProjectStages();
+  const preExecutionStage = stages.find((stage) => stage.stageKey === "pre_execution") ?? stages[0];
   const salesStage = stages.find((stage) => stage.stageKey === "sales") ?? stages[0];
-  if (!salesStage) throw new Error("لم يتم إعداد مراحل المشروع بعد");
+  if (!salesStage || !preExecutionStage) throw new Error("لم يتم إعداد مراحل المشروع بعد");
 
   const contractDate = projectDate(deal.closedAt ?? deal.createdAt);
-  const totalSlaDays = stages.filter((stage) => stage.stageKey !== "closed").reduce((sum, stage) => sum + stage.defaultSlaDays, 0);
-  const plannedCompletionDate = addProjectDays(contractDate, totalSlaDays);
   const [created] = await db.insert(projects).values({
     projectCode: `PRJ-${deal.id}`,
     dealId: deal.id,
@@ -12577,29 +12581,33 @@ export async function ensureProjectFromClosedDeal(dealId: number, performedBy = 
     salesEngineerId: deal.engineerId,
     contractValue: String(deal.netValue ?? deal.value ?? "0"),
     contractDate: projectDateOnly(contractDate),
-    currentStageKey: salesStage.stageKey,
-    currentDepartment: salesStage.department,
+    preExecutionStatus: "waiting_site_readiness",
+    preExecutionWaitingOwnerCode: "client",
+    preExecutionWaitingReasonCode: "site_not_ready",
+    executionClockStatus: "not_started",
+    standardExecutionDays: 45,
+    currentStageKey: preExecutionStage.stageKey,
+    currentDepartment: preExecutionStage.department,
     currentResponsibleId: deal.engineerId,
     currentStageEnteredAt: contractDate,
-    plannedProjectCompletionDate: plannedCompletionDate,
-    expectedProjectCompletionDate: plannedCompletionDate,
-    nextPlannedHandover: addProjectDays(contractDate, salesStage.defaultSlaDays),
+    plannedProjectCompletionDate: null,
+    expectedProjectCompletionDate: null,
+    nextPlannedHandover: null,
     lastUpdatedAt: contractDate,
     lastUpdatedBy: performedBy,
     updateStatus: "up_to_date",
   } as any).$returningId();
 
   const projectId = created.id;
-  const plannedStageDate = addProjectDays(contractDate, salesStage.defaultSlaDays);
   const [movement] = await db.insert(projectMovements).values({
     projectId,
-    stageKey: salesStage.stageKey,
-    stageName: salesStage.nameAr,
-    department: salesStage.department,
+    stageKey: preExecutionStage.stageKey,
+    stageName: preExecutionStage.nameAr,
+    department: preExecutionStage.department,
     enteredAt: contractDate,
-    plannedCompletionDate: plannedStageDate,
-    plannedHandoverDate: plannedStageDate,
-    slaDays: salesStage.defaultSlaDays,
+    plannedCompletionDate: null,
+    plannedHandoverDate: null,
+    slaDays: 0,
     updatedBy: performedBy,
   } as any).$returningId();
 
@@ -12613,6 +12621,130 @@ export async function ensureProjectFromClosedDeal(dealId: number, performedBy = 
   });
   const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
   return project;
+}
+
+export async function updateProjectPreExecution(input: {
+  projectId: number;
+  preExecutionStatus?: string;
+  waitingOwnerCode?: string;
+  waitingReasonCode?: string;
+  notes?: string;
+  expectedSiteReadyDate?: string;
+  siteReadyDate?: string;
+  siteReadySource?: string;
+  siteReadyNotes?: string;
+  surveyRequestedDate?: string;
+  surveyScheduledDate?: string;
+  surveyActualDate?: string;
+  surveyStatus?: string;
+  surveyEngineerId?: number;
+  surveyNotes?: string;
+  updatedBy: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const [project] = await db.select().from(projects).where(eq(projects.id, input.projectId)).limit(1);
+  if (!project || isProjectTimelineExcluded(project.projectStatus)) throw new Error("المشروع غير متاح للمتابعة التشغيلية");
+  if (project.executionStartDate) throw new Error("بدأ التنفيذ بالفعل؛ استخدم تحديث المرحلة التنفيذية بدلاً من Pre-Execution");
+  const now = new Date();
+  const before = {
+    preExecutionStatus: project.preExecutionStatus,
+    siteReadyDate: project.siteReadyDate,
+    executionSurveyStatus: project.executionSurveyStatus,
+  };
+  await db.update(projects).set({
+    currentStageKey: "pre_execution",
+    currentDepartment: "إدارة المبيعات",
+    preExecutionStatus: input.preExecutionStatus ?? project.preExecutionStatus,
+    preExecutionWaitingOwnerCode: input.waitingOwnerCode ?? project.preExecutionWaitingOwnerCode,
+    preExecutionWaitingReasonCode: input.waitingReasonCode ?? project.preExecutionWaitingReasonCode,
+    preExecutionNotes: input.notes ?? project.preExecutionNotes,
+    expectedSiteReadyDate: input.expectedSiteReadyDate ?? project.expectedSiteReadyDate,
+    siteReadyDate: input.siteReadyDate ?? project.siteReadyDate,
+    siteReadySource: input.siteReadySource ?? project.siteReadySource,
+    siteReadyRecordedBy: input.siteReadyDate ? input.updatedBy : project.siteReadyRecordedBy,
+    siteReadyRecordedAt: input.siteReadyDate ? now : project.siteReadyRecordedAt,
+    siteReadyNotes: input.siteReadyNotes ?? project.siteReadyNotes,
+    executionSurveyRequestedDate: input.surveyRequestedDate ?? project.executionSurveyRequestedDate,
+    executionSurveyScheduledDate: input.surveyScheduledDate ?? project.executionSurveyScheduledDate,
+    executionSurveyActualDate: input.surveyActualDate ?? project.executionSurveyActualDate,
+    executionSurveyStatus: input.surveyStatus ?? project.executionSurveyStatus,
+    executionSurveyEngineerId: input.surveyEngineerId ?? project.executionSurveyEngineerId,
+    executionSurveyNotes: input.surveyNotes ?? project.executionSurveyNotes,
+    executionClockStatus: "not_started",
+    plannedProjectCompletionDate: null,
+    expectedProjectCompletionDate: null,
+    nextPlannedHandover: null,
+    currentStageDelayDays: 0,
+    lastUpdatedAt: now,
+    lastUpdatedBy: input.updatedBy,
+    updateStatus: "up_to_date",
+  } as any).where(eq(projects.id, input.projectId));
+  await writeProjectAudit({ projectId: input.projectId, entityType: "pre_execution", entityId: input.projectId, action: "pre_execution_updated", oldValue: before, newValue: input, performedBy: input.updatedBy });
+  return recalculateProjectRuntime(input.projectId);
+}
+
+export async function startProjectExecution(input: {
+  projectId: number;
+  executionStartDate?: string;
+  responsibleId?: number;
+  notes?: string;
+  updatedBy: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const [project] = await db.select().from(projects).where(eq(projects.id, input.projectId)).limit(1);
+  if (!project || isProjectTimelineExcluded(project.projectStatus)) throw new Error("المشروع غير متاح لبدء التنفيذ");
+  if (project.executionStartDate) throw new Error("مدة التنفيذ بدأت بالفعل لهذا المشروع");
+  if (project.executionSurveyStatus !== "completed" && !project.executionSurveyActualDate) throw new Error("لا يمكن بدء التنفيذ قبل تسجيل المعاينة التنفيذية الفعلية واعتمادها");
+  const stages = await getProjectStages();
+  const salesStage = stages.find((stage) => stage.stageKey === "sales");
+  if (!salesStage) throw new Error("مرحلة المبيعات غير مهيأة");
+  const startAt = projectDate(input.executionStartDate ?? new Date());
+  const targetDelivery = addProjectDays(startAt, project.standardExecutionDays || 45);
+  const stageTarget = addProjectDays(startAt, salesStage.defaultSlaDays);
+  const [activeMovement] = await db.select().from(projectMovements).where(and(eq(projectMovements.projectId, project.id), eq(projectMovements.status, "active"))).orderBy(desc(projectMovements.enteredAt)).limit(1);
+  if (activeMovement) await db.update(projectMovements).set({ status: "completed", actualCompletionDate: startAt, actualHandoverDate: startAt, actualDurationDays: 0, delayDays: 0, generatedDelayDays: 0, updatedBy: input.updatedBy }).where(eq(projectMovements.id, activeMovement.id));
+  const currentResponsibleId = input.responsibleId ?? project.salesEngineerId;
+  const [movement] = await db.insert(projectMovements).values({
+    projectId: project.id,
+    stageKey: salesStage.stageKey,
+    stageName: salesStage.nameAr,
+    department: salesStage.department,
+    previousStageKey: project.currentStageKey,
+    previousDepartment: project.currentDepartment,
+    previousResponsibleId: project.currentResponsibleId,
+    newResponsibleId: currentResponsibleId,
+    assignedAt: startAt,
+    assignedBy: input.updatedBy,
+    enteredAt: startAt,
+    plannedCompletionDate: projectDateOnly(stageTarget),
+    plannedHandoverDate: projectDateOnly(stageTarget),
+    actualReceiptDate: startAt,
+    slaDays: salesStage.defaultSlaDays,
+    notes: input.notes ?? "بدء التنفيذ بعد اعتماد المعاينة التنفيذية",
+    updatedBy: input.updatedBy,
+    status: "active",
+  } as any).$returningId();
+  await db.update(projects).set({
+    executionStartDate: projectDateOnly(startAt),
+    executionStartApprovedBy: input.updatedBy,
+    executionStartApprovedAt: new Date(),
+    executionClockStatus: "running",
+    preExecutionStatus: "execution_started",
+    currentStageKey: salesStage.stageKey,
+    currentDepartment: salesStage.department,
+    currentResponsibleId,
+    currentStageEnteredAt: startAt,
+    plannedProjectCompletionDate: projectDateOnly(targetDelivery),
+    expectedProjectCompletionDate: projectDateOnly(targetDelivery),
+    nextPlannedHandover: projectDateOnly(stageTarget),
+    lastUpdatedAt: new Date(),
+    lastUpdatedBy: input.updatedBy,
+    updateStatus: "up_to_date",
+  } as any).where(eq(projects.id, project.id));
+  await writeProjectAudit({ projectId: project.id, entityType: "project_execution", entityId: movement.id, action: "execution_started", oldValue: { executionStartDate: null, currentStageKey: project.currentStageKey }, newValue: { executionStartDate: projectDateOnly(startAt), targetDeliveryDate: projectDateOnly(targetDelivery), responsibleId: currentResponsibleId }, reason: input.notes, performedBy: input.updatedBy });
+  return recalculateProjectRuntime(project.id);
 }
 
 export async function syncProjectsFromClosedDeals(performedBy = "system") {
@@ -12661,15 +12793,16 @@ export async function recalculateProjectRuntime(projectId: number) {
   const mainReason = ledger.slice().sort((a, b) => (b.delayDays ?? 0) - (a.delayDays ?? 0))[0]?.reasonCode ?? project.mainDelayReasonCode;
 
   const now = new Date();
-  const rawCurrentStageDays = activeMovement ? projectDayDiff(activeMovement.enteredAt, now) : 0;
-  const rawStageDelay = activeMovement ? Math.max(0, projectDayDiff(activeMovement.plannedCompletionDate, now)) : 0;
-  const expectedCompletion = project.plannedProjectCompletionDate
-    ? addProjectDays(project.plannedProjectCompletionDate, totalDelay)
-    : project.expectedProjectCompletionDate;
+  const executionRunning = isExecutionSlaRunning(project.executionStartDate, project.executionClockStatus);
+  const rawCurrentStageDays = activeMovement && executionRunning ? projectDayDiff(activeMovement.enteredAt, now) : 0;
+  const rawStageDelay = activeMovement?.plannedCompletionDate && executionRunning ? Math.max(0, projectDayDiff(activeMovement.plannedCompletionDate, now)) : 0;
+  const expectedCompletion = project.executionStartDate
+    ? addProjectDays(project.executionStartDate, (project.standardExecutionDays || 45) + totalDelay)
+    : null;
   const updateStatus = project.projectStatus === "closed" || project.projectStatus === "completed"
     ? "not_required"
     : calculateRequiredProjectUpdateStatus(project.lastUpdatedAt, now);
-  const plannedExit = activeMovement?.plannedCompletionDate ? projectDate(activeMovement.plannedCompletionDate) : null;
+  const plannedExit = executionRunning && activeMovement?.plannedCompletionDate ? projectDate(activeMovement.plannedCompletionDate) : null;
   const agreedDelivery = project.agreedDeliveryDate ? projectDate(project.agreedDeliveryDate) : null;
   const referenceDate = agreedDelivery && (!plannedExit || agreedDelivery < plannedExit) ? agreedDelivery : plannedExit;
   const daysRemaining = referenceDate ? projectDayDiff(now, referenceDate) : Number.POSITIVE_INFINITY;
@@ -12696,7 +12829,7 @@ export async function recalculateProjectRuntime(projectId: number) {
     mainDelayReasonCode: mainReason,
     expectedProjectCompletionDate: expectedCompletion as any,
     updateStatus: isExcluded ? "not_required" : updateStatus as any,
-    nextPlannedHandover: isExcluded ? null : project.nextPlannedHandover,
+    nextPlannedHandover: isExcluded || !executionRunning ? null : project.nextPlannedHandover,
   }).where(eq(projects.id, projectId));
 
   if (activeMovement) {
@@ -12761,6 +12894,9 @@ export async function transitionProjectStage(input: {
   const stages = await getProjectStages();
   const nextStage = stages.find((stage) => stage.stageKey === input.nextStageKey);
   if (!nextStage) throw new Error("المرحلة المطلوبة غير متاحة");
+  if (!project.executionStartDate && input.nextStageKey !== "pre_execution") {
+    throw new Error("لا يمكن نقل المشروع إلى مراحل التنفيذ قبل اعتماد المعاينة وتسجيل Execution Start Date");
+  }
   const currentStage = stages.find((stage) => stage.stageKey === project.currentStageKey);
   if (currentStage && nextStage.sequence < currentStage.sequence) throw new Error("لا يمكن نقل المشروع إلى مرحلة سابقة من سجل المتابعة");
   const now = new Date();
@@ -12770,7 +12906,7 @@ export async function transitionProjectStage(input: {
 
   let generatedDelay = 0;
   if (currentMovement) {
-    generatedDelay = Math.max(0, projectDayDiff(currentMovement.plannedCompletionDate, now));
+    generatedDelay = currentMovement.plannedCompletionDate ? Math.max(0, projectDayDiff(currentMovement.plannedCompletionDate, now)) : 0;
     if (generatedDelay > 0 && (!input.delayOwnerCode || !input.delayReasonCode)) {
       throw new Error("المشروع تجاوز SLA؛ يجب تحديد مسؤول وسبب التأخير قبل توثيق الانتقال");
     }
@@ -12812,6 +12948,10 @@ export async function transitionProjectStage(input: {
     department: nextStage.department,
     previousStageKey: project.currentStageKey,
     previousDepartment: project.currentDepartment,
+    previousResponsibleId: project.currentResponsibleId,
+    newResponsibleId: input.responsibleId ?? null,
+    assignedAt: now,
+    assignedBy: input.updatedBy,
     enteredAt: now,
     plannedCompletionDate: nextPlanned,
     plannedHandoverDate: nextPlanned,
@@ -12848,6 +12988,19 @@ export async function transitionProjectStage(input: {
     reason: input.notes,
     performedBy: input.updatedBy,
   });
+  if (project.currentResponsibleId !== input.responsibleId) {
+    await writeProjectAudit({
+      projectId: project.id,
+      entityType: "project_responsibility",
+      entityId: movement.id,
+      action: "stage_responsible_changed",
+      fieldName: "currentResponsibleId",
+      oldValue: project.currentResponsibleId,
+      newValue: input.responsibleId ?? null,
+      reason: input.notes,
+      performedBy: input.updatedBy,
+    });
+  }
   return recalculateProjectRuntime(project.id);
 }
 
@@ -12916,6 +13069,7 @@ export async function setProjectHold(input: {
     await db.update(projects).set({
       isOnHold: 1,
       projectStatus: "on_hold",
+      executionClockStatus: project.executionStartDate ? "paused" : "not_started",
       holdStartedAt: now,
       holdExpectedResumeDate: input.expectedResumeDate,
       holdOwnerCode: input.holdOwnerCode,
@@ -12943,6 +13097,7 @@ export async function setProjectHold(input: {
     }
     await db.update(projects).set({
       isOnHold: 0,
+      executionClockStatus: project.executionStartDate ? "running" : "not_started",
       holdStartedAt: null,
       holdExpectedResumeDate: null,
       lastUpdatedAt: now,
@@ -13021,7 +13176,7 @@ export async function getProjectTimelineList(filters: {
   search?: string; engineerId?: number; department?: string; stageKey?: string; status?: string;
   delayOwnerCode?: string; delayReasonCode?: string; contractFrom?: string; contractTo?: string;
   deliveryFrom?: string; deliveryTo?: string; onHoldOnly?: boolean; delayedOnly?: boolean;
-  criticalOnly?: boolean; missingUpdateOnly?: boolean;
+  criticalOnly?: boolean; missingUpdateOnly?: boolean; preExecutionOnly?: boolean;
 } = {}) {
   const db = await getDb();
   if (!db) return [];
@@ -13037,8 +13192,9 @@ export async function getProjectTimelineList(filters: {
   const now = new Date();
   const runtimeProjects = refreshed.map((project) => {
     const movement = movementByProject.get(project.id);
-    const currentStageDelayDays = movement ? Math.max(0, projectDayDiff(movement.plannedCompletionDate, now)) : 0;
-    const plannedExit = movement?.plannedCompletionDate ? projectDate(movement.plannedCompletionDate) : null;
+    const executionRunning = isExecutionSlaRunning(project.executionStartDate, project.executionClockStatus);
+    const currentStageDelayDays = executionRunning && movement?.plannedCompletionDate ? Math.max(0, projectDayDiff(movement.plannedCompletionDate, now)) : 0;
+    const plannedExit = executionRunning && movement?.plannedCompletionDate ? projectDate(movement.plannedCompletionDate) : null;
     const agreedDelivery = project.agreedDeliveryDate ? projectDate(project.agreedDeliveryDate) : null;
     const referenceDate = agreedDelivery && (!plannedExit || agreedDelivery < plannedExit) ? agreedDelivery : plannedExit;
     const daysUntilReference = referenceDate ? projectDayDiff(now, referenceDate) : Number.POSITIVE_INFINITY;
@@ -13053,10 +13209,12 @@ export async function getProjectTimelineList(filters: {
     const updateStatus = ["closed", "completed"].includes(projectStatus)
       ? "not_required"
       : calculateRequiredProjectUpdateStatus(project.lastUpdatedAt, now);
-    const expectedProjectCompletionDate = project.plannedProjectCompletionDate
-      ? addProjectDays(project.plannedProjectCompletionDate, project.totalDelayDays)
-      : project.expectedProjectCompletionDate;
-    return { ...project, projectStatus, currentStageDelayDays, updateStatus, expectedProjectCompletionDate };
+    const expectedProjectCompletionDate = project.executionStartDate
+      ? addProjectDays(project.executionStartDate, (project.standardExecutionDays || 45) + project.totalDelayDays)
+      : null;
+    const isPreExecution = !project.executionStartDate;
+    const waitingDays = isPreExecution ? Math.max(0, projectDayDiff(project.contractDate, now)) : 0;
+    return { ...project, projectStatus, currentStageDelayDays, updateStatus, expectedProjectCompletionDate, executionClockStatus: project.executionStartDate ? project.executionClockStatus : "not_confirmed", isPreExecution, waitingDays };
   });
 
   return runtimeProjects.filter((project) => {
@@ -13073,11 +13231,12 @@ export async function getProjectTimelineList(filters: {
     const matchesDelayed = !filters.delayedOnly || ["delayed", "critical_delay"].includes(project.projectStatus);
     const matchesCritical = !filters.criticalOnly || project.projectStatus === "critical_delay";
     const matchesMissing = !filters.missingUpdateOnly || project.updateStatus === "missing";
+    const matchesPreExecution = !filters.preExecutionOnly || project.isPreExecution;
     const contract = projectDateOnly(project.contractDate);
     const delivery = project.agreedDeliveryDate ? projectDateOnly(project.agreedDeliveryDate) : "";
     const matchesContractDate = (!filters.contractFrom || contract >= filters.contractFrom) && (!filters.contractTo || contract <= filters.contractTo);
     const matchesDeliveryDate = (!filters.deliveryFrom || (delivery && delivery >= filters.deliveryFrom)) && (!filters.deliveryTo || (delivery && delivery <= filters.deliveryTo));
-    return matchesSearch && matchesEngineer && matchesDepartment && matchesStage && matchesStatus && matchesOwner && matchesReason && matchesHold && matchesDelayed && matchesCritical && matchesMissing && matchesContractDate && matchesDeliveryDate;
+    return matchesSearch && matchesEngineer && matchesDepartment && matchesStage && matchesStatus && matchesOwner && matchesReason && matchesHold && matchesDelayed && matchesCritical && matchesMissing && matchesPreExecution && matchesContractDate && matchesDeliveryDate;
   }).map((project) => {
     const movement = movementByProject.get(project.id);
     return {
@@ -13085,7 +13244,7 @@ export async function getProjectTimelineList(filters: {
       salesEngineer: engineerById.get(project.salesEngineerId) ?? null,
       currentResponsible: project.currentResponsibleId ? engineerById.get(project.currentResponsibleId) ?? null : null,
       currentMovement: movement ?? null,
-      daysInCurrentStage: movement ? projectDayDiff(movement.enteredAt) : 0,
+      daysInCurrentStage: project.executionStartDate && movement ? projectDayDiff(movement.enteredAt) : 0,
       delayOwner: project.mainDelayOwnerCode ? PROJECT_DELAY_OWNERS.find((owner) => owner.code === project.mainDelayOwnerCode) ?? null : null,
       delayReason: project.mainDelayReasonCode ? reasonByCode.get(project.mainDelayReasonCode) ?? null : null,
     };
@@ -13118,12 +13277,13 @@ export async function getProjectTimelineDashboard(filters: Parameters<typeof get
   const clientDelayDays = projectsList.reduce((sum, project) => sum + project.clientDelayDays, 0);
   const externalDelayDays = projectsList.reduce((sum, project) => sum + project.externalDelayDays, 0);
   const missingUpdates = projectsList.filter((project) => project.updateStatus === "missing").length;
+  const preExecution = projectsList.filter((project) => project.isPreExecution).length;
   const activeProjects = projectsList.filter((project) => !["closed", "completed"].includes(project.projectStatus)).length;
   return {
     totals: {
       total, activeProjects, onTime: statusCounts.on_time ?? 0, atRisk: statusCounts.at_risk ?? 0,
       delayed: statusCounts.delayed ?? 0, critical: statusCounts.critical_delay ?? 0,
-      onHold: statusCounts.on_hold ?? 0, missingUpdates, totalDelayDays, companyDelayDays,
+      onHold: statusCounts.on_hold ?? 0, missingUpdates, preExecution, totalDelayDays, companyDelayDays,
       clientDelayDays, externalDelayDays, averageProjectDelay: total ? Math.round((totalDelayDays / total) * 10) / 10 : 0,
     },
     delayByDepartment, delayByOwner, delayByReason,
@@ -13149,7 +13309,7 @@ export async function getProjectTimelineAnalytics(filters: Parameters<typeof get
   for (const movement of movements) {
     const stat = departmentMap.get(movement.department) ?? { department: movement.department, targetDuration: 0, actualDurations: [], delays: [], received: 0, completed: 0, onTime: 0 };
     const actualDuration = movement.actualDurationDays ?? projectDayDiff(movement.enteredAt, movement.actualCompletionDate ?? now);
-    const delay = movement.delayDays ?? Math.max(0, projectDayDiff(movement.plannedCompletionDate, movement.actualCompletionDate ?? now));
+    const delay = movement.delayDays ?? (movement.plannedCompletionDate ? Math.max(0, projectDayDiff(movement.plannedCompletionDate, movement.actualCompletionDate ?? now)) : 0);
     stat.targetDuration += movement.slaDays;
     stat.actualDurations.push(Math.max(0, actualDuration));
     stat.delays.push(Math.max(0, delay));

@@ -1,0 +1,1 @@
+ALTER TABLE `project_movements` MODIFY COLUMN `plannedCompletionDate` date;

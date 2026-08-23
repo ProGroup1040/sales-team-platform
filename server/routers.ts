@@ -116,7 +116,7 @@ import {
   PROJECT_DELAY_OWNERS, PROJECT_STATUS_META,
   getProjectTimelineConfig, getProjectTimelineList, getProjectTimelineDashboard, getProjectTimelineAnalytics, importHistoricalProjectTimeline,
   getProjectTimelineDetail, syncProjectsFromClosedDeals, transitionProjectStage,
-  addProjectDelay, updateProjectReview, setProjectHold, updateProjectStageConfig,
+  addProjectDelay, updateProjectReview, setProjectHold, updateProjectStageConfig, updateProjectPreExecution, startProjectExecution,
 } from "./db";
 import { ACTIVITY_KEYS, ACTIVITY_LABELS as ACT_LABELS_EN, ACTIVITY_LABELS_AR, ACTIVITY_WEIGHTS, ACTIVITY_ICONS, ACTIVITY_COLORS } from '../shared/activityTypes';
 
@@ -895,6 +895,7 @@ export const appRouter = router({
       delayedOnly: z.boolean().optional(),
       criticalOnly: z.boolean().optional(),
       missingUpdateOnly: z.boolean().optional(),
+      preExecutionOnly: z.boolean().optional(),
     }).optional()).query(async ({ input, ctx }) => {
       const caller = await assertProjectTimelineAccess(ctx);
       const scopedInput = { ...(input ?? {}) } as any;
@@ -909,6 +910,7 @@ export const appRouter = router({
       delayedOnly: z.boolean().optional(),
       criticalOnly: z.boolean().optional(),
       missingUpdateOnly: z.boolean().optional(),
+      preExecutionOnly: z.boolean().optional(),
     }).optional()).query(async ({ input, ctx }) => {
       const caller = await assertProjectTimelineAccess(ctx);
       const scopedInput = { ...(input ?? {}) } as any;
@@ -944,6 +946,37 @@ export const appRouter = router({
     })).mutation(async ({ input, ctx }) => {
       const caller = await assertProjectTimelineAccess(ctx, undefined, true);
       return importHistoricalProjectTimeline(input.rows, caller.name);
+    }),
+    updatePreExecution: publicProcedure.input(z.object({
+      projectId: z.number(),
+      preExecutionStatus: z.string().optional(),
+      waitingOwnerCode: z.string().optional(),
+      waitingReasonCode: z.string().optional(),
+      notes: z.string().optional(),
+      expectedSiteReadyDate: z.string().optional(),
+      siteReadyDate: z.string().optional(),
+      siteReadySource: z.enum(["client_notification", "sales_engineer_confirmation", "site_inspection", "management_confirmation"]).optional(),
+      siteReadyNotes: z.string().optional(),
+      surveyRequestedDate: z.string().optional(),
+      surveyScheduledDate: z.string().optional(),
+      surveyActualDate: z.string().optional(),
+      surveyStatus: z.enum(["not_requested", "requested", "scheduled", "completed", "cancelled"]).optional(),
+      surveyEngineerId: z.number().optional(),
+      surveyNotes: z.string().optional(),
+      updatedBy: z.string().min(1),
+    })).mutation(async ({ input, ctx }) => {
+      const caller = await assertProjectTimelineAccess(ctx, input.projectId);
+      return updateProjectPreExecution({ ...input, updatedBy: caller.name });
+    }),
+    startExecution: publicProcedure.input(z.object({
+      projectId: z.number(),
+      executionStartDate: z.string().optional(),
+      responsibleId: z.number().optional(),
+      notes: z.string().optional(),
+      updatedBy: z.string().min(1),
+    })).mutation(async ({ input, ctx }) => {
+      const caller = await assertProjectTimelineAccess(ctx, input.projectId);
+      return startProjectExecution({ ...input, updatedBy: caller.name });
     }),
     transition: publicProcedure.input(z.object({
       projectId: z.number(),
