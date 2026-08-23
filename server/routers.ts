@@ -1766,7 +1766,7 @@ export const appRouter = router({
         logDate: z.string(),
         activityType: z.enum([
           "meeting_2d", "meeting_quotation", "meeting_3d", "meeting_closing",
-          "design_3d", "design_2d", "quotation"
+          "design_3d", "render", "design_2d", "quotation"
         ]),
         durationMinutes: z.number().min(5).max(480).default(60),
         clientName: z.string().optional(),

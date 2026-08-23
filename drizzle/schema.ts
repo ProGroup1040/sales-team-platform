@@ -595,13 +595,14 @@ export const workLogs = mysqlTable("work_logs", {
   id: int("id").autoincrement().primaryKey(),
   engineerId: int("engineerId").notNull(),
   logDate: date("logDate").notNull(),
-  // نوع النشاط - 7 أنواع تُصنَّف في 4 فئات
+  // نوع النشاط - 8 أنواع تُصنَّف في 4 فئات
   activityType: mysqlEnum("activityType", [
     "meeting_2d",         // Meeting 2D       → Meetings (50%)
     "meeting_quotation",  // Meeting Quotation → Meetings (50%)
     "meeting_3d",         // Meeting 3D        → Meetings (50%)
     "meeting_closing",    // Meeting Closing   → Meetings (50%)
     "design_3d",          // 3D Design         → 3D Design (30%)
+    "render",             // Render            → 3D + Render (30%)
     "design_2d",          // 2D Design         → 2D Design (10%)
     "quotation",          // Quotation         → Quotations (10%)
   ]).notNull(),

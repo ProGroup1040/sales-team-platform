@@ -1,0 +1,1 @@
+ALTER TABLE `work_logs` MODIFY COLUMN `activityType` enum('meeting_2d','meeting_quotation','meeting_3d','meeting_closing','design_3d','render','design_2d','quotation') NOT NULL;

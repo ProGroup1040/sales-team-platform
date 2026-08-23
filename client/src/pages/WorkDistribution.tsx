@@ -65,6 +65,7 @@ const ACTIVITY_LABELS: Record<string, string> = {
   meeting_3d: "ميتينج 3D",
   meeting_closing: "ميتينج إغلاق",
   design_3d: "تصميم 3D",
+  render: "Render",
   design_2d: "تصميم 2D",
   quotation: "عرض سعر",
 };
@@ -188,7 +189,7 @@ function LogActivityDialog({
               logMutation.mutate({
                 engineerId,
                 logDate: form.logDate,
-                activityType: form.activityType as "meeting_closing" | "meeting_2d" | "meeting_3d" | "meeting_quotation" | "design_2d" | "design_3d" | "quotation",
+                activityType: form.activityType as "meeting_closing" | "meeting_2d" | "meeting_3d" | "meeting_quotation" | "design_2d" | "design_3d" | "render" | "quotation",
                 durationMinutes: form.durationMinutes,
                 clientName: form.clientName || undefined,
                 notes: form.notes || undefined,

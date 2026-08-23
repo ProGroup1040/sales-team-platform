@@ -3737,6 +3737,7 @@ export const ACTIVITY_LABELS: Record<string, string> = {
   meeting_3d: "ميتينج 3D",
   meeting_closing: "ميتينج إغلاق/تفاوض",
   design_3d: "تصميم 3D",
+  render: "Render",
   design_2d: "تصميم 2D",
   quotation: "عرض سعر",
 };
@@ -3744,7 +3745,7 @@ export const ACTIVITY_LABELS: Record<string, string> = {
 /** Category mapping */
 export function getActivityCategory(activityType: string): "meetings" | "design_3d" | "design_2d" | "quotation" {
   if (activityType.startsWith("meeting_")) return "meetings";
-  if (activityType === "design_3d") return "design_3d";
+  if (activityType === "design_3d" || activityType === "render") return "design_3d";
   if (activityType === "design_2d") return "design_2d";
   return "quotation";
 }

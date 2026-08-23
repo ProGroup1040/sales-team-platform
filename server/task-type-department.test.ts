@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ALLOWED_TASK_TYPES_BY_DEPARTMENT } from "./db";
+import { ALLOWED_TASK_TYPES_BY_DEPARTMENT, getActivityCategory } from "./db";
 
 describe("Task types by engineer department", () => {
   it("يتيح مهندس المبيعات الأنواع التسعة التشغيلية", () => {
@@ -18,5 +18,10 @@ describe("Task types by engineer department", () => {
 
   it("لا يتيح تيلي سيلز أعمال التصميم أو الإنتاج", () => {
     expect(ALLOWED_TASK_TYPES_BY_DEPARTMENT.tele_sales).toEqual(["quotation", "meeting_modeling", "meeting_presentation"]);
+  });
+
+  it("يحتسب Render ضمن هدف 3D + Render المشترك", () => {
+    expect(getActivityCategory("render")).toBe("design_3d");
+    expect(getActivityCategory("design_3d")).toBe("design_3d");
   });
 });
