@@ -12385,6 +12385,11 @@ export function calculateProjectStatus(input: {
   return "on_time";
 }
 
+/** العقد المكتمل محفوظ في CRM، لكنه لا يدخل في متابعة المشاريع الجارية. */
+export function isProjectTimelineExcluded(status: string | null | undefined) {
+  return status === "completed";
+}
+
 async function writeProjectAudit(input: {
   projectId: number;
   entityType: string;
@@ -12656,8 +12661,8 @@ export async function recalculateProjectRuntime(projectId: number) {
   const mainReason = ledger.slice().sort((a, b) => (b.delayDays ?? 0) - (a.delayDays ?? 0))[0]?.reasonCode ?? project.mainDelayReasonCode;
 
   const now = new Date();
-  const currentStageDays = activeMovement ? projectDayDiff(activeMovement.enteredAt, now) : 0;
-  const stageDelay = activeMovement ? Math.max(0, projectDayDiff(activeMovement.plannedCompletionDate, now)) : 0;
+  const rawCurrentStageDays = activeMovement ? projectDayDiff(activeMovement.enteredAt, now) : 0;
+  const rawStageDelay = activeMovement ? Math.max(0, projectDayDiff(activeMovement.plannedCompletionDate, now)) : 0;
   const expectedCompletion = project.plannedProjectCompletionDate
     ? addProjectDays(project.plannedProjectCompletionDate, totalDelay)
     : project.expectedProjectCompletionDate;
@@ -12672,10 +12677,13 @@ export async function recalculateProjectRuntime(projectId: number) {
     isOnHold: Boolean(project.isOnHold),
     currentStageKey: project.currentStageKey,
     actualCompletionDate: project.actualCompletionDate,
-    stageDelayDays: stageDelay,
+    stageDelayDays: rawStageDelay,
     stageSlaDays: activeMovement?.slaDays,
     daysUntilReference: daysRemaining,
   });
+  const isExcluded = isProjectTimelineExcluded(status);
+  const currentStageDays = isExcluded ? 0 : rawCurrentStageDays;
+  const stageDelay = isExcluded ? 0 : rawStageDelay;
 
   await db.update(projects).set({
     projectStatus: status as any,
@@ -12687,11 +12695,15 @@ export async function recalculateProjectRuntime(projectId: number) {
     mainDelayOwnerCode: mainOwner,
     mainDelayReasonCode: mainReason,
     expectedProjectCompletionDate: expectedCompletion as any,
-    updateStatus: updateStatus as any,
+    updateStatus: isExcluded ? "not_required" : updateStatus as any,
+    nextPlannedHandover: isExcluded ? null : project.nextPlannedHandover,
   }).where(eq(projects.id, projectId));
 
   if (activeMovement) {
     await db.update(projectMovements).set({
+      status: isExcluded ? "completed" : activeMovement.status,
+      actualCompletionDate: isExcluded ? projectDate(project.actualCompletionDate) ?? now : activeMovement.actualCompletionDate,
+      actualHandoverDate: isExcluded ? projectDate(project.actualCompletionDate) ?? now : activeMovement.actualHandoverDate,
       actualDurationDays: currentStageDays,
       delayDays: stageDelay,
       generatedDelayDays: stageDelay,
@@ -12819,8 +12831,8 @@ export async function transitionProjectStage(input: {
     currentStageEnteredAt: now,
     inheritedDelayDays: project.totalDelayDays,
     nextPlannedHandover: isClosed ? null : nextPlanned,
-    actualCompletionDate: isClosed ? projectDateOnly(now) : project.actualCompletionDate,
-    projectStatus: isClosed ? "closed" : project.projectStatus,
+    actualCompletionDate: isClosed ? projectDateOnly(now) : null,
+    projectStatus: isClosed ? "closed" : "on_time",
     lastUpdatedAt: now,
     lastUpdatedBy: input.updatedBy,
     updateStatus: isClosed ? "not_required" : "up_to_date",
@@ -12966,7 +12978,7 @@ export async function getProjectTimelineDetail(projectId: number) {
   if (!db) return null;
   await recalculateProjectRuntime(projectId);
   const [project] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
-  if (!project) return null;
+  if (!project || isProjectTimelineExcluded(project.projectStatus)) return null;
   const [movements, delayLedger, updates, auditTrail, stages, reasons, allEngineers] = await Promise.all([
     db.select().from(projectMovements).where(eq(projectMovements.projectId, projectId)).orderBy(projectMovements.enteredAt),
     db.select().from(projectDelayLedger).where(eq(projectDelayLedger.projectId, projectId)).orderBy(desc(projectDelayLedger.createdAt)),
@@ -13048,6 +13060,7 @@ export async function getProjectTimelineList(filters: {
   });
 
   return runtimeProjects.filter((project) => {
+    if (isProjectTimelineExcluded(project.projectStatus)) return false;
     const query = filters.search?.trim().toLowerCase();
     const matchesSearch = !query || [project.projectCode, project.clientName, project.contractNumber ?? ""].some((value) => value.toLowerCase().includes(query));
     const matchesEngineer = !filters.engineerId || project.salesEngineerId === filters.engineerId;

@@ -3,6 +3,7 @@ import {
   calculateProjectStatus,
   calculateRequiredProjectUpdateStatus,
   getProjectDelayCategory,
+  isProjectTimelineExcluded,
 } from "./db";
 
 describe("Project Timeline — Delay ownership", () => {
@@ -34,6 +35,16 @@ describe("Project Timeline — Status calculation", () => {
   it("يكتشف المشروع المعرض للتأخير قبل يوم من الموعد", () => {
     expect(calculateProjectStatus({ ...standard, isOnHold: false, daysUntilReference: 1 })).toBe("at_risk");
     expect(calculateProjectStatus({ ...standard, isOnHold: false, daysUntilReference: 6 })).toBe("on_time");
+  });
+});
+
+describe("Project Timeline — Completed exclusion", () => {
+  it("يستبعد Completed من المتابعة فقط، ويُبقي الحالات التشغيلية الأخرى ظاهرة", () => {
+    expect(isProjectTimelineExcluded("completed")).toBe(true);
+    expect(isProjectTimelineExcluded("on_time")).toBe(false);
+    expect(isProjectTimelineExcluded("delayed")).toBe(false);
+    expect(isProjectTimelineExcluded("closed")).toBe(false);
+    expect(isProjectTimelineExcluded(null)).toBe(false);
   });
 });
 
