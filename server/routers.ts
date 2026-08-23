@@ -427,7 +427,7 @@ export const appRouter = router({
       if (input.taskType && input.taskType !== 'other') {
         const eng = await getEngineerById(input.engineerId);
         if (eng) {
-          const dept = eng.role ?? 'sales_engineer';
+          const dept = eng.department ?? eng.role ?? 'sales_engineer';
           const allowed = ALLOWED_TASK_TYPES_BY_DEPARTMENT[dept as keyof typeof ALLOWED_TASK_TYPES_BY_DEPARTMENT];
           if (allowed && !allowed.includes(input.taskType)) {
             throw new TRPCError({ code: 'BAD_REQUEST', message: `نوع المهمة غير مسموح لقسم ${dept}` });

@@ -7421,6 +7421,7 @@ export const ALLOWED_TASK_TYPES_BY_DEPARTMENT: Record<string, string[]> = {
   interior_designer: ['design_2d', 'design_3d', 'render'],
   tele_sales:        ['quotation', 'meeting_modeling', 'meeting_presentation'],
   site:              ['meeting_modeling', 'meeting_presentation', 'meeting_closing'],
+  site_engineer:     ['meeting_modeling', 'meeting_presentation', 'meeting_closing'],
   admin_sales:       ['quotation', 'meeting_modeling', 'contract', 'work_order'],
   manager:           ['design_2d', 'design_3d', 'render', 'quotation', 'meeting_modeling', 'meeting_presentation', 'meeting_closing', 'contract', 'work_order'],
 };
