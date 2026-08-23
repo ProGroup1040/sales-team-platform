@@ -924,16 +924,16 @@
 - [x] Fix 3: ربط توزيع المهام بنوع المهندس (Sales Engineer = 7 أنواع، باقي الأنواع لا تظهر)
 - [x] Fix 4: Target vs Actual بالنسب (2D=10%, 3D+Render=30%, Quotation=10%, Meetings=50%)
 - [x] Fix 5: دمج توزيع العمل داخل تبويب في المهام اليومية (مش Module منفصل)
-- [ ] Fix 6: ربط بيانات التوزيع بالـ KPI والتقارير
+- [x] Fix 6: ربط بيانات التوزيع بالـ KPI والتقارير
 
 ## Admin Sales Tasks Restructure - Apr 29 2026
-- [ ] إضافة adminTaskCategory enum في DB (crm_data, financial_collection, operations, reporting, coordination)
-- [ ] إضافة adminTaskWeight و adminTaskObjective في admin_sales_tasks schema
-- [ ] تحديث Admin Tasks UI لعرض Category dropdown + Objective
+- [x] إضافة adminTaskCategory enum في DB (crm_data, financial_collection, operations, reporting, coordination)
+- [x] إضافة adminTaskWeight و adminTaskObjective في admin_sales_tasks schema
+- [x] تحديث Admin Tasks UI لعرض Category dropdown + Objective
 - [ ] حساب KPI Admin = 40% تنفيذ + 30% تأثير فريق + 30% جودة
 - [ ] Dashboard جديد لـ Admin Sales: توزيع الوقت + نسبة تنفيذ + Score + Weak Points
-- [ ] ربط Admin KPI بنفس بيانات Tasks في KPI Module
-- [ ] منع Task بدون Category من الدخول في KPI
+- [x] ربط Admin KPI بنفس بيانات Tasks في KPI Module
+- [x] منع Task بدون Category من الدخول في KPI
 
 ## Leads Module - Advanced Date Filter - Apr 29 2026
 - [ ] إضافة Custom Range (From Date + To Date) في LeadsModule
@@ -1512,3 +1512,8 @@
 - [x] تعيين Current Stage Owner والمسؤولين التشغيليين عند انتقالات الإدارات مع الإبقاء على Sales Engineer ثابتاً
 - [x] تحديث واجهة Project Timeline والتحليلات والتنبيهات لتطبيق قواعد Pre-Execution
 - [x] إضافة اختبارات لمنطق انتظار العميل وSLA المعاينة وبداية التنفيذ
+
+## Project Timeline — تبسيط Pre-Execution
+- [x] قصر حالات الانتظار ومسؤوليها على الخيارات التشغيلية المطلوبة وإزالة مصدر الجاهزية
+- [x] فصل موعد المعاينة التنفيذية عن تاريخ تنفيذها الفعلي وربطهما بمهندس المعاينة وحالتها
+- [x] تطبيق إظهار واشتراط الحقول ديناميكياً وحماية زر اعتماد وبدء التنفيذ حتى اكتمال المعاينة

@@ -12625,17 +12625,38 @@ export async function ensureProjectFromClosedDeal(dealId: number, performedBy = 
   return project;
 }
 
+export const PRE_EXECUTION_WAITING_STATUSES = [
+  "waiting_site_readiness",
+  "execution_survey_scheduled",
+  "waiting_financial_requirement",
+  "other",
+] as const;
+
+export const PRE_EXECUTION_WAITING_OWNERS = [
+  "client",
+  "sales_engineer",
+  "sales_department",
+  "other",
+] as const;
+
+export const EXECUTION_SURVEY_STATUSES = [
+  "unspecified",
+  "scheduled",
+  "completed",
+  "not_done",
+  "resurvey_required",
+] as const;
+
+export function isExecutionSurveyComplete(surveyStatus: string | null | undefined, actualSurveyDate: unknown, surveyEngineerId: number | null | undefined) {
+  return surveyStatus === "completed" && Boolean(actualSurveyDate) && Boolean(surveyEngineerId);
+}
+
 export async function updateProjectPreExecution(input: {
   projectId: number;
   preExecutionStatus?: string;
   waitingOwnerCode?: string;
   waitingReasonCode?: string;
   notes?: string;
-  expectedSiteReadyDate?: string;
-  siteReadyDate?: string;
-  siteReadySource?: string;
-  siteReadyNotes?: string;
-  surveyRequestedDate?: string;
   surveyScheduledDate?: string;
   surveyActualDate?: string;
   surveyStatus?: string;
@@ -12648,6 +12669,35 @@ export async function updateProjectPreExecution(input: {
   const [project] = await db.select().from(projects).where(eq(projects.id, input.projectId)).limit(1);
   if (!project || isProjectTimelineExcluded(project.projectStatus)) throw new Error("المشروع غير متاح للمتابعة التشغيلية");
   if (project.executionStartDate) throw new Error("بدأ التنفيذ بالفعل؛ استخدم تحديث المرحلة التنفيذية بدلاً من Pre-Execution");
+  const waitingStatus = input.preExecutionStatus ?? project.preExecutionStatus;
+  const waitingOwner = input.waitingOwnerCode ?? project.preExecutionWaitingOwnerCode;
+  const surveyStatus = input.surveyStatus ?? project.executionSurveyStatus;
+  const surveyScheduledDate = input.surveyScheduledDate ?? project.executionSurveyScheduledDate;
+  const surveyActualDate = input.surveyActualDate ?? project.executionSurveyActualDate;
+  const surveyEngineerId = input.surveyEngineerId ?? project.executionSurveyEngineerId;
+  const notes = input.notes ?? project.preExecutionNotes;
+
+  if (!PRE_EXECUTION_WAITING_STATUSES.includes(waitingStatus as typeof PRE_EXECUTION_WAITING_STATUSES[number])) {
+    throw new Error("حالة الانتظار غير معتمدة في مرحلة ما قبل التنفيذ");
+  }
+  if (!PRE_EXECUTION_WAITING_OWNERS.includes(waitingOwner as typeof PRE_EXECUTION_WAITING_OWNERS[number])) {
+    throw new Error("مسؤول الانتظار غير معتمد في مرحلة ما قبل التنفيذ");
+  }
+  if (!EXECUTION_SURVEY_STATUSES.includes(surveyStatus as typeof EXECUTION_SURVEY_STATUSES[number])) {
+    throw new Error("حالة المعاينة التنفيذية غير معتمدة");
+  }
+  if (waitingStatus === "execution_survey_scheduled" && !surveyScheduledDate) {
+    throw new Error("موعد المعاينة التنفيذية مطلوب عند تحديدها");
+  }
+  if (surveyStatus === "scheduled" && !surveyScheduledDate) {
+    throw new Error("موعد المعاينة التنفيذية مطلوب عندما تكون حالة المعاينة «تم تحديدها»");
+  }
+  if (surveyStatus === "completed" && (!surveyActualDate || !surveyEngineerId)) {
+    throw new Error("تاريخ التنفيذ الفعلي ومهندس المعاينة مطلوبان عند إتمام المعاينة");
+  }
+  if ((waitingStatus === "other" || waitingOwner === "other") && !notes?.trim()) {
+    throw new Error("حقل التوضيح مطلوب عند اختيار «أخرى»");
+  }
   const now = new Date();
   const before = {
     preExecutionStatus: project.preExecutionStatus,
@@ -12657,21 +12707,15 @@ export async function updateProjectPreExecution(input: {
   await db.update(projects).set({
     currentStageKey: "pre_execution",
     currentDepartment: "إدارة المبيعات",
-    preExecutionStatus: input.preExecutionStatus ?? project.preExecutionStatus,
-    preExecutionWaitingOwnerCode: input.waitingOwnerCode ?? project.preExecutionWaitingOwnerCode,
+    preExecutionStatus: waitingStatus,
+    preExecutionWaitingOwnerCode: waitingOwner,
     preExecutionWaitingReasonCode: input.waitingReasonCode ?? project.preExecutionWaitingReasonCode,
-    preExecutionNotes: input.notes ?? project.preExecutionNotes,
-    expectedSiteReadyDate: input.expectedSiteReadyDate ?? project.expectedSiteReadyDate,
-    siteReadyDate: input.siteReadyDate ?? project.siteReadyDate,
-    siteReadySource: input.siteReadySource ?? project.siteReadySource,
-    siteReadyRecordedBy: input.siteReadyDate ? input.updatedBy : project.siteReadyRecordedBy,
-    siteReadyRecordedAt: input.siteReadyDate ? now : project.siteReadyRecordedAt,
-    siteReadyNotes: input.siteReadyNotes ?? project.siteReadyNotes,
-    executionSurveyRequestedDate: input.surveyRequestedDate ?? project.executionSurveyRequestedDate,
-    executionSurveyScheduledDate: input.surveyScheduledDate ?? project.executionSurveyScheduledDate,
-    executionSurveyActualDate: input.surveyActualDate ?? project.executionSurveyActualDate,
-    executionSurveyStatus: input.surveyStatus ?? project.executionSurveyStatus,
-    executionSurveyEngineerId: input.surveyEngineerId ?? project.executionSurveyEngineerId,
+    preExecutionNotes: notes,
+    siteReadySource: null,
+    executionSurveyScheduledDate: surveyScheduledDate,
+    executionSurveyActualDate: surveyActualDate,
+    executionSurveyStatus: surveyStatus,
+    executionSurveyEngineerId: surveyEngineerId,
     executionSurveyNotes: input.surveyNotes ?? project.executionSurveyNotes,
     executionClockStatus: "not_started",
     plannedProjectCompletionDate: null,
@@ -12698,7 +12742,9 @@ export async function startProjectExecution(input: {
   const [project] = await db.select().from(projects).where(eq(projects.id, input.projectId)).limit(1);
   if (!project || isProjectTimelineExcluded(project.projectStatus)) throw new Error("المشروع غير متاح لبدء التنفيذ");
   if (project.executionStartDate) throw new Error("مدة التنفيذ بدأت بالفعل لهذا المشروع");
-  if (project.executionSurveyStatus !== "completed" && !project.executionSurveyActualDate) throw new Error("لا يمكن بدء التنفيذ قبل تسجيل المعاينة التنفيذية الفعلية واعتمادها");
+  if (!isExecutionSurveyComplete(project.executionSurveyStatus, project.executionSurveyActualDate, project.executionSurveyEngineerId)) {
+    throw new Error("لا يمكن بدء التنفيذ قبل إتمام المعاينة وتسجيل تاريخها الفعلي ومهندس المعاينة");
+  }
   const stages = await getProjectStages();
   const salesStage = stages.find((stage) => stage.stageKey === "sales");
   if (!salesStage) throw new Error("مرحلة المبيعات غير مهيأة");

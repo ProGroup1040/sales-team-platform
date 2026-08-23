@@ -5,6 +5,10 @@ import {
   getProjectDelayCategory,
   isProjectTimelineExcluded,
   isExecutionSlaRunning,
+  EXECUTION_SURVEY_STATUSES,
+  PRE_EXECUTION_WAITING_OWNERS,
+  PRE_EXECUTION_WAITING_STATUSES,
+  isExecutionSurveyComplete,
 } from "./db";
 
 describe("Project Timeline — Delay ownership", () => {
@@ -58,6 +62,19 @@ describe("Project Timeline — Pre-Execution execution clock", () => {
 
   it("يبدأ SLA فقط عند Execution Start Date المعتمد وحالة Running", () => {
     expect(isExecutionSlaRunning("2026-08-10", "running")).toBe(true);
+  });
+
+  it("يحصر حالات الانتظار والمسؤولين قبل التنفيذ في القائمة التشغيلية الجديدة", () => {
+    expect(PRE_EXECUTION_WAITING_STATUSES).toEqual(["waiting_site_readiness", "execution_survey_scheduled", "waiting_financial_requirement", "other"]);
+    expect(PRE_EXECUTION_WAITING_OWNERS).toEqual(["client", "sales_engineer", "sales_department", "other"]);
+    expect(EXECUTION_SURVEY_STATUSES).toEqual(["unspecified", "scheduled", "completed", "not_done", "resurvey_required"]);
+  });
+
+  it("لا يتيح بدء التنفيذ إلا بعد إتمام المعاينة فعلياً وتعيين مهندسها", () => {
+    expect(isExecutionSurveyComplete("completed", "2026-08-25", 12)).toBe(true);
+    expect(isExecutionSurveyComplete("completed", null, 12)).toBe(false);
+    expect(isExecutionSurveyComplete("completed", "2026-08-25", null)).toBe(false);
+    expect(isExecutionSurveyComplete("scheduled", "2026-08-25", 12)).toBe(false);
   });
 });
 
