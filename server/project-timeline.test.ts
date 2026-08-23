@@ -9,6 +9,7 @@ import {
   PRE_EXECUTION_WAITING_OWNERS,
   PRE_EXECUTION_WAITING_STATUSES,
   isExecutionSurveyComplete,
+  isProjectStageDelayOwnerAllowed,
 } from "./db";
 
 describe("Project Timeline — Delay ownership", () => {
@@ -17,6 +18,16 @@ describe("Project Timeline — Delay ownership", () => {
     expect(getProjectDelayCategory("client")).toBe("client");
     expect(getProjectDelayCategory("supplier")).toBe("external");
     expect(getProjectDelayCategory("unknown_owner")).toBe("company");
+  });
+});
+
+describe("Project Timeline — Stage-specific delay owners", () => {
+  it("يحصر مسؤول التأخير في الأطراف المعتمدة للمرحلة", () => {
+    expect(isProjectStageDelayOwnerAllowed("technical_work", "technical_office")).toBe(true);
+    expect(isProjectStageDelayOwnerAllowed("technical_work", "production")).toBe(false);
+    expect(isProjectStageDelayOwnerAllowed("production", "production")).toBe(true);
+    expect(isProjectStageDelayOwnerAllowed("production", "sales_engineer")).toBe(false);
+    expect(isProjectStageDelayOwnerAllowed("installation", "client")).toBe(true);
   });
 });
 

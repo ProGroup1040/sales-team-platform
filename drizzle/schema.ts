@@ -1248,6 +1248,7 @@ export const projectUpdates = mysqlTable("project_updates", {
   nextAction: text("nextAction"),
   expectedCompletionDate: date("expectedCompletionDate"),
   hasBlocker: int("hasBlocker").notNull().default(0),
+  blockerDescription: text("blockerDescription"),
   delayOwnerCode: varchar("delayOwnerCode", { length: 64 }),
   delayReasonCode: varchar("delayReasonCode", { length: 96 }),
   notes: text("notes"),

@@ -936,22 +936,22 @@
 - [x] منع Task بدون Category من الدخول في KPI
 
 ## Leads Module - Advanced Date Filter - Apr 29 2026
-- [ ] إضافة Custom Range (From Date + To Date) في LeadsModule
-- [ ] إضافة 9 Presets: اليوم/أمس/آخر 7 أيام/آخر 14 يوم/آخر 30 يوم/هذا الأسبوع/الأسبوع الماضي/هذا الشهر/الشهر الماضي
-- [ ] ربط الفلتر بكل البيانات: إجمالي Leads + تم التواصل + لم يتم التواصل + المؤهل + المتحول لصفقات
-- [ ] تحسين UI: Dropdown واضح + عرض التاريخ المختار + زر Reset
-- [ ] تجهيز للـ CRM Integration: Date Field حقيقي + Dynamic Filter
+- [x] إضافة Custom Range (From Date + To Date) في LeadsModule
+- [x] إضافة 9 Presets: اليوم/أمس/آخر 7 أيام/آخر 14 يوم/آخر 30 يوم/هذا الأسبوع/الأسبوع الماضي/هذا الشهر/الشهر الماضي
+- [x] ربط الفلتر بكل البيانات: إجمالي Leads + تم التواصل + لم يتم التواصل + المؤهل + المتحول لصفقات
+- [x] تحسين UI: Dropdown واضح + عرض التاريخ المختار + زر Reset
+- [x] تجهيز للـ CRM Integration: Date Field حقيقي + Dynamic Filter
 
 ## Visits Module - Stage-Based Updates - Apr 29 2026
-- [ ] إلغاء التحديث الإلزامي اليومي الكامل للمعاينات
-- [ ] إضافة getVisitsNeedingAction في db.ts: Next Action + Missing Action + Delay Detection
-- [ ] تعديل التنبيهات: "5 معاينات تحتاج رفع" بدلاً من "29 معاينة لم يتم تحديثها"
-- [ ] تعديل KPI Logic: نسبة التنفيذ + نسبة الرفع في نفس اليوم + نسبة التأخير + نسبة التحصيل
-- [ ] Stage-Based Notifications في VisitsModule.tsx
+- [x] إلغاء التحديث الإلزامي اليومي الكامل للمعاينات
+- [x] إضافة getVisitsNeedingAction في db.ts: Next Action + Missing Action + Delay Detection
+- [x] تعديل التنبيهات: "5 معاينات تحتاج رفع" بدلاً من "29 معاينة لم يتم تحديثها"
+- [x] تعديل KPI Logic: نسبة التنفيذ + نسبة الرفع في نفس اليوم + نسبة التأخير + نسبة التحصيل
+- [x] Stage-Based Notifications في VisitsModule.tsx
 
 ## Visits Module - Stage-Based Updates - Apr 29 2026
-- [ ] Stage-Based Updates Logic in db.ts
-- [ ] Stage-Based Notifications in VisitsModule.tsx
+- [x] Stage-Based Updates Logic in db.ts
+- [x] Stage-Based Notifications in VisitsModule.tsx
 - [x] Role-Based Access Control: useRoleAccess hook
 - [ ] RBAC: إخفاء Sales Modules عن Admin/Tele/Visits/Interior
 - [ ] RBAC: Manager يرى كل الأقسام
@@ -1517,3 +1517,9 @@
 - [x] قصر حالات الانتظار ومسؤوليها على الخيارات التشغيلية المطلوبة وإزالة مصدر الجاهزية
 - [x] فصل موعد المعاينة التنفيذية عن تاريخ تنفيذها الفعلي وربطهما بمهندس المعاينة وحالتها
 - [x] تطبيق إظهار واشتراط الحقول ديناميكياً وحماية زر اعتماد وبدء التنفيذ حتى اكتمال المعاينة
+
+## Project Timeline — تحديث المواعيد والتأخيرات حسب المرحلة
+- [x] استبدال واجهة تحديث الاثنين والأربعاء بنموذج تحديث مواعيد مبسط وسجل تلقائي للتحديثات
+- [x] إظهار بيانات المرحلة الحالية والمسؤول الحالي وSLA وأيام المرحلة والتأخير بوضوح
+- [x] قصر حقول التأخير على الحالات المتأخرة مع قوائم مسؤول وسبب ديناميكية حسب المرحلة
+- [x] دعم Other مع حقل سبب إلزامي وحفظ فصل Current Responsible عن Delay Owner وInherited Delay

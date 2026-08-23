@@ -694,15 +694,18 @@ export const appRouter = router({
       id: z.number(),
       reason: z.enum(['client_cancelled', 'postponed', 'data_entry_error']),
     })).mutation(async ({ input }) => { await softDeleteVisit(input.id, input.reason); return { success: true }; }),
-    debt: publicProcedure.query(async () => getVisitsDebt()),
-    alerts: publicProcedure.query(async () => getVisitsAlerts()),
+    debt: publicProcedure.input(z.object({ year: z.number().optional(), month: z.number().optional() }).optional())
+      .query(async ({ input }) => getVisitsDebt(input?.year, input?.month)),
+    alerts: publicProcedure.input(z.object({ year: z.number().optional(), month: z.number().optional() }).optional())
+      .query(async ({ input }) => getVisitsAlerts(input?.year, input?.month)),
     dailyTracking: publicProcedure.input(z.object({ date: z.string() }))
       .query(async ({ input }) => getVisitsDailyTracking(input.date)),
     adminSalesKPI: publicProcedure.input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getAdminSalesVisitsKPI(input.year, input.month)),
     engineerKPI: publicProcedure.input(z.object({ engineerId: z.number(), year: z.number(), month: z.number() }))
       .query(async ({ input }) => getEngineerVisitsKPI(input.engineerId, input.year, input.month)),
-    needingAction: publicProcedure.query(async () => getVisitsNeedingAction()),
+    needingAction: publicProcedure.input(z.object({ year: z.number().optional(), month: z.number().optional() }).optional())
+      .query(async ({ input }) => getVisitsNeedingAction(input?.year, input?.month)),
   }),
 
   // ── Closing / Deals ───────────────────────────────────────────────────────
@@ -1013,6 +1016,7 @@ export const appRouter = router({
       nextAction: z.string().optional(),
       expectedCompletionDate: z.string().optional(),
       hasBlocker: z.boolean().optional(),
+      blockerDescription: z.string().optional(),
       delayOwnerCode: z.string().optional(),
       delayReasonCode: z.string().optional(),
       notes: z.string().optional(),

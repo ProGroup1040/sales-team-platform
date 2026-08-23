@@ -1,0 +1,1 @@
+ALTER TABLE `project_updates` ADD `blockerDescription` text;

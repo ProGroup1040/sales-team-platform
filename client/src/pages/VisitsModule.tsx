@@ -361,11 +361,11 @@ export default function VisitsModule() {
     filterType: listFilterType,
   });
   const { data: engineers } = trpc.engineers.list.useQuery();
-  const { data: alerts } = trpc.visits.alerts.useQuery();
-  const { data: debtVisits } = trpc.visits.debt.useQuery();
+  const { data: alerts } = trpc.visits.alerts.useQuery({ year: YEAR, month: MONTH });
+  const { data: debtVisits } = trpc.visits.debt.useQuery({ year: YEAR, month: MONTH });
   const { data: dailyTracking } = trpc.visits.dailyTracking.useQuery({ date: TODAY });
   const { data: adminKPI } = trpc.visits.adminSalesKPI.useQuery({ year: YEAR, month: MONTH });
-  const { data: needingAction } = trpc.visits.needingAction.useQuery();
+  const { data: needingAction } = trpc.visits.needingAction.useQuery({ year: YEAR, month: MONTH });
 
   const invalidateAll = () => {
     utils.visits.list.invalidate();

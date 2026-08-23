@@ -2507,35 +2507,37 @@ export async function softDeleteVisit(id: number, reason: 'client_cancelled' | '
   }).where(eq(visits.id, id));
 }
 
-/** Get visits debt: completed visits with fee > 0 and not collected */
-export async function getVisitsDebt() {
+/** Get visits debt: completed visits with fee > 0 and not collected, scoped to the execution month when requested */
+export async function getVisitsDebt(year?: number, month?: number) {
   const db = await getDb();
   if (!db) return [];
+  const conditions = [
+    eq(visits.isDeleted, 0),
+    eq(visits.status, 'completed'),
+    eq(visits.feeCollected, 0),
+    sql`${visits.feeAmount} > 0`,
+  ];
+  if (year && month) conditions.push(eq(visits.executionYear, year), eq(visits.executionMonth, month));
   const debtVisits = await db.select().from(visits).where(
-    and(
-      eq(visits.isDeleted, 0),
-      eq(visits.status, 'completed'),
-      eq(visits.feeCollected, 0),
-      sql`${visits.feeAmount} > 0`
-    )
+    and(...conditions)
   ).orderBy(desc(visits.scheduledAt));
   return debtVisits;
 }
 
 /** Get visits alerts: not confirmed, not uploaded, debt */
-export async function getVisitsAlerts() {
+export async function getVisitsAlerts(year?: number, month?: number) {
   const db = await getDb();
   if (!db) return { notConfirmed: [], notUploaded: [], debt: [] };
-  const activeVisits = await db.select().from(visits).where(
-    and(eq(visits.isDeleted, 0), ne(visits.status, 'cancelled'))
-  );
-  const notConfirmed = activeVisits.filter(v =>
+  const activeVisits = await db.select().from(visits).where(and(eq(visits.isDeleted, 0), ne(visits.status, 'cancelled')));
+  const bookingVisits = year && month ? activeVisits.filter((visit) => visit.bookingYear === year && visit.bookingMonth === month) : activeVisits;
+  const executionVisits = year && month ? activeVisits.filter((visit) => visit.executionYear === year && visit.executionMonth === month) : activeVisits;
+  const notConfirmed = bookingVisits.filter(v =>
     v.status === 'completed' && v.confirmationStatus === 'not_confirmed'
   );
-  const notUploaded = activeVisits.filter(v =>
+  const notUploaded = executionVisits.filter(v =>
     v.status === 'completed' && v.uploadStatus === 'not_uploaded'
   );
-  const debt = activeVisits.filter(v =>
+  const debt = executionVisits.filter(v =>
     v.status === 'completed' && v.feeCollected === 0 && parseFloat(v.feeAmount) > 0
   );
   return { notConfirmed, notUploaded, debt };
@@ -2591,7 +2593,7 @@ export function getVisitActiveStage(v: any): { stage: string; nextAction: string
 /**
  * Stage-Based: جلب المعاينات التي تحتاج تحديث فعلي (Active Stage فقط)
  */
-export async function getVisitsNeedingAction() {
+export async function getVisitsNeedingAction(year?: number, month?: number) {
   const db = await getDb();
   if (!db) return {
     needUpload: [], needConfirmation: [], needExecution: [], needCollection: [], needQuality: [],
@@ -2611,6 +2613,12 @@ export async function getVisitsNeedingAction() {
   for (const v of allVisits) {
     const { stage, isComplete } = getVisitActiveStage(v);
     if (isComplete) continue; // مكتملة — لا تحتاج تحديث
+    const isInSelectedStageMonth = !year || !month
+      ? true
+      : (stage === 'confirmation' || stage === 'execution')
+        ? v.bookingYear === year && v.bookingMonth === month
+        : v.executionYear === year && v.executionMonth === month;
+    if (!isInSelectedStageMonth) continue;
     if (stage === 'upload')       needUpload.push({ id: v.id, clientName: v.clientName, scheduledAt: v.scheduledAt });
     if (stage === 'confirmation') needConfirmation.push({ id: v.id, clientName: v.clientName, scheduledAt: v.scheduledAt });
     if (stage === 'execution')    needExecution.push({ id: v.id, clientName: v.clientName, scheduledAt: v.scheduledAt, isDelayed: new Date(v.scheduledAt) < new Date() });
@@ -12318,6 +12326,27 @@ export const PROJECT_DELAY_OWNERS = [
   { code: "other", labelAr: "أخرى", category: "company" },
 ] as const;
 
+export const PROJECT_STAGE_DELAY_OWNER_CODES: Record<string, string[]> = {
+  pre_execution: ["sales_engineer", "sales", "client", "management", "other"],
+  sales: ["sales_engineer", "sales", "client", "management", "other"],
+  technical_review: ["technical_office", "sales_engineer", "sales", "client", "procurement", "management", "other"],
+  technical_work: ["technical_office", "sales_engineer", "sales", "client", "procurement", "management", "other"],
+  procurement: ["procurement", "technical_office", "supplier", "client", "management", "other"],
+  production: ["production", "technical_office", "procurement", "supplier", "client", "management", "other"],
+  fitting_packaging: ["production", "technical_office", "procurement", "supplier", "client", "management", "other"],
+  installation: ["installation", "production", "procurement", "supplier", "client", "management", "other"],
+  quality: ["quality", "installation", "production", "technical_office", "client", "management", "other"],
+  final_delivery: ["quality", "installation", "client", "sales", "management", "other"],
+};
+
+export function getProjectStageDelayOwnerCodes(stageKey: string) {
+  return PROJECT_STAGE_DELAY_OWNER_CODES[stageKey] ?? PROJECT_DELAY_OWNERS.map((owner) => owner.code);
+}
+
+export function isProjectStageDelayOwnerAllowed(stageKey: string, ownerCode: string) {
+  return getProjectStageDelayOwnerCodes(stageKey).includes(ownerCode);
+}
+
 export const PROJECT_STATUS_META = {
   on_time: { labelAr: "في الموعد", labelEn: "On Time", color: "emerald" },
   at_risk: { labelAr: "معرّض للتأخير", labelEn: "At Risk", color: "amber" },
@@ -12903,6 +12932,9 @@ export async function addProjectDelay(input: {
   if (!db) throw new Error("Database unavailable");
   if (!Number.isInteger(input.delayDays) || input.delayDays <= 0) throw new Error("عدد أيام التأخير يجب أن يكون أكبر من صفر");
   if (input.reasonCode === "other" && !input.notes?.trim()) throw new Error("الملاحظات إلزامية عند اختيار سبب آخر");
+  const [project] = await db.select({ currentStageKey: projects.currentStageKey }).from(projects).where(eq(projects.id, input.projectId)).limit(1);
+  if (!project) throw new Error("المشروع غير موجود");
+  if (!isProjectStageDelayOwnerAllowed(project.currentStageKey, input.ownerCode)) throw new Error("مسؤول التأخير غير متاح للمرحلة الحالية");
   const category = getProjectDelayCategory(input.ownerCode);
   const [entry] = await db.insert(projectDelayLedger).values({
     projectId: input.projectId,
@@ -12960,6 +12992,9 @@ export async function transitionProjectStage(input: {
     }
     if (generatedDelay > 0 && input.delayReasonCode === "other" && !input.delayNotes?.trim()) {
       throw new Error("ملاحظات التأخير إلزامية عند اختيار سبب آخر");
+    }
+    if (generatedDelay > 0 && !isProjectStageDelayOwnerAllowed(project.currentStageKey, input.delayOwnerCode!)) {
+      throw new Error("مسؤول التأخير غير متاح للمرحلة الحالية");
     }
     const actualDuration = projectDayDiff(currentMovement.enteredAt, now);
     await db.update(projectMovements).set({
@@ -13055,7 +13090,7 @@ export async function transitionProjectStage(input: {
 export async function updateProjectReview(input: {
   projectId: number; updateType?: "status_update" | "monday_review" | "wednesday_review";
   currentStatus?: string; nextAction?: string; expectedCompletionDate?: string; hasBlocker?: boolean;
-  delayOwnerCode?: string; delayReasonCode?: string; notes?: string; updatedBy: string;
+  blockerDescription?: string; delayOwnerCode?: string; delayReasonCode?: string; notes?: string; updatedBy: string;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
@@ -13065,6 +13100,7 @@ export async function updateProjectReview(input: {
     .where(and(eq(projectMovements.projectId, input.projectId), eq(projectMovements.status, "active")))
     .orderBy(desc(projectMovements.enteredAt)).limit(1);
   const now = new Date();
+  if (input.hasBlocker && !input.blockerDescription?.trim()) throw new Error("وصف العائق مطلوب عند وجود عائق");
   const [update] = await db.insert(projectUpdates).values({
     projectId: input.projectId,
     movementId: movement?.id,
@@ -13074,6 +13110,7 @@ export async function updateProjectReview(input: {
     nextAction: input.nextAction,
     expectedCompletionDate: input.expectedCompletionDate,
     hasBlocker: input.hasBlocker ? 1 : 0,
+    blockerDescription: input.hasBlocker ? input.blockerDescription : null,
     delayOwnerCode: input.delayOwnerCode,
     delayReasonCode: input.delayReasonCode,
     notes: input.notes,
