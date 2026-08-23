@@ -1288,6 +1288,7 @@ export const projectAuditLogs = mysqlTable("project_audit_logs", {
   newValue: text("newValue"),
   reason: text("reason"),
   performedBy: varchar("performedBy", { length: 120 }).notNull(),
+  performedByRole: varchar("performedByRole", { length: 64 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 export type ProjectAuditLog = typeof projectAuditLogs.$inferSelect;

@@ -1,0 +1,1 @@
+ALTER TABLE `project_audit_logs` ADD `performedByRole` varchar(64);

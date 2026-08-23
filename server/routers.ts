@@ -331,7 +331,13 @@ async function getAdminCallerFromRequest(req: any): Promise<{ id: number; role: 
   return null;
 }
 
-const PROJECT_TIMELINE_MANAGER_ROLES = new Set(["manager", "admin", "system_user"]);
+const PROJECT_TIMELINE_MANAGER_ROLES = new Set(["manager", "admin", "admin_sales"]);
+// local admin is represented as "manager" by getAdminCallerFromRequest.
+const PROJECT_TIMELINE_EDIT_ROLES = new Set(["manager", "admin", "admin_sales"]);
+
+export function canEditProjectTimeline(role: string | null | undefined) {
+  return Boolean(role && PROJECT_TIMELINE_EDIT_ROLES.has(role));
+}
 
 async function getProjectTimelineCaller(ctx: any): Promise<{ id: number; role: string; name: string } | null> {
   const caller = await getAdminCallerFromRequest(ctx.req);
@@ -351,6 +357,15 @@ async function assertProjectTimelineAccess(ctx: any, projectId?: number, manager
     if (!project || (project.salesEngineerId !== caller.id && project.currentResponsibleId !== caller.id)) {
       throw new TRPCError({ code: "FORBIDDEN", message: "لا تملك صلاحية تعديل هذا المشروع" });
     }
+  }
+  return caller;
+}
+
+async function assertProjectTimelineEditAccess(ctx: any, projectId?: number) {
+  const caller = await getProjectTimelineCaller(ctx);
+  if (!caller) throw new TRPCError({ code: "UNAUTHORIZED", message: "سجّل الدخول لتعديل تايم لاين المشاريع" });
+  if (!canEditProjectTimeline(caller.role)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "تعديل بيانات المشاريع متاح فقط لـ Admin وAdmin Sales" });
   }
   return caller;
 }
@@ -968,8 +983,8 @@ export const appRouter = router({
       surveyNotes: z.string().optional(),
       updatedBy: z.string().min(1),
     })).mutation(async ({ input, ctx }) => {
-      const caller = await assertProjectTimelineAccess(ctx, input.projectId);
-      return updateProjectPreExecution({ ...input, updatedBy: caller.name });
+      const caller = await assertProjectTimelineEditAccess(ctx, input.projectId);
+      return updateProjectPreExecution({ ...input, updatedBy: caller.name, actorRole: caller.role });
     }),
     startExecution: publicProcedure.input(z.object({
       projectId: z.number(),
@@ -978,8 +993,8 @@ export const appRouter = router({
       notes: z.string().optional(),
       updatedBy: z.string().min(1),
     })).mutation(async ({ input, ctx }) => {
-      const caller = await assertProjectTimelineAccess(ctx, input.projectId);
-      return startProjectExecution({ ...input, updatedBy: caller.name });
+      const caller = await assertProjectTimelineEditAccess(ctx, input.projectId);
+      return startProjectExecution({ ...input, updatedBy: caller.name, actorRole: caller.role });
     }),
     transition: publicProcedure.input(z.object({
       projectId: z.number(),
@@ -991,8 +1006,8 @@ export const appRouter = router({
       delayNotes: z.string().optional(),
       updatedBy: z.string().min(1),
     })).mutation(async ({ input, ctx }) => {
-      const caller = await assertProjectTimelineAccess(ctx, input.projectId);
-      return transitionProjectStage({ ...input, updatedBy: caller.name });
+      const caller = await assertProjectTimelineEditAccess(ctx, input.projectId);
+      return transitionProjectStage({ ...input, updatedBy: caller.name, actorRole: caller.role });
     }),
     addDelay: publicProcedure.input(z.object({
       projectId: z.number(),
@@ -1006,8 +1021,8 @@ export const appRouter = router({
       isHoldPeriod: z.boolean().optional(),
       createdBy: z.string().min(1),
     })).mutation(async ({ input, ctx }) => {
-      const caller = await assertProjectTimelineAccess(ctx, input.projectId);
-      return addProjectDelay({ ...input, createdBy: caller.name });
+      const caller = await assertProjectTimelineEditAccess(ctx, input.projectId);
+      return addProjectDelay({ ...input, createdBy: caller.name, actorRole: caller.role });
     }),
     update: publicProcedure.input(z.object({
       projectId: z.number(),
@@ -1022,8 +1037,8 @@ export const appRouter = router({
       notes: z.string().optional(),
       updatedBy: z.string().min(1),
     })).mutation(async ({ input, ctx }) => {
-      const caller = await assertProjectTimelineAccess(ctx, input.projectId);
-      return updateProjectReview({ ...input, updatedBy: caller.name });
+      const caller = await assertProjectTimelineEditAccess(ctx, input.projectId);
+      return updateProjectReview({ ...input, updatedBy: caller.name, actorRole: caller.role });
     }),
     close: publicProcedure.input(z.object({
       projectId: z.number(),
@@ -1033,8 +1048,8 @@ export const appRouter = router({
       closingNotes: z.string().optional(),
       updatedBy: z.string().min(1),
     })).mutation(async ({ input, ctx }) => {
-      const caller = await assertProjectTimelineAccess(ctx, input.projectId);
-      return closeProject({ ...input, closedBy: caller.name });
+      const caller = await assertProjectTimelineEditAccess(ctx, input.projectId);
+      return closeProject({ ...input, closedBy: caller.name, actorRole: caller.role });
     }),
     setHold: publicProcedure.input(z.object({
       projectId: z.number(),
@@ -1045,8 +1060,8 @@ export const appRouter = router({
       notes: z.string().optional(),
       updatedBy: z.string().min(1),
     })).mutation(async ({ input, ctx }) => {
-      const caller = await assertProjectTimelineAccess(ctx, input.projectId);
-      return setProjectHold({ ...input, updatedBy: caller.name });
+      const caller = await assertProjectTimelineEditAccess(ctx, input.projectId);
+      return setProjectHold({ ...input, updatedBy: caller.name, actorRole: caller.role });
     }),
     updateStageConfig: publicProcedure.input(z.object({
       id: z.number(),

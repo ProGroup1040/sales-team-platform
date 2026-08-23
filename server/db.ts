@@ -12440,6 +12440,7 @@ async function writeProjectAudit(input: {
   newValue?: unknown;
   reason?: string;
   performedBy: string;
+  performedByRole?: string;
 }) {
   const db = await getDb();
   if (!db) return;
@@ -12453,6 +12454,7 @@ async function writeProjectAudit(input: {
     newValue: input.newValue === undefined ? undefined : JSON.stringify(input.newValue),
     reason: input.reason,
     performedBy: input.performedBy,
+    performedByRole: input.performedByRole,
   });
 }
 
@@ -12696,6 +12698,7 @@ export async function updateProjectPreExecution(input: {
   surveyEngineerId?: number;
   surveyNotes?: string;
   updatedBy: string;
+  actorRole?: string;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
@@ -12759,7 +12762,7 @@ export async function updateProjectPreExecution(input: {
     lastUpdatedBy: input.updatedBy,
     updateStatus: "up_to_date",
   } as any).where(eq(projects.id, input.projectId));
-  await writeProjectAudit({ projectId: input.projectId, entityType: "pre_execution", entityId: input.projectId, action: "pre_execution_updated", oldValue: before, newValue: input, performedBy: input.updatedBy });
+  await writeProjectAudit({ projectId: input.projectId, entityType: "pre_execution", entityId: input.projectId, action: "pre_execution_updated", oldValue: before, newValue: input, performedBy: input.updatedBy, performedByRole: input.actorRole });
   return recalculateProjectRuntime(input.projectId);
 }
 
@@ -12769,6 +12772,7 @@ export async function startProjectExecution(input: {
   responsibleId?: number;
   notes?: string;
   updatedBy: string;
+  actorRole?: string;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
@@ -12824,7 +12828,7 @@ export async function startProjectExecution(input: {
     lastUpdatedBy: input.updatedBy,
     updateStatus: "up_to_date",
   } as any).where(eq(projects.id, project.id));
-  await writeProjectAudit({ projectId: project.id, entityType: "project_execution", entityId: movement.id, action: "execution_started", oldValue: { executionStartDate: null, currentStageKey: project.currentStageKey }, newValue: { executionStartDate: projectDateOnly(startAt), targetDeliveryDate: projectDateOnly(targetDelivery), responsibleId: currentResponsibleId }, reason: input.notes, performedBy: input.updatedBy });
+  await writeProjectAudit({ projectId: project.id, entityType: "project_execution", entityId: movement.id, action: "execution_started", oldValue: { executionStartDate: null, currentStageKey: project.currentStageKey }, newValue: { executionStartDate: projectDateOnly(startAt), targetDeliveryDate: projectDateOnly(targetDelivery), responsibleId: currentResponsibleId }, reason: input.notes, performedBy: input.updatedBy, performedByRole: input.actorRole });
   return recalculateProjectRuntime(project.id);
 }
 
@@ -12930,7 +12934,7 @@ export async function recalculateProjectRuntime(projectId: number) {
 export async function addProjectDelay(input: {
   projectId: number; movementId?: number; delayDate?: string; delayDays: number;
   ownerCode: string; responsibleId?: number; reasonCode: string; notes?: string;
-  isHoldPeriod?: boolean; createdBy: string;
+  isHoldPeriod?: boolean; createdBy: string; actorRole?: string;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
@@ -12960,6 +12964,7 @@ export async function addProjectDelay(input: {
     action: "delay_recorded",
     newValue: { ...input, category },
     performedBy: input.createdBy,
+    performedByRole: input.actorRole,
   });
   await recalculateProjectRuntime(input.projectId);
   return entry;
@@ -12967,7 +12972,7 @@ export async function addProjectDelay(input: {
 
 export async function transitionProjectStage(input: {
   projectId: number; nextStageKey: string; responsibleId?: number; notes?: string;
-  delayOwnerCode?: string; delayReasonCode?: string; delayNotes?: string; updatedBy: string;
+  delayOwnerCode?: string; delayReasonCode?: string; delayNotes?: string; updatedBy: string; actorRole?: string;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
@@ -13074,6 +13079,7 @@ export async function transitionProjectStage(input: {
     newValue: nextStage.stageKey,
     reason: input.notes,
     performedBy: input.updatedBy,
+    performedByRole: input.actorRole,
   });
   if (project.currentResponsibleId !== input.responsibleId) {
     await writeProjectAudit({
@@ -13086,6 +13092,7 @@ export async function transitionProjectStage(input: {
       newValue: input.responsibleId ?? null,
       reason: input.notes,
       performedBy: input.updatedBy,
+      performedByRole: input.actorRole,
     });
   }
   return recalculateProjectRuntime(project.id);
@@ -13094,7 +13101,7 @@ export async function transitionProjectStage(input: {
 export async function updateProjectReview(input: {
   projectId: number; updateType?: "status_update" | "monday_review" | "wednesday_review";
   currentStatus?: string; nextAction?: string; expectedCompletionDate?: string; hasBlocker?: boolean;
-  blockerDescription?: string; delayOwnerCode?: string; delayReasonCode?: string; notes?: string; updatedBy: string;
+  blockerDescription?: string; delayOwnerCode?: string; delayReasonCode?: string; notes?: string; updatedBy: string; actorRole?: string;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
@@ -13161,6 +13168,7 @@ export async function updateProjectReview(input: {
     action: "project_review_created",
     newValue: input,
     performedBy: input.updatedBy,
+    performedByRole: input.actorRole,
   });
   return recalculateProjectRuntime(input.projectId);
 }
@@ -13184,6 +13192,7 @@ export async function closeProject(input: {
   closingDate: string;
   closingNotes?: string;
   closedBy: string;
+  actorRole?: string;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
@@ -13265,13 +13274,14 @@ export async function closeProject(input: {
     newValue: { status: "completed", closingStatus: input.closingStatus, closingDate, closingNotes: input.closingNotes ?? null },
     reason: input.closingStatus === "other" ? input.closingOtherDescription : input.closingNotes,
     performedBy: input.closedBy,
+    performedByRole: input.actorRole,
   });
   return { id: project.id, projectStatus: "completed" as const, closingDate, closingStatus: input.closingStatus };
 }
 
 export async function setProjectHold(input: {
   projectId: number; isOnHold: boolean; holdOwnerCode?: string; holdReasonCode?: string;
-  expectedResumeDate?: string; notes?: string; updatedBy: string;
+  expectedResumeDate?: string; notes?: string; updatedBy: string; actorRole?: string;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
@@ -13342,6 +13352,7 @@ export async function setProjectHold(input: {
     action: input.isOnHold ? "project_held" : "project_resumed",
     newValue: input,
     performedBy: input.updatedBy,
+    performedByRole: input.actorRole,
   });
   return recalculateProjectRuntime(input.projectId);
 }
