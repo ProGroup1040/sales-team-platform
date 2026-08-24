@@ -9,18 +9,8 @@
 
 import { useMemo } from "react";
 import { trpc } from "@/lib/trpc";
-
-export type AppRole =
-  | "admin"
-  | "engineer"
-  | "admin_sales"
-  | "sales_engineer"
-  | "tele_sales"
-  | "site_engineer"
-  | "system_user"
-  | "sales_specialist"
-  | "interior_designer"
-  | "manager";
+import { MANAGER_ROLES, SALES_ROLES, type AppRole } from "@shared/authorization";
+export type { AppRole } from "@shared/authorization";
 
 // Mapping: module key → accessKey in RoleAccess
 const MODULE_TO_ACCESS_KEY: Record<string, keyof RoleAccess> = {
@@ -74,31 +64,28 @@ export interface RoleAccess {
   isLoading: boolean;
 }
 
-const SALES_ROLES: AppRole[] = ["sales_engineer", "engineer", "sales_specialist"];
-const MANAGER_ROLES: AppRole[] = ["manager", "admin", "system_user"];
-
-/** Default fallback (full access) — يُستخدم فقط أثناء التحميل أو عند عدم وجود بيانات */
+/** Safe fallback: role defaults are used only while permissions are loading; after a failed or empty permission read, access is denied. */
 function buildDefaultAccess(role: AppRole | null, isLoading = false): RoleAccess {
-  const isManager = MANAGER_ROLES.includes(role as AppRole);
-  const isSalesTeam = SALES_ROLES.includes(role as AppRole);
+  const isManager = (MANAGER_ROLES as readonly string[]).includes(role ?? "");
+  const isSalesTeam = (SALES_ROLES as readonly string[]).includes(role ?? "");
   const isAdminSales = role === "admin_sales";
   const isTeleSales = role === "tele_sales";
   const isInterior = role === "interior_designer";
 
   return {
-    canSeeOverview: true,
-    canSeeTasks: true,
-    canSeeLeads: true,
-    canSeeVisits: true,
-    canSeeClosing: isManager || isSalesTeam,
-    canSeeProjectTimeline: isManager || isSalesTeam,
-    canSeeSalesModule: isManager || isSalesTeam,
-    canSeeKPI: true,
-    canSeeCollections: isManager || isSalesTeam || isAdminSales,
-    canSeePlanning: isManager || isSalesTeam,
-    canSeeReports: isManager || isSalesTeam || isAdminSales,
-    canSeeSalesExecution: isManager || isSalesTeam,
-    canSeePromotion: isManager,
+    canSeeOverview: isLoading,
+    canSeeTasks: isLoading,
+    canSeeLeads: isLoading,
+    canSeeVisits: isLoading,
+    canSeeClosing: isLoading && (isManager || isSalesTeam),
+    canSeeProjectTimeline: isLoading && (isManager || isSalesTeam),
+    canSeeSalesModule: isLoading && (isManager || isSalesTeam),
+    canSeeKPI: isLoading,
+    canSeeCollections: isLoading && (isManager || isSalesTeam || isAdminSales),
+    canSeePlanning: isLoading && (isManager || isSalesTeam),
+    canSeeReports: isLoading && (isManager || isSalesTeam || isAdminSales),
+    canSeeSalesExecution: isLoading && (isManager || isSalesTeam),
+    canSeePromotion: isLoading && isManager,
     role,
     isManager,
     isSalesTeam,
@@ -115,8 +102,8 @@ function buildDynamicAccess(
   role: AppRole | null,
   dbPerms: Array<{ module: string; canView: number; canAdd: number; canEdit: number; canDelete: number; dataScope: string }>
 ): RoleAccess {
-  const isManager = MANAGER_ROLES.includes(role as AppRole);
-  const isSalesTeam = SALES_ROLES.includes(role as AppRole);
+  const isManager = (MANAGER_ROLES as readonly string[]).includes(role ?? "");
+  const isSalesTeam = (SALES_ROLES as readonly string[]).includes(role ?? "");
   const isAdminSales = role === "admin_sales";
   const isTeleSales = role === "tele_sales";
   const isInterior = role === "interior_designer";

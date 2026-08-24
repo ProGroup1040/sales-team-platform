@@ -1,6 +1,9 @@
 import "dotenv/config";
 import { and, between, count, desc, eq, gte, isNull, lte, or, sql, sum, avg, lt, ne, inArray, notInArray, not } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
+import { SYSTEM_MODULES, SYSTEM_ROLES } from "@shared/authorization";
+import { fromCents, subtractMoney, toCents } from "@shared/money";
+export { SYSTEM_MODULES, SYSTEM_ROLES };
 import {
   InsertUser, users,
   engineers, dailyTasks, leads, visits, deals,
@@ -1725,23 +1728,23 @@ export async function getAllCollectionsWithSummary(engineerId?: number) {
 export async function addPayment(data: InsertPayment) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  const amount = Number(data.amount);
-  if (!Number.isFinite(amount) || amount <= 0) throw new Error("Payment amount must be positive");
+  const amountCents = toCents(data.amount);
+  if (amountCents <= 0) throw new Error("Payment amount must be positive");
   const paymentDate = data.paymentDate instanceof Date ? data.paymentDate : new Date(`${String(data.paymentDate)}T00:00:00`);
   if (Number.isNaN(paymentDate.getTime())) throw new Error("Invalid payment date");
 
   return db.transaction(async tx => {
-    const [result] = await tx.insert(payments).values({ ...data, amount: amount.toFixed(2), paymentDate } as any);
+    const [result] = await tx.insert(payments).values({ ...data, amount: fromCents(amountCents), paymentDate } as any);
     const allPayments = await tx.select().from(payments).where(eq(payments.collectionId, data.collectionId));
-    const total = allPayments.reduce((sum, payment) => sum + Number(payment.amount ?? 0), 0);
+    const totalCents = allPayments.reduce((sum, payment) => sum + toCents(payment.amount ?? 0), 0);
     const [col] = await tx.select().from(collections).where(eq(collections.id, data.collectionId)).limit(1);
     if (!col) throw new Error("Collection not found");
-    const contractAmt = Number(col.contractAmount ?? 0);
-    if (!Number.isFinite(contractAmt) || contractAmt < 0) throw new Error("Collection amount is invalid");
-    const pct = contractAmt > 0 ? total / contractAmt : 0;
+    const contractCents = toCents(col.contractAmount ?? 0);
+    if (contractCents < 0) throw new Error("Collection amount is invalid");
+    const pct = contractCents > 0 ? totalCents / contractCents : 0;
     const newStatus: "on_track" | "due_soon" | "overdue" | "completed" = pct >= 1 ? "completed" : col.status;
-    await tx.update(collections).set({ collectedAmount: total.toFixed(2), status: newStatus, lastPaymentAt: new Date() }).where(eq(collections.id, data.collectionId));
-    await checkAndCreateCommissionStage(data.collectionId, total, contractAmt, pct, tx);
+    await tx.update(collections).set({ collectedAmount: fromCents(totalCents), status: newStatus, lastPaymentAt: new Date() }).where(eq(collections.id, data.collectionId));
+    await checkAndCreateCommissionStage(data.collectionId, totalCents / 100, contractCents / 100, pct, tx);
     return result;
   });
 }
@@ -3298,10 +3301,12 @@ export async function updateDealFull(id: number, data: {
     if (data.value !== undefined || data.discountValue !== undefined) {
       const grossValue = data.value ?? Number(current.grossValue ?? current.value ?? 0);
       const discountValue = data.discountValue ?? Number(current.discountValue ?? 0);
-      if (!Number.isFinite(grossValue) || !Number.isFinite(discountValue) || discountValue > grossValue) {
+      if (!Number.isFinite(grossValue) || !Number.isFinite(discountValue)) throw new Error("Invalid deal money values");
+      try {
+        updateData.netValue = subtractMoney(grossValue, discountValue);
+      } catch {
         throw new Error("Discount cannot exceed deal value");
       }
-      updateData.netValue = (grossValue - discountValue).toFixed(2);
     }
 
     if (data.stage === "closed_won" || data.stage === "closed_lost") {
@@ -8887,7 +8892,8 @@ export async function addPaymentWithFollowUp(data: {
 }): Promise<{ paymentId: number; taskCreated: boolean }> {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  if (!Number.isFinite(data.amount) || data.amount <= 0) throw new Error("Payment amount must be positive");
+  const amountCents = toCents(data.amount);
+  if (amountCents <= 0) throw new Error("Payment amount must be positive");
   const paymentDate = new Date(`${data.paymentDate}T00:00:00`);
   if (Number.isNaN(paymentDate.getTime())) throw new Error("Invalid payment date");
   const nextPaymentDate = data.nextPaymentDate ? new Date(`${data.nextPaymentDate}T00:00:00`) : undefined;
@@ -8898,7 +8904,7 @@ export async function addPaymentWithFollowUp(data: {
       collectionId: data.collectionId,
       engineerId: data.engineerId ?? null,
       clientName: data.clientName.trim(),
-      amount: data.amount.toFixed(2),
+      amount: fromCents(amountCents),
       paymentDate,
       paymentType: data.paymentType,
       addedBy: data.addedBy,
@@ -8916,16 +8922,14 @@ export async function addPaymentWithFollowUp(data: {
     }).from(collections).where(eq(collections.id, data.collectionId)).limit(1);
     if (collRows.length === 0) throw new Error("Collection not found");
 
-    const currentCollected = Number(collRows[0].collectedAmount ?? 0);
-    const contractAmount = Number(collRows[0].contractAmount ?? 0);
-    if (!Number.isFinite(currentCollected) || !Number.isFinite(contractAmount)) {
-      throw new Error("Collection amount is invalid");
-    }
-    const newCollected = currentCollected + data.amount;
+    const currentCollectedCents = toCents(collRows[0].collectedAmount ?? 0);
+    const contractAmountCents = toCents(collRows[0].contractAmount ?? 0);
+    if (currentCollectedCents < 0 || contractAmountCents < 0) throw new Error("Collection amount is invalid");
+    const newCollectedCents = currentCollectedCents + amountCents;
     await tx.update(collections).set({
-      collectedAmount: newCollected.toFixed(2),
+      collectedAmount: fromCents(newCollectedCents),
       lastPaymentAt: new Date(),
-      status: newCollected >= contractAmount ? "completed" : "on_track",
+      status: newCollectedCents >= contractAmountCents ? "completed" : "on_track",
     }).where(eq(collections.id, data.collectionId));
 
     let taskCreated = false;
@@ -8936,7 +8940,7 @@ export async function addPaymentWithFollowUp(data: {
         engineerId: data.engineerId,
         taskType: "other",
         title: `متابعة دفعة: ${data.clientName.trim()}`,
-        description: `دفعة متوقعة بتاريخ ${data.nextPaymentDate} - مبلغ العقد: ${data.amount}`,
+        description: `دفعة متوقعة بتاريخ ${data.nextPaymentDate} - مبلغ العقد: ${fromCents(amountCents)}`,
         status: "planned",
         taskDate: nextPaymentDate,
         priority: "high",
@@ -11246,30 +11250,7 @@ export async function getRoleModulePermission(
 }
 
 /** الـ Modules الكاملة في النظام */
-export const SYSTEM_MODULES = [
-  { key: "overview",        label: "نظرة عامة" },
-  { key: "tasks",           label: "المهام اليومية" },
-  { key: "crm",             label: "العملاء المحتملون" },
-  { key: "visits",          label: "المعاينات" },
-  { key: "closing",         label: "الإغلاق والتفاوض" },
-  { key: "sales",           label: "المبيعات" },
-  { key: "kpi",             label: "مؤشرات الأداء" },
-  { key: "collections",     label: "التحصيل المالي" },
-  { key: "planning",        label: "تخطيط الأهداف" },
-  { key: "reports",         label: "التقارير" },
-  { key: "sales_execution", label: "تنفيذ المبيعات" },
-  { key: "promotion",       label: "التقييم والترقية" },
-  { key: "users",           label: "إدارة المستخدمين" },
-  { key: "permissions",     label: "لوحة الصلاحيات" },
-] as const;
-
-/** الـ Roles الكاملة في النظام */
-export const SYSTEM_ROLES = [
-  { key: "manager",         label: "مدير / CEO" },
-  { key: "admin_sales",     label: "Admin Sales" },
-  { key: "sales_engineer",  label: "مهندس مبيعات" },
-  { key: "sales_specialist",label: "أخصائي مبيعات" },
-] as const;
+/** Canonical role/module definitions are shared with the frontend. */
 
 // ─── Section Permissions Functions ──────────────────────────────────────────
 
@@ -11718,37 +11699,51 @@ export async function reopenDeal(params: {
   reason?: string;
 }) {
   const db = await getDb();
-  if (!db) return { success: false, error: 'DB not available' };
-  const [deal] = await db.select().from(deals).where(eq(deals.id, params.dealId)).limit(1);
-  if (!deal) return { success: false, error: 'Deal not found' };
-  if (!['closed_won', 'closed_lost'].includes(deal.stage)) {
-    return { success: false, error: 'الصفقة ليست مغلقة' };
-  }
-  const oldStage = deal.stage;
-  await db.update(deals).set({
-    stage: 'negotiation',
-    isLocked: 0,
-    closedAt: null as any,
-    closingMonth: null as any,
-    closingYear: null as any,
-  }).where(eq(deals.id, params.dealId));
-  // Log in deal_timeline
+  if (!db) throw new Error("Database unavailable");
+  if (!Number.isInteger(params.dealId) || params.dealId <= 0) return { success: false, error: "Invalid deal id" };
+  const reason = params.reason?.trim();
+  if (!reason) return { success: false, error: "سبب إعادة الفتح مطلوب للتدقيق" };
+
+  const result = await db.transaction(async tx => {
+    const [deal] = await tx.select().from(deals)
+      .where(and(eq(deals.id, params.dealId), eq(deals.isDeleted, 0))).limit(1);
+    if (!deal) return { success: false as const, error: "Deal not found" };
+    if (!["closed_won", "closed_lost"].includes(deal.stage)) {
+      return { success: false as const, error: "الصفقة ليست مغلقة" };
+    }
+    const oldStage = deal.stage;
+    await tx.update(deals).set({
+      stage: "negotiation",
+      isLocked: 0,
+      closedAt: null as any,
+      closingMonth: null as any,
+      closingYear: null as any,
+    }).where(eq(deals.id, params.dealId));
+
+    // A closed-won project and its financial history are retained. Reopening
+    // changes the deal state only; any reversal of collected cash or project
+    // milestones requires a separate approved compensating action.
+    return { success: true as const, oldStage, engineerId: deal.engineerId };
+  });
+  if (!result.success) return result;
+
   await addDealTimelineEntry({
     dealId: params.dealId,
-    engineerId: deal.engineerId,
-    activityType: 'stage_changed',
-    description: `إعادة فتح الصفقة من "${oldStage === 'closed_won' ? 'مغلقة (فوز)' : 'مغلقة (خسارة)'}" إلى "تفاوض" بواسطة ${params.modifiedBy}${params.reason ? ` - السبب: ${params.reason}` : ''}`,
+    engineerId: result.engineerId,
+    activityType: "stage_changed",
+    stageFrom: result.oldStage,
+    stageTo: "negotiation",
+    description: `إعادة فتح الصفقة من "${result.oldStage === "closed_won" ? "مغلقة (فوز)" : "مغلقة (خسارة)"}" إلى "تفاوض" بواسطة ${params.modifiedBy} - السبب: ${reason}`,
   });
-  // Log in audit_logs
   await db.insert(auditLogs).values({
-    action: 'deal_reopened',
-    entityType: 'deal',
+    action: "deal_reopened",
+    entityType: "deal",
     entityId: params.dealId,
-    oldValue: JSON.stringify({ stage: oldStage, isLocked: 1 }),
-    newValue: JSON.stringify({ stage: 'negotiation', isLocked: 0 }),
+    oldValue: JSON.stringify({ stage: result.oldStage, isLocked: 1 }),
+    newValue: JSON.stringify({ stage: "negotiation", isLocked: 0, reason }),
     performedBy: params.modifiedBy,
   } as any);
-  return { success: true, oldStage };
+  return { success: true, oldStage: result.oldStage };
 }
 
 // ─── Set Deal Accounting Month (Admin/Manager only) ──────────────────────────
