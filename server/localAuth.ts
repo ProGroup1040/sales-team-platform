@@ -1,12 +1,12 @@
 import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
 import type { Request, Response } from "express";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getDb } from "./db";
 import { engineers } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { ONE_YEAR_MS, LOCAL_AUTH_COOKIE } from "@shared/const";
-import { getSessionCookieOptions } from "./_core/cookies";
+import { getRequestCookie } from "./_core/httpCookies";
 
 export type LocalSessionPayload = {
   engineerId: number;
@@ -39,14 +39,25 @@ export async function verifyLocalSession(token: string | undefined | null): Prom
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, getSecretKey(), { algorithms: ["HS256"] });
-    const { engineerId, username, role, name, forcePasswordChange } = payload as Record<string, unknown>;
-    if (!engineerId || !username || !role) return null;
+    const { engineerId } = payload as Record<string, unknown>;
+    const parsedEngineerId = Number(engineerId);
+    if (!Number.isInteger(parsedEngineerId) || parsedEngineerId <= 0) return null;
+
+    const db = await getDb();
+    if (!db) return null;
+    const [engineer] = await db.select().from(engineers).where(and(
+      eq(engineers.id, parsedEngineerId),
+      eq(engineers.status, "active"),
+      eq(engineers.isDeleted, 0),
+    )).limit(1);
+    if (!engineer || !engineer.username) return null;
+
     return {
-      engineerId: engineerId as number,
-      username: username as string,
-      role: role as string,
-      name: (name as string) || "",
-      forcePasswordChange: !!forcePasswordChange,
+      engineerId: engineer.id,
+      username: engineer.username,
+      role: engineer.role,
+      name: engineer.name,
+      forcePasswordChange: engineer.forcePasswordChange === 1,
     };
   } catch {
     return null;
@@ -81,15 +92,7 @@ export async function localLogin(username: string, password: string): Promise<{ 
 }
 
 export async function getLocalSessionFromRequest(req: Request): Promise<LocalSessionPayload | null> {
-  const cookieHeader = req.headers.cookie || "";
-  const cookies = new Map(
-    cookieHeader.split(";").map(c => {
-      const idx = c.indexOf("=");
-      return [c.slice(0, idx).trim(), c.slice(idx + 1).trim()] as [string, string];
-    })
-  );
-  const token = cookies.get(LOCAL_AUTH_COOKIE);
-  return verifyLocalSession(token);
+  return verifyLocalSession(getRequestCookie(req, LOCAL_AUTH_COOKIE));
 }
 
 export async function hashPassword(plain: string): Promise<string> {

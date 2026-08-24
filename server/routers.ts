@@ -1,10 +1,11 @@
 import { z } from "zod";
-import { COOKIE_NAME, LOCAL_AUTH_COOKIE } from "@shared/const";
+import { COOKIE_NAME, LOCAL_AUTH_COOKIE, ONE_YEAR_MS } from "@shared/const";
 import { localLogin, getLocalSessionFromRequest } from "./localAuth";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
+import { getRequestCookie, setResponseCookie, clearResponseCookie } from "./_core/httpCookies";
 import { TRPCError } from "@trpc/server";
-import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import {
   getEngineers, getEngineerById, updateEngineerProfile, createEngineer,
   getDailyTasksStats, getTasksList, createTask, updateTaskStatus, deleteTask, rescheduleTask,
@@ -303,9 +304,9 @@ async function seedData() {
 
 // ─── App Router ───────────────────────────────────────────────────────────────
 // ─── Helper: get admin/manager caller from either local_session or app_user_token ─
-async function getAdminCallerFromRequest(req: any): Promise<{ id: number; role: string; name: string } | null> {
+export async function getAdminCallerFromRequest(req: any): Promise<{ id: number; role: string; name: string } | null> {
   // Try app_user_token first
-  const appToken = req?.cookies?.app_user_token;
+  const appToken = req ? getRequestCookie(req, "app_user_token") : undefined;
   if (appToken) {
     const caller = await verifyAppUserToken(appToken);
     if (caller) return { id: caller.id, role: caller.role, name: caller.name };
@@ -331,6 +332,14 @@ async function getAdminCallerFromRequest(req: any): Promise<{ id: number; role: 
   return null;
 }
 
+async function getCallerFromContext(ctx: any): Promise<{ id: number; role: string; name: string } | null> {
+  if (ctx?.actor) return { id: ctx.actor.id, role: ctx.actor.role, name: ctx.actor.name };
+  if (ctx?.user?.role === "admin") {
+    return { id: ctx.user.id, role: "admin", name: ctx.user.name ?? ctx.user.email ?? "Admin" };
+  }
+  return ctx?.req ? getAdminCallerFromRequest(ctx.req) : null;
+}
+
 const PROJECT_TIMELINE_MANAGER_ROLES = new Set(["manager", "admin", "admin_sales"]);
 // local admin is represented as "manager" by getAdminCallerFromRequest.
 const PROJECT_TIMELINE_EDIT_ROLES = new Set(["manager", "admin", "admin_sales"]);
@@ -344,7 +353,7 @@ export function canManageProjectTimeline(role: string | null | undefined) {
 }
 
 async function getProjectTimelineCaller(ctx: any): Promise<{ id: number; role: string; name: string } | null> {
-  const caller = await getAdminCallerFromRequest(ctx.req);
+  const caller = await getCallerFromContext(ctx);
   if (caller) return caller;
   if (ctx.user) return { id: 0, role: "manager", name: ctx.user.name ?? ctx.user.email ?? "Admin" };
   return null;
@@ -379,18 +388,21 @@ export const appRouter = router({
     me: publicProcedure.query(opts => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
-      ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
+      clearResponseCookie(ctx.res, COOKIE_NAME, cookieOptions);
       return { success: true } as const;
     }),
   }),
   // ── Seed ──────────────────────────────────────────────────────────────────────────────
   seed: router({
-    isSeeded: publicProcedure.query(async () => isSeeded()),
-    run: publicProcedure.mutation(async () => {
+    isSeeded: protectedProcedure.query(async () => isSeeded()),
+    run: adminProcedure.mutation(async () => {
       await seedData();
       return { success: true };
     }),
-    reset: publicProcedure.mutation(async () => {
+    reset: adminProcedure.mutation(async () => {
+      if (process.env.NODE_ENV !== "development") {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Seed reset is available only in development" });
+      }
       const { getDb } = await import('./db');
       const db = await getDb();
       if (!db) return { success: false };
@@ -421,8 +433,8 @@ export const appRouter = router({
 
   // ── Engineers ──────────────────────────────────────────────────────────────────────────────
   engineers: router({
-    list: publicProcedure.query(async () => getEngineers()),
-    create: publicProcedure.input(z.object({
+    list: protectedProcedure.query(async () => getEngineers()),
+    create: protectedProcedure.input(z.object({
       name: z.string().min(1), email: z.string().email().optional(),
       phone: z.string().optional(), department: z.string().optional(),
     })).mutation(async ({ input }) => { await createEngineer(input); return { success: true }; }),
@@ -430,11 +442,11 @@ export const appRouter = router({
 
   // ── Daily Tasks ───────────────────────────────────────────────────────────
   tasks: router({
-    stats: publicProcedure.input(z.object({ date: z.string() }))
+    stats: protectedProcedure.input(z.object({ date: z.string() }))
       .query(async ({ input }) => getDailyTasksStats(input.date)),
-    list: publicProcedure.input(z.object({ date: z.string(), engineerId: z.number().optional() }))
+    list: protectedProcedure.input(z.object({ date: z.string(), engineerId: z.number().optional() }))
       .query(async ({ input }) => getTasksList(input.date, input.engineerId)),
-    create: publicProcedure.input(z.object({
+    create: protectedProcedure.input(z.object({
       engineerId: z.number(), taskDate: z.string(), title: z.string().min(1),
       description: z.string().optional(), plannedHours: z.number().optional(),
       priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
@@ -455,30 +467,30 @@ export const appRouter = router({
       }
       await createTask(input); return { success: true };
     }),
-    updateStatus: publicProcedure.input(z.object({
+    updateStatus: protectedProcedure.input(z.object({
       id: z.number(), status: z.enum(['planned', 'completed', 'delayed', 'not_done', 'client_delay']),
       delayDays: z.number().optional(), notes: z.string().optional(),
     })).mutation(async ({ input }) => { return await updateTaskStatus(input.id, input.status, input.delayDays, input.notes); }),
-    delete: publicProcedure.input(z.object({ id: z.number() }))
+    delete: protectedProcedure.input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => { await deleteTask(input.id); return { success: true }; }),
-    reschedule: publicProcedure.input(z.object({ id: z.number(), newDate: z.string() }))
+    reschedule: protectedProcedure.input(z.object({ id: z.number(), newDate: z.string() }))
       .mutation(async ({ input }) => { await rescheduleTask(input.id, input.newDate); return { success: true }; }),
-    critical: publicProcedure.query(async () => getCriticalTasks()),
-    calendarView: publicProcedure.input(z.object({ engineerId: z.number().optional() }))
+    critical: protectedProcedure.query(async () => getCriticalTasks()),
+    calendarView: protectedProcedure.input(z.object({ engineerId: z.number().optional() }))
       .query(async ({ input }) => getTasksCalendarView(input.engineerId)),
     // جلب مهام Admin Sales للتقويم الزمني
-    calendarViewAdmin: publicProcedure
+    calendarViewAdmin: protectedProcedure
       .input(z.object({ engineerId: z.number().optional(), month: z.string().optional() }))
       .query(async ({ input }) => getAdminSalesCalendarView(input.engineerId, input.month)),
-    engineers: publicProcedure.query(async () => getEngineersWithRole()),
-    createEngineer: publicProcedure.input(z.object({
+    engineers: protectedProcedure.query(async () => getEngineersWithRole()),
+    createEngineer: protectedProcedure.input(z.object({
       name: z.string().min(1), email: z.string().optional(), phone: z.string().optional(),
       department: z.string().optional(), role: z.enum(['admin', 'engineer']).optional(),
       seniority: z.enum(['senior', 'junior']).optional(),
     })).mutation(async ({ input }) => { await createEngineerWithRole(input); return { success: true }; }),
-    deleteEngineer: publicProcedure.input(z.object({ id: z.number() }))
+    deleteEngineer: protectedProcedure.input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => { await deleteEngineer(input.id); return { success: true }; }),
-    updateEngineerProfile: publicProcedure.input(z.object({
+    updateEngineerProfile: protectedProcedure.input(z.object({
       id: z.number(),
       name: z.string().optional(),
       department: z.string().optional(),
@@ -492,7 +504,7 @@ export const appRouter = router({
       return { success: true };
     }),
     // ── New time-based endpoints ──
-    filtered: publicProcedure.input(z.object({
+    filtered: protectedProcedure.input(z.object({
       dateRange: z.enum(['today', 'yesterday', 'week', 'month', 'custom']),
       dateFrom: z.string().optional(),
       dateTo: z.string().optional(),
@@ -500,25 +512,25 @@ export const appRouter = router({
       taskType: z.string().optional(),
       status: z.string().optional(),
     })).query(async ({ input }) => getTasksFiltered(input)),
-    timeSummary: publicProcedure.input(z.object({
+    timeSummary: protectedProcedure.input(z.object({
       engineerId: z.number().optional(),
       dateFrom: z.string(),
       dateTo: z.string(),
     })).query(async ({ input }) => getTasksTimeSummary(input)),
-    checkOverlap: publicProcedure.input(z.object({
+    checkOverlap: protectedProcedure.input(z.object({
       engineerId: z.number(),
       taskDate: z.string(),
       startTime: z.string(),
       endTime: z.string(),
       excludeTaskId: z.number().optional(),
     })).query(async ({ input }) => checkTimeOverlap(input)),
-    criticalEnhanced: publicProcedure.query(async () => getCriticalTasksEnhanced()),
-    timeline: publicProcedure.input(z.object({
+    criticalEnhanced: protectedProcedure.query(async () => getCriticalTasksEnhanced()),
+    timeline: protectedProcedure.input(z.object({
       date: z.string(),
       engineerId: z.number().optional(),
     })).query(async ({ input }) => getTasksForTimeline(input.date, input.engineerId)),
     // Meeting Recording Rule endpoints
-    submitRecording: publicProcedure.input(z.object({
+    submitRecording: protectedProcedure.input(z.object({
       taskId: z.number(),
       recordingLink: z.string().url(),
       engineerName: z.string().optional(),
@@ -547,11 +559,11 @@ export const appRouter = router({
       }
       return { success: true };
     }),
-    missingRecordings: publicProcedure.input(z.object({ engineerId: z.number().optional() }))
+    missingRecordings: protectedProcedure.input(z.object({ engineerId: z.number().optional() }))
       .query(async ({ input }) => getMeetingTasksMissingRecording(input.engineerId)),
-    pendingReviews: publicProcedure.query(async () => getPendingMeetingReviews()),
-    reviewStats: publicProcedure.query(async () => getMeetingReviewAdminStats()),
-    createWithTime: publicProcedure.input(z.object({
+    pendingReviews: protectedProcedure.query(async () => getPendingMeetingReviews()),
+    reviewStats: protectedProcedure.query(async () => getMeetingReviewAdminStats()),
+    createWithTime: protectedProcedure.input(z.object({
       engineerId: z.number(), taskDate: z.string(), title: z.string().min(1),
       description: z.string().optional(), plannedHours: z.number().optional(),
       priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
@@ -576,7 +588,7 @@ export const appRouter = router({
       return { success: true };
     }),
     // ─── Move Task (Drag & Drop) ─────────────────────────────────────────────────────────────────
-    moveTask: publicProcedure.input(z.object({
+    moveTask: protectedProcedure.input(z.object({
       id: z.number(),
       newDate: z.string().optional(),
       newStartTime: z.string().optional(),
@@ -600,7 +612,7 @@ export const appRouter = router({
       return { success: true };
     }),
     // ─── Update Full Task (Edit from Calendar) ─────────────────────────────────────────────────────────
-    updateFull: publicProcedure.input(z.object({
+    updateFull: protectedProcedure.input(z.object({
       id: z.number(),
       title: z.string().min(1).optional(),
       description: z.string().optional(),
@@ -635,15 +647,15 @@ export const appRouter = router({
 
   // ── Leads ─────────────────────────────────────────────────────────────────
   leads: router({
-    stats: publicProcedure.input(z.object({ year: z.number(), month: z.number() }))
+    stats: protectedProcedure.input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getLeadsStats(input.year, input.month)),
-    list: publicProcedure.input(z.object({ limit: z.number().optional(), offset: z.number().optional(), status: z.string().optional() }))
+    list: protectedProcedure.input(z.object({ limit: z.number().optional(), offset: z.number().optional(), status: z.string().optional() }))
       .query(async ({ input }) => getLeadsList(input.limit, input.offset, input.status)),
-    create: publicProcedure.input(z.object({
+    create: protectedProcedure.input(z.object({
       name: z.string().min(1), phone: z.string().optional(), email: z.string().optional(),
       source: z.string().optional(), assignedEngineerId: z.number().optional(), notes: z.string().optional(),
     })).mutation(async ({ input }) => { await createLead(input); return { success: true }; }),
-    updateStatus: publicProcedure.input(z.object({
+    updateStatus: protectedProcedure.input(z.object({
       id: z.number(), status: z.enum(['new', 'contacted', 'qualified', 'unqualified', 'converted']),
       responseTimeMinutes: z.number().optional(),
     })).mutation(async ({ input }) => { await updateLeadStatus(input.id, input.status, input.responseTimeMinutes); return { success: true }; }),
@@ -651,9 +663,9 @@ export const appRouter = router({
 
   // ── Visits ────────────────────────────────────────────────────────────────
   visits: router({
-    stats: publicProcedure.input(z.object({ year: z.number(), month: z.number() }))
+    stats: protectedProcedure.input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getVisitsStats(input.year, input.month)),
-    list: publicProcedure.input(z.object({
+    list: protectedProcedure.input(z.object({
       limit: z.number().optional(), offset: z.number().optional(), status: z.string().optional(),
       year: z.number().optional(), month: z.number().optional(),
       filterType: z.enum(['booking', 'execution', 'upload', 'collection']).optional(),
@@ -664,7 +676,7 @@ export const appRouter = router({
       input.filterType ?? 'booking',
       input.engineerId
     )),
-    create: publicProcedure.input(z.object({
+    create: protectedProcedure.input(z.object({
       engineerId: z.number(), clientName: z.string().min(1), clientPhone: z.string().optional(),
       address: z.string().optional(), scheduledAt: z.date(), leadId: z.number().optional(), notes: z.string().optional(),
       assignedDelay: z.number().optional(),
@@ -672,7 +684,7 @@ export const appRouter = router({
       confirmationDelayHours: z.number().optional(),
       feeAmount: z.number().optional(), feeCollected: z.boolean().optional(),
     })).mutation(async ({ input }) => { await createVisit(input); return { success: true }; }),
-    updateStatus: publicProcedure.input(z.object({
+    updateStatus: protectedProcedure.input(z.object({
       id: z.number(),
       status: z.enum(['scheduled', 'completed', 'delayed', 'cancelled', 'rescheduled']).optional(),
       quality: z.enum(['successful', 'with_issues', 'design_rejected', 'repeated', 'pending']).optional(),
@@ -688,7 +700,7 @@ export const appRouter = router({
       feeCollected: z.boolean().optional(),
     })).mutation(async ({ input }) => { await updateVisitFull(input.id, input); return { success: true }; }),
     // Extended endpoints
-    updateFull: publicProcedure.input(z.object({
+    updateFull: protectedProcedure.input(z.object({
       id: z.number(),
       status: z.enum(['scheduled', 'completed', 'delayed', 'cancelled', 'rescheduled']).optional(),
       quality: z.enum(['successful', 'with_issues', 'design_rejected', 'repeated', 'pending']).optional(),
@@ -709,31 +721,31 @@ export const appRouter = router({
       debtFollowedUp: z.boolean().optional(),
       scheduledAt: z.date().optional(),
     })).mutation(async ({ input }) => { const { id, ...data } = input; await updateVisitWithAdminTracking(id, data); return { success: true }; }),
-    softDelete: publicProcedure.input(z.object({
+    softDelete: protectedProcedure.input(z.object({
       id: z.number(),
       reason: z.enum(['client_cancelled', 'postponed', 'data_entry_error']),
     })).mutation(async ({ input }) => { await softDeleteVisit(input.id, input.reason); return { success: true }; }),
-    debt: publicProcedure.input(z.object({ year: z.number().optional(), month: z.number().optional() }).optional())
+    debt: protectedProcedure.input(z.object({ year: z.number().optional(), month: z.number().optional() }).optional())
       .query(async ({ input }) => getVisitsDebt(input?.year, input?.month)),
-    alerts: publicProcedure.input(z.object({ year: z.number().optional(), month: z.number().optional() }).optional())
+    alerts: protectedProcedure.input(z.object({ year: z.number().optional(), month: z.number().optional() }).optional())
       .query(async ({ input }) => getVisitsAlerts(input?.year, input?.month)),
-    dailyTracking: publicProcedure.input(z.object({ date: z.string() }))
+    dailyTracking: protectedProcedure.input(z.object({ date: z.string() }))
       .query(async ({ input }) => getVisitsDailyTracking(input.date)),
-    adminSalesKPI: publicProcedure.input(z.object({ year: z.number(), month: z.number() }))
+    adminSalesKPI: protectedProcedure.input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getAdminSalesVisitsKPI(input.year, input.month)),
-    engineerKPI: publicProcedure.input(z.object({ engineerId: z.number(), year: z.number(), month: z.number() }))
+    engineerKPI: protectedProcedure.input(z.object({ engineerId: z.number(), year: z.number(), month: z.number() }))
       .query(async ({ input }) => getEngineerVisitsKPI(input.engineerId, input.year, input.month)),
-    needingAction: publicProcedure.input(z.object({ year: z.number().optional(), month: z.number().optional() }).optional())
+    needingAction: protectedProcedure.input(z.object({ year: z.number().optional(), month: z.number().optional() }).optional())
       .query(async ({ input }) => getVisitsNeedingAction(input?.year, input?.month)),
   }),
 
   // ── Closing / Deals ───────────────────────────────────────────────────────
   closing: router({
-    stats: publicProcedure.input(z.object({ year: z.number(), month: z.number() }))
+    stats: protectedProcedure.input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getDealsStats(input.year, input.month)),
-    list: publicProcedure.input(z.object({ limit: z.number().optional(), offset: z.number().optional(), stage: z.string().optional(), year: z.number().optional(), month: z.number().optional(), engineerId: z.number().optional() }))
+    list: protectedProcedure.input(z.object({ limit: z.number().optional(), offset: z.number().optional(), stage: z.string().optional(), year: z.number().optional(), month: z.number().optional(), engineerId: z.number().optional() }))
       .query(async ({ input }) => getDealsList(input.limit, input.offset, input.stage, input.year, input.month, input.engineerId)),
-    create: publicProcedure.input(z.object({
+    create: protectedProcedure.input(z.object({
       engineerId: z.number(), clientName: z.string().min(1), value: z.number().positive(),
       visitId: z.number().optional(), leadId: z.number().optional(),
       nextAction: z.string().optional(), nextActionDate: z.string().optional(), notes: z.string().optional(),
@@ -741,7 +753,7 @@ export const appRouter = router({
       discountValue: z.number().min(0).optional(),
       discountNote: z.string().optional(),
     })).mutation(async ({ input }) => { await createDealWithDiscount(input); return { success: true }; }),
-    updateStage: publicProcedure.input(z.object({
+    updateStage: protectedProcedure.input(z.object({
       id: z.number(), stage: z.enum(['proposal', 'negotiation', 'contract_sent', 'closed_won', 'closed_lost']).optional(),
       nextAction: z.string().optional(), nextActionDate: z.string().optional(), notes: z.string().optional(),
       value: z.number().min(0).optional(),
@@ -756,7 +768,7 @@ export const appRouter = router({
       clientName: z.string().optional(), // لإنشاء Task تلقائياً
     })).mutation(async ({ input }) => { await updateDealFull(input.id, input); return { success: true }; }),
     // ─── Discount System ────────────────────────────────────────────────────────────────────────────────────────
-    discountSummary: publicProcedure.input(z.object({
+    discountSummary: protectedProcedure.input(z.object({
       year: z.number().optional(),
       month: z.number().optional(),
       startDate: z.string().optional(), // ISO date string
@@ -766,11 +778,11 @@ export const appRouter = router({
       const end = input.endDate ? new Date(input.endDate) : undefined;
       return getDiscountSummary(input.year, input.month, start, end);
     }),
-    validateDiscount: publicProcedure.input(z.object({
+    validateDiscount: protectedProcedure.input(z.object({
       dealId: z.number().optional(),
       discountValue: z.number().min(0),
     })).query(async ({ input }) => validateDealDiscount(input.dealId, input.discountValue)),
-    engineerDiscountSummary: publicProcedure.input(z.object({
+    engineerDiscountSummary: protectedProcedure.input(z.object({
       year: z.number().optional(),
       month: z.number().optional(),
       startDate: z.string().optional(),
@@ -781,18 +793,18 @@ export const appRouter = router({
       return getEngineerDiscountSummary(input.year, input.month, start, end);
     }),
     // ─── New Deal-Level Discount Distribution ──────────────────────────────────────
-    dealAllocations: publicProcedure.input(z.object({ engineerId: z.number() }))
+    dealAllocations: protectedProcedure.input(z.object({ engineerId: z.number() }))
       .query(async ({ input }) => distributeDiscountToDeals(input.engineerId)),
-    discountSummaryForEngineer: publicProcedure.input(z.object({ engineerId: z.number() }))
+    discountSummaryForEngineer: protectedProcedure.input(z.object({ engineerId: z.number() }))
       .query(async ({ input }) => getDiscountSummaryForEngineer(input.engineerId)),
-    discountDashboard: publicProcedure.input(z.object({ engineerId: z.number() }))
+    discountDashboard: protectedProcedure.input(z.object({ engineerId: z.number() }))
       .query(async ({ input }) => getDiscountDashboard(input.engineerId)),
-    discountBonusSummary: publicProcedure.input(z.object({
+    discountBonusSummary: protectedProcedure.input(z.object({
       engineerId: z.number(),
       year: z.number().optional(),
       month: z.number().optional(),
     })).query(async ({ input }) => getDiscountBonusSummary(input.engineerId, input.year, input.month)),
-    calculateDealBonus: publicProcedure.input(z.object({ dealId: z.number() }))
+    calculateDealBonus: protectedProcedure.input(z.object({ dealId: z.number() }))
       .query(async ({ input }) => calculateDiscountBonus(input.dealId)),
     setDiscountCap: protectedProcedure.input(z.object({
       engineerId: z.number(),
@@ -804,10 +816,10 @@ export const appRouter = router({
       return { success: true };
     }),
     // ─── Lost Deal Analysis ─────────────────────────────────────────────────────
-    lostDealsAnalysis: publicProcedure.input(z.object({ year: z.number().optional(), month: z.number().optional() })).query(async ({ input }) => getLostDealsAnalysis(input.year, input.month)),
-    lostReasonLabels: publicProcedure.query(async () => LOST_REASON_LABELS),
+    lostDealsAnalysis: protectedProcedure.input(z.object({ year: z.number().optional(), month: z.number().optional() })).query(async ({ input }) => getLostDealsAnalysis(input.year, input.month)),
+    lostReasonLabels: protectedProcedure.query(async () => LOST_REASON_LABELS),
     // ─── Update deal with lostReason ────────────────────────────────────────────
-    updateDealStage: publicProcedure.input(z.object({
+    updateDealStage: protectedProcedure.input(z.object({
       id: z.number(),
       stage: z.enum(["proposal", "negotiation", "contract_sent", "closed_won", "closed_lost"]),
       lostReason: z.enum(["price_high", "competitor", "slow_response", "wrong_product", "not_serious", "budget_cut", "other"]).optional(),
@@ -822,9 +834,9 @@ export const appRouter = router({
       return { success: true };
     }),
     // ─── Sales Engineers list (for Assign Engineer dropdown) ────────────────────────
-    salesEngineers: publicProcedure.query(async () => getSalesEngineers()),
+    salesEngineers: protectedProcedure.query(async () => getSalesEngineers()),
     // ─── Deal Timeline ───────────────────────────────────────────────────────────────
-    timeline: publicProcedure.input(z.object({ dealId: z.number() }))
+    timeline: protectedProcedure.input(z.object({ dealId: z.number() }))
       .query(async ({ input }) => getDealTimeline(input.dealId)),
     // ─── Update Deal Engineer (Deal Ownership) ──────────────────────────────────────
     updateEngineer: protectedProcedure.input(z.object({
@@ -835,7 +847,7 @@ export const appRouter = router({
       const result = await updateDealEngineer({
         dealId: input.dealId,
         newEngineerId: input.newEngineerId,
-        modifiedBy: ctx.user.name ?? ctx.user.openId,
+        modifiedBy: ctx.actor?.name ?? ctx.user?.name ?? ctx.user?.openId ?? "system",
         forceIfWon: input.forceIfWon,
       });
       return result;
@@ -847,7 +859,7 @@ export const appRouter = router({
     })).mutation(async ({ input, ctx }) => {
       const result = await reopenDeal({
         dealId: input.dealId,
-        modifiedBy: ctx.user.name ?? ctx.user.openId,
+        modifiedBy: ctx.actor?.name ?? ctx.user?.name ?? ctx.user?.openId ?? "system",
         reason: input.reason,
       });
       return result;
@@ -873,7 +885,7 @@ export const appRouter = router({
       return result;
     }),
     // ─── Auto-create Deal from Task ──────────────────────────────────────────────────────────────────────────────────────
-    autoCreateFromTask: publicProcedure.input(z.object({ engineerId: z.number(),
+    autoCreateFromTask: protectedProcedure.input(z.object({ engineerId: z.number(),
       taskId: z.number().optional(),
       clientName: z.string().optional(),
       taskType: z.string(),
@@ -896,12 +908,12 @@ export const appRouter = router({
 
   // ── Project Timeline Control System ─────────────────────────────────────────
   projectTimeline: router({
-    config: publicProcedure.query(async () => ({
+    config: protectedProcedure.query(async () => ({
       ...(await getProjectTimelineConfig()),
       statuses: PROJECT_STATUS_META,
       delayOwners: PROJECT_DELAY_OWNERS,
     })),
-    list: publicProcedure.input(z.object({
+    list: protectedProcedure.input(z.object({
       search: z.string().optional(),
       engineerId: z.number().optional(),
       department: z.string().optional(),
@@ -924,7 +936,7 @@ export const appRouter = router({
       if (!PROJECT_TIMELINE_MANAGER_ROLES.has(caller.role)) scopedInput.engineerId = caller.id;
       return getProjectTimelineList(scopedInput);
     }),
-    dashboard: publicProcedure.input(z.object({
+    dashboard: protectedProcedure.input(z.object({
       engineerId: z.number().optional(),
       department: z.string().optional(),
       stageKey: z.string().optional(),
@@ -939,24 +951,24 @@ export const appRouter = router({
       if (!PROJECT_TIMELINE_MANAGER_ROLES.has(caller.role)) scopedInput.engineerId = caller.id;
       return getProjectTimelineDashboard(scopedInput);
     }),
-    analytics: publicProcedure.input(z.object({
+    analytics: protectedProcedure.input(z.object({
       engineerId: z.number().optional(), department: z.string().optional(), stageKey: z.string().optional(),
       status: z.string().optional(), delayedOnly: z.boolean().optional(), criticalOnly: z.boolean().optional(),
     }).optional()).query(async ({ input, ctx }) => {
       const caller = await assertProjectTimelineAccess(ctx, undefined, true);
       return getProjectTimelineAnalytics(input ?? {});
     }),
-    detail: publicProcedure.input(z.object({ projectId: z.number() }))
+    detail: protectedProcedure.input(z.object({ projectId: z.number() }))
       .query(async ({ input, ctx }) => {
         await assertProjectTimelineAccess(ctx, input.projectId);
         return getProjectTimelineDetail(input.projectId);
       }),
-    syncFromDeals: publicProcedure.input(z.object({ updatedBy: z.string().min(1).default("system") }).optional())
+    syncFromDeals: protectedProcedure.input(z.object({ updatedBy: z.string().min(1).default("system") }).optional())
       .mutation(async ({ ctx }) => {
         const caller = await assertProjectTimelineAccess(ctx, undefined, true);
         return syncProjectsFromClosedDeals(caller.name);
       }),
-    importHistorical: publicProcedure.input(z.object({
+    importHistorical: protectedProcedure.input(z.object({
       rows: z.array(z.object({
         projectCode: z.string().optional(), contractNumber: z.string().optional(), stageKey: z.string().min(1),
         stageName: z.string().optional(), department: z.string().optional(), previousStageKey: z.string().optional(), previousDepartment: z.string().optional(),
@@ -969,7 +981,7 @@ export const appRouter = router({
       const caller = await assertProjectTimelineAccess(ctx, undefined, true);
       return importHistoricalProjectTimeline(input.rows, caller.name);
     }),
-    updatePreExecution: publicProcedure.input(z.object({
+    updatePreExecution: protectedProcedure.input(z.object({
       projectId: z.number(),
       preExecutionStatus: z.enum(["waiting_site_readiness", "execution_survey_scheduled", "waiting_financial_requirement", "other"]).optional(),
       waitingOwnerCode: z.enum(["client", "sales_engineer", "sales_department", "other"]).optional(),
@@ -990,7 +1002,7 @@ export const appRouter = router({
       const caller = await assertProjectTimelineEditAccess(ctx, input.projectId);
       return updateProjectPreExecution({ ...input, updatedBy: caller.name, actorRole: caller.role });
     }),
-    startExecution: publicProcedure.input(z.object({
+    startExecution: protectedProcedure.input(z.object({
       projectId: z.number(),
       executionStartDate: z.string().optional(),
       responsibleId: z.number().optional(),
@@ -1000,7 +1012,7 @@ export const appRouter = router({
       const caller = await assertProjectTimelineEditAccess(ctx, input.projectId);
       return startProjectExecution({ ...input, updatedBy: caller.name, actorRole: caller.role });
     }),
-    transition: publicProcedure.input(z.object({
+    transition: protectedProcedure.input(z.object({
       projectId: z.number(),
       nextStageKey: z.string().min(1),
       responsibleId: z.number().optional(),
@@ -1013,7 +1025,7 @@ export const appRouter = router({
       const caller = await assertProjectTimelineEditAccess(ctx, input.projectId);
       return transitionProjectStage({ ...input, updatedBy: caller.name, actorRole: caller.role });
     }),
-    addDelay: publicProcedure.input(z.object({
+    addDelay: protectedProcedure.input(z.object({
       projectId: z.number(),
       movementId: z.number().optional(),
       delayDate: z.string().optional(),
@@ -1028,7 +1040,7 @@ export const appRouter = router({
       const caller = await assertProjectTimelineEditAccess(ctx, input.projectId);
       return addProjectDelay({ ...input, createdBy: caller.name, actorRole: caller.role });
     }),
-    update: publicProcedure.input(z.object({
+    update: protectedProcedure.input(z.object({
       projectId: z.number(),
       updateType: z.enum(["status_update", "monday_review", "wednesday_review"]).optional(),
       currentStatus: z.string().optional(),
@@ -1044,7 +1056,7 @@ export const appRouter = router({
       const caller = await assertProjectTimelineEditAccess(ctx, input.projectId);
       return updateProjectReview({ ...input, updatedBy: caller.name, actorRole: caller.role });
     }),
-    close: publicProcedure.input(z.object({
+    close: protectedProcedure.input(z.object({
       projectId: z.number(),
       closingStatus: z.enum(["installed", "delivered", "execution_completed", "final_closed", "other"]),
       closingOtherDescription: z.string().optional(),
@@ -1055,7 +1067,7 @@ export const appRouter = router({
       const caller = await assertProjectTimelineEditAccess(ctx, input.projectId);
       return closeProject({ ...input, closedBy: caller.name, actorRole: caller.role });
     }),
-    setHold: publicProcedure.input(z.object({
+    setHold: protectedProcedure.input(z.object({
       projectId: z.number(),
       isOnHold: z.boolean(),
       holdOwnerCode: z.string().optional(),
@@ -1067,7 +1079,7 @@ export const appRouter = router({
       const caller = await assertProjectTimelineEditAccess(ctx, input.projectId);
       return setProjectHold({ ...input, updatedBy: caller.name, actorRole: caller.role });
     }),
-    updateStageConfig: publicProcedure.input(z.object({
+    updateStageConfig: protectedProcedure.input(z.object({
       id: z.number(),
       nameAr: z.string().min(1).optional(),
       nameEn: z.string().optional(),
@@ -1088,22 +1100,27 @@ export const appRouter = router({
   // ── Sales Control Tower ───────────────────────────────────────────────────────────────────────────────────────
   sales: router({
     // الإحصاءات الشاملة للشهر
-    controlStats: publicProcedure.input(z.object({ year: z.number(), month: z.number() }))
+    controlStats: protectedProcedure.input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getSalesControlStats(input.year, input.month)),
     // أداء كل مهندس مع الكوميشن
-    engineersPerformance: publicProcedure.input(z.object({ year: z.number(), month: z.number() }))
+    engineersPerformance: protectedProcedure.input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getEngineersSalesPerformance(input.year, input.month)),
     // الإحصاءات الشهرية (للتوافق مع الكود القديم)
-    monthlyStats: publicProcedure.input(z.object({ year: z.number(), month: z.number() }))
+    monthlyStats: protectedProcedure.input(z.object({
+      year: z.number().int().min(2000).max(2100),
+      month: z.number().int().min(1).max(12),
+    }))
       .query(async ({ input }) => getMonthlySalesStats(input.year, input.month)),
-    trend: publicProcedure.input(z.object({ months: z.number().optional() }))
+    trend: protectedProcedure.input(z.object({
+      months: z.number().int().min(1).max(24).optional(),
+    }))
       .query(async ({ input }) => getMonthlySalesTrend(input.months ?? 6)),
     // إدارة أهداف المهندسين
-    setEngineerTarget: publicProcedure.input(z.object({
+    setEngineerTarget: protectedProcedure.input(z.object({
       engineerId: z.number(), year: z.number(), month: z.number(),
       targetAmount: z.number().positive(), manpower: z.number().optional(), notes: z.string().optional(),
     })).mutation(async ({ input }) => { await upsertEngineerTarget(input); return { success: true }; }),
-    setOperationalTargets: publicProcedure.input(z.object({
+    setOperationalTargets: protectedProcedure.input(z.object({
       engineerId: z.number(), year: z.number(), month: z.number(),
       targetMeetings: z.number().optional(), target2D: z.number().optional(),
       target3D: z.number().optional(), targetRender: z.number().optional(),
@@ -1112,152 +1129,152 @@ export const appRouter = router({
       targetContract: z.number().optional(), targetWorkOrder: z.number().optional(),
     })).mutation(async ({ input }) => { await upsertEngineerOperationalTargets(input); return { success: true }; }),
     // شرائح الخصم
-    discountTiers: publicProcedure.query(async () => getDiscountTiers()),
-    upsertDiscountTier: publicProcedure.input(z.object({
+    discountTiers: protectedProcedure.query(async () => getDiscountTiers()),
+    upsertDiscountTier: protectedProcedure.input(z.object({
       id: z.number().optional(), minSales: z.number(), maxSales: z.number().optional(),
       maxDiscountPct: z.number(), label: z.string().optional(),
     })).mutation(async ({ input }) => { await upsertDiscountTier(input); return { success: true }; }),
-    deleteDiscountTier: publicProcedure.input(z.object({ id: z.number() }))
+    deleteDiscountTier: protectedProcedure.input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => { await deleteDiscountTier(input.id); return { success: true }; }),
     // شرائح الكوميشن
-    commissionTiers: publicProcedure.query(async () => getCommissionTiers()),
-    upsertCommissionTier: publicProcedure.input(z.object({
+    commissionTiers: protectedProcedure.query(async () => getCommissionTiers()),
+    upsertCommissionTier: protectedProcedure.input(z.object({
       id: z.number().optional(), minAchievementPct: z.number(), maxAchievementPct: z.number().optional(),
       commissionPct: z.number(), label: z.string().optional(),
     })).mutation(async ({ input }) => { await upsertCommissionTier(input); return { success: true }; }),
-    deleteCommissionTier: publicProcedure.input(z.object({ id: z.number() }))
+    deleteCommissionTier: protectedProcedure.input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => { await deleteCommissionTier(input.id); return { success: true }; }),
   }),
 
   // ── KPI ───────────────────────────────────────────────────────────────────────────────────────
   kpi: router({
-    engineers: publicProcedure.input(z.object({ year: z.number(), month: z.number() }))
+    engineers: protectedProcedure.input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getEngineersKPI(input.year, input.month)),
-    trend: publicProcedure.input(z.object({ year: z.number(), month: z.number() }))
+    trend: protectedProcedure.input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getEngineersTrend(input.year, input.month)),
-    weeklyReport: publicProcedure.query(async () => getWeeklyReport()),
+    weeklyReport: protectedProcedure.query(async () => getWeeklyReport()),
     // ─── Performance Analysis System ───────────────────────────────────────
-    weeklyPerformance: publicProcedure.query(async () => getWeeklyPerformanceAnalysis()),
-    engineerPerformance: publicProcedure
+    weeklyPerformance: protectedProcedure.query(async () => getWeeklyPerformanceAnalysis()),
+    engineerPerformance: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getEngineerPerformanceReport(input.year, input.month)),
-    standardDistribution: publicProcedure.query(async () => STANDARD_DISTRIBUTION),
-    taskTypeLabels: publicProcedure.query(async () => TASK_TYPE_LABELS_V2),
+    standardDistribution: protectedProcedure.query(async () => STANDARD_DISTRIBUTION),
+    taskTypeLabels: protectedProcedure.query(async () => TASK_TYPE_LABELS_V2),
     // تحليل الأداء التشغيلي من Tasks Module
-    operationalPerformance: publicProcedure
+    operationalPerformance: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getOperationalPerformance(input.year, input.month)),
     // Ranking بـ 4 معايير: Revenue + Closing Rate + Task Efficiency + Target Achievement
-    enhancedRanking: publicProcedure
+    enhancedRanking: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getEnhancedRanking(input.year, input.month)),
     // ─── Role-Based KPI Endpoints ──────────────────────────────────────────────
-    teleSalesKPI: publicProcedure
+    teleSalesKPI: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getTeleSalesKPI(input.year, input.month)),
-    siteEngineersKPI: publicProcedure
+    siteEngineersKPI: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getSiteEngineersKPI(input.year, input.month)),
     // ─── Department Labels ─────────────────────────────────────────────────────
-    departmentLabels: publicProcedure.query(async () => DEPARTMENT_LABELS),
-    salesDepartments: publicProcedure.query(async () => SALES_DEPARTMENTS),
-    allowedTaskTypes: publicProcedure.query(async () => ALLOWED_TASK_TYPES_BY_DEPARTMENT),
+    departmentLabels: protectedProcedure.query(async () => DEPARTMENT_LABELS),
+    salesDepartments: protectedProcedure.query(async () => SALES_DEPARTMENTS),
+    allowedTaskTypes: protectedProcedure.query(async () => ALLOWED_TASK_TYPES_BY_DEPARTMENT),
     // ─── Company Closing KPI + Reward System ──────────────────────────────────
-    companyClosingKPI: publicProcedure
+    companyClosingKPI: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getCompanyClosingKPI(input.year, input.month)),
-    teamRewardStatus: publicProcedure
+    teamRewardStatus: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getTeamRewardStatus(input.year, input.month)),
     // ─── Lost Deals Impact System ─────────────────────────────────────────────
-    lostDealsImpact: publicProcedure
+    lostDealsImpact: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getLostDealsImpact(input.year, input.month)),
     // ─── Performance-Based Composite Discount Score (NEW) ──────────────────────
     // جلب الـ Composite Discount Score للفريق (شرائح مبنية على أداء فعلي)
-    teamCompositeDiscountScore: publicProcedure
+    teamCompositeDiscountScore: protectedProcedure
       .input(z.object({
         year: z.number().optional(),
         month: z.number().optional(),
       }))
       .query(async ({ input }) => getTeamCompositeDiscountScore(input.year, input.month)),
     // جلب الـ Composite Discount Score لمهندس محدد
-    engineerCompositeDiscountScore: publicProcedure
+    engineerCompositeDiscountScore: protectedProcedure
       .input(z.object({ engineerId: z.number() }))
       .query(async ({ input }) => getEngineerCompositeDiscountScore(input.engineerId)),
     // جلب تعريفات شرائح الخصوم الجديدة
-    performanceDiscountTiers: publicProcedure
+    performanceDiscountTiers: protectedProcedure
       .query(async () => PERFORMANCE_DISCOUNT_TIERS),
     // ─── Score-Based Discount Distribution ────────────────────────────────────────────
-    scoreBasedDiscountDistribution: publicProcedure
+    scoreBasedDiscountDistribution: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => calcScoreBasedDiscountDistribution(input.year, input.month)),
     // ─── Advanced Discount Distribution (Performance + Pipeline + Closing Skill) ──
-    advancedDiscountDistribution: publicProcedure
+    advancedDiscountDistribution: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getAdvancedDiscountDistribution(input.year, input.month)),
       // ─── Admin Sales KPI ──────────────────────────────────────────
-    adminSalesKPI: publicProcedure
+    adminSalesKPI: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getAdminSalesKPI(input.year, input.month)),
     // ─── Admin Sales Category Analysis ──────────────────────────────
-    adminSalesCategoryAnalysis: publicProcedure
+    adminSalesCategoryAnalysis: protectedProcedure
       .input(z.object({ engineerId: z.number(), year: z.number(), month: z.number() }))
       .query(async ({ input }) => getAdminSalesCategoryAnalysis(input.engineerId, input.year, input.month)),
     // الأهداف التشغيلية لمهندس محدد
-    engineerOperationalTargets: publicProcedure
+    engineerOperationalTargets: protectedProcedure
       .input(z.object({ engineerId: z.number(), year: z.number(), month: z.number() }))
       .query(async ({ input }) => getEngineerOperationalTargets(input.engineerId, input.year, input.month)),
     // ترتيب الفريق (Sales Engineer + Sales Specialist فقط)
-    teamPerformanceRanking: publicProcedure
+    teamPerformanceRanking: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getTeamPerformanceRanking(input.year, input.month)),
     // Progressive Commission + KPI Share + Closing Rate Incentive
-    engineerEarnings: publicProcedure
+    engineerEarnings: protectedProcedure
       .input(z.object({ engineerId: z.number(), year: z.number(), month: z.number(), teamKPIPool: z.number().optional() }))
       .query(async ({ input }) => getEngineerEarningsBreakdown(input.engineerId, input.year, input.month, input.teamKPIPool ?? 2_000)),
-    allEngineersEarnings: publicProcedure
+    allEngineersEarnings: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number(), teamKPIPool: z.number().optional() }))
       .query(async ({ input }) => getAllEngineersEarningsBreakdown(input.year, input.month, input.teamKPIPool ?? 2_000)),
-    commissionDetails: publicProcedure
+    commissionDetails: protectedProcedure
       .input(z.object({ salesAmount: z.number() }))
       .query(async ({ input }) => ({
         commission: calcProgressiveCommission(input.salesAmount),
         details: calcProgressiveCommissionDetails(input.salesAmount),
       })),
-    companyClosingBonus: publicProcedure
+    companyClosingBonus: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getCompanyClosingBonusForAllEngineers(input.year, input.month)),
-    closingBonusTiers: publicProcedure
+    closingBonusTiers: protectedProcedure
       .input(z.object({ rate: z.number() }))
       .query(async ({ input }) => calcCompanyClosingBonus(input.rate)),
   }),
 
   // ── Collections ───────────────────────────────────────────────────────────
   collections: router({
-    stats: publicProcedure.query(async () => getCollectionsStats()),
-    list: publicProcedure.input(z.object({ limit: z.number().optional(), offset: z.number().optional(), status: z.string().optional() }))
+    stats: protectedProcedure.query(async () => getCollectionsStats()),
+    list: protectedProcedure.input(z.object({ limit: z.number().optional(), offset: z.number().optional(), status: z.string().optional() }))
       .query(async ({ input }) => getCollectionsList(input.limit, input.offset, input.status)),
-    create: publicProcedure.input(z.object({
+    create: protectedProcedure.input(z.object({
       clientName: z.string().min(1), contractAmount: z.number().positive(),
       collectedAmount: z.number().optional(), dueDate: z.string().optional(),
       dealId: z.number().optional(), notes: z.string().optional(),
     })).mutation(async ({ input }) => { await createCollection(input); return { success: true }; }),
-    update: publicProcedure.input(z.object({
+    update: protectedProcedure.input(z.object({
       id: z.number(), collectedAmount: z.number(), status: z.string().optional(), notes: z.string().optional(),
     })).mutation(async ({ input }) => { await updateCollection(input.id, input.collectedAmount, input.status, input.notes); return { success: true }; }),
   }),
 
   // ── Planning ──────────────────────────────────────────────────────────────
   planning: router({
-    getTarget: publicProcedure.input(z.object({ year: z.number(), month: z.number() }))
+    getTarget: protectedProcedure.input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getMonthlyTarget(input.year, input.month)),
-    setTarget: publicProcedure.input(z.object({
+    setTarget: protectedProcedure.input(z.object({
       year: z.number(), month: z.number(), targetAmount: z.number().positive(),
       avgDealValue: z.number().optional(), closingRate: z.number().optional(),
       visitToClosingRate: z.number().optional(), notes: z.string().optional(),
     })).mutation(async ({ input }) => { await upsertMonthlyTarget(input); return { success: true }; }),
-    calculate: publicProcedure.input(z.object({
+    calculate: protectedProcedure.input(z.object({
       targetAmount: z.number(), avgDealValue: z.number(), closingRate: z.number(), visitToClosingRate: z.number(),
     })).query(async ({ input }) => {
       const { targetAmount, avgDealValue, closingRate, visitToClosingRate } = input;
@@ -1267,10 +1284,10 @@ export const appRouter = router({
       return { dealsNeeded, visitsNeeded, leadsNeeded, avgDealValue, closingRate, visitToClosingRate };
     }),
     // ── Company Goals ──────────────────────────────────────────────────────
-    getCompanyGoal: publicProcedure
+    getCompanyGoal: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getCompanyGoal(input.year, input.month)),
-    setCompanyGoal: publicProcedure
+    setCompanyGoal: protectedProcedure
       .input(z.object({
         year: z.number(), month: z.number(),
         revenueTarget: z.number().positive(),
@@ -1286,11 +1303,11 @@ export const appRouter = router({
         if (!session && !ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'يجب تسجيل الدخول أولاً' });
         return setCompanyGoal(input);
       }),
-    getCompanyGoalProgress: publicProcedure
+    getCompanyGoalProgress: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getCompanyGoalProgress(input.year, input.month)),
     // ── Personal Goals ─────────────────────────────────────────────────────
-    getPersonalGoals: publicProcedure
+    getPersonalGoals: protectedProcedure
       .input(z.object({ engineerId: z.number(), year: z.number(), month: z.number() }))
       .query(async ({ input }) => getEngineerPersonalGoals(input.engineerId, input.year, input.month)),
     setPersonalGoal: protectedProcedure
@@ -1307,20 +1324,20 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => setPersonalGoal(input)),
     // ── Total Performance Score ────────────────────────────────────────────
-    engineerPerformanceScore: publicProcedure
+    engineerPerformanceScore: protectedProcedure
       .input(z.object({ engineerId: z.number(), year: z.number(), month: z.number() }))
       .query(async ({ input }) => calcTotalPerformanceScore(input.engineerId, input.year, input.month)),
-    allEngineersPerformanceScores: publicProcedure
+    allEngineersPerformanceScores: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getAllEngineersPerformanceScores(input.year, input.month)),
     // ── Operational Breakdown (Tasks → Goals → KPI) ────────────────────────
-    getOperationalBreakdown: publicProcedure
+    getOperationalBreakdown: protectedProcedure
       .input(z.object({ engineerId: z.number(), year: z.number(), month: z.number() }))
       .query(async ({ input }) => calcOperationalScoreFromTasks(input.engineerId, input.year, input.month)),
-    getActivitySummary: publicProcedure
+    getActivitySummary: protectedProcedure
       .input(z.object({ engineerId: z.number(), year: z.number(), month: z.number() }))
       .query(async ({ input }) => getEngineerActivitySummary(input.engineerId, input.year, input.month)),
-    getActivityTypes: publicProcedure
+    getActivityTypes: protectedProcedure
       .query(() => ({
         keys: ACTIVITY_KEYS,
         labelsEn: ACT_LABELS_EN,
@@ -1331,15 +1348,15 @@ export const appRouter = router({
       })),
     // ── Auto Distribution Engine ───────────────────────────────────────────────────────────────────────────────────────────
     /** معاينة التوزيع التلقائي قبل التطبيق */
-    previewDistribution: publicProcedure
+    previewDistribution: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => calcAutoDistribution(input.year, input.month)),
     /** تطبيق التوزيع التلقائي على جميع المهندسين */
-    applyDistribution: publicProcedure
+    applyDistribution: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .mutation(async ({ input }) => applyAutoDistribution(input.year, input.month)),
     /** تعديل يدوي (Manual Override) لمهندس */
-    manualOverride: publicProcedure
+    manualOverride: protectedProcedure
       .input(z.object({
         engineerId: z.number(), year: z.number(), month: z.number(),
         targetAmount: z.number().optional(),
@@ -1356,7 +1373,7 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => { await manualOverrideEngineerTarget(input); return { success: true }; }),
     /** جلب هدف مهندس كامل (مالي + تشغيلي + شخصي) */
-    getEngineerFullTarget: publicProcedure
+    getEngineerFullTarget: protectedProcedure
       .input(z.object({ engineerId: z.number(), year: z.number(), month: z.number() }))
       .query(async ({ input }) => getEngineerFullTarget(input.engineerId, input.year, input.month)),
   }),
@@ -1364,13 +1381,13 @@ export const appRouter = router({
   // ── Financial Module ───────────────────────────────────────────────────────────────────────────────
   financial: router({
     // جلب كل العقود مع ملخص التحصيل
-    allContracts: publicProcedure.input(z.object({ engineerId: z.number().optional() }))
+    allContracts: protectedProcedure.input(z.object({ engineerId: z.number().optional() }))
       .query(async ({ input }) => getAllCollectionsWithSummary(input.engineerId)),
     // ملف عميل مالي كامل
-    clientProfile: publicProcedure.input(z.object({ collectionId: z.number() }))
+    clientProfile: protectedProcedure.input(z.object({ collectionId: z.number() }))
       .query(async ({ input }) => getClientFinancialProfile(input.collectionId)),
     // إضافة عقد جديد
-    addContract: publicProcedure.input(z.object({
+    addContract: protectedProcedure.input(z.object({
       clientName: z.string().min(1),
       contractAmount: z.number().positive(),
       dueDate: z.string().optional(),
@@ -1378,7 +1395,7 @@ export const appRouter = router({
       notes: z.string().optional(),
     })).mutation(async ({ input }) => { const result = await addCollection(input); return { success: true, id: (result as { insertId?: number })?.insertId }; }),
     // تسجيل دفعة
-    addPayment: publicProcedure.input(z.object({
+    addPayment: protectedProcedure.input(z.object({
       collectionId: z.number(),
       engineerId: z.number().optional(),
       clientName: z.string().min(1),
@@ -1393,7 +1410,7 @@ export const appRouter = router({
       return { success: true };
     }),
     // إضافة وعد دفع
-    addPromise: publicProcedure.input(z.object({
+    addPromise: protectedProcedure.input(z.object({
       collectionId: z.number(),
       engineerId: z.number().optional(),
       clientName: z.string().min(1),
@@ -1405,33 +1422,33 @@ export const appRouter = router({
       return { success: true };
     }),
     // تحديث حالة وعد الدفع
-    updatePromise: publicProcedure.input(z.object({
+    updatePromise: protectedProcedure.input(z.object({
       id: z.number(),
       status: z.enum(["pending", "paid", "overdue"]),
     })).mutation(async ({ input }) => { await updatePromiseStatus(input.id, input.status); return { success: true }; }),
     // قائمة المتابعة اليومية
-    dailyFollowUp: publicProcedure.query(async () => getDailyFollowUpList()),
+    dailyFollowUp: protectedProcedure.query(async () => getDailyFollowUpList()),
     // كوميشن المهندسين من التحصيل
-    engineersCommission: publicProcedure.query(async () => getEngineersCollectionCommission()),
+    engineersCommission: protectedProcedure.query(async () => getEngineersCollectionCommission()),
     // صرف كوميشن
-    markCommissionPaid: publicProcedure.input(z.object({ id: z.number() }))
+    markCommissionPaid: protectedProcedure.input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => { await markCommissionPaid(input.id); return { success: true }; }),
     // تحديث حالة العقد
-    updateContractStatus: publicProcedure.input(z.object({
+    updateContractStatus: protectedProcedure.input(z.object({
       id: z.number(),
       status: z.enum(["on_track", "due_soon", "overdue", "completed"]),
     })).mutation(async ({ input }) => { await updateCollectionStatus(input.id, input.status); return { success: true }; }),
     // حساب الكوميشن التصاعدي
-    calcCommission: publicProcedure.input(z.object({ amount: z.number() }))
+    calcCommission: protectedProcedure.input(z.object({ amount: z.number() }))
       .query(async ({ input }) => ({
         commission: calcProgressiveCommission(input.amount),
         amount: input.amount,
       })),
     // إنشاء Contract تلقائي من صفقة WON
-    autoCreateContract: publicProcedure.input(z.object({ dealId: z.number() }))
+    autoCreateContract: protectedProcedure.input(z.object({ dealId: z.number() }))
       .mutation(async ({ input }) => autoCreateContractFromDeal(input.dealId)),
     // إضافة دفعة مع Follow-up Task
-    addPaymentWithFollowUp: publicProcedure.input(z.object({
+    addPaymentWithFollowUp: protectedProcedure.input(z.object({
       collectionId: z.number(),
       engineerId: z.number().optional(),
       clientName: z.string().min(1),
@@ -1445,56 +1462,56 @@ export const appRouter = router({
       notes: z.string().optional(),
     })).mutation(async ({ input }) => addPaymentWithFollowUp(input)),
     // Commission على المحصّل فقط
-    collectionCommission: publicProcedure.input(z.object({
+    collectionCommission: protectedProcedure.input(z.object({
       engineerId: z.number(), month: z.number(), year: z.number(),
     })).query(async ({ input }) => getCollectionBasedCommission(input.engineerId, input.month, input.year)),
     // Dashboard التحصيل
-    dashboard: publicProcedure.input(z.object({ month: z.number(), year: z.number() }))
+    dashboard: protectedProcedure.input(z.object({ month: z.number(), year: z.number() }))
       .query(async ({ input }) => getCollectionDashboard(input.month, input.year)),
     // Alerts التحصيل
-    alerts: publicProcedure.query(async () => getCollectionAlerts()),
+    alerts: protectedProcedure.query(async () => getCollectionAlerts()),
     // قائمة العقود مع الكومشن
-    contractsWithCommission: publicProcedure.input(z.object({ engineerId: z.number().optional() }))
+    contractsWithCommission: protectedProcedure.input(z.object({ engineerId: z.number().optional() }))
       .query(async ({ input }) => getCollectionsWithCommission(input.engineerId)),
-    periodAnalysis: publicProcedure.input(z.object({
+    periodAnalysis: protectedProcedure.input(z.object({
       startDate: z.string(),
       endDate: z.string(),
     })).query(async ({ input }) => getCollectionPeriodAnalysis(input.startDate, input.endDate)),
   }),
   // ── Legacy: Customers / Products ───────────────────────────────────────────────────────────────────────────────
   customers: router({
-    list: publicProcedure.input(z.object({ search: z.string().optional(), status: z.string().optional(), limit: z.number().optional(), offset: z.number().optional() }))
+    list: protectedProcedure.input(z.object({ search: z.string().optional(), status: z.string().optional(), limit: z.number().optional(), offset: z.number().optional() }))
       .query(async ({ input }) => getCustomers(input)),
-    create: publicProcedure.input(z.object({ name: z.string().min(1), email: z.string().optional(), phone: z.string().optional(), company: z.string().optional(), status: z.string().optional() }))
+    create: protectedProcedure.input(z.object({ name: z.string().min(1), email: z.string().optional(), phone: z.string().optional(), company: z.string().optional(), status: z.string().optional() }))
       .mutation(async ({ input }) => { await createCustomer({ ...input, status: input.status ?? 'active' }); return { success: true }; }),
-    update: publicProcedure.input(z.object({ id: z.number(), name: z.string().optional(), email: z.string().optional(), phone: z.string().optional(), company: z.string().optional(), status: z.string().optional() }))
+    update: protectedProcedure.input(z.object({ id: z.number(), name: z.string().optional(), email: z.string().optional(), phone: z.string().optional(), company: z.string().optional(), status: z.string().optional() }))
       .mutation(async ({ input }) => { const { id, ...data } = input; await updateCustomer(id, data); return { success: true }; }),
-    delete: publicProcedure.input(z.object({ id: z.number() }))
+    delete: protectedProcedure.input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => { await deleteCustomer(input.id); return { success: true }; }),
   }),
   products: router({
-    list: publicProcedure.input(z.object({ search: z.string().optional(), category: z.string().optional(), status: z.string().optional(), limit: z.number().optional(), offset: z.number().optional() }))
+    list: protectedProcedure.input(z.object({ search: z.string().optional(), category: z.string().optional(), status: z.string().optional(), limit: z.number().optional(), offset: z.number().optional() }))
       .query(async ({ input }) => getProducts(input)),
-    categories: publicProcedure.query(async () => getProductCategories()),
-    create: publicProcedure.input(z.object({ name: z.string().min(1), sku: z.string().optional(), category: z.string().optional(), price: z.string(), cost: z.string().optional(), stock: z.number().optional(), minStock: z.number().optional(), unit: z.string().optional(), description: z.string().optional(), status: z.string().optional() }))
+    categories: protectedProcedure.query(async () => getProductCategories()),
+    create: protectedProcedure.input(z.object({ name: z.string().min(1), sku: z.string().optional(), category: z.string().optional(), price: z.string(), cost: z.string().optional(), stock: z.number().optional(), minStock: z.number().optional(), unit: z.string().optional(), description: z.string().optional(), status: z.string().optional() }))
       .mutation(async ({ input }) => { await createProduct({ ...input, status: input.status ?? 'active' }); return { success: true }; }),
-    update: publicProcedure.input(z.object({ id: z.number(), name: z.string().optional(), sku: z.string().optional(), category: z.string().optional(), price: z.string().optional(), cost: z.string().optional(), stock: z.number().optional(), minStock: z.number().optional(), unit: z.string().optional(), description: z.string().optional(), status: z.string().optional() }))
+    update: protectedProcedure.input(z.object({ id: z.number(), name: z.string().optional(), sku: z.string().optional(), category: z.string().optional(), price: z.string().optional(), cost: z.string().optional(), stock: z.number().optional(), minStock: z.number().optional(), unit: z.string().optional(), description: z.string().optional(), status: z.string().optional() }))
       .mutation(async ({ input }) => { const { id, ...data } = input; await updateProduct(id, data); return { success: true }; }),
-    delete: publicProcedure.input(z.object({ id: z.number() }))
+    delete: protectedProcedure.input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => { await deleteProduct(input.id); return { success: true }; }),
   }),
 
   // ─── Admin Sales Tasks ────────────────────────────────────────────────────
   // ── Management Focus ─────────────────────────────────────────────────────
   management: router({
-    focus: publicProcedure
+    focus: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getManagementFocus(input.year, input.month)),
   }),
   // ─── Meeting Recording & Review ────────────────────────────────────────────────────────────────────────────────
   meetingReview: router({
     // تقديم رابط تسجيل الميتينج
-    submitLink: publicProcedure
+    submitLink: protectedProcedure
       .input(z.object({ taskId: z.number(), link: z.string().url('رابط غير صحيح') }))
       .mutation(async ({ input }) => {
         const task = await submitMeetingRecordingLink(input.taskId, input.link);
@@ -1502,11 +1519,11 @@ export const appRouter = router({
         return { success: true, task };
       }),
     // جلب تقييم مهمة معينة
-    getReview: publicProcedure
+    getReview: protectedProcedure
       .input(z.object({ taskId: z.number() }))
       .query(async ({ input }) => getMeetingReview(input.taskId)),
     // إنشاء أو تحديث تقييم الميتينج
-    upsertReview: publicProcedure
+    upsertReview: protectedProcedure
       .input(z.object({
         taskId: z.number(),
         engineerId: z.number(),
@@ -1523,17 +1540,17 @@ export const appRouter = router({
         return { success: true, review };
       }),
     // جلب Closing Quality Score لمهندس
-    getClosingQuality: publicProcedure
+    getClosingQuality: protectedProcedure
       .input(z.object({ engineerId: z.number(), year: z.number(), month: z.number() }))
       .query(async ({ input }) => getEngineerClosingQualityScore(input.engineerId, input.year, input.month)),
   }),
   adminSalesTasks: router({
     // جلب مهام يوم معين لـ Admin Sales
-    getByDate: publicProcedure
+    getByDate: protectedProcedure
       .input(z.object({ engineerId: z.number(), date: z.string() }))
       .query(async ({ input }) => getAdminSalesTasks(input.engineerId, input.date)),
     // تحديث حالة مهمة
-    updateStatus: publicProcedure
+    updateStatus: protectedProcedure
       .input(z.object({
         taskId: z.number(),
         status: z.enum(['pending', 'done', 'delayed', 'not_done']),
@@ -1544,11 +1561,11 @@ export const appRouter = router({
         return { success: true };
       }),
     // جلب أو إنشاء سجل الاجتماعات الأسبوعية
-    getWeekMeeting: publicProcedure
+    getWeekMeeting: protectedProcedure
       .input(z.object({ engineerId: z.number(), weekStart: z.string() }))
       .query(async ({ input }) => getOrCreateWeekMeeting(input.engineerId, input.weekStart)),
     // تحديث سجل الاجتماعات
-    updateWeekMeeting: publicProcedure
+    updateWeekMeeting: protectedProcedure
       .input(z.object({
         id: z.number(),
         weeklyTeamMeeting: z.enum(['done', 'not_done', 'pending']).optional(),
@@ -1562,11 +1579,11 @@ export const appRouter = router({
         return { success: true };
       }),
      // إحصائيات للمدير
-    getStats: publicProcedure
+    getStats: protectedProcedure
       .input(z.object({ engineerId: z.number(), month: z.string() }))
       .query(async ({ input }) => getAdminSalesStats(input.engineerId, input.month)),
     // إضافة مهمة يدوية لـ Admin Sales
-    create: publicProcedure
+    create: protectedProcedure
       .input(z.object({
         engineerId: z.number(),
         taskTitle: z.string().min(1),
@@ -1582,7 +1599,7 @@ export const appRouter = router({
         return { success: true };
       }),
     // تحديث مهمة Admin Sales بالكامل
-    updateFull: publicProcedure
+    updateFull: protectedProcedure
       .input(z.object({
         id: z.number(),
         taskTitle: z.string().optional(),
@@ -1604,7 +1621,7 @@ export const appRouter = router({
   // ─── Lead Followup Tracking ────────────────────────────────────────────────────────────────────────────────
   leadFollowup: router({
     // تسجيل نتيجة متابعة Lead يومية
-    log: publicProcedure
+    log: protectedProcedure
       .input(z.object({
         logDate: z.string(),
         adminSalesId: z.number(),
@@ -1617,7 +1634,7 @@ export const appRouter = router({
       .mutation(async ({ input }) => logLeadFollowup(input)),
 
     // جلب سجلات المتابعة
-    getLogs: publicProcedure
+    getLogs: protectedProcedure
       .input(z.object({
         startDate: z.string().optional(),
         endDate: z.string().optional(),
@@ -1627,23 +1644,23 @@ export const appRouter = router({
       .query(async ({ input }) => getLeadFollowupLogs(input)),
 
     // KPI لـ Admin Sales
-    adminSalesKPI: publicProcedure
+    adminSalesKPI: protectedProcedure
       .input(z.object({ adminSalesId: z.number(), startDate: z.string(), endDate: z.string() }))
       .query(async ({ input }) => getAdminSalesFollowupKPI(input.adminSalesId, input.startDate, input.endDate)),
 
     // KPI لـ Tele-sales
-    telesalesKPI: publicProcedure
+    telesalesKPI: protectedProcedure
       .input(z.object({ telesalesId: z.number(), startDate: z.string(), endDate: z.string() }))
       .query(async ({ input }) => getTelesalesFollowupKPI(input.telesalesId, input.startDate, input.endDate)),
 
     // إحصائيات جميع Tele-sales
-    allTelesalesStats: publicProcedure
+    allTelesalesStats: protectedProcedure
       .input(z.object({ startDate: z.string(), endDate: z.string() }))
       .query(async ({ input }) => getAllTelesalesFollowupStats(input.startDate, input.endDate)),
   }),
   // Soft Delete + Audit Log
   softDelete: router({
-    engineer: publicProcedure
+    engineer: protectedProcedure
       .input(z.object({ id: z.number(), reason: z.enum(['data_entry_error','duplicate','client_cancelled','other']), reasonCustom: z.string().optional() }))
       .mutation(async ({ input, ctx }) => {
         const req = (ctx as any).req;
@@ -1653,7 +1670,7 @@ export const appRouter = router({
         await softDeleteEngineer(input.id, input.reason, input.reasonCustom, performedBy);
         return { success: true };
       }),
-    task: publicProcedure
+    task: protectedProcedure
       .input(z.object({ id: z.number(), reason: z.enum(['data_entry_error','duplicate','client_cancelled','other']), reasonCustom: z.string().optional() }))
       .mutation(async ({ input, ctx }) => {
         const req = (ctx as any).req;
@@ -1663,7 +1680,7 @@ export const appRouter = router({
         await softDeleteTask(input.id, input.reason, input.reasonCustom, performedBy);
         return { success: true };
       }),
-    lead: publicProcedure
+    lead: protectedProcedure
       .input(z.object({ id: z.number(), reason: z.enum(['data_entry_error','duplicate','client_cancelled','other']), reasonCustom: z.string().optional() }))
       .mutation(async ({ input, ctx }) => {
         const req = (ctx as any).req;
@@ -1673,7 +1690,7 @@ export const appRouter = router({
         await softDeleteLead(input.id, input.reason, input.reasonCustom, performedBy);
         return { success: true };
       }),
-    visit: publicProcedure
+    visit: protectedProcedure
       .input(z.object({ id: z.number(), reason: z.enum(['data_entry_error','duplicate','client_cancelled','other']), reasonCustom: z.string().optional() }))
       .mutation(async ({ input, ctx }) => {
         const req = (ctx as any).req;
@@ -1683,7 +1700,7 @@ export const appRouter = router({
         await softDeleteVisitFull(input.id, input.reason, input.reasonCustom, performedBy);
         return { success: true };
       }),
-    deal: publicProcedure
+    deal: protectedProcedure
       .input(z.object({ id: z.number(), reason: z.enum(['data_entry_error','duplicate','client_cancelled','other']), reasonCustom: z.string().optional() }))
       .mutation(async ({ input, ctx }) => {
         const req = (ctx as any).req;
@@ -1692,7 +1709,7 @@ export const appRouter = router({
         await softDeleteDeal(input.id, input.reason, input.reasonCustom, performedBy);
         return { success: true };
       }),
-    getAuditLogs: publicProcedure
+    getAuditLogs: protectedProcedure
       .input(z.object({ entityType: z.enum(['engineer','task','lead','visit','deal']).optional(), limit: z.number().optional() }))
       .query(async ({ input }) => getAuditLogs(input)),
   }),
@@ -1708,9 +1725,9 @@ export const appRouter = router({
         const result = await localLogin(input.username, input.password);
         if (!result) throw new Error("يوزرنيم أو باسورد غلط");
         const cookieOptions = getSessionCookieOptions(ctx.req);
-        ctx.res.cookie(LOCAL_AUTH_COOKIE, result.token, {
+        setResponseCookie(ctx.res, LOCAL_AUTH_COOKIE, result.token, {
           ...cookieOptions,
-          maxAge: 1000 * 60 * 60 * 24 * 365,
+          maxAge: Math.floor(ONE_YEAR_MS / 1000),
         });
         return {
           ok: true,
@@ -1728,10 +1745,13 @@ export const appRouter = router({
         if (session) {
           return { engineerId: session.engineerId, username: session.username, role: session.role, name: session.name };
         }
-        // 2) Fallback: Manus OAuth user → treat as admin
-        if (ctx.user) {
-          const role = ctx.user.role === 'admin' ? 'admin' : 'admin';
-          return { engineerId: 0, username: ctx.user.email ?? ctx.user.name ?? 'admin', role, name: ctx.user.name ?? 'Admin' };
+        if (ctx.actor?.source === "app_user") {
+          return { engineerId: ctx.actor.engineerId ?? 0, username: ctx.actor.name, role: ctx.actor.role, name: ctx.actor.name };
+        }
+        // OAuth users are admitted to the internal dashboard only when the
+        // server-side identity is explicitly an admin.
+        if (ctx.user?.role === "admin") {
+          return { engineerId: 0, username: ctx.user.email ?? ctx.user.name ?? "admin", role: "admin", name: ctx.user.name ?? "Admin" };
         }
         return null;
       }),
@@ -1739,7 +1759,7 @@ export const appRouter = router({
     logout: publicProcedure
       .mutation(async ({ ctx }) => {
         const cookieOptions = getSessionCookieOptions(ctx.req);
-        ctx.res.clearCookie(LOCAL_AUTH_COOKIE, cookieOptions);
+        clearResponseCookie(ctx.res, LOCAL_AUTH_COOKIE, cookieOptions);
         return { ok: true };
       }),
     // جلب صلاحيات الـ role الحالي (للـ DashboardLayout)
@@ -1747,20 +1767,16 @@ export const appRouter = router({
       .query(async ({ ctx }) => {
         // 1) Try local session (username/password login)
         const session = await getLocalSessionFromRequest(ctx.req);
-        if (session) {
-          return getRolePermissions(session.role);
-        }
-        // 2) Fallback: Manus OAuth user → admin permissions
-        if (ctx.user) {
-          return getRolePermissions('admin');
-        }
+        if (session) return getRolePermissions(session.role);
+        if (ctx.actor?.source === "app_user") return getRolePermissions(ctx.actor.role);
+        if (ctx.user?.role === "admin") return getRolePermissions("admin");
         return [];
       }),
   }),
 
   leadDailyStats: router({
     // إدخال أو تحديث أرقام يوم معين
-    upsert: publicProcedure
+    upsert: protectedProcedure
       .input(z.object({
         date: z.string(),
         totalLeads: z.number().min(0),
@@ -1775,7 +1791,7 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => upsertLeadDailyStats(input)),
     // جلب سجلات الأيام
-    list: publicProcedure
+    list: protectedProcedure
       .input(z.object({
         from: z.string().optional(),
         to: z.string().optional(),
@@ -1783,7 +1799,7 @@ export const appRouter = router({
       }))
       .query(async ({ input }) => getLeadDailyStatsList(input)),
     // إحصائيات إجمالية للفترة
-    summary: publicProcedure
+    summary: protectedProcedure
       .input(z.object({
         from: z.string(),
         to: z.string(),
@@ -1794,7 +1810,7 @@ export const appRouter = router({
   // ── Work Distribution ─────────────────────────────────────────────────────────
   workDist: router({
     // تسجيل نشاط جديد
-    log: publicProcedure
+    log: protectedProcedure
       .input(z.object({
         engineerId: z.number(),
         logDate: z.string(),
@@ -1825,7 +1841,7 @@ export const appRouter = router({
       }),
 
     // توزيع مهندس واحد (MTD)
-    myDistribution: publicProcedure
+    myDistribution: protectedProcedure
       .input(z.object({
         engineerId: z.number(),
         year: z.number(),
@@ -1834,12 +1850,12 @@ export const appRouter = router({
       .query(async ({ input }) => getWorkDistribution(input.engineerId, input.year, input.month)),
 
     // توزيع كل المهندسين (admin فقط)
-    allEngineers: publicProcedure
+    allEngineers: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getAllEngineersDistribution(input.year, input.month)),
 
     // تحليل أسبوعي
-    weeklyAnalysis: publicProcedure
+    weeklyAnalysis: protectedProcedure
       .input(z.object({
         engineerId: z.number(),
         year: z.number(),
@@ -1848,17 +1864,17 @@ export const appRouter = router({
       .query(async ({ input }) => getWeeklyDistribution(input.engineerId, input.year, input.weekNumber)),
 
     // تحليل نقاط الضعف (Critical Insights)
-    criticalInsights: publicProcedure
+    criticalInsights: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getCriticalInsights(input.year, input.month)),
 
     // ترتيب شامل (Sales + Closing + Distribution)
-    fullRanking: publicProcedure
+    fullRanking: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getEngineerRankingFull(input.year, input.month)),
 
     // ثوابت (labels + targets)
-    config: publicProcedure.query(() => ({
+    config: protectedProcedure.query(() => ({
       activityLabels: ACTIVITY_LABELS,
       targets: WORK_DISTRIBUTION_TARGETS,
     })),
@@ -1866,13 +1882,13 @@ export const appRouter = router({
   // ── Reports Module ──────────────────────────────────────────────────────────
   reports: router({
     // تقرير أسبوعي كامل مع Distribution Score + Behavior Alerts + Insights
-    weeklyFull: publicProcedure.query(async () => getWeeklyPerformanceFull()),
+    weeklyFull: protectedProcedure.query(async () => getWeeklyPerformanceFull()),
     // تقرير شهري مبني على Output الفعلي
-    monthlyKPI: publicProcedure
+    monthlyKPI: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
       .query(async ({ input }) => getOutputBasedKPI(input.year, input.month)),
     // تقرير ربع سنوي (مقارنة 3 أشهر)
-    quarterly: publicProcedure
+    quarterly: protectedProcedure
       .input(z.object({ year: z.number(), quarter: z.number() }))
       .query(async ({ input }) => {
         const { year, quarter } = input;
@@ -1883,28 +1899,28 @@ export const appRouter = router({
   }),
   // ── Pipeline & Discount ─────────────────────────────────────────────────────
   pipeline: router({
-    engineerStats: publicProcedure
+    engineerStats: protectedProcedure
       .input(z.object({ engineerId: z.number().optional() }))
       .query(async ({ input }) => getEngineerPipelineStats(input.engineerId)),
-    overview: publicProcedure.query(async () => getPipelineOverview()),
+    overview: protectedProcedure.query(async () => getPipelineOverview()),
     approveDiscount: protectedProcedure
       .input(z.object({ dealId: z.number(), status: z.enum(['approved', 'rejected']), approvedBy: z.string().optional() }))
       .mutation(async ({ input }) => { await updateDiscountApproval(input.dealId, input.status, input.approvedBy); return { success: true }; }),
     computeBonus: protectedProcedure
       .input(z.object({ dealId: z.number() }))
       .mutation(async ({ input }) => { await computeAndSaveDealBonus(input.dealId); return { success: true }; }),
-    bonusSummary: publicProcedure.query(async () => getEngineerBonusSummary()),
+    bonusSummary: protectedProcedure.query(async () => getEngineerBonusSummary()),
   }),
   // ── Playbook & Sales Execution ───────────────────────────────────────────────
   playbook: router({
     // عناصر الـ Playbook
-    list: publicProcedure
+    list: protectedProcedure
       .input(z.object({ category: z.string().optional() }))
       .query(async ({ input }) => getPlaybookItems(input.category)),
-    getById: publicProcedure
+    getById: protectedProcedure
       .input(z.object({ id: z.number() }))
       .query(async ({ input }) => getPlaybookItemById(input.id)),
-    categories: publicProcedure.query(async () => getPlaybookCategories()),
+    categories: protectedProcedure.query(async () => getPlaybookCategories()),
     create: protectedProcedure
       .input(z.object({
         name: z.string(),
@@ -1985,7 +2001,7 @@ export const appRouter = router({
         notes: z.string().optional(),
       }))
       .mutation(async ({ input }) => { await createPlaybookQuotation(input); return { success: true }; }),
-    listQuotations: publicProcedure
+    listQuotations: protectedProcedure
       .input(z.object({ engineerId: z.number().optional(), dealId: z.number().optional() }))
       .query(async ({ input }) => getPlaybookQuotations(input.engineerId, input.dealId)),
     updateRecording: protectedProcedure
@@ -1995,14 +2011,14 @@ export const appRouter = router({
       .input(z.object({ quotationId: z.number(), status: z.enum(['draft', 'presented', 'accepted', 'rejected']) }))
       .mutation(async ({ input }) => updatePlaybookQuotationStatus(input.quotationId, input.status)),
     // Funnel Analysis
-    funnelAnalysis: publicProcedure
+    funnelAnalysis: protectedProcedure
       .input(z.object({ engineerId: z.number().optional() }))
       .query(async ({ input }) => getFunnelAnalysis(input.engineerId)),
     // Meeting Reviews
-    reviewsList: publicProcedure
+    reviewsList: protectedProcedure
       .input(z.object({ engineerId: z.number().optional(), limit: z.number().optional() }))
       .query(async ({ input }) => getMeetingReviewsList(input.engineerId, input.limit)),
-    weeklyCoaching: publicProcedure
+    weeklyCoaching: protectedProcedure
       .input(z.object({ engineerId: z.number() }))
       .query(async ({ input }) => getWeeklyCoachingSummary(input.engineerId)),
   }),
@@ -2034,26 +2050,26 @@ export const appRouter = router({
         metadata: z.string().optional(),
       }))
       .mutation(async ({ input }) => { await logSessionAction(input); return { success: true }; }),
-    details: publicProcedure
+    details: protectedProcedure
       .input(z.object({ sessionId: z.number() }))
       .query(async ({ input }) => getSessionDetails(input.sessionId)),
-    engineerStats: publicProcedure
+    engineerStats: protectedProcedure
       .input(z.object({ engineerId: z.number() }))
       .query(async ({ input }) => getEngineerMeetingStats(input.engineerId)),
-    adminList: publicProcedure
+    adminList: protectedProcedure
       .input(z.object({ limit: z.number().optional() }))
       .query(async ({ input }) => getAllMeetingSessionsAdmin(input.limit)),
     updateRecording: protectedProcedure
       .input(z.object({ sessionId: z.number(), recordingLink: z.string().url() }))
       .mutation(async ({ input }) => { await updateSessionRecordingLink(input.sessionId, input.recordingLink); return { success: true }; }),
-    weeklyCoaching: publicProcedure
+    weeklyCoaching: protectedProcedure
       .input(z.object({ engineerId: z.number() }))
       .query(async ({ input }) => getEngineerWeeklyCoaching(input.engineerId)),
   }),
   // ── Promotion & Evaluation System ─────────────────────────────────────────
   promotion: router({
     // Meeting Review (أداة تقييم حقيقية)
-    createMeetingReview: publicProcedure
+    createMeetingReview: protectedProcedure
       .input(z.object({
         taskId: z.number(),
         engineerId: z.number(),
@@ -2069,19 +2085,19 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => createOrUpdateMeetingReview(input)),
 
-    getMeetingReviewByTask: publicProcedure
+    getMeetingReviewByTask: protectedProcedure
       .input(z.object({ taskId: z.number() }))
       .query(async ({ input }) => getMeetingReviewByTask(input.taskId)),
 
-    getMeetingReviewSummary: publicProcedure
+    getMeetingReviewSummary: protectedProcedure
       .input(z.object({ engineerId: z.number().optional() }))
       .query(async ({ input }) => getEngineerMeetingReviewSummary(input.engineerId)),
 
-    getMeetingTasksPendingReview: publicProcedure
+    getMeetingTasksPendingReview: protectedProcedure
       .query(async () => getMeetingTasksPendingReview()),
 
     // Monthly Evaluation
-    createMonthlyEvaluation: publicProcedure
+    createMonthlyEvaluation: protectedProcedure
       .input(z.object({
         engineerId: z.number(),
         evaluationMonth: z.number().min(1).max(12),
@@ -2097,42 +2113,42 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => createOrUpdateMonthlyEvaluation(input)),
 
-    getEvaluationHistory: publicProcedure
+    getEvaluationHistory: protectedProcedure
       .input(z.object({ engineerId: z.number() }))
       .query(async ({ input }) => getEngineerEvaluationHistory(input.engineerId)),
 
-    getAllEngineersDashboard: publicProcedure
+    getAllEngineersDashboard: protectedProcedure
       .query(async () => getAllEngineersEvaluationDashboard()),
 
     // Career Path
-    promoteEngineer: publicProcedure
+    promoteEngineer: protectedProcedure
       .input(z.object({ engineerId: z.number(), promotedBy: z.number().optional() }))
       .mutation(async ({ input }) => promoteEngineer(input.engineerId, input.promotedBy)),
 
-    getCareerLevel: publicProcedure
+    getCareerLevel: protectedProcedure
       .input(z.object({ engineerId: z.number() }))
       .query(async ({ input }) => getOrCreateEngineerCareerLevel(input.engineerId)),
 
     // Management Decision Dashboard
-    getManagementDashboard: publicProcedure
+    getManagementDashboard: protectedProcedure
       .query(async () => getManagementDecisionDashboard()),
     // Engineer Promotion Progress (تفاصيل الترقية لمهندس واحد)
-    getEngineerPromotionProgress: publicProcedure
+    getEngineerPromotionProgress: protectedProcedure
       .input(z.object({ engineerId: z.number() }))
       .query(async ({ input }) => getEngineerPromotionProgress(input.engineerId)),
   }),
 
   // ── Funnel Analysis ───────────────────────────────────────────────────────
   funnel: router({
-    full: publicProcedure
+    full: protectedProcedure
       .input(z.object({
         engineerId: z.number().optional(),
         period: z.enum(['week', 'month', 'quarter']).optional(),
       }))
       .query(async ({ input }) => getFullFunnelAnalysis(input.engineerId, input.period)),
-    comparison: publicProcedure
+    comparison: protectedProcedure
       .query(async () => getEngineersFunnelComparison()),
-    playbookInsights: publicProcedure
+    playbookInsights: protectedProcedure
       .input(z.object({ engineerId: z.number() }))
       .query(async ({ input }) => getEngineerFunnelPlaybookInsights(input.engineerId)),
   }),
@@ -2153,11 +2169,12 @@ export const appRouter = router({
         // حفظ token في cookie
         const res = (ctx as any).res;
         if (res) {
-          res.cookie('app_user_token', result.token, {
+          setResponseCookie(res, "app_user_token", result.token, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
-            maxAge: 7 * 24 * 60 * 60 * 1000,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "lax",
+            maxAge: 7 * 24 * 60 * 60,
+            path: "/",
           });
         }
         return { success: true, user: { id: result.user.id, name: result.user.name, username: result.user.username, role: result.user.role, engineerId: result.user.engineerId } };
@@ -2166,14 +2183,14 @@ export const appRouter = router({
     logout: publicProcedure
       .mutation(async ({ ctx }) => {
         const res = (ctx as any).res;
-        if (res) res.clearCookie('app_user_token');
+        if (res) clearResponseCookie(res, "app_user_token", { httpOnly: true, sameSite: "lax", path: "/" });
         return { success: true };
       }),
     // Get current user from token
     me: publicProcedure
       .query(async ({ ctx }) => {
         const req = (ctx as any).req;
-        const token = req?.cookies?.app_user_token;
+        const token = req ? getRequestCookie(req, "app_user_token") : undefined;
         if (!token) return null;
         const user = await verifyAppUserToken(token);
         if (!user) return null;
@@ -2181,16 +2198,16 @@ export const appRouter = router({
         return { ...user, permissions };
       }),
     // List all users (manager/admin only)
-    list: publicProcedure
+    list: protectedProcedure
       .query(async ({ ctx }) => {
         const req = (ctx as any).req;
-        const caller = await getAdminCallerFromRequest(req);
+        const caller = await getCallerFromContext(ctx);
         if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'يجب تسجيل الدخول أولاً' });
         if (!['manager', 'admin_sales', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN', message: 'ليس لديك صلاحية الوصول' });
         return getAppUsers();
       }),
     // Create user (manager only)
-    create: publicProcedure
+    create: protectedProcedure
       .input(z.object({
         name: z.string().min(2, 'الاسم يجب أن يكون حرفين على الأقل'),
         username: z.string().min(3, 'اسم المستخدم يجب أن يكون 3 أحرف على الأقل').regex(/^[a-zA-Z0-9._-]+$/, 'اسم المستخدم يجب أن يحتوي على حروف وأرقام فقط'),
@@ -2201,7 +2218,7 @@ export const appRouter = router({
       }))
       .mutation(async ({ input, ctx }) => {
         const req = (ctx as any).req;
-        const caller = await getAdminCallerFromRequest(req);
+        const caller = await getCallerFromContext(ctx);
         if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'يجب تسجيل الدخول أولاً' });
         if (!['manager', 'admin_sales', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN', message: 'ليس لديك صلاحية إنشاء مستخدمين' });
         try {
@@ -2220,7 +2237,7 @@ export const appRouter = router({
         }
       }),
     // Update user (manager only)
-    update: publicProcedure
+    update: protectedProcedure
       .input(z.object({
         userId: z.number(),
         name: z.string().optional(),
@@ -2231,7 +2248,7 @@ export const appRouter = router({
       }))
       .mutation(async ({ input, ctx }) => {
         const req = (ctx as any).req;
-        const caller = await getAdminCallerFromRequest(req);
+        const caller = await getCallerFromContext(ctx);
         if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'يجب تسجيل الدخول أولاً' });
         if (!['manager', 'admin_sales', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN', message: 'ليس لديك صلاحية تعديل المستخدمين' });
         const { userId, ...data } = input;
@@ -2240,17 +2257,17 @@ export const appRouter = router({
         return { success: true };
       }),
     // Get permissions for a user
-    getPermissions: publicProcedure
+    getPermissions: protectedProcedure
       .input(z.object({ userId: z.number() }))
       .query(async ({ input, ctx }) => {
         const req = (ctx as any).req;
-        const caller = await getAdminCallerFromRequest(req);
+        const caller = await getCallerFromContext(ctx);
         if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'يجب تسجيل الدخول أولاً' });
         if (!['manager', 'admin_sales', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
         return getUserPermissions(input.userId);
       }),
     // Update permissions for a user
-    updatePermissions: publicProcedure
+    updatePermissions: protectedProcedure
       .input(z.object({
         userId: z.number(),
         permissions: z.array(z.object({
@@ -2264,7 +2281,7 @@ export const appRouter = router({
       }))
       .mutation(async ({ input, ctx }) => {
         const req = (ctx as any).req;
-        const caller = await getAdminCallerFromRequest(req);
+        const caller = await getCallerFromContext(ctx);
         if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'يجب تسجيل الدخول أولاً' });
         if (!['manager', 'admin_sales', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
         await updateUserPermissions(input.userId, input.permissions);
@@ -2272,7 +2289,7 @@ export const appRouter = router({
         return { success: true };
       }),
     // Activity Logs
-    activityLogs: publicProcedure
+    activityLogs: protectedProcedure
       .input(z.object({
         userId: z.number().optional(),
         module: z.string().optional(),
@@ -2280,7 +2297,7 @@ export const appRouter = router({
       }).optional())
       .query(async ({ input, ctx }) => {
         const req = (ctx as any).req;
-        const caller = await getAdminCallerFromRequest(req);
+        const caller = await getCallerFromContext(ctx);
         if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'يجب تسجيل الدخول أولاً' });
         if (!['manager', 'admin_sales', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
         return getActivityLogs(input);
@@ -2290,20 +2307,20 @@ export const appRouter = router({
       .query(async () => DEFAULT_ROLE_PERMISSIONS),
     // ─── Engineer Account Management ─────────────────────────────────────────
     // قراءة كل المهندسين مع حالة الـ account
-    listEngineers: publicProcedure
+    listEngineers: protectedProcedure
       .query(async ({ ctx }) => {
         const req = (ctx as any).req;
-        const caller = await getAdminCallerFromRequest(req);
+        const caller = await getCallerFromContext(ctx);
         if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED' });
         if (!['manager', 'admin_sales', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
         return listEngineersWithAccountStatus();
       }),
     // إنشاء حسابات تلقائياً لكل المهندسين
-    bulkCreateAccounts: publicProcedure
+    bulkCreateAccounts: protectedProcedure
       .input(z.object({ defaultPassword: z.string().min(6).optional() }))
       .mutation(async ({ input, ctx }) => {
         const req = (ctx as any).req;
-        const caller = await getAdminCallerFromRequest(req);
+        const caller = await getCallerFromContext(ctx);
         if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED' });
         if (!['manager', 'admin_sales', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
         const result = await bulkCreateEngineersAccounts(input.defaultPassword ?? '12345678');
@@ -2311,7 +2328,7 @@ export const appRouter = router({
         return result;
       }),
     // إنشاء حساب لمهندس واحد
-    createEngineerAccount: publicProcedure
+    createEngineerAccount: protectedProcedure
       .input(z.object({
         engineerId: z.number(),
         username: z.string().min(3).regex(/^[a-zA-Z0-9._-]+$/),
@@ -2320,7 +2337,7 @@ export const appRouter = router({
       }))
       .mutation(async ({ input, ctx }) => {
         const req = (ctx as any).req;
-        const caller = await getAdminCallerFromRequest(req);
+        const caller = await getCallerFromContext(ctx);
         if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED' });
         if (!['manager', 'admin_sales', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
         const result = await createEngineerAccount(input.engineerId, input.username, input.password, input.forceChange ?? true);
@@ -2329,11 +2346,11 @@ export const appRouter = router({
         return { success: true };
       }),
     // إعادة تعيين كلمة مرور (Admin)
-    resetPassword: publicProcedure
+    resetPassword: protectedProcedure
       .input(z.object({ engineerId: z.number(), newPassword: z.string().min(6) }))
       .mutation(async ({ input, ctx }) => {
         const req = (ctx as any).req;
-        const caller = await getAdminCallerFromRequest(req);
+        const caller = await getCallerFromContext(ctx);
         if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED' });
         if (!['manager', 'admin_sales', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
         await resetEngineerPassword(input.engineerId, input.newPassword);
@@ -2341,7 +2358,7 @@ export const appRouter = router({
         return { success: true };
       }),
     // تغيير كلمة المرور (المهندس نفسه)
-    changePassword: publicProcedure
+    changePassword: protectedProcedure
       .input(z.object({ oldPassword: z.string().min(1), newPassword: z.string().min(6) }))
       .mutation(async ({ input, ctx }) => {
         const req = (ctx as any).req;
@@ -2350,7 +2367,7 @@ export const appRouter = router({
         const session = await getLocalSessionFromRequest(req);
         if (session) engineerId = session.engineerId;
         if (!engineerId) {
-          const token = req?.cookies?.app_user_token;
+          const token = req ? getRequestCookie(req, "app_user_token") : undefined;
           if (token) {
             const user = await verifyAppUserToken(token);
             if (user?.engineerId) engineerId = user.engineerId;
@@ -2362,11 +2379,11 @@ export const appRouter = router({
         return { success: true };
       }),
     // تفعيل / تعطيل حساب
-    toggleStatus: publicProcedure
+    toggleStatus: protectedProcedure
       .input(z.object({ engineerId: z.number(), status: z.enum(['active', 'inactive']) }))
       .mutation(async ({ input, ctx }) => {
         const req = (ctx as any).req;
-        const caller = await getAdminCallerFromRequest(req);
+        const caller = await getCallerFromContext(ctx);
         if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED' });
         if (!['manager', 'admin_sales', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
         await toggleEngineerAccountStatus(input.engineerId, input.status);
@@ -2377,31 +2394,27 @@ export const appRouter = router({
   // ─── Role Permissions (Dynamic Permissions Control Panel) ─────────────────
   rolePermissions: router({
     // جلب كل الصلاحيات لكل الـ Roles (للـ Matrix)
-    getAll: publicProcedure
+    getAll: protectedProcedure
       .query(async ({ ctx }) => {
-        const req = (ctx as any).req;
-        const token = req?.cookies?.app_user_token;
-        if (!token) throw new TRPCError({ code: 'UNAUTHORIZED' });
-        const caller = await verifyAppUserToken(token);
-        if (!caller || !['manager', 'admin_sales'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
+        const caller = await getCallerFromContext(ctx);
+        if (!caller) throw new TRPCError({ code: "UNAUTHORIZED" });
+        if (!["manager", "admin_sales", "admin"].includes(caller.role)) throw new TRPCError({ code: "FORBIDDEN" });
         const perms = await getAllRolePermissions();
         return { permissions: perms, modules: SYSTEM_MODULES, roles: SYSTEM_ROLES };
       }),
 
     // جلب صلاحيات Role معين
-    getByRole: publicProcedure
+    getByRole: protectedProcedure
       .input(z.object({ role: z.string() }))
       .query(async ({ input, ctx }) => {
-        const req = (ctx as any).req;
-        const token = req?.cookies?.app_user_token;
-        if (!token) throw new TRPCError({ code: 'UNAUTHORIZED' });
-        const caller = await verifyAppUserToken(token);
-        if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        const caller = await getCallerFromContext(ctx);
+        if (!caller) throw new TRPCError({ code: "UNAUTHORIZED" });
+        if (!["manager", "admin_sales", "admin"].includes(caller.role)) throw new TRPCError({ code: "FORBIDDEN" });
         return getRolePermissions(input.role);
       }),
 
     // تحديث صلاحية واحدة
-    update: publicProcedure
+    update: protectedProcedure
       .input(z.object({
         role: z.string(),
         module: z.string(),
@@ -2412,11 +2425,9 @@ export const appRouter = router({
         dataScope: z.enum(['own', 'team', 'all']),
       }))
       .mutation(async ({ input, ctx }) => {
-        const req = (ctx as any).req;
-        const token = req?.cookies?.app_user_token;
-        if (!token) throw new TRPCError({ code: 'UNAUTHORIZED' });
-        const caller = await verifyAppUserToken(token);
-        if (!caller || !['manager', 'admin_sales'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
+        const caller = await getCallerFromContext(ctx);
+        if (!caller) throw new TRPCError({ code: "UNAUTHORIZED" });
+        if (!["manager", "admin_sales", "admin"].includes(caller.role)) throw new TRPCError({ code: "FORBIDDEN" });
         const { role, module, ...data } = input;
         await updateRolePermission(role, module, data);
         await logActivity({
@@ -2429,7 +2440,7 @@ export const appRouter = router({
       }),
 
     // تحديث صلاحيات Role كاملة دفعة واحدة
-    updateAll: publicProcedure
+    updateAll: protectedProcedure
       .input(z.object({
         role: z.string(),
         permissions: z.array(z.object({
@@ -2442,11 +2453,9 @@ export const appRouter = router({
         })),
       }))
       .mutation(async ({ input, ctx }) => {
-        const req = (ctx as any).req;
-        const token = req?.cookies?.app_user_token;
-        if (!token) throw new TRPCError({ code: 'UNAUTHORIZED' });
-        const caller = await verifyAppUserToken(token);
-        if (!caller || !['manager', 'admin_sales'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
+        const caller = await getCallerFromContext(ctx);
+        if (!caller) throw new TRPCError({ code: "UNAUTHORIZED" });
+        if (!["manager", "admin_sales", "admin"].includes(caller.role)) throw new TRPCError({ code: "FORBIDDEN" });
         await updateAllRolePermissions(input.role, input.permissions);
         await logActivity({
           userId: caller.id,
@@ -2458,7 +2467,7 @@ export const appRouter = router({
       }),
 
     // جلب الـ Modules وRoles المتاحة
-    meta: publicProcedure
+    meta: protectedProcedure
       .query(async () => ({
         modules: SYSTEM_MODULES,
         roles: SYSTEM_ROLES,
@@ -2470,10 +2479,10 @@ export const appRouter = router({
     // جلب صلاحيات الـ Sections للـ Role الحالي (من local_session)
     myPermissions: protectedProcedure
       .query(async ({ ctx }) => {
-        const req = (ctx as any).req;
-        const session = await (await import('./localAuth')).getLocalSessionFromRequest(req);
-        if (!session) throw new TRPCError({ code: 'UNAUTHORIZED' });
-        const perms = await getSectionPermissions(session.role);
+        const localSession = await (await import('./localAuth')).getLocalSessionFromRequest(ctx.req);
+        const role = ctx.actor?.role ?? localSession?.role;
+        if (!role && ctx.user?.role !== "admin") throw new TRPCError({ code: "UNAUTHORIZED" });
+        const perms = await getSectionPermissions(role ?? "admin");
         // Build map: module.section → { visibility, canEdit }
         const map: Record<string, { visibility: string; canEdit: boolean }> = {};
         for (const p of perms) {
@@ -2486,20 +2495,20 @@ export const appRouter = router({
       }),
 
     // جلب كل صلاحيات الـ Sections لكل الـ Roles (للـ Admin Panel)
-    getAll: publicProcedure
+    getAll: protectedProcedure
       .query(async ({ ctx }) => {
         const req = (ctx as any).req;
-        const caller = await getAdminCallerFromRequest(req);
+        const caller = await getCallerFromContext(ctx);
         if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED' });
         if (!['manager', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
         const perms = await getAllSectionPermissions();
         return { permissions: perms, roles: SYSTEM_ROLES, modules: SYSTEM_MODULES };
       }),
     // تهيئة البيانات الافتراضية لـ Section Permissions
-    initDefaults: publicProcedure
+    initDefaults: protectedProcedure
       .mutation(async ({ ctx }) => {
         const req = (ctx as any).req;
-        const caller = await getAdminCallerFromRequest(req);
+        const caller = await getCallerFromContext(ctx);
         if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED' });
         if (!['manager', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
         // Default permissions per role
@@ -2543,18 +2552,18 @@ export const appRouter = router({
       }),
 
     // جلب صلاحيات Role معين
-    getByRole: publicProcedure
+    getByRole: protectedProcedure
       .input(z.object({ role: z.string() }))
       .query(async ({ input, ctx }) => {
         const req = (ctx as any).req;
-        const caller = await getAdminCallerFromRequest(req);
+        const caller = await getCallerFromContext(ctx);
         if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED' });
         if (!['manager', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
         return getSectionPermissions(input.role);
       }),
 
     // تحديث صلاحية Section معين
-    update: publicProcedure
+    update: protectedProcedure
       .input(z.object({
         role: z.string(),
         module: z.string(),
@@ -2564,7 +2573,7 @@ export const appRouter = router({
       }))
       .mutation(async ({ input, ctx }) => {
         const req = (ctx as any).req;
-        const caller = await getAdminCallerFromRequest(req);
+        const caller = await getCallerFromContext(ctx);
         if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED' });
         if (!['manager', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
         await updateSectionPermission(input.role, input.module, input.section, input.visibility, input.canEdit);
@@ -2578,7 +2587,7 @@ export const appRouter = router({
       }),
 
     // تحديث صلاحيات متعددة دفعة واحدة
-    bulkUpdate: publicProcedure
+    bulkUpdate: protectedProcedure
       .input(z.object({
         updates: z.array(z.object({
           role: z.string(),
@@ -2590,7 +2599,7 @@ export const appRouter = router({
       }))
       .mutation(async ({ input, ctx }) => {
         const req = (ctx as any).req;
-        const caller = await getAdminCallerFromRequest(req);
+        const caller = await getCallerFromContext(ctx);
         if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED' });
         if (!['manager', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
         await bulkUpdateSectionPermissions(input.updates);
@@ -2604,14 +2613,14 @@ export const appRouter = router({
       }),
 
     // جلب الـ Module Sections المتاحة
-    moduleSections: publicProcedure
+    moduleSections: protectedProcedure
       .query(async () => MODULE_SECTIONS),
   }),
 
   // ─── Deal Tasks (Next Step → Task System) ─────────────────────────────────────────────
   dealTasks: router({
     // إنشاء task جديدة مرتبطة بصفقة
-    create: publicProcedure
+    create: protectedProcedure
       .input(z.object({
         dealId: z.number(),
         engineerId: z.number(),
@@ -2627,22 +2636,22 @@ export const appRouter = router({
         return { success: true };
       }),
     // جلب المهام المتأخرة (overdue)
-    listOverdue: publicProcedure
+    listOverdue: protectedProcedure
       .input(z.object({ engineerId: z.number().optional() }))
       .query(async ({ input }) => getOverdueDealTasks(input.engineerId)),
     // جلب المهام المعلقة (pending)
-    listPending: publicProcedure
+    listPending: protectedProcedure
       .input(z.object({ engineerId: z.number().optional() }))
       .query(async ({ input }) => getPendingDealTasks(input.engineerId)),
     // تحديد task كـ Done
-    markDone: publicProcedure
+    markDone: protectedProcedure
       .input(z.object({ taskId: z.number() }))
       .mutation(async ({ input }) => {
         await markDealTaskDone(input.taskId);
         return { success: true };
       }),
     // Follow-up KPI لمهندس
-    followupKPI: publicProcedure
+    followupKPI: protectedProcedure
       .input(z.object({
         engineerId: z.number(),
         startDate: z.string().optional(),
@@ -2650,7 +2659,7 @@ export const appRouter = router({
       }))
       .query(async ({ input }) => getFollowupKPI(input.engineerId, input.startDate, input.endDate)),
     // تقرير Follow-up Compliance لجميع المهندسين
-    complianceReport: publicProcedure
+    complianceReport: protectedProcedure
       .input(z.object({
         startDate: z.string().optional(),
         endDate: z.string().optional(),

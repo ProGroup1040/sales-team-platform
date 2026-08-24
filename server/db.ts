@@ -47,6 +47,15 @@ import { notifyOwner } from './_core/notification';
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
+// Vitest runs without a MySQL service in the sandbox. Keep this repository
+// double explicitly test-only; production still reports database unavailability
+// instead of silently persisting data in process memory.
+const testAppUsers = new Map<number, AppUser>();
+const testUserPermissions = new Map<number, UserPermission[]>();
+const testActivityLogs: Array<typeof activityLogs.$inferSelect> = [];
+let nextTestAppUserId = 1;
+const useTestAppUserStore = () => process.env.NODE_ENV === "test" && !process.env.DATABASE_URL;
+
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try { _db = drizzle(process.env.DATABASE_URL); }
@@ -718,16 +727,27 @@ export async function createDeal(data: {
 }
 export async function updateDealStage(id: number, stage: string, nextAction?: string, nextActionDate?: string, notes?: string) {
   const db = await getDb();
-  if (!db) return;
-  const updateData: any = { stage };
-  if (nextAction !== undefined) updateData.nextAction = nextAction;
-    if (nextActionDate !== undefined) updateData.nextActionDate = nextActionDate ? new Date(nextActionDate + 'T00:00:00') : null;
-  if (notes !== undefined) updateData.notes = notes;
-  if (stage === 'closed_won' || stage === 'closed_lost') updateData.closedAt = new Date();
-  await db.update(deals).set(updateData).where(eq(deals.id, id));
-  if (stage === 'closed_won') {
-    await ensureProjectFromClosedDeal(id, 'system:deal_stage_update');
-  }
+  if (!db) throw new Error("Database unavailable");
+  if (!Number.isInteger(id) || id <= 0) throw new Error("Invalid deal id");
+  const validStages = new Set(["proposal", "negotiation", "contract_sent", "closed_won", "closed_lost"]);
+  if (!validStages.has(stage)) throw new Error("Invalid deal stage");
+  const parsedNextActionDate = nextActionDate ? new Date(`${nextActionDate}T00:00:00`) : null;
+  if (nextActionDate && (parsedNextActionDate === null || Number.isNaN(parsedNextActionDate.getTime()))) throw new Error("Invalid next action date");
+
+  await db.transaction(async tx => {
+    const updateData: any = { stage };
+    if (nextAction !== undefined) updateData.nextAction = nextAction;
+    if (nextActionDate !== undefined) updateData.nextActionDate = parsedNextActionDate;
+    if (notes !== undefined) updateData.notes = notes;
+    if (stage === "closed_won" || stage === "closed_lost") updateData.closedAt = new Date();
+    const [deal] = await tx.select({ id: deals.id }).from(deals)
+      .where(and(eq(deals.id, id), eq(deals.isDeleted, 0))).limit(1);
+    if (!deal) throw new Error("Deal not found");
+    await tx.update(deals).set(updateData).where(eq(deals.id, id));
+    if (stage === "closed_won") {
+      await ensureProjectFromClosedDealWithDb(tx, id, "system:deal_stage_update");
+    }
+  });
 }
 
 // ─── Monthly Sales ────────────────────────────────────────────────────────────
@@ -735,15 +755,33 @@ export async function getMonthlySalesStats(year: number, month: number) {
   const db = await getDb();
   if (!db) return { target: 0, actual: 0, achievementRate: 0, remaining: 0 };
   const startDate = new Date(year, month - 1, 1);
-  const endDate = new Date(year, month, 0, 23, 59, 59);
+  const endDate = new Date(year, month, 0, 23, 59, 59, 999);
 
   const targetRow = await db.select().from(monthlyTargets)
     .where(and(eq(monthlyTargets.year, year), eq(monthlyTargets.month, month))).limit(1);
-  const target = targetRow.length > 0 ? parseFloat(targetRow[0].targetAmount) : 0;
+  const target = targetRow.length > 0 ? Number(targetRow[0].targetAmount) || 0 : 0;
 
-  const wonDeals = await db.select().from(deals)
-    .where(and(eq(deals.stage, 'closed_won'), between(deals.closedAt as any, startDate, endDate)));
-  const actual = wonDeals.reduce((s, d) => s + parseFloat((d.netValue as string) || d.value || '0'), 0);
+  // Keep monthly sales aligned with KPI/reporting attribution: an explicit
+  // accounting month wins, then the closing month, then closedAt as a fallback.
+  const dealBelongsToMonth = or(
+    and(eq(deals.accountingMonth as any, month), eq(deals.accountingYear as any, year)),
+    and(isNull(deals.accountingMonth as any), eq(deals.closingMonth as any, month), eq(deals.closingYear as any, year)),
+    and(
+      isNull(deals.accountingMonth as any),
+      isNull(deals.closingMonth as any),
+      between(deals.closedAt as any, startDate, endDate),
+    ),
+  );
+  const wonDeals = await db.select().from(deals).where(and(
+    eq(deals.isDeleted, 0),
+    eq(deals.stage, "closed_won"),
+    dealBelongsToMonth,
+  ));
+  const actual = wonDeals.reduce((sum, deal) => {
+    const netValue = Number(deal.netValue);
+    const grossValue = Number(deal.value);
+    return sum + (Number.isFinite(netValue) ? netValue : Number.isFinite(grossValue) ? grossValue : 0);
+  }, 0);
 
   const achievementRate = target > 0 ? Math.round((actual / target) * 100) : 0;
   const remaining = Math.max(0, target - actual);
@@ -752,18 +790,22 @@ export async function getMonthlySalesStats(year: number, month: number) {
 }
 
 export async function getMonthlySalesTrend(months: number = 6) {
-  const db = await getDb();
-  if (!db) return [];
-  const result = [];
+  // The response must describe the requested periods even when there is no
+  // database yet; returning [] caused dashboards and callers to misread a
+  // healthy zero-sales period as missing data.
+  const count = Number.isFinite(months) ? Math.min(Math.max(Math.trunc(months), 1), 24) : 6;
   const now = new Date();
-  for (let i = months - 1; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const year = d.getFullYear();
-    const month = d.getMonth() + 1;
-    const stats = await getMonthlySalesStats(year, month);
-    result.push({ year, month, label: `${year}/${String(month).padStart(2, '0')}`, ...stats });
-  }
-  return result;
+  const periods = Array.from({ length: count }, (_, index) => {
+    const date = new Date(now.getFullYear(), now.getMonth() - (count - 1 - index), 1);
+    return { year: date.getFullYear(), month: date.getMonth() + 1 };
+  });
+  const stats = await Promise.all(periods.map(({ year, month }) => getMonthlySalesStats(year, month)));
+  return periods.map(({ year, month }, index) => ({
+    year,
+    month,
+    label: `${year}/${String(month).padStart(2, "0")}`,
+    ...stats[index],
+  }));
 }
 
 // ─── KPI (Engineers Performance) ─────────────────────────────────────────────
@@ -1682,28 +1724,32 @@ export async function getAllCollectionsWithSummary(engineerId?: number) {
 /** إضافة دفعة جديدة وتحديث collectedAmount */
 export async function addPayment(data: InsertPayment) {
   const db = await getDb();
-  if (!db) return null;
-  const [result] = await db.insert(payments).values(data);
-  // تحديث collectedAmount في collections
-  const allPayments = await db.select().from(payments).where(eq(payments.collectionId, data.collectionId));
-  const total = allPayments.reduce((s, p) => s + parseFloat(p.amount as string), 0);
-  const [col] = await db.select().from(collections).where(eq(collections.id, data.collectionId)).limit(1);
-  if (col) {
-    const contractAmt = parseFloat(col.contractAmount as string);
+  if (!db) throw new Error("Database unavailable");
+  const amount = Number(data.amount);
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error("Payment amount must be positive");
+  const paymentDate = data.paymentDate instanceof Date ? data.paymentDate : new Date(`${String(data.paymentDate)}T00:00:00`);
+  if (Number.isNaN(paymentDate.getTime())) throw new Error("Invalid payment date");
+
+  return db.transaction(async tx => {
+    const [result] = await tx.insert(payments).values({ ...data, amount: amount.toFixed(2), paymentDate } as any);
+    const allPayments = await tx.select().from(payments).where(eq(payments.collectionId, data.collectionId));
+    const total = allPayments.reduce((sum, payment) => sum + Number(payment.amount ?? 0), 0);
+    const [col] = await tx.select().from(collections).where(eq(collections.id, data.collectionId)).limit(1);
+    if (!col) throw new Error("Collection not found");
+    const contractAmt = Number(col.contractAmount ?? 0);
+    if (!Number.isFinite(contractAmt) || contractAmt < 0) throw new Error("Collection amount is invalid");
     const pct = contractAmt > 0 ? total / contractAmt : 0;
-    let newStatus: "on_track" | "due_soon" | "overdue" | "completed" = col.status;
-    if (pct >= 1) newStatus = "completed";
-    await db.update(collections).set({ collectedAmount: total.toString(), status: newStatus, lastPaymentAt: new Date() }).where(eq(collections.id, data.collectionId));
-    // تحقق من شرط Stage 1: 75% تحصيل → صرف 50% من الكوميشن
-    await checkAndCreateCommissionStage(data.collectionId, total, contractAmt, pct);
-  }
-  return result;
+    const newStatus: "on_track" | "due_soon" | "overdue" | "completed" = pct >= 1 ? "completed" : col.status;
+    await tx.update(collections).set({ collectedAmount: total.toFixed(2), status: newStatus, lastPaymentAt: new Date() }).where(eq(collections.id, data.collectionId));
+    await checkAndCreateCommissionStage(data.collectionId, total, contractAmt, pct, tx);
+    return result;
+  });
 }
 
 /** تحقق وإنشاء كوميشن Stage 1 أو Stage 2 تلقائياً */
-async function checkAndCreateCommissionStage(collectionId: number, totalPaid: number, contractAmt: number, pct: number) {
-  const db = await getDb();
-  if (!db) return;
+async function checkAndCreateCommissionStage(collectionId: number, totalPaid: number, contractAmt: number, pct: number, executor?: any) {
+  const db = executor ?? await getDb();
+  if (!db) throw new Error("Database unavailable");
   const [col] = await db.select().from(collections).where(eq(collections.id, collectionId)).limit(1);
   if (!col) return;
   // جلب المهندس المسؤول من أول دفعة
@@ -1714,7 +1760,7 @@ async function checkAndCreateCommissionStage(collectionId: number, totalPaid: nu
   const halfCommission = totalCommission / 2;
   const existingComm = await db.select().from(commissionPayments).where(eq(commissionPayments.collectionId, collectionId));
   // Stage 1: عند 75% تحصيل
-  if (pct >= 0.75 && !existingComm.find(c => c.stage === "stage1")) {
+  if (pct >= 0.75 && !existingComm.find((c: any) => c.stage === "stage1")) {
     await db.insert(commissionPayments).values({
       collectionId, engineerId, stage: "stage1",
       commissionAmount: halfCommission.toString(),
@@ -1723,7 +1769,7 @@ async function checkAndCreateCommissionStage(collectionId: number, totalPaid: nu
     });
   }
   // Stage 2: عند 100% تحصيل (أو استلام العميل)
-  if (pct >= 1 && !existingComm.find(c => c.stage === "stage2")) {
+  if (pct >= 1 && !existingComm.find((c: any) => c.stage === "stage2")) {
     await db.insert(commissionPayments).values({
       collectionId, engineerId, stage: "stage2",
       commissionAmount: halfCommission.toString(),
@@ -3213,87 +3259,90 @@ export async function updateDealFull(id: number, data: {
   stage?: string; nextAction?: string; nextActionDate?: string; notes?: string;
   discountPercent?: number; discountValue?: number; discountNote?: string; value?: number;
   lostReason?: string; lostReasonNote?: string; closedAt?: Date;
-  accountingMonth?: number; // شهر احتساب الصفقة
-  accountingYear?: number;  // سنة احتساب الصفقة
+  accountingMonth?: number;
+  accountingYear?: number;
 }) {
   const db = await getDb();
-  if (!db) return;
-  const updateData: any = {};
-  if (data.stage !== undefined) updateData.stage = data.stage;
-  if (data.nextAction !== undefined) updateData.nextAction = data.nextAction;
-  if (data.nextActionDate !== undefined) updateData.nextActionDate = data.nextActionDate ? new Date(data.nextActionDate + 'T00:00:00') : null;
-  if (data.notes !== undefined) updateData.notes = data.notes;
-  if (data.value !== undefined) updateData.value = data.value.toString();
-  if (data.discountPercent !== undefined) updateData.discountPercent = data.discountPercent.toString();
-  if (data.discountValue !== undefined) updateData.discountValue = data.discountValue.toString();
-  if (data.discountNote !== undefined) updateData.discountNote = data.discountNote;
-  // Auto-update grossValue and netValue
-  if (data.value !== undefined) updateData.grossValue = data.value.toString();
-  if (data.value !== undefined || data.discountValue !== undefined) {
-    // netValue = grossValue - discountValue
-    // If only one side is updated, fetch the current deal to get the other side
-    const gv = data.value;
-    const dv = data.discountValue;
-    if (gv !== undefined && dv !== undefined) {
-      // Both provided
-      updateData.netValue = (gv - dv).toString();
-    } else if (gv !== undefined) {
-      // Only value updated — fetch current discountValue from DB
-      const currentDeal = await db.select({ discountValue: deals.discountValue }).from(deals).where(eq(deals.id, id)).limit(1);
-      const currentDv = parseFloat((currentDeal[0]?.discountValue as string) || '0');
-      updateData.netValue = (gv - currentDv).toString();
-    } else if (dv !== undefined) {
-      // Only discountValue updated — fetch current grossValue from DB
-      const currentDeal = await db.select({ grossValue: deals.grossValue, value: deals.value }).from(deals).where(eq(deals.id, id)).limit(1);
-      const currentGv = parseFloat((currentDeal[0]?.grossValue as string) || (currentDeal[0]?.value as string) || '0');
-      updateData.netValue = (currentGv - dv).toString();
+  if (!db) throw new Error("Database unavailable");
+  if (!Number.isInteger(id) || id <= 0) throw new Error("Invalid deal id");
+  const validStages = new Set(["proposal", "negotiation", "contract_sent", "closed_won", "closed_lost"]);
+  if (data.stage !== undefined && !validStages.has(data.stage)) throw new Error("Invalid deal stage");
+  if (data.value !== undefined && (!Number.isFinite(data.value) || data.value < 0)) throw new Error("Deal value must be non-negative");
+  if (data.discountValue !== undefined && (!Number.isFinite(data.discountValue) || data.discountValue < 0)) throw new Error("Discount value must be non-negative");
+  if (data.discountPercent !== undefined && (!Number.isFinite(data.discountPercent) || data.discountPercent < 0 || data.discountPercent > 100)) throw new Error("Discount percent must be between 0 and 100");
+  if (data.accountingMonth !== undefined && (!Number.isInteger(data.accountingMonth) || data.accountingMonth < 1 || data.accountingMonth > 12)) throw new Error("Accounting month must be between 1 and 12");
+  if (data.accountingYear !== undefined && (!Number.isInteger(data.accountingYear) || data.accountingYear < 2000 || data.accountingYear > 2200)) throw new Error("Invalid accounting year");
+
+  await db.transaction(async tx => {
+    const [current] = await tx.select().from(deals)
+      .where(and(eq(deals.id, id), eq(deals.isDeleted, 0))).limit(1);
+    if (!current) throw new Error("Deal not found");
+
+    const updateData: any = {};
+    if (data.stage !== undefined) updateData.stage = data.stage;
+    if (data.nextAction !== undefined) updateData.nextAction = data.nextAction;
+    if (data.nextActionDate !== undefined) {
+      const parsedDate = data.nextActionDate ? new Date(`${data.nextActionDate}T00:00:00`) : null;
+      if (parsedDate && Number.isNaN(parsedDate.getTime())) throw new Error("Invalid next action date");
+      updateData.nextActionDate = parsedDate;
     }
-  }
-  // Lock deal after closing
-  if (data.stage === 'closed_won' || data.stage === 'closed_lost') {
-    updateData.isLocked = 1;
-    // CRITICAL: set closingMonth/closingYear for month attribution
-    const closingDate = data.closedAt ?? new Date();
-    updateData.closingMonth = closingDate.getMonth() + 1;
-    updateData.closingYear = closingDate.getFullYear();
-  }
-  if (data.lostReason !== undefined) updateData.lostReason = data.lostReason;
-  if (data.lostReasonNote !== undefined) updateData.lostReasonNote = data.lostReasonNote;
-  if (data.closedAt !== undefined) updateData.closedAt = data.closedAt;
-  else if (data.stage === 'closed_won' || data.stage === 'closed_lost') updateData.closedAt = new Date();
-  // شهر احتساب الصفقة - يؤثر على جميع التقارير والخصومات
-  if (data.accountingMonth !== undefined) updateData.accountingMonth = data.accountingMonth;
-  if (data.accountingYear !== undefined) updateData.accountingYear = data.accountingYear;
-  await db.update(deals).set(updateData).where(eq(deals.id, id));
-  // إذا تغيرت المرحلة إلى closed_won ، أنشئ عقداً تلقائياً إذا لم يكن موجوداً
-  if (data.stage === 'closed_won') {
-    const [deal] = await db.select().from(deals).where(eq(deals.id, id)).limit(1);
-    if (deal) {
-      const existing = await db.select().from(collections).where(eq(collections.dealId, id)).limit(1);
-      if (existing.length === 0) {
-        // إنشاء عقد جديد مرتبط بالصفقة
-        await db.insert(collections).values({
+    if (data.notes !== undefined) updateData.notes = data.notes;
+    if (data.value !== undefined) {
+      updateData.value = data.value.toFixed(2);
+      updateData.grossValue = data.value.toFixed(2);
+    }
+    if (data.discountPercent !== undefined) updateData.discountPercent = data.discountPercent.toFixed(2);
+    if (data.discountValue !== undefined) updateData.discountValue = data.discountValue.toFixed(2);
+    if (data.discountNote !== undefined) updateData.discountNote = data.discountNote;
+
+    if (data.value !== undefined || data.discountValue !== undefined) {
+      const grossValue = data.value ?? Number(current.grossValue ?? current.value ?? 0);
+      const discountValue = data.discountValue ?? Number(current.discountValue ?? 0);
+      if (!Number.isFinite(grossValue) || !Number.isFinite(discountValue) || discountValue > grossValue) {
+        throw new Error("Discount cannot exceed deal value");
+      }
+      updateData.netValue = (grossValue - discountValue).toFixed(2);
+    }
+
+    if (data.stage === "closed_won" || data.stage === "closed_lost") {
+      const closingDate = data.closedAt ?? new Date();
+      updateData.isLocked = 1;
+      updateData.closedAt = closingDate;
+      updateData.closingMonth = closingDate.getMonth() + 1;
+      updateData.closingYear = closingDate.getFullYear();
+    } else if (data.closedAt !== undefined) {
+      updateData.closedAt = data.closedAt;
+    }
+    if (data.lostReason !== undefined) updateData.lostReason = data.lostReason;
+    if (data.lostReasonNote !== undefined) updateData.lostReasonNote = data.lostReasonNote;
+    if (data.accountingMonth !== undefined) updateData.accountingMonth = data.accountingMonth;
+    if (data.accountingYear !== undefined) updateData.accountingYear = data.accountingYear;
+
+    if (Object.keys(updateData).length > 0) await tx.update(deals).set(updateData).where(eq(deals.id, id));
+
+    if (data.stage === "closed_won") {
+      const [deal] = await tx.select().from(deals).where(eq(deals.id, id)).limit(1);
+      const [existingCollection] = await tx.select().from(collections).where(eq(collections.dealId, id)).limit(1);
+      if (!existingCollection) {
+        await tx.insert(collections).values({
           clientName: deal.clientName,
-          contractAmount: (data.value !== undefined ? data.value : parseFloat(deal.value as string)).toString(),
-          collectedAmount: '0',
+          contractAmount: String(deal.netValue ?? deal.value ?? "0"),
+          collectedAmount: "0",
           dealId: id,
-          status: 'on_track',
+          status: "on_track",
           notes: `عقد تلقائي - صفقة #${id}`,
         });
-      } else if (data.value !== undefined) {
-        // تحديث قيمة العقد إذا تغيرت قيمة الصفقة
-        await db.update(collections).set({ contractAmount: data.value.toString() }).where(eq(collections.dealId, id));
+      } else if (data.value !== undefined || data.discountValue !== undefined) {
+        await tx.update(collections).set({ contractAmount: String(deal.netValue ?? deal.value ?? "0") }).where(eq(collections.dealId, id));
       }
-      await ensureProjectFromClosedDeal(id, 'system:deal_closed_won');
+      await ensureProjectFromClosedDealWithDb(tx, id, "system:deal_closed_won");
+    } else if (data.stage === undefined && (data.value !== undefined || data.discountValue !== undefined)) {
+      const [deal] = await tx.select().from(deals).where(eq(deals.id, id)).limit(1);
+      if (deal?.stage === "closed_won") {
+        await tx.update(collections).set({ contractAmount: String(deal.netValue ?? deal.value ?? "0") }).where(eq(collections.dealId, id));
+      }
     }
-  }
-  // إذا تغيرت القيمة فقط لصفقة closed_won موجودة بالفعل
-  if (data.stage === undefined && data.value !== undefined) {
-    const [deal] = await db.select().from(deals).where(eq(deals.id, id)).limit(1);
-    if (deal && deal.stage === 'closed_won') {
-      await db.update(collections).set({ contractAmount: data.value.toString() }).where(eq(collections.dealId, id));
-    }
-  }
+  });
 }
 
 /** ملخص الخصم لكل مهندس (Pipeline + خصم مستخدم + خصم متاح) */
@@ -8837,67 +8886,66 @@ export async function addPaymentWithFollowUp(data: {
   notes?: string;
 }): Promise<{ paymentId: number; taskCreated: boolean }> {
   const db = await getDb();
-  if (!db) return { paymentId: 0, taskCreated: false };
+  if (!db) throw new Error("Database unavailable");
+  if (!Number.isFinite(data.amount) || data.amount <= 0) throw new Error("Payment amount must be positive");
+  const paymentDate = new Date(`${data.paymentDate}T00:00:00`);
+  if (Number.isNaN(paymentDate.getTime())) throw new Error("Invalid payment date");
+  const nextPaymentDate = data.nextPaymentDate ? new Date(`${data.nextPaymentDate}T00:00:00`) : undefined;
+  if (nextPaymentDate && Number.isNaN(nextPaymentDate.getTime())) throw new Error("Invalid next payment date");
 
-  // إضافة الدفعة
-  const [payResult] = await db.insert(payments).values({
-    collectionId: data.collectionId,
-    engineerId: data.engineerId ?? null,
-    clientName: data.clientName,
-    amount: data.amount.toString(),
-    paymentDate: data.paymentDate as unknown as Date,
-    paymentType: data.paymentType,
-    addedBy: data.addedBy,
-    receiptNumber: data.receiptNumber,
-    receiptUrl: data.receiptUrl,
-    nextPaymentDate: data.nextPaymentDate as unknown as Date | undefined,
-    notes: data.notes,
-  });
+  return db.transaction(async tx => {
+    const [payResult] = await tx.insert(payments).values({
+      collectionId: data.collectionId,
+      engineerId: data.engineerId ?? null,
+      clientName: data.clientName.trim(),
+      amount: data.amount.toFixed(2),
+      paymentDate,
+      paymentType: data.paymentType,
+      addedBy: data.addedBy,
+      receiptNumber: data.receiptNumber,
+      receiptUrl: data.receiptUrl,
+      nextPaymentDate,
+      notes: data.notes,
+    });
+    const paymentId = Number((payResult as any).insertId);
+    if (!Number.isInteger(paymentId) || paymentId <= 0) throw new Error("Payment was not created");
 
-  const paymentId = (payResult as any).insertId;
+    const collRows = await tx.select({
+      collectedAmount: collections.collectedAmount,
+      contractAmount: collections.contractAmount,
+    }).from(collections).where(eq(collections.id, data.collectionId)).limit(1);
+    if (collRows.length === 0) throw new Error("Collection not found");
 
-  // تحديث collectedAmount في collections
-  const collRows = await db.select({ collectedAmount: collections.collectedAmount, contractAmount: collections.contractAmount })
-    .from(collections)
-    .where(eq(collections.id, data.collectionId))
-    .limit(1);
-
-  if (collRows.length > 0) {
-    const newCollected = parseFloat(collRows[0].collectedAmount ?? "0") + data.amount;
-    const contractAmt = parseFloat(collRows[0].contractAmount ?? "0");
-    const newStatus: "on_track" | "due_soon" | "overdue" | "completed" =
-      newCollected >= contractAmt ? "completed" : "on_track";
-
-    await db.update(collections)
-      .set({
-        collectedAmount: newCollected.toString(),
-        lastPaymentAt: new Date(),
-        status: newStatus,
-      })
-      .where(eq(collections.id, data.collectionId));
-  }
-
-  // إنشاء Follow-up Task إذا كان nextPaymentDate محدداً
-  let taskCreated = false;
-  if (data.nextPaymentDate && data.engineerId) {
-    try {
-      await db.insert(dailyTasks).values({
-        engineerId: data.engineerId,
-        taskType: "follow_up_payment" as any,
-        title: `متابعة دفعة: ${data.clientName}`,
-        description: `دفعة متوقعة بتاريخ ${data.nextPaymentDate} - مبلغ العقد: ${data.amount}`,
-        status: "pending",
-        taskDate: data.nextPaymentDate as unknown as Date,
-        priority: "high" as any,
-        notes: `Collection ID: ${data.collectionId}`,
-      } as any);
-      taskCreated = true;
-    } catch {
-      // ignore if taskType not in enum
+    const currentCollected = Number(collRows[0].collectedAmount ?? 0);
+    const contractAmount = Number(collRows[0].contractAmount ?? 0);
+    if (!Number.isFinite(currentCollected) || !Number.isFinite(contractAmount)) {
+      throw new Error("Collection amount is invalid");
     }
-  }
+    const newCollected = currentCollected + data.amount;
+    await tx.update(collections).set({
+      collectedAmount: newCollected.toFixed(2),
+      lastPaymentAt: new Date(),
+      status: newCollected >= contractAmount ? "completed" : "on_track",
+    }).where(eq(collections.id, data.collectionId));
 
-  return { paymentId, taskCreated };
+    let taskCreated = false;
+    if (nextPaymentDate && data.engineerId) {
+      // daily_tasks has no pending/follow_up_payment enum values. Use the
+      // valid planned/other values so the promised follow-up is not dropped.
+      await tx.insert(dailyTasks).values({
+        engineerId: data.engineerId,
+        taskType: "other",
+        title: `متابعة دفعة: ${data.clientName.trim()}`,
+        description: `دفعة متوقعة بتاريخ ${data.nextPaymentDate} - مبلغ العقد: ${data.amount}`,
+        status: "planned",
+        taskDate: nextPaymentDate,
+        priority: "high",
+        notes: `Collection ID: ${data.collectionId}`,
+      });
+      taskCreated = true;
+    }
+    return { paymentId, taskCreated };
+  });
 }
 
 /** حساب Commission على المبلغ المحصّل فقط */
@@ -10744,14 +10792,39 @@ export async function createAppUser(data: {
   email?: string;
 }): Promise<AppUser> {
   const db = await getDb();
-  if (!db) throw new Error("Database not available");
+  const username = data.username.toLowerCase().trim();
+  const email = data.email?.toLowerCase().trim() || null;
+  if (!db) {
+    if (!useTestAppUserStore()) throw new Error("Database not available");
+    if (Array.from(testAppUsers.values()).some(user => user.username === username)) throw new Error("USERNAME_EXISTS");
+    if (email && Array.from(testAppUsers.values()).some(user => user.email === email)) throw new Error("EMAIL_EXISTS");
+    const now = new Date();
+    const user = {
+      id: nextTestAppUserId++,
+      name: data.name.trim(),
+      username,
+      passwordHash: await bcrypt.hash(data.password, 10),
+      role: data.role,
+      engineerId: data.engineerId ?? null,
+      email,
+      status: "active",
+      lastLoginAt: null,
+      resetToken: null,
+      resetTokenExpiresAt: null,
+      createdAt: now,
+      updatedAt: now,
+    } as AppUser;
+    testAppUsers.set(user.id, user);
+    await createDefaultPermissions(user.id, user.role);
+    return user;
+  }
   // Check duplicate username
   const [existingUsername] = await db.select({ id: appUsers.id }).from(appUsers)
-    .where(eq(appUsers.username, data.username.toLowerCase().trim()));
+    .where(eq(appUsers.username, username));
   if (existingUsername) throw new Error("USERNAME_EXISTS");
   // Check duplicate email if provided
   if (data.email) {
-    const emailNorm = data.email.toLowerCase().trim();
+    const emailNorm = email!;
     const [existingEmail] = await db.select({ id: appUsers.id }).from(appUsers)
       .where(eq(appUsers.email, emailNorm));
     if (existingEmail) throw new Error("EMAIL_EXISTS");
@@ -10759,11 +10832,11 @@ export async function createAppUser(data: {
   const passwordHash = await bcrypt.hash(data.password, 10);
   const [result] = await db.insert(appUsers).values({
     name: data.name.trim(),
-    username: data.username.toLowerCase().trim(),
+    username,
     passwordHash,
     role: data.role,
     engineerId: data.engineerId ?? null,
-    email: data.email ? data.email.toLowerCase().trim() : null,
+    email,
     status: "active",
   });
   const userId = (result as any).insertId as number;
@@ -10779,9 +10852,26 @@ export async function createDefaultPermissions(
   role: string
 ): Promise<void> {
   const db = await getDb();
-  if (!db) return;
   const defaults = DEFAULT_ROLE_PERMISSIONS[role] ?? DEFAULT_ROLE_PERMISSIONS.sales_engineer;
   const modules = Object.keys(defaults) as Array<keyof typeof defaults>;
+  if (!db) {
+    if (useTestAppUserStore()) {
+      const now = new Date();
+      testUserPermissions.set(userId, modules.map((module, index) => ({
+        id: index + 1,
+        userId,
+        module: module as UserPermission["module"],
+        canView: defaults[module].canView,
+        canAdd: defaults[module].canAdd,
+        canEdit: defaults[module].canEdit,
+        canDelete: defaults[module].canDelete,
+        dataScope: defaults[module].dataScope,
+        createdAt: now,
+        updatedAt: now,
+      })));
+    }
+    return;
+  }
   for (const module of modules) {
     const perm = defaults[module];
     await db.insert(userPermissions).values({
@@ -10795,28 +10885,53 @@ export async function createDefaultPermissions(
     });
   }
 }
+// ─── App-user token security ───────────────────────────────────────────────────
+const TEST_APP_USER_JWT_SECRET = "sales-team-platform-test-only-secret";
+
+function getAppUserJwtSecret(): Uint8Array {
+  const configuredSecret = process.env.JWT_SECRET;
+  if (configuredSecret && configuredSecret.length >= 32) {
+    return new TextEncoder().encode(configuredSecret);
+  }
+  if (process.env.NODE_ENV === "test") {
+    return new TextEncoder().encode(TEST_APP_USER_JWT_SECRET);
+  }
+  throw new Error("JWT_SECRET must be configured with at least 32 characters");
+}
+
 // ─── Login App User ────────────────────────────────────────────────────────────────
 export async function loginAppUser(
   username: string,
-  password: string
+  password: string,
 ): Promise<{ user: AppUser; token: string } | null> {
   const db = await getDb();
-  if (!db) return null;
-  const [user] = await db
-    .select()
-    .from(appUsers)
-    .where(and(
-      eq(appUsers.username, username.toLowerCase().trim()),
-      eq(appUsers.status, "active")
-    ));
+  let user: AppUser | undefined;
+  if (!db) {
+    if (!useTestAppUserStore()) return null;
+    user = Array.from(testAppUsers.values()).find(candidate =>
+      candidate.username === username.toLowerCase().trim() && candidate.status === "active",
+    );
+  } else {
+    [user] = await db
+      .select()
+      .from(appUsers)
+      .where(and(
+        eq(appUsers.username, username.toLowerCase().trim()),
+        eq(appUsers.status, "active"),
+      ));
+  }
   if (!user) return null;
   const valid = await bcrypt.compare(password, user.passwordHash);
   if (!valid) return null;
-  // تحديث lastLoginAt
-  await db.update(appUsers).set({ lastLoginAt: new Date() }).where(eq(appUsers.id, user.id));  // إنشاء JWT token
+  const now = new Date();
+  if (db) await db.update(appUsers).set({ lastLoginAt: now }).where(eq(appUsers.id, user.id));
+  else testAppUsers.set(user.id, { ...user, lastLoginAt: now, updatedAt: now });
+  return { user, token: await signAppUserToken(user) };
+}
+
+async function signAppUserToken(user: AppUser): Promise<string> {
   const { SignJWT } = await import("jose");
-  const secret = new TextEncoder().encode(process.env.JWT_SECRET ?? "fallback-secret");
-  const token = await new SignJWT({
+  return new SignJWT({
     sub: String(user.id),
     username: user.username,
     role: user.role,
@@ -10826,8 +10941,7 @@ export async function loginAppUser(
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("7d")
-    .sign(secret);
-  return { user, token };
+    .sign(getAppUserJwtSecret());
 }
 
 // ─── Verify JWT Token ─────────────────────────────────────────────────────────
@@ -10840,14 +10954,30 @@ export async function verifyAppUserToken(token: string): Promise<{
 } | null> {
   try {
     const { jwtVerify } = await import("jose");
-    const secret = new TextEncoder().encode(process.env.JWT_SECRET ?? "fallback-secret");
-    const { payload } = await jwtVerify(token, secret);
+    const secret = getAppUserJwtSecret();
+    const { payload } = await jwtVerify(token, secret, { algorithms: ["HS256"] });
+    const userId = Number(payload.sub);
+    if (!Number.isInteger(userId) || userId <= 0) return null;
+
+    // Re-load the account so inactive users and changed roles are not
+    // authorized until a seven-day token expires.
+    const db = await getDb();
+    const user = db
+      ? (await db.select().from(appUsers).where(and(
+        eq(appUsers.id, userId),
+        eq(appUsers.status, "active"),
+      )).limit(1))[0]
+      : useTestAppUserStore()
+        ? testAppUsers.get(userId)
+        : undefined;
+    if (!user || user.status !== "active") return null;
+
     return {
-      id: parseInt(payload.sub as string),
-      username: payload.username as string,
-      role: payload.role as string,
-      name: payload.name as string,
-      engineerId: payload.engineerId as number | null,
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      name: user.name,
+      engineerId: user.engineerId,
     };
   } catch {
     return null;
@@ -10856,7 +10986,10 @@ export async function verifyAppUserToken(token: string): Promise<{
 // ─── Get App Users List ────────────────────────────────────────────────────────────────
 export async function getAppUsers(): Promise<AppUser[]> {
   const db = await getDb();
-  if (!db) return [];
+  if (!db) {
+    if (useTestAppUserStore()) return Array.from(testAppUsers.values()).filter(user => user.status === "active");
+    throw new Error("Database not available");
+  }
   return db
     .select()
     .from(appUsers)
@@ -10866,7 +10999,10 @@ export async function getAppUsers(): Promise<AppUser[]> {
 // ─── Get User Permissions ────────────────────────────────────────────────────────────────
 export async function getUserPermissions(userId: number): Promise<UserPermission[]> {
   const db = await getDb();
-  if (!db) return [];
+  if (!db) {
+    if (useTestAppUserStore()) return testUserPermissions.get(userId) ?? [];
+    throw new Error("Database not available");
+  }
   return db
     .select()
     .from(userPermissions)
@@ -10885,20 +11021,41 @@ export async function updateUserPermissions(
   }>
 ): Promise<void> {
   const db = await getDb();
-  if (!db) return;
-  // حذف الصلاحيات القديمة وإعادة إنشائها
-  await db.delete(userPermissions).where(eq(userPermissions.userId, userId));
-  for (const perm of permissions) {
-    await db.insert(userPermissions).values({
-      userId,
-      module: perm.module as any,
-      canView: perm.canView,
-      canAdd: perm.canAdd,
-      canEdit: perm.canEdit,
-      canDelete: perm.canDelete,
-      dataScope: perm.dataScope,
-    });
+  if (!db) {
+    if (useTestAppUserStore()) {
+      const now = new Date();
+      testUserPermissions.set(userId, permissions.map((perm, index) => ({
+        id: index + 1,
+        userId,
+        module: perm.module as UserPermission["module"],
+        canView: perm.canView,
+        canAdd: perm.canAdd,
+        canEdit: perm.canEdit,
+        canDelete: perm.canDelete,
+        dataScope: perm.dataScope,
+        createdAt: now,
+        updatedAt: now,
+      })));
+      return;
+    }
+    throw new Error("Database not available");
   }
+  // Delete and recreate as one atomic operation. A failed insert must not
+  // leave the user with an empty or partially replaced permission set.
+  await db.transaction(async tx => {
+    await tx.delete(userPermissions).where(eq(userPermissions.userId, userId));
+    for (const perm of permissions) {
+      await tx.insert(userPermissions).values({
+        userId,
+        module: perm.module as any,
+        canView: perm.canView,
+        canAdd: perm.canAdd,
+        canEdit: perm.canEdit,
+        canDelete: perm.canDelete,
+        dataScope: perm.dataScope,
+      });
+    }
+  });
 }
 
 // ─── Update App User ──────────────────────────────────────────────────────────
@@ -10913,7 +11070,19 @@ export async function updateAppUser(
   }>
 ): Promise<void> {
   const db = await getDb();
-  if (!db) return;
+  if (!db) {
+    if (!useTestAppUserStore()) throw new Error("Database not available");
+    const existing = testAppUsers.get(userId);
+    if (!existing) throw new Error("USER_NOT_FOUND");
+    const updated: AppUser = { ...existing, updatedAt: new Date() };
+    if (data.name !== undefined) updated.name = data.name;
+    if (data.role !== undefined) updated.role = data.role;
+    if (data.engineerId !== undefined) updated.engineerId = data.engineerId;
+    if (data.status !== undefined) updated.status = data.status;
+    if (data.password !== undefined) updated.passwordHash = await bcrypt.hash(data.password, 10);
+    testAppUsers.set(userId, updated);
+    return;
+  }
   const updateData: Partial<InsertAppUser> = {};
   if (data.name !== undefined) updateData.name = data.name;
   if (data.role !== undefined) updateData.role = data.role;
@@ -10937,7 +11106,20 @@ export async function logActivity(data: {
   ipAddress?: string;
 }): Promise<void> {
   const db = await getDb();
-  if (!db) return;
+  if (!db) {
+    if (!useTestAppUserStore()) throw new Error("Database not available");
+    testActivityLogs.push({
+      id: testActivityLogs.length + 1,
+      userId: data.userId,
+      action: data.action,
+      module: data.module ?? null,
+      recordId: data.recordId ?? null,
+      details: data.details ?? null,
+      ipAddress: data.ipAddress ?? null,
+      createdAt: new Date(),
+    });
+    return;
+  }
   await db.insert(activityLogs).values({
     userId: data.userId,
     action: data.action,
@@ -10955,7 +11137,14 @@ export async function getActivityLogs(filters?: {
   limit?: number;
 }): Promise<typeof activityLogs.$inferSelect[]> {
   const db = await getDb();
-  if (!db) return [];
+  if (!db) {
+    if (!useTestAppUserStore()) throw new Error("Database not available");
+    return testActivityLogs
+      .filter(log => filters?.userId === undefined || log.userId === filters.userId)
+      .filter(log => filters?.module === undefined || log.module === filters.module)
+      .slice(-Math.max(1, filters?.limit ?? 100))
+      .reverse();
+  }
   const conditions = [];
   if (filters?.userId) conditions.push(eq(activityLogs.userId, filters.userId));
   if (filters?.module) conditions.push(eq(activityLogs.module, filters.module));
@@ -12442,9 +12631,9 @@ async function writeProjectAudit(input: {
   reason?: string;
   performedBy: string;
   performedByRole?: string;
-}) {
-  const db = await getDb();
-  if (!db) return;
+}, executor?: any) {
+  const db = executor ?? await getDb();
+  if (!db) throw new Error("Database unavailable");
   await db.insert(projectAuditLogs).values({
     projectId: input.projectId,
     entityType: input.entityType,
@@ -12597,17 +12786,15 @@ export async function importHistoricalProjectTimeline(rows: HistoricalProjectTim
   return result;
 }
 
-export async function ensureProjectFromClosedDeal(dealId: number, performedBy = "system") {
-  const db = await getDb();
-  if (!db) throw new Error("Database unavailable");
+async function ensureProjectFromClosedDealWithDb(db: any, dealId: number, performedBy: string) {
   const [existing] = await db.select().from(projects).where(eq(projects.dealId, dealId)).limit(1);
   if (existing) return existing;
 
   const [deal] = await db.select().from(deals).where(and(eq(deals.id, dealId), eq(deals.isDeleted, 0))).limit(1);
   if (!deal || deal.stage !== "closed_won") throw new Error("لا يمكن إنشاء مشروع إلا من صفقة مغلقة بنجاح");
-  const stages = await getProjectStages();
-  const preExecutionStage = stages.find((stage) => stage.stageKey === "pre_execution") ?? stages[0];
-  const salesStage = stages.find((stage) => stage.stageKey === "sales") ?? stages[0];
+  const stages = await db.select().from(projectStages).where(eq(projectStages.isActive, 1)).orderBy(projectStages.sequence);
+  const preExecutionStage = stages.find((stage: any) => stage.stageKey === "pre_execution") ?? stages[0];
+  const salesStage = stages.find((stage: any) => stage.stageKey === "sales") ?? stages[0];
   if (!salesStage || !preExecutionStage) throw new Error("لم يتم إعداد مراحل المشروع بعد");
 
   const contractDate = projectDate(deal.closedAt ?? deal.createdAt);
@@ -12656,9 +12843,15 @@ export async function ensureProjectFromClosedDeal(dealId: number, performedBy = 
     action: "project_created_from_deal",
     newValue: { dealId, stageKey: salesStage.stageKey, movementId: movement.id },
     performedBy,
-  });
+  }, db);
   const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
   return project;
+}
+
+export async function ensureProjectFromClosedDeal(dealId: number, performedBy = "system") {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  return ensureProjectFromClosedDealWithDb(db, dealId, performedBy);
 }
 
 export const PRE_EXECUTION_WAITING_STATUSES = [

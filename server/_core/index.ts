@@ -5,11 +5,12 @@ import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
+import { getAdminCallerFromRequest } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { getDealsStats, getDealsList, getEngineersKPI, getDb } from "../db";
 import { deals, engineers } from "../../drizzle/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -30,7 +31,18 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
   throw new Error(`No available port found starting from ${startPort}`);
 }
 
+function validateRuntimeConfig() {
+  if (process.env.NODE_ENV !== "production") return;
+  if (!process.env.DATABASE_URL) {
+    throw new Error("DATABASE_URL is required in production");
+  }
+  if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
+    throw new Error("JWT_SECRET with at least 32 characters is required in production");
+  }
+}
+
 async function startServer() {
+  validateRuntimeConfig();
   const app = express();
   const server = createServer(app);
   // Trust proxy headers (needed for HTTPS detection behind reverse proxy)
@@ -39,26 +51,36 @@ async function startServer() {
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
-  // ─── CORS for public REST endpoints ────────────────────────────────────────
-  app.use("/api/summary", (_req, res, next) => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-    if (_req.method === "OPTIONS") return res.sendStatus(204);
-    next();
+
+  app.get("/healthz", (_req, res) => {
+    res.status(200).json({ status: "ok" });
   });
-  app.use("/api/list", (_req, res, next) => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-    if (_req.method === "OPTIONS") return res.sendStatus(204);
-    next();
+  app.get("/readyz", async (_req, res) => {
+    try {
+      const db = await getDb();
+      if (!db) return res.status(503).json({ status: "not_ready", reason: "database_unavailable" });
+      await db.execute(sql`SELECT 1`);
+      return res.status(200).json({ status: "ready" });
+    } catch {
+      return res.status(503).json({ status: "not_ready", reason: "database_unavailable" });
+    }
   });
-  app.use("/api/kpi", (_req, res, next) => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-    if (_req.method === "OPTIONS") return res.sendStatus(204);
+
+  // Compatibility endpoints expose operational and financial data. They are
+  // authenticated server-to-server endpoints, not public CORS APIs.
+  app.use(["/api/summary", "/api/list", "/api/kpi"], async (req, res, next) => {
+    const allowedOrigin = process.env.CORS_ORIGIN;
+    const origin = req.headers.origin;
+    if (origin && allowedOrigin && origin === allowedOrigin) {
+      res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+      res.setHeader("Vary", "Origin");
+    }
+    if (req.method === "OPTIONS") {
+      return origin && allowedOrigin === origin ? res.sendStatus(204) : res.sendStatus(403);
+    }
+    const caller = await getAdminCallerFromRequest(req);
+    if (!caller) return res.status(401).json({ error: "Authentication required" });
     next();
   });
 
@@ -93,9 +115,13 @@ async function startServer() {
     try {
       const db = await getDb();
       if (!db) return res.status(503).json({ error: "Database unavailable" });
-      const limit = Math.min(parseInt(req.query.limit as string) || 100, 500);
-      const offset = parseInt(req.query.offset as string) || 0;
-      const stage = req.query.stage as string | undefined;
+      const parsedLimit = Number(req.query.limit ?? 100);
+      const parsedOffset = Number(req.query.offset ?? 0);
+      const limit = Number.isInteger(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 500) : 100;
+      const offset = Number.isInteger(parsedOffset) && parsedOffset >= 0 ? parsedOffset : 0;
+      const stage = typeof req.query.stage === "string" && req.query.stage.length > 0
+        ? req.query.stage
+        : undefined;
       // Fetch deals with engineer name via join
       const rows = await db
         .select({
@@ -137,8 +163,14 @@ async function startServer() {
   app.get("/api/kpi", async (req, res) => {
     try {
       const now = new Date();
-      const year = parseInt(req.query.year as string) || now.getFullYear();
-      const month = parseInt(req.query.month as string) || (now.getMonth() + 1);
+      const requestedYear = Number(req.query.year ?? now.getFullYear());
+      const requestedMonth = Number(req.query.month ?? now.getMonth() + 1);
+      const year = Number.isInteger(requestedYear) && requestedYear >= 2000 && requestedYear <= 2100
+        ? requestedYear
+        : now.getFullYear();
+      const month = Number.isInteger(requestedMonth) && requestedMonth >= 1 && requestedMonth <= 12
+        ? requestedMonth
+        : now.getMonth() + 1;
       const kpiData = await getEngineersKPI(year, month);
       res.json({
         year,

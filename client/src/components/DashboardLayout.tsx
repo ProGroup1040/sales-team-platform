@@ -121,12 +121,11 @@ function DashboardLayoutContent({
     },
   });
 
-  // Auth check disabled temporarily - open access mode
-  // useEffect(() => {
-  //   if (!isLoading && !session) {
-  //     setLocation("/login");
-  //   }
-  // }, [isLoading, session, setLocation]);
+  useEffect(() => {
+    if (!isLoading && !session) {
+      setLocation("/login");
+    }
+  }, [isLoading, session, setLocation]);
 
   // Filter menuGroups based on role access
   const menuGroups = useMemo(() => {
@@ -183,7 +182,15 @@ function DashboardLayoutContent({
     };
   }, [isResizing, setSidebarWidth]);
 
-  // Auth loading/guard disabled temporarily - open access mode
+  if (isLoading) {
+    return (
+      <div className="min-h-screen grid place-items-center bg-background text-foreground" aria-busy="true">
+        جاري التحقق من جلسة الدخول...
+      </div>
+    );
+  }
+
+  if (!session) return null;
 
   return (
     <>
