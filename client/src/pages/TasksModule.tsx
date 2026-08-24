@@ -1856,12 +1856,12 @@ export default function TasksModule() {
             <div className="p-4 rounded-xl bg-white/5 border border-white/10 grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-white/60 text-xs">المهندس</Label>
-                <Select value={filterEngineer} onValueChange={setFilterEngineer}>
+                <Select value={filterEngineer} onValueChange={(value) => setFilterEngineer(value === "__all__" ? "" : value)}>
                   <SelectTrigger className="bg-white/5 border-white/10 text-white text-xs h-8">
                     <SelectValue placeholder="الكل" />
                   </SelectTrigger>
                   <SelectContent className="bg-slate-900 border-white/10">
-                    <SelectItem value="" className="text-white hover:bg-white/10 text-xs">الكل</SelectItem>
+                    <SelectItem value="__all__" className="text-white hover:bg-white/10 text-xs">الكل</SelectItem>
                     {engineers.map((e: any) => (
                       <SelectItem key={e.id} value={String(e.id)} className="text-white hover:bg-white/10 text-xs">{e.name}</SelectItem>
                     ))}
@@ -1870,12 +1870,12 @@ export default function TasksModule() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-white/60 text-xs">نوع المهمة</Label>
-                <Select value={filterTaskType} onValueChange={setFilterTaskType}>
+                <Select value={filterTaskType} onValueChange={(value) => setFilterTaskType(value === "__all__" ? "" : value)}>
                   <SelectTrigger className="bg-white/5 border-white/10 text-white text-xs h-8">
                     <SelectValue placeholder="الكل" />
                   </SelectTrigger>
                   <SelectContent className="bg-slate-900 border-white/10">
-                    <SelectItem value="" className="text-white hover:bg-white/10 text-xs">الكل</SelectItem>
+                    <SelectItem value="__all__" className="text-white hover:bg-white/10 text-xs">الكل</SelectItem>
                     {[{v:'meeting_2d',l:'ميتينج 2D'},{v:'meeting_3d',l:'ميتينج 3D'},{v:'meeting_quotation',l:'ميتينج عرض سعر'},{v:'meeting_closing',l:'ميتينج إغلاق'},{v:'design_3d',l:'تصميم 3D'},{v:'design_2d',l:'تصميم 2D'},{v:'quotation',l:'عرض سعر'},{v:'negotiation',l:'تفاوض/إغلاق'},{v:'other',l:'أخرى'}].map(({v,l}) => (
                       <SelectItem key={v} value={v} className="text-white hover:bg-white/10 text-xs">{l}</SelectItem>
                     ))}
@@ -1884,12 +1884,12 @@ export default function TasksModule() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-white/60 text-xs">الحالة</Label>
-                <Select value={filterStatus} onValueChange={setFilterStatus}>
+                <Select value={filterStatus} onValueChange={(value) => setFilterStatus(value === "__all__" ? "" : value)}>
                   <SelectTrigger className="bg-white/5 border-white/10 text-white text-xs h-8">
                     <SelectValue placeholder="الكل" />
                   </SelectTrigger>
                   <SelectContent className="bg-slate-900 border-white/10">
-                    <SelectItem value="" className="text-white hover:bg-white/10 text-xs">الكل</SelectItem>
+                    <SelectItem value="__all__" className="text-white hover:bg-white/10 text-xs">الكل</SelectItem>
                     {[{v:'planned',l:'مخططة'},{v:'completed',l:'منجزة'},{v:'delayed',l:'متأخرة'},{v:'not_done',l:'لم تُنفذ'},{v:'client_delay',l:'تأخير العميل'}].map(({v,l}) => (
                       <SelectItem key={v} value={v} className="text-white hover:bg-white/10 text-xs">{l}</SelectItem>
                     ))}
