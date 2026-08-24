@@ -15,13 +15,13 @@ export function useSectionPermission() {
 
   /**
    * التحقق من صلاحية Section معين
-   * @returns 'all' | 'self' | 'hidden' | 'all' (default إذا لم توجد صلاحية محددة)
+   * @returns 'all' | 'self' | 'hidden'; missing permissions are hidden by default.
    */
   function getSectionVisibility(module: string, section: string): 'all' | 'self' | 'hidden' {
-    if (!permsMap) return 'all'; // Default: كل شيء مرئي حتى تُحمَّل الصلاحيات
+    if (isLoading || !permsMap) return 'hidden';
     const key = `${module}.${section}`;
     const perm = permsMap[key];
-    if (!perm) return 'all'; // إذا لم تُحدَّد صلاحية، يُعرض للجميع
+    if (!perm) return 'hidden';
     return perm.visibility as 'all' | 'self' | 'hidden';
   }
 

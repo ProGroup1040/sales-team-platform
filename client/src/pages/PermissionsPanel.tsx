@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { toast } from "sonner";
+import { useLocalAuth } from "@/hooks/useLocalAuth";
 import {
   Shield, Eye, Plus, Edit3, Trash2, Database, Save, RefreshCw,
   CheckCircle2, XCircle, Info, Layers, EyeOff, Users, User
@@ -64,6 +65,8 @@ function VisibilityBadge({ v }: { v: 'all' | 'self' | 'hidden' }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function PermissionsPanel() {
   const utils = trpc.useUtils();
+  const { session } = useLocalAuth();
+  const canManagePermissions = ["admin", "manager"].includes(session?.role ?? "");
 
   // Main tab: modules vs sections
   const [mainTab, setMainTab] = useState<'modules' | 'sections'>('modules');
@@ -80,6 +83,7 @@ export default function PermissionsPanel() {
 
   // ── Module Permissions Queries ──────────────────────────────────────────────
   const { data, isLoading, error } = trpc.rolePermissions.getAll.useQuery(undefined, {
+    enabled: canManagePermissions,
     retry: false, staleTime: 0,
   });
   const updateMut = trpc.rolePermissions.update.useMutation({
@@ -89,9 +93,12 @@ export default function PermissionsPanel() {
 
   // ── Section Permissions Queries ─────────────────────────────────────────────
   const { data: sectionData, isLoading: sectionLoading } = trpc.sectionPermissions.getAll.useQuery(undefined, {
+    enabled: canManagePermissions,
     retry: false, staleTime: 0,
   });
-  const { data: moduleSectionsData } = trpc.sectionPermissions.moduleSections.useQuery();
+  const { data: moduleSectionsData } = trpc.sectionPermissions.moduleSections.useQuery(undefined, {
+    enabled: canManagePermissions,
+  });
   const updateSectionMut = trpc.sectionPermissions.update.useMutation({
     onSuccess: () => utils.sectionPermissions.getAll.invalidate(),
     onError: (err) => toast.error("فشل تحديث صلاحية القسم: " + err.message),

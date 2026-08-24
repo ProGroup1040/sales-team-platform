@@ -19,7 +19,7 @@ import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -475,6 +475,7 @@ function TaskModal({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-lg bg-slate-900 border-slate-700 text-white max-h-[90vh] overflow-y-auto" dir="rtl">
         <DialogHeader>
+          <DialogDescription className="sr-only">تفاصيل النافذة.</DialogDescription>
           <DialogTitle className="text-white">
             {isEdit ? 'تعديل المهمة' : 'إضافة مهمة جديدة'}
           </DialogTitle>
@@ -763,6 +764,8 @@ function TaskDetailModal({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-md bg-slate-900 border-slate-700 text-white" dir="rtl">
         <DialogHeader>
+          <DialogTitle className="sr-only">تفاصيل المهمة: {task.title}</DialogTitle>
+          <DialogDescription className="sr-only">تفاصيل المهمة المحددة في التقويم.</DialogDescription>
           <div className={`flex items-center gap-2 p-3 rounded-lg ${cfg.bg} border ${cfg.border}`}>
             <span className={`text-sm font-semibold ${cfg.color}`}>{task.title}</span>
             {task.isCritical === 1 && <Badge className="bg-red-600 text-white text-xs">حرج</Badge>}

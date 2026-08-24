@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DateRangePicker, getCurrentMonthFilter, type DateFilter } from "@/components/DateRangePicker";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -131,6 +131,7 @@ function FullUpdateDialog({ visit, onClose, onSuccess }: { visit: any; onClose: 
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
+          <DialogDescription className="sr-only">تفاصيل النافذة.</DialogDescription>
           <DialogTitle className="flex items-center gap-2">
             <Activity className="w-4 h-4" />
             تحديث شامل — {visit.clientName}
@@ -922,7 +923,8 @@ export default function VisitsModule() {
       {/* Add Visit Dialog */}
       <Dialog open={showAdd} onOpenChange={setShowAdd}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>إضافة معاينة جديدة</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogDescription className="sr-only">تفاصيل النافذة.</DialogDescription><DialogTitle>إضافة معاينة جديدة</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div>
               <Label>المهندس *</Label>

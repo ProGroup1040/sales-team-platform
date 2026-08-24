@@ -159,8 +159,10 @@ export function useRoleAccess(role: string | null | undefined): RoleAccess {
   const { data: dbPerms, isLoading } = trpc.localAuth.myPermissions.useQuery(
     undefined,
     {
-      // Always fetch — server checks session/OAuth internally
-      staleTime: 30_000, // cache 30s
+      // Do not call the protected endpoint until the session has resolved.
+      // This prevents expected public-page auth failures from reaching the console.
+      enabled: Boolean(r),
+      staleTime: 30_000,
       retry: false,
     }
   );

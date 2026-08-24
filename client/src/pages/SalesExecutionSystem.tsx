@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import {
   BookOpen, Video, FileText, Star, TrendingUp, TrendingDown, Minus,
@@ -154,7 +154,8 @@ function PlaybookTab() {
               <Button variant="outline" size="sm" className="border-slate-600 text-white"><Upload className="w-4 h-4 mr-1" /> استيراد CSV</Button>
             </DialogTrigger>
             <DialogContent className="bg-slate-900 border-slate-700 text-white">
-              <DialogHeader><DialogTitle>استيراد بنود من CSV</DialogTitle></DialogHeader>
+              <DialogHeader>
+                <DialogDescription className="sr-only">تفاصيل النافذة.</DialogDescription><DialogTitle>استيراد بنود من CSV</DialogTitle></DialogHeader>
               <p className="text-slate-400 text-sm">الصيغة: اسم البند, الفئة, السعر, الوحدة (سطر لكل بند)</p>
               <Textarea value={importText} onChange={e => setImportText(e.target.value)} placeholder="كرسي مكتب, أثاث, 2500, قطعة&#10;طاولة اجتماعات, أثاث, 8000, قطعة" className="bg-slate-800 border-slate-600 text-white h-40" />
               <Button onClick={handleImport} className="bg-emerald-600 hover:bg-emerald-700" disabled={importMut.isPending}>
@@ -221,6 +222,7 @@ function PlaybookTab() {
         <Dialog open={!!selectedItem} onOpenChange={() => setSelectedItem(null)}>
           <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-2xl">
             <DialogHeader>
+              <DialogDescription className="sr-only">تفاصيل النافذة.</DialogDescription>
               <DialogTitle className="text-white">{selectedItem.name}</DialogTitle>
             </DialogHeader>
             <div className="space-y-3">
@@ -391,6 +393,7 @@ function MeetingReviewTab() {
       <Dialog open={reviewDialogOpen} onOpenChange={setReviewDialogOpen}>
         <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
+            <DialogDescription className="sr-only">تفاصيل النافذة.</DialogDescription>
             <DialogTitle>تقييم الاجتماع — {selectedTask?.title}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">

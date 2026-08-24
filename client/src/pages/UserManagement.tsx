@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -639,6 +639,7 @@ function EngineersAccountsTab() {
             </DialogTrigger>
             <DialogContent dir="rtl">
               <DialogHeader>
+                <DialogDescription className="sr-only">تفاصيل النافذة.</DialogDescription>
                 <DialogTitle className="flex items-center gap-2">
                   <Users className="h-5 w-5 text-primary" />
                   إنشاء حسابات تلقائية
@@ -731,6 +732,7 @@ function EngineersAccountsTab() {
                       </DialogTrigger>
                       <DialogContent dir="rtl">
                         <DialogHeader>
+                          <DialogDescription className="sr-only">تفاصيل النافذة.</DialogDescription>
                           <DialogTitle>إنشاء حساب: {eng.name}</DialogTitle>
                         </DialogHeader>
                         <div className="space-y-3 py-2">
@@ -765,6 +767,7 @@ function EngineersAccountsTab() {
                         </DialogTrigger>
                         <DialogContent dir="rtl">
                           <DialogHeader>
+                            <DialogDescription className="sr-only">تفاصيل النافذة.</DialogDescription>
                             <DialogTitle>إعادة كلمة مرور: {eng.name}</DialogTitle>
                           </DialogHeader>
                           <div className="space-y-3 py-2">
@@ -861,6 +864,7 @@ export default function UserManagement() {
           </DialogTrigger>
           <DialogContent className="max-w-lg" dir="rtl">
             <DialogHeader>
+              <DialogDescription className="sr-only">تفاصيل النافذة.</DialogDescription>
               <DialogTitle className="flex items-center gap-2">
                 <UserPlus className="h-5 w-5 text-primary" />
                 إنشاء مستخدم جديد
@@ -1020,6 +1024,7 @@ export default function UserManagement() {
                         </DialogTrigger>
                         <DialogContent className="max-w-md" dir="rtl">
                           <DialogHeader>
+                            <DialogDescription className="sr-only">تفاصيل النافذة.</DialogDescription>
                             <DialogTitle className="flex items-center gap-2">
                               <Settings className="h-5 w-5 text-primary" />
                               تعديل: {user.name}
@@ -1041,6 +1046,7 @@ export default function UserManagement() {
                         </DialogTrigger>
                         <DialogContent className="max-w-2xl" dir="rtl">
                           <DialogHeader>
+                            <DialogDescription className="sr-only">تفاصيل النافذة.</DialogDescription>
                             <DialogTitle className="flex items-center gap-2">
                               <Key className="h-5 w-5 text-primary" />
                               صلاحيات: {user.name}

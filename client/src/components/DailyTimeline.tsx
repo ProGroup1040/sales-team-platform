@@ -3,7 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { Clock, Plus, AlertTriangle, CheckCircle2, XCircle, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -107,7 +107,8 @@ function AddTimeTaskDialog({ engineers, dateStr, onDone, prefillStart }: AddTime
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="bg-slate-900 border-white/10 text-white max-w-md" dir="rtl">
-          <DialogHeader><DialogTitle className="text-white">إضافة مهمة بوقت محدد</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogDescription className="sr-only">تفاصيل النافذة.</DialogDescription><DialogTitle className="text-white">إضافة مهمة بوقت محدد</DialogTitle></DialogHeader>
           <div className="space-y-4 pt-2">
             {/* Engineer */}
             <div className="space-y-2">
@@ -246,6 +247,7 @@ function TimelineBlock({ task, hourHeight, startHour }: { task: any; hourHeight:
       <Dialog open={showDetail} onOpenChange={setShowDetail}>
         <DialogContent className="bg-slate-900 border-white/10 text-white max-w-sm" dir="rtl">
           <DialogHeader>
+            <DialogDescription className="sr-only">تفاصيل النافذة.</DialogDescription>
             <DialogTitle className="flex items-center gap-2">
               <span className={`w-3 h-3 rounded-full ${cfg.dot}`} />
               {task.title}

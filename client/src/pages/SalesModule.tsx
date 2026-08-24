@@ -7,7 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import {
@@ -302,7 +302,8 @@ export default function SalesModule() {
                 <Button variant="outline" size="sm" className="gap-2"><Target className="w-4 h-4" /> تحديد أهداف المهندسين</Button>
               </DialogTrigger>
               <DialogContent dir="rtl">
-                <DialogHeader><DialogTitle>تحديد هدف مهندس</DialogTitle></DialogHeader>
+                <DialogHeader>
+                  <DialogDescription className="sr-only">تفاصيل النافذة.</DialogDescription><DialogTitle>تحديد هدف مهندس</DialogTitle></DialogHeader>
                 <div className="space-y-4">
                   <div>
                     <Label>المهندس</Label>
@@ -612,7 +613,8 @@ export default function SalesModule() {
                   <Dialog open={showDiscountDialog} onOpenChange={setShowDiscountDialog}>
                     <DialogTrigger asChild><Button size="sm" variant="outline" className="gap-1"><Plus className="w-3 h-3" /> إضافة شريحة</Button></DialogTrigger>
                     <DialogContent dir="rtl">
-                      <DialogHeader><DialogTitle>إضافة شريحة خصم</DialogTitle></DialogHeader>
+                      <DialogHeader>
+                        <DialogDescription className="sr-only">تفاصيل النافذة.</DialogDescription><DialogTitle>إضافة شريحة خصم</DialogTitle></DialogHeader>
                       <div className="space-y-4">
                         <div><Label>الحد الأدنى للمبيعات (ج.م)</Label><Input type="number" placeholder="0" value={dMin} onChange={(e) => setDMin(e.target.value)} /></div>
                         <div><Label>الحد الأقصى للمبيعات (ج.م)</Label><Input type="number" placeholder="اختياري" value={dMax} onChange={(e) => setDMax(e.target.value)} /></div>
@@ -659,7 +661,8 @@ export default function SalesModule() {
                   <Dialog open={showCommissionDialog} onOpenChange={setShowCommissionDialog}>
                     <DialogTrigger asChild><Button size="sm" variant="outline" className="gap-1"><Plus className="w-3 h-3" /> إضافة شريحة</Button></DialogTrigger>
                     <DialogContent dir="rtl">
-                      <DialogHeader><DialogTitle>إضافة شريحة كوميشن</DialogTitle></DialogHeader>
+                      <DialogHeader>
+                        <DialogDescription className="sr-only">تفاصيل النافذة.</DialogDescription><DialogTitle>إضافة شريحة كوميشن</DialogTitle></DialogHeader>
                       <div className="space-y-4">
                         <div><Label>الحد الأدنى لنسبة تحقيق الهدف (%)</Label><Input type="number" placeholder="50" value={cMin} onChange={(e) => setCMin(e.target.value)} /></div>
                         <div><Label>الحد الأقصى لنسبة تحقيق الهدف (%)</Label><Input type="number" placeholder="اختياري" value={cMax} onChange={(e) => setCMax(e.target.value)} /></div>

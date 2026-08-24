@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { DeleteConfirmDialog, type DeleteReason } from "@/components/DeleteConfirmDialog";
@@ -126,7 +126,8 @@ function UpdateStatusDialog({ task, onDone }: { task: any; onDone: () => void })
         onClick={() => setOpen(true)}>تحديث الحالة</Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="bg-slate-900 border-white/10 text-white max-w-md">
-          <DialogHeader><DialogTitle>تحديث حالة المهمة</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogDescription className="sr-only">تفاصيل النافذة.</DialogDescription><DialogTitle>تحديث حالة المهمة</DialogTitle></DialogHeader>
           <div className="space-y-4 pt-2">
             <div className="p-3 rounded-lg bg-white/5 border border-white/10">
               <div className="flex items-center gap-2">
@@ -279,7 +280,8 @@ function AddTaskDialog({ engineers, dateStr, onDone }: { engineers: any[]; dateS
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="bg-slate-900 border-white/10 text-white max-w-lg">
-          <DialogHeader><DialogTitle>إضافة مهمة جديدة</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogDescription className="sr-only">تفاصيل النافذة.</DialogDescription><DialogTitle>إضافة مهمة جديدة</DialogTitle></DialogHeader>
           <div className="space-y-4 pt-2">
             {/* المهندس */}
             <div className="space-y-2">
@@ -436,7 +438,8 @@ function ManageEngineersDialog({ engineers, onDone }: { engineers: any[]; onDone
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="bg-slate-900 border-white/10 text-white max-w-lg">
-          <DialogHeader><DialogTitle>إدارة المهندسين</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogDescription className="sr-only">تفاصيل النافذة.</DialogDescription><DialogTitle>إدارة المهندسين</DialogTitle></DialogHeader>
           <div className="space-y-4 pt-2 max-h-[70vh] overflow-y-auto">
             <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-3">
               <p className="text-sm font-semibold text-white/70">إضافة مهندس جديد</p>
@@ -540,7 +543,8 @@ function ManageEngineersDialog({ engineers, onDone }: { engineers: any[]; onDone
       {/* Edit Engineer Dialog */}
       <Dialog open={editTarget !== null} onOpenChange={v => { if (!v) setEditTarget(null); }}>
         <DialogContent className="bg-slate-900 border-white/10 text-white max-w-md">
-          <DialogHeader><DialogTitle>تعديل بيانات المهندس</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogDescription className="sr-only">تفاصيل النافذة.</DialogDescription><DialogTitle>تعديل بيانات المهندس</DialogTitle></DialogHeader>
           <div className="space-y-3 pt-2">
             <Input value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
               className="bg-white/5 border-white/10 text-white" placeholder="الاسم *" />
@@ -627,6 +631,7 @@ function MeetingReviewPanel({ taskId, engineerId, reviewedBy, recordingLink }: {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="bg-slate-900 border-white/10 text-white max-w-lg">
           <DialogHeader>
+            <DialogDescription className="sr-only">تفاصيل النافذة.</DialogDescription>
             <DialogTitle className="flex items-center gap-2">
               <Star className="h-5 w-5 text-amber-400" />
               تقييم جودة الميتينج
@@ -759,7 +764,8 @@ function AdminSalesTaskCard({ task, onUpdated }: { task: any; onUpdated: () => v
       </div>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="bg-slate-900 border-white/10 text-white max-w-md">
-          <DialogHeader><DialogTitle>تحديث حالة المهمة</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogDescription className="sr-only">تفاصيل النافذة.</DialogDescription><DialogTitle>تحديث حالة المهمة</DialogTitle></DialogHeader>
           <div className="space-y-4 pt-2">
             <div className="p-3 rounded-lg bg-white/5 border border-white/10">
               <p className="font-medium text-sm">{task.taskTitle}</p>

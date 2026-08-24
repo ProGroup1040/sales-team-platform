@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DateRangePicker, getCurrentMonthFilter, dateFilterToParams, type DateFilter } from "@/components/DateRangePicker";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -1133,7 +1133,8 @@ export default function ClosingModule() {
       {/* ─── Add Deal Dialog ─── */}
       <Dialog open={showAdd} onOpenChange={setShowAdd}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>إضافة صفقة جديدة</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogDescription className="sr-only">تفاصيل النافذة.</DialogDescription><DialogTitle>إضافة صفقة جديدة</DialogTitle></DialogHeader>
           {/* Month Attribution Notice */}
           <div className="flex items-start gap-2 rounded-lg border border-blue-500/30 bg-blue-950/20 px-3 py-2 text-sm text-blue-300">
             <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-blue-400" />
@@ -1187,7 +1188,8 @@ export default function ClosingModule() {
       {/* ─── Change Engineer Warning Dialog ─── */}
       <Dialog open={!!changeEngineerWarn} onOpenChange={() => setChangeEngineerWarn(null)}>
         <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle className="flex items-center gap-2 text-amber-400">⚠️ تحذير: تغيير المهندس</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogDescription className="sr-only">تفاصيل النافذة.</DialogDescription><DialogTitle className="flex items-center gap-2 text-amber-400">⚠️ تحذير: تغيير المهندس</DialogTitle></DialogHeader>
           <p className="text-sm text-muted-foreground">هذه الصفقة مغلقة (WON). تغيير المهندس سيؤثر على الكومشن والـ KPI. هل أنت متأكد؟</p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setChangeEngineerWarn(null)}>إلغاء</Button>
@@ -1205,7 +1207,8 @@ export default function ClosingModule() {
       {/* ─── Deal Timeline Dialog ─── */}
       <Dialog open={!!timelineDealId} onOpenChange={() => setTimelineDealId(null)}>
         <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>سجل نشاطات الصفقة</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogDescription className="sr-only">تفاصيل النافذة.</DialogDescription><DialogTitle>سجل نشاطات الصفقة</DialogTitle></DialogHeader>
           <div className="space-y-3">
             {timelineData?.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">لا توجد نشاطات مسجلة</p>}
             {timelineData?.map((entry, i) => (
@@ -1224,7 +1227,8 @@ export default function ClosingModule() {
       {/* ─── Update Deal Dialog ─── */}
       <Dialog open={!!updateDeal} onOpenChange={() => setUpdateDeal(null)}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>تحديث الصفقة</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogDescription className="sr-only">تفاصيل النافذة.</DialogDescription><DialogTitle>تحديث الصفقة</DialogTitle></DialogHeader>
           {updateDeal && (
             <div className="space-y-3">
               <div><Label>المرحلة</Label>
@@ -1351,6 +1355,7 @@ export default function ClosingModule() {
       <Dialog open={!!lostReasonDialog} onOpenChange={() => setLostReasonDialog(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
+            <DialogDescription className="sr-only">تفاصيل النافذة.</DialogDescription>
             <DialogTitle className="flex items-center gap-2 text-red-400">
               <XCircle className="h-5 w-5" />
               سبب خسارة الصفقة

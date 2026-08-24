@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -282,6 +282,7 @@ function EngineerDetailModal({ eng, onRefresh }: { eng: any; onRefresh: () => vo
       </DialogTrigger>
       <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
+          <DialogDescription className="sr-only">تفاصيل النافذة.</DialogDescription>
           <DialogTitle className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold">
               {eng.engineerName.charAt(0)}
@@ -656,6 +657,7 @@ function EngineerEvalCard({ eng, onRefresh }: { eng: any; onRefresh: () => void 
             </DialogTrigger>
             <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-lg">
               <DialogHeader>
+                <DialogDescription className="sr-only">تفاصيل النافذة.</DialogDescription>
                 <DialogTitle>تقييم شهري — {eng.engineerName}</DialogTitle>
               </DialogHeader>
               <EvaluationForm engineerId={eng.engineerId} engineerName={eng.engineerName}

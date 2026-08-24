@@ -7,7 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DateRangePicker, getCurrentMonthFilter, type DateFilter } from "@/components/DateRangePicker";
 import { formatLocalDate } from "@shared/dateUtils";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -855,7 +855,8 @@ export default function CollectionsModule() {
       {/* Dialog: Add Contract */}
       <Dialog open={showAddContract} onOpenChange={setShowAddContract}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>إضافة عقد جديد</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogDescription className="sr-only">تفاصيل النافذة.</DialogDescription><DialogTitle>إضافة عقد جديد</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div><Label>اسم العميل *</Label><Input value={newContract.clientName} onChange={e => setNewContract(p => ({ ...p, clientName: e.target.value }))} placeholder="اسم العميل أو الشركة" /></div>
             <div><Label>قيمة العقد (ج.م) *</Label><Input type="number" value={newContract.contractAmount} onChange={e => setNewContract(p => ({ ...p, contractAmount: e.target.value }))} placeholder="0" /></div>
@@ -875,7 +876,8 @@ export default function CollectionsModule() {
       {/* Dialog: Add Payment */}
       <Dialog open={showAddPayment !== null} onOpenChange={() => setShowAddPayment(null)}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>تسجيل دفعة جديدة</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogDescription className="sr-only">تفاصيل النافذة.</DialogDescription><DialogTitle>تسجيل دفعة جديدة</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div><Label>المبلغ (ج.م) *</Label><Input type="number" value={newPayment.amount} onChange={e => setNewPayment(p => ({ ...p, amount: e.target.value }))} placeholder="0" /></div>
             <div><Label>تاريخ الدفع *</Label><Input type="date" value={newPayment.paymentDate} onChange={e => setNewPayment(p => ({ ...p, paymentDate: e.target.value }))} /></div>
@@ -931,7 +933,8 @@ export default function CollectionsModule() {
       {/* Dialog: Add Promise */}
       <Dialog open={showAddPromise !== null} onOpenChange={() => setShowAddPromise(null)}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>تسجيل وعد دفع</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogDescription className="sr-only">تفاصيل النافذة.</DialogDescription><DialogTitle>تسجيل وعد دفع</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div><Label>مبلغ الوعد (ج.م) *</Label><Input type="number" value={newPromise.promiseAmount} onChange={e => setNewPromise(p => ({ ...p, promiseAmount: e.target.value }))} placeholder="0" /></div>
             <div><Label>تاريخ الوعد *</Label><Input type="date" value={newPromise.promiseDate} onChange={e => setNewPromise(p => ({ ...p, promiseDate: e.target.value }))} /></div>

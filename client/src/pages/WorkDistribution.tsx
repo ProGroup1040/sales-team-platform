@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -127,6 +127,7 @@ function LogActivityDialog({
       </DialogTrigger>
       <DialogContent className="max-w-md" dir="rtl">
         <DialogHeader>
+          <DialogDescription className="sr-only">تفاصيل النافذة.</DialogDescription>
           <DialogTitle>تسجيل نشاط جديد</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">

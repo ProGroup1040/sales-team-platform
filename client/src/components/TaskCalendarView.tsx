@@ -3,7 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
   CheckCircle2, Clock, XCircle, Calendar, Users, Flame, AlertTriangle,
   ChevronLeft, ChevronRight, Video, Star, RefreshCw, Filter,
@@ -163,6 +163,7 @@ function TaskDetailDialog({ task, open, onClose }: { task: CalendarTask | null; 
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="bg-slate-900 border-white/10 text-white max-w-md" dir="rtl">
         <DialogHeader>
+          <DialogDescription className="sr-only">تفاصيل النافذة.</DialogDescription>
           <DialogTitle className="flex items-center gap-2 text-white">
             <Calendar className="h-5 w-5 text-indigo-400" />
             تفاصيل المهمة
