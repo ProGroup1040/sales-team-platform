@@ -38,4 +38,9 @@ Every completed row must link to code, tests, or an environment verification rec
 ## Deployment environment repair
 - [x] Configure production-safe APP_JWT_SECRET fallback because the platform-managed JWT_SECRET cannot be edited directly.
 - [x] Verify DATABASE_URL is available to the production service without exposing its value.
-- [ ] Redeploy and validate the production startup health check.
+- [x] Redeploy and validate the production startup health check.
+
+## Login recovery
+- [x] Restore production runtime authentication using the application-owned production session secret fallback.
+- [x] Verify local Admin UI sign-in, redirect to `/overview`, and authenticated identity in production.
+- [x] Verify Admin Sales UI sign-in, redirect to `/overview`, and session persistence after a full reload in production.
