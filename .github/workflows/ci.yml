@@ -24,7 +24,7 @@ jobs:
           --health-retries=12
     env:
       DATABASE_URL: mysql://root:root@127.0.0.1:3306/sales_dashboard
-      JWT_SECRET: ci-only-sales-team-platform-secret-32-chars
+      JWT_SECRET: ci-only-sales-team-platform-session-secret-0123456789abcdef0123456789abcdef0123456789abcdef01234
       NODE_ENV: test
     steps:
       - name: Checkout
