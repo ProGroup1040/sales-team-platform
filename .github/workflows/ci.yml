@@ -42,7 +42,25 @@ jobs:
         run: pnpm drizzle-kit migrate
       - name: Type check
         run: pnpm check
+      - name: Start server for runtime readiness tests
+        run: |
+          NODE_ENV=development PORT=3000 pnpm exec tsx server/_core/index.ts > /tmp/sales-team-platform-server.log 2>&1 &
+          echo $! > /tmp/sales-team-platform-server.pid
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:3000/healthz >/dev/null && curl --fail --silent http://127.0.0.1:3000/readyz >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat /tmp/sales-team-platform-server.log
+          exit 1
       - name: Test
         run: pnpm test
+      - name: Stop server
+        if: always()
+        run: |
+          if [ -f /tmp/sales-team-platform-server.pid ]; then
+            kill "$(cat /tmp/sales-team-platform-server.pid)" || true
+          fi
       - name: Production build
         run: pnpm build
