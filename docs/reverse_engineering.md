@@ -95,18 +95,18 @@ sales-team-platform/
 
 ```mermaid
 flowchart TD
-    B[Browser] --> W[React + Wouter]
-    W --> L[DashboardLayout / page components]
-    L --> Q[tRPC React + TanStack Query]
-    Q --> H[HTTP /api/trpc]
-    H --> C[createContext]
-    C --> A[ctx.actor: app_user/local/oauth]
-    A --> G[protected/admin middleware]
-    G --> R[server/routers.ts]
-    R --> D[server/db.ts]
+    B[Browser] --> W[React application]
+    W --> L[Dashboard layout]
+    L --> Q[tRPC query client]
+    Q --> H[HTTP API request]
+    H --> C[Request context]
+    C --> A[Actor resolution]
+    A --> G[Procedure guard]
+    G --> R[Router procedures]
+    R --> D[Data access layer]
     D --> O[Drizzle ORM]
-    O --> M[(MySQL)]
-    D --> X[LLM / storage / map / notification helpers]
+    O --> M[MySQL database]
+    D --> X[Integration helpers]
     M --> D --> R --> Q --> W
 ```
 
@@ -159,21 +159,21 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    Login["/login"] --> Overview["/overview"]
-    Overview --> Tasks["/tasks"]
-    Overview --> Leads["/leads"]
-    Leads --> Visits["/visits"]
-    Visits --> Closing["/closing"]
-    Closing --> Collections["/collections"]
-    Closing --> Project["/project-timeline"]
-    Overview --> Sales["/sales-module"]
-    Sales --> KPI["/kpi"]
-    KPI --> Reports["/reports"]
-    Overview --> Planning["/planning"]
-    Overview --> Execution["/sales-execution"]
-    Overview --> Promotion["/promotion-system"]
-    Promotion --> Users["/user-management"]
-    Promotion --> Permissions["/permissions"]
+    Login[Login] --> Overview[Overview]
+    Overview --> Tasks[Tasks]
+    Overview --> Leads[Leads]
+    Leads --> Visits[Visits]
+    Visits --> Closing[Closing]
+    Closing --> Collections[Collections]
+    Closing --> Project[Project timeline]
+    Overview --> Sales[Sales]
+    Sales --> KPI[KPI]
+    KPI --> Reports[Reports]
+    Overview --> Planning[Planning]
+    Overview --> Execution[Sales execution]
+    Overview --> Promotion[Promotion]
+    Promotion --> Users[User management]
+    Promotion --> Permissions[Permissions]
 ```
 
 الروابط المرئية في sidebar معرفة في `DashboardLayout.tsx`. روابط الأعمال بين الصفحات ليست كلها route-to-route links؛ جزء مهم منها يتم عبر tabs/dialogs داخل الصفحة واستدعاءات tRPC، خصوصًا داخل Tasks وVisits وClosing وProjectTimeline.
@@ -992,17 +992,17 @@ structured-output validation at a product boundary, fallback, persistence, gover
 
 ```mermaid
 flowchart TD
-    App[App.tsx] --> Layout[DashboardLayout]
-    Layout --> AuthHooks[useLocalAuth/useRoleAccess]
-    Layout --> Pages[Domain Pages]
-    Pages --> Components[Calendar/Timeline/Dialog/UI]
-    Pages --> TRPC[typed tRPC hooks]
-    TRPC --> Router[server/routers.ts]
-    Router --> Auth[context/trpc/localAuth]
-    Router --> DB[server/db.ts]
-    DB --> Schema[drizzle/schema.ts]
-    DB --> Migrations[drizzle SQL]
-    DB --> Integrations[LLM/storage/map/notifications]
+    App[Application entry] --> Layout[Dashboard layout]
+    Layout --> AuthHooks[Auth and role hooks]
+    Layout --> Pages[Domain pages]
+    Pages --> Components[Shared UI components]
+    Pages --> TRPC[Typed API client]
+    TRPC --> Router[Router procedures]
+    Router --> Auth[Auth context]
+    Router --> DB[Data access layer]
+    DB --> Schema[Database schema]
+    DB --> Migrations[Database migrations]
+    DB --> Integrations[External integrations]
 ```
 
 ## Coupling and circularity
@@ -1186,11 +1186,11 @@ REST compatibility endpoints محمية الآن عبر `getAdminCallerFromReque
 ```mermaid
 flowchart LR
     Browser --> ReactPages
-    ReactPages --> tRPC
-    tRPC --> Router
-    Router --> MonolithDB[server/db.ts]
-    MonolithDB --> MySQL
-    MonolithDB --> Helpers
+    ReactPages --> APIClient[Typed API client]
+    APIClient --> Router
+    Router --> MonolithDB[Data access layer]
+    MonolithDB --> MySQL[MySQL database]
+    MonolithDB --> Helpers[Integration helpers]
 ```
 
 ## RECOMMENDED ARCHITECTURE
@@ -1198,16 +1198,16 @@ flowchart LR
 ```mermaid
 flowchart LR
     Browser --> WebApp[React feature modules]
-    WebApp --> ClientSDK[typed client]
-    ClientSDK --> API[authenticated API boundary]
-    API --> Actor[canonical actor resolver]
-    Actor --> Policy[permission + data-scope policy]
-    Policy --> Domain[domain services]
-    Domain --> Repo[focused repositories]
-    Repo --> MySQL[(MySQL)]
-    Domain --> Audit[transactional audit service]
-    Domain --> Integrations[LLM/storage/maps/notifications]
-    Domain --> Events[optional outbox/event layer]
+    WebApp --> ClientSDK[Typed client]
+    ClientSDK --> API[Authenticated API boundary]
+    API --> Actor[Canonical actor resolver]
+    Actor --> Policy[Permission and data scope policy]
+    Policy --> Domain[Domain services]
+    Domain --> Repo[Focused repositories]
+    Repo --> MySQL[MySQL database]
+    Domain --> Audit[Transactional audit service]
+    Domain --> Integrations[External integrations]
+    Domain --> Events[Optional event layer]
 ```
 
 التوصية لا تعني أن المشروع الحالي يملك هذه الطبقات؛ هي target architecture منفصلة. ترتيب التنفيذ: توحيد actor والpolicy، تثبيت test DB، معاملات financial/workflow، فصل `db.ts` حسب domains، ثم code-splitting/observability.
@@ -1222,11 +1222,11 @@ flowchart TD
     Components[Layout + Domain + UI Components]
     State[React local state + TanStack Query]
     Services[tRPC procedures + db.ts functions]
-    APIs["/api/trpc + REST compatibility"]
-    Logic[Tasks / CRM / Sales / KPI / Finance / Timeline rules]
-    DB[(MySQL tables via Drizzle)]
-    External[OAuth / Storage / Maps / Notifications]
-    AI[LLM helper: Gemini reference]
+    APIs[API and REST compatibility]
+    Logic[Business domain logic]
+    DB[MySQL database]
+    External[OAuth storage maps notifications]
+    AI[Gemini LLM helper]
     Users --> Roles --> Pages --> Components --> State --> Services
     Services --> APIs
     Services --> Logic --> DB
