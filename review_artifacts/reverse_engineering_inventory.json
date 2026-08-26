@@ -1,0 +1,5715 @@
+{
+  "root": "/home/ubuntu/sales-team-platform",
+  "file_count": 314,
+  "by_extension": {
+    ".json": 81,
+    ".ts": 72,
+    ".mjs": 3,
+    ".md": 6,
+    ".html": 1,
+    ".sql": 59,
+    ".tsx": 90,
+    ".css": 1,
+    ".js": 1
+  },
+  "by_top_level": {
+    "components.json": 1,
+    "drizzle.config.ts": 1,
+    "migrate_visits2.mjs": 1,
+    "package.json": 1,
+    "todo.md": 1,
+    "tsconfig.json": 1,
+    "vite.config.ts": 1,
+    "vitest.config.ts": 1,
+    "client": 103,
+    "docs": 3,
+    "drizzle": 120,
+    "review_artifacts": 2,
+    "scripts": 2,
+    "server": 50,
+    "shared": 7,
+    ".manus": 19
+  },
+  "routes": [
+    {
+      "path": "/",
+      "file": "client/src/App.tsx",
+      "line": 48
+    },
+    {
+      "path": "/login",
+      "file": "client/src/App.tsx",
+      "line": 49
+    },
+    {
+      "path": "/overview",
+      "file": "client/src/App.tsx",
+      "line": 51
+    },
+    {
+      "path": "/tasks",
+      "file": "client/src/App.tsx",
+      "line": 52
+    },
+    {
+      "path": "/leads",
+      "file": "client/src/App.tsx",
+      "line": 53
+    },
+    {
+      "path": "/visits",
+      "file": "client/src/App.tsx",
+      "line": 54
+    },
+    {
+      "path": "/closing",
+      "file": "client/src/App.tsx",
+      "line": 55
+    },
+    {
+      "path": "/sales-module",
+      "file": "client/src/App.tsx",
+      "line": 56
+    },
+    {
+      "path": "/kpi",
+      "file": "client/src/App.tsx",
+      "line": 57
+    },
+    {
+      "path": "/collections",
+      "file": "client/src/App.tsx",
+      "line": 58
+    },
+    {
+      "path": "/planning",
+      "file": "client/src/App.tsx",
+      "line": 59
+    },
+    {
+      "path": "/promotion-system",
+      "file": "client/src/App.tsx",
+      "line": 60
+    },
+    {
+      "path": "/reports",
+      "file": "client/src/App.tsx",
+      "line": 61
+    },
+    {
+      "path": "/sales-execution",
+      "file": "client/src/App.tsx",
+      "line": 62
+    },
+    {
+      "path": "/project-timeline",
+      "file": "client/src/App.tsx",
+      "line": 63
+    },
+    {
+      "path": "/user-management",
+      "file": "client/src/App.tsx",
+      "line": 64
+    },
+    {
+      "path": "/permissions",
+      "file": "client/src/App.tsx",
+      "line": 65
+    },
+    {
+      "path": "/dashboard",
+      "file": "client/src/App.tsx",
+      "line": 67
+    },
+    {
+      "path": "/404",
+      "file": "client/src/App.tsx",
+      "line": 68
+    }
+  ],
+  "trpc_references": [
+    {
+      "symbol": "ai.chat.useMutation",
+      "file": "client/src/components/AIChatBox.tsx",
+      "line": 79
+    },
+    {
+      "symbol": "tasks.createWithTime.useMutation",
+      "file": "client/src/components/DailyTimeline.tsx",
+      "line": 84
+    },
+    {
+      "symbol": "tasks.timeline.useQuery",
+      "file": "client/src/components/DailyTimeline.tsx",
+      "line": 306
+    },
+    {
+      "symbol": "localAuth.logout.useMutation",
+      "file": "client/src/components/DashboardLayout.tsx",
+      "line": 117
+    },
+    {
+      "symbol": "tasks.createWithTime.useMutation",
+      "file": "client/src/components/InteractiveCalendar.tsx",
+      "line": 404
+    },
+    {
+      "symbol": "tasks.updateFull.useMutation",
+      "file": "client/src/components/InteractiveCalendar.tsx",
+      "line": 408
+    },
+    {
+      "symbol": "adminSalesTasks.create.useMutation",
+      "file": "client/src/components/InteractiveCalendar.tsx",
+      "line": 413
+    },
+    {
+      "symbol": "adminSalesTasks.updateFull.useMutation",
+      "file": "client/src/components/InteractiveCalendar.tsx",
+      "line": 417
+    },
+    {
+      "symbol": "tasks.calendarView.useQuery",
+      "file": "client/src/components/InteractiveCalendar.tsx",
+      "line": 1207
+    },
+    {
+      "symbol": "tasks.calendarViewAdmin.useQuery",
+      "file": "client/src/components/InteractiveCalendar.tsx",
+      "line": 1213
+    },
+    {
+      "symbol": "tasks.moveTask.useMutation",
+      "file": "client/src/components/InteractiveCalendar.tsx",
+      "line": 1224
+    },
+    {
+      "symbol": "adminSalesTasks.updateFull.useMutation",
+      "file": "client/src/components/InteractiveCalendar.tsx",
+      "line": 1228
+    },
+    {
+      "symbol": "tasks.delete.useMutation",
+      "file": "client/src/components/InteractiveCalendar.tsx",
+      "line": 1233
+    },
+    {
+      "symbol": "tasks.calendarView.useQuery",
+      "file": "client/src/components/TaskCalendarView.tsx",
+      "line": 500
+    },
+    {
+      "symbol": "appUsers.me.useQuery",
+      "file": "client/src/hooks/useAppAuth.ts",
+      "line": 22
+    },
+    {
+      "symbol": "appUsers.logout.useMutation",
+      "file": "client/src/hooks/useAppAuth.ts",
+      "line": 28
+    },
+    {
+      "symbol": "localAuth.me.useQuery",
+      "file": "client/src/hooks/useLocalAuth.ts",
+      "line": 6
+    },
+    {
+      "symbol": "localAuth.logout.useMutation",
+      "file": "client/src/hooks/useLocalAuth.ts",
+      "line": 11
+    },
+    {
+      "symbol": "localAuth.myPermissions.useQuery",
+      "file": "client/src/hooks/useRoleAccess.ts",
+      "line": 159
+    },
+    {
+      "symbol": "sectionPermissions.myPermissions.useQuery",
+      "file": "client/src/hooks/useSectionPermission.ts",
+      "line": 11
+    },
+    {
+      "symbol": "closing.stats.useQuery",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 109
+    },
+    {
+      "symbol": "closing.list.useQuery",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 110
+    },
+    {
+      "symbol": "engineers.list.useQuery",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 111
+    },
+    {
+      "symbol": "closing.discountSummary.useQuery",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 113
+    },
+    {
+      "symbol": "closing.engineerDiscountSummary.useQuery",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 114
+    },
+    {
+      "symbol": "kpi.teamCompositeDiscountScore.useQuery",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 116
+    },
+    {
+      "symbol": "closing.lostDealsAnalysis.useQuery",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 120
+    },
+    {
+      "symbol": "dealTasks.listOverdue.useQuery",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 122
+    },
+    {
+      "symbol": "dealTasks.listPending.useQuery",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 123
+    },
+    {
+      "symbol": "closing.discountDashboard.useQuery",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 128
+    },
+    {
+      "symbol": "closing.salesEngineers.useQuery",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 133
+    },
+    {
+      "symbol": "closing.timeline.useQuery",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 136
+    },
+    {
+      "symbol": "closing.updateEngineer.useMutation",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 140
+    },
+    {
+      "symbol": "closing.create.useMutation",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 158
+    },
+    {
+      "symbol": "closing.updateStage.useMutation",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 162
+    },
+    {
+      "symbol": "dealTasks.create.useMutation",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 183
+    },
+    {
+      "symbol": "dealTasks.markDone.useMutation",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 184
+    },
+    {
+      "symbol": "closing.updateDealStage.useMutation",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 187
+    },
+    {
+      "symbol": "softDelete.deal.useMutation",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 196
+    },
+    {
+      "symbol": "financial.allContracts.useQuery",
+      "file": "client/src/pages/CollectionsModule.tsx",
+      "line": 49
+    },
+    {
+      "symbol": "financial.dailyFollowUp.useQuery",
+      "file": "client/src/pages/CollectionsModule.tsx",
+      "line": 50
+    },
+    {
+      "symbol": "financial.engineersCommission.useQuery",
+      "file": "client/src/pages/CollectionsModule.tsx",
+      "line": 51
+    },
+    {
+      "symbol": "engineers.list.useQuery",
+      "file": "client/src/pages/CollectionsModule.tsx",
+      "line": 52
+    },
+    {
+      "symbol": "financial.dashboard.useQuery",
+      "file": "client/src/pages/CollectionsModule.tsx",
+      "line": 63
+    },
+    {
+      "symbol": "financial.alerts.useQuery",
+      "file": "client/src/pages/CollectionsModule.tsx",
+      "line": 64
+    },
+    {
+      "symbol": "financial.contractsWithCommission.useQuery",
+      "file": "client/src/pages/CollectionsModule.tsx",
+      "line": 65
+    },
+    {
+      "symbol": "financial.periodAnalysis.useQuery",
+      "file": "client/src/pages/CollectionsModule.tsx",
+      "line": 73
+    },
+    {
+      "symbol": "financial.addPaymentWithFollowUp.useMutation",
+      "file": "client/src/pages/CollectionsModule.tsx",
+      "line": 79
+    },
+    {
+      "symbol": "financial.autoCreateContract.useMutation",
+      "file": "client/src/pages/CollectionsModule.tsx",
+      "line": 93
+    },
+    {
+      "symbol": "financial.addContract.useMutation",
+      "file": "client/src/pages/CollectionsModule.tsx",
+      "line": 105
+    },
+    {
+      "symbol": "financial.addPayment.useMutation",
+      "file": "client/src/pages/CollectionsModule.tsx",
+      "line": 109
+    },
+    {
+      "symbol": "financial.addPromise.useMutation",
+      "file": "client/src/pages/CollectionsModule.tsx",
+      "line": 113
+    },
+    {
+      "symbol": "financial.updatePromise.useMutation",
+      "file": "client/src/pages/CollectionsModule.tsx",
+      "line": 117
+    },
+    {
+      "symbol": "ai.chat.useMutation",
+      "file": "client/src/pages/ComponentShowcase.tsx",
+      "line": 222
+    },
+    {
+      "symbol": "kpi.engineers.useQuery",
+      "file": "client/src/pages/KPIModule.tsx",
+      "line": 102
+    },
+    {
+      "symbol": "kpi.trend.useQuery",
+      "file": "client/src/pages/KPIModule.tsx",
+      "line": 103
+    },
+    {
+      "symbol": "kpi.operationalPerformance.useQuery",
+      "file": "client/src/pages/KPIModule.tsx",
+      "line": 104
+    },
+    {
+      "symbol": "kpi.enhancedRanking.useQuery",
+      "file": "client/src/pages/KPIModule.tsx",
+      "line": 105
+    },
+    {
+      "symbol": "kpi.teleSalesKPI.useQuery",
+      "file": "client/src/pages/KPIModule.tsx",
+      "line": 106
+    },
+    {
+      "symbol": "kpi.siteEngineersKPI.useQuery",
+      "file": "client/src/pages/KPIModule.tsx",
+      "line": 107
+    },
+    {
+      "symbol": "kpi.companyClosingKPI.useQuery",
+      "file": "client/src/pages/KPIModule.tsx",
+      "line": 108
+    },
+    {
+      "symbol": "kpi.teamRewardStatus.useQuery",
+      "file": "client/src/pages/KPIModule.tsx",
+      "line": 109
+    },
+    {
+      "symbol": "kpi.lostDealsImpact.useQuery",
+      "file": "client/src/pages/KPIModule.tsx",
+      "line": 110
+    },
+    {
+      "symbol": "kpi.scoreBasedDiscountDistribution.useQuery",
+      "file": "client/src/pages/KPIModule.tsx",
+      "line": 111
+    },
+    {
+      "symbol": "kpi.allEngineersEarnings.useQuery",
+      "file": "client/src/pages/KPIModule.tsx",
+      "line": 112
+    },
+    {
+      "symbol": "kpi.companyClosingBonus.useQuery",
+      "file": "client/src/pages/KPIModule.tsx",
+      "line": 113
+    },
+    {
+      "symbol": "dealTasks.complianceReport.useQuery",
+      "file": "client/src/pages/KPIModule.tsx",
+      "line": 116
+    },
+    {
+      "symbol": "planning.allEngineersPerformanceScores.useQuery",
+      "file": "client/src/pages/KPIModule.tsx",
+      "line": 122
+    },
+    {
+      "symbol": "planning.getOperationalBreakdown.useQuery",
+      "file": "client/src/pages/KPIModule.tsx",
+      "line": 123
+    },
+    {
+      "symbol": "engineers.list.useQuery",
+      "file": "client/src/pages/KPIModule.tsx",
+      "line": 127
+    },
+    {
+      "symbol": "leadDailyStats.upsert.useMutation",
+      "file": "client/src/pages/LeadsModule.tsx",
+      "line": 201
+    },
+    {
+      "symbol": "leadDailyStats.summary.useQuery",
+      "file": "client/src/pages/LeadsModule.tsx",
+      "line": 287
+    },
+    {
+      "symbol": "leadDailyStats.list.useQuery",
+      "file": "client/src/pages/LeadsModule.tsx",
+      "line": 339
+    },
+    {
+      "symbol": "leadDailyStats.summary.useQuery",
+      "file": "client/src/pages/LeadsModule.tsx",
+      "line": 420
+    },
+    {
+      "symbol": "appUsers.changePassword.useMutation",
+      "file": "client/src/pages/LoginPage.tsx",
+      "line": 23
+    },
+    {
+      "symbol": "localAuth.login.useMutation",
+      "file": "client/src/pages/LoginPage.tsx",
+      "line": 33
+    },
+    {
+      "symbol": "management.focus.useQuery",
+      "file": "client/src/pages/Overview.tsx",
+      "line": 261
+    },
+    {
+      "symbol": "promotion.getAllEngineersDashboard.useQuery",
+      "file": "client/src/pages/Overview.tsx",
+      "line": 262
+    },
+    {
+      "symbol": "tasks.stats.useQuery",
+      "file": "client/src/pages/Overview.tsx",
+      "line": 263
+    },
+    {
+      "symbol": "tasks.critical.useQuery",
+      "file": "client/src/pages/Overview.tsx",
+      "line": 264
+    },
+    {
+      "symbol": "leads.stats.useQuery",
+      "file": "client/src/pages/Overview.tsx",
+      "line": 265
+    },
+    {
+      "symbol": "visits.stats.useQuery",
+      "file": "client/src/pages/Overview.tsx",
+      "line": 266
+    },
+    {
+      "symbol": "closing.stats.useQuery",
+      "file": "client/src/pages/Overview.tsx",
+      "line": 267
+    },
+    {
+      "symbol": "sales.monthlyStats.useQuery",
+      "file": "client/src/pages/Overview.tsx",
+      "line": 268
+    },
+    {
+      "symbol": "collections.stats.useQuery",
+      "file": "client/src/pages/Overview.tsx",
+      "line": 269
+    },
+    {
+      "symbol": "sales.trend.useQuery",
+      "file": "client/src/pages/Overview.tsx",
+      "line": 270
+    },
+    {
+      "symbol": "kpi.engineers.useQuery",
+      "file": "client/src/pages/Overview.tsx",
+      "line": 271
+    },
+    {
+      "symbol": "closing.list.useQuery",
+      "file": "client/src/pages/Overview.tsx",
+      "line": 272
+    },
+    {
+      "symbol": "tasks.missingRecordings.useQuery",
+      "file": "client/src/pages/Overview.tsx",
+      "line": 273
+    },
+    {
+      "symbol": "tasks.pendingReviews.useQuery",
+      "file": "client/src/pages/Overview.tsx",
+      "line": 274
+    },
+    {
+      "symbol": "workDist.allEngineers.useQuery",
+      "file": "client/src/pages/Overview.tsx",
+      "line": 276
+    },
+    {
+      "symbol": "rolePermissions.getAll.useQuery",
+      "file": "client/src/pages/PermissionsPanel.tsx",
+      "line": 85
+    },
+    {
+      "symbol": "rolePermissions.update.useMutation",
+      "file": "client/src/pages/PermissionsPanel.tsx",
+      "line": 89
+    },
+    {
+      "symbol": "sectionPermissions.getAll.useQuery",
+      "file": "client/src/pages/PermissionsPanel.tsx",
+      "line": 95
+    },
+    {
+      "symbol": "sectionPermissions.moduleSections.useQuery",
+      "file": "client/src/pages/PermissionsPanel.tsx",
+      "line": 99
+    },
+    {
+      "symbol": "sectionPermissions.update.useMutation",
+      "file": "client/src/pages/PermissionsPanel.tsx",
+      "line": 102
+    },
+    {
+      "symbol": "sectionPermissions.initDefaults.useMutation",
+      "file": "client/src/pages/PermissionsPanel.tsx",
+      "line": 106
+    },
+    {
+      "symbol": "planning.getCompanyGoal.useQuery",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 58
+    },
+    {
+      "symbol": "planning.getCompanyGoalProgress.useQuery",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 59
+    },
+    {
+      "symbol": "sales.trend.useQuery",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 60
+    },
+    {
+      "symbol": "planning.setCompanyGoal.useMutation",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 108
+    },
+    {
+      "symbol": "engineers.list.useQuery",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 413
+    },
+    {
+      "symbol": "sales.engineersPerformance.useQuery",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 414
+    },
+    {
+      "symbol": "planning.previewDistribution.useQuery",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 415
+    },
+    {
+      "symbol": "kpi.engineerOperationalTargets.useQuery",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 436
+    },
+    {
+      "symbol": "planning.getPersonalGoals.useQuery",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 441
+    },
+    {
+      "symbol": "sales.setEngineerTarget.useMutation",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 446
+    },
+    {
+      "symbol": "sales.setOperationalTargets.useMutation",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 455
+    },
+    {
+      "symbol": "planning.applyDistribution.useMutation",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 464
+    },
+    {
+      "symbol": "planning.manualOverride.useMutation",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 474
+    },
+    {
+      "symbol": "planning.setPersonalGoal.useMutation",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 485
+    },
+    {
+      "symbol": "planning.setPersonalGoal.useMutation",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 495
+    },
+    {
+      "symbol": "engineers.list.useQuery",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 1139
+    },
+    {
+      "symbol": "planning.getPersonalGoals.useQuery",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 1143
+    },
+    {
+      "symbol": "planning.setPersonalGoal.useMutation",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 1156
+    },
+    {
+      "symbol": "planning.setPersonalGoal.useMutation",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 1166
+    },
+    {
+      "symbol": "projectTimeline.updatePreExecution.useMutation",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 163
+    },
+    {
+      "symbol": "projectTimeline.startExecution.useMutation",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 167
+    },
+    {
+      "symbol": "projectTimeline.update.useMutation",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 208
+    },
+    {
+      "symbol": "projectTimeline.close.useMutation",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 222
+    },
+    {
+      "symbol": "projectTimeline.addDelay.useMutation",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 236
+    },
+    {
+      "symbol": "projectTimeline.config.useQuery",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 298
+    },
+    {
+      "symbol": "engineers.list.useQuery",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 299
+    },
+    {
+      "symbol": "projectTimeline.list.useQuery",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 319
+    },
+    {
+      "symbol": "projectTimeline.dashboard.useQuery",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 320
+    },
+    {
+      "symbol": "projectTimeline.analytics.useQuery",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 330
+    },
+    {
+      "symbol": "projectTimeline.detail.useQuery",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 338
+    },
+    {
+      "symbol": "projectTimeline.syncFromDeals.useMutation",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 349
+    },
+    {
+      "symbol": "projectTimeline.transition.useMutation",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 356
+    },
+    {
+      "symbol": "projectTimeline.update.useMutation",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 360
+    },
+    {
+      "symbol": "projectTimeline.addDelay.useMutation",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 364
+    },
+    {
+      "symbol": "projectTimeline.setHold.useMutation",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 368
+    },
+    {
+      "symbol": "projectTimeline.updateStageConfig.useMutation",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 372
+    },
+    {
+      "symbol": "projectTimeline.importHistorical.useMutation",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 379
+    },
+    {
+      "symbol": "projectTimeline.updatePreExecution.useMutation",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 388
+    },
+    {
+      "symbol": "projectTimeline.startExecution.useMutation",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 392
+    },
+    {
+      "symbol": "promotion.createMonthlyEvaluation.useMutation",
+      "file": "client/src/pages/PromotionSystem.tsx",
+      "line": 147
+    },
+    {
+      "symbol": "promotion.getEngineerPromotionProgress.useQuery",
+      "file": "client/src/pages/PromotionSystem.tsx",
+      "line": 261
+    },
+    {
+      "symbol": "promotion.promoteEngineer.useMutation",
+      "file": "client/src/pages/PromotionSystem.tsx",
+      "line": 265
+    },
+    {
+      "symbol": "promotion.getAllEngineersDashboard.useQuery",
+      "file": "client/src/pages/PromotionSystem.tsx",
+      "line": 678
+    },
+    {
+      "symbol": "reports.weeklyFull.useQuery",
+      "file": "client/src/pages/ReportsModule.tsx",
+      "line": 199
+    },
+    {
+      "symbol": "reports.monthlyKPI.useQuery",
+      "file": "client/src/pages/ReportsModule.tsx",
+      "line": 278
+    },
+    {
+      "symbol": "reports.quarterly.useQuery",
+      "file": "client/src/pages/ReportsModule.tsx",
+      "line": 413
+    },
+    {
+      "symbol": "projectTimeline.dashboard.useQuery",
+      "file": "client/src/pages/ReportsModule.tsx",
+      "line": 597
+    },
+    {
+      "symbol": "playbook.list.useQuery",
+      "file": "client/src/pages/SalesExecutionSystem.tsx",
+      "line": 39
+    },
+    {
+      "symbol": "playbook.categories.useQuery",
+      "file": "client/src/pages/SalesExecutionSystem.tsx",
+      "line": 40
+    },
+    {
+      "symbol": "playbook.import.useMutation",
+      "file": "client/src/pages/SalesExecutionSystem.tsx",
+      "line": 41
+    },
+    {
+      "symbol": "engineers.list.useQuery",
+      "file": "client/src/pages/SalesExecutionSystem.tsx",
+      "line": 272
+    },
+    {
+      "symbol": "promotion.getMeetingTasksPendingReview.useQuery",
+      "file": "client/src/pages/SalesExecutionSystem.tsx",
+      "line": 273
+    },
+    {
+      "symbol": "promotion.getMeetingReviewSummary.useQuery",
+      "file": "client/src/pages/SalesExecutionSystem.tsx",
+      "line": 274
+    },
+    {
+      "symbol": "promotion.createMeetingReview.useMutation",
+      "file": "client/src/pages/SalesExecutionSystem.tsx",
+      "line": 286
+    },
+    {
+      "symbol": "engineers.list.useQuery",
+      "file": "client/src/pages/SalesExecutionSystem.tsx",
+      "line": 486
+    },
+    {
+      "symbol": "funnel.full.useQuery",
+      "file": "client/src/pages/SalesExecutionSystem.tsx",
+      "line": 487
+    },
+    {
+      "symbol": "funnel.comparison.useQuery",
+      "file": "client/src/pages/SalesExecutionSystem.tsx",
+      "line": 491
+    },
+    {
+      "symbol": "engineers.list.useQuery",
+      "file": "client/src/pages/SalesExecutionSystem.tsx",
+      "line": 656
+    },
+    {
+      "symbol": "playbook.weeklyCoaching.useQuery",
+      "file": "client/src/pages/SalesExecutionSystem.tsx",
+      "line": 660
+    },
+    {
+      "symbol": "sales.controlStats.useQuery",
+      "file": "client/src/pages/SalesModule.tsx",
+      "line": 63
+    },
+    {
+      "symbol": "sales.engineersPerformance.useQuery",
+      "file": "client/src/pages/SalesModule.tsx",
+      "line": 64
+    },
+    {
+      "symbol": "sales.trend.useQuery",
+      "file": "client/src/pages/SalesModule.tsx",
+      "line": 65
+    },
+    {
+      "symbol": "tasks.engineers.useQuery",
+      "file": "client/src/pages/SalesModule.tsx",
+      "line": 66
+    },
+    {
+      "symbol": "sales.discountTiers.useQuery",
+      "file": "client/src/pages/SalesModule.tsx",
+      "line": 67
+    },
+    {
+      "symbol": "sales.commissionTiers.useQuery",
+      "file": "client/src/pages/SalesModule.tsx",
+      "line": 68
+    },
+    {
+      "symbol": "sales.setEngineerTarget.useMutation",
+      "file": "client/src/pages/SalesModule.tsx",
+      "line": 78
+    },
+    {
+      "symbol": "sales.upsertDiscountTier.useMutation",
+      "file": "client/src/pages/SalesModule.tsx",
+      "line": 86
+    },
+    {
+      "symbol": "sales.deleteDiscountTier.useMutation",
+      "file": "client/src/pages/SalesModule.tsx",
+      "line": 89
+    },
+    {
+      "symbol": "sales.upsertCommissionTier.useMutation",
+      "file": "client/src/pages/SalesModule.tsx",
+      "line": 92
+    },
+    {
+      "symbol": "sales.deleteCommissionTier.useMutation",
+      "file": "client/src/pages/SalesModule.tsx",
+      "line": 95
+    },
+    {
+      "symbol": "kpi.engineerOperationalTargets.useQuery",
+      "file": "client/src/pages/SalesModule.tsx",
+      "line": 101
+    },
+    {
+      "symbol": "kpi.teamPerformanceRanking.useQuery",
+      "file": "client/src/pages/SalesModule.tsx",
+      "line": 106
+    },
+    {
+      "symbol": "meetingReview.submitLink.useMutation",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 103
+    },
+    {
+      "symbol": "tasks.updateStatus.useMutation",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 111
+    },
+    {
+      "symbol": "kpi.allowedTaskTypes.useQuery",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 246
+    },
+    {
+      "symbol": "tasks.create.useMutation",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 255
+    },
+    {
+      "symbol": "tasks.createEngineer.useMutation",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 401
+    },
+    {
+      "symbol": "tasks.updateEngineerProfile.useMutation",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 408
+    },
+    {
+      "symbol": "softDelete.engineer.useMutation",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 415
+    },
+    {
+      "symbol": "meetingReview.getReview.useQuery",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 601
+    },
+    {
+      "symbol": "meetingReview.upsertReview.useMutation",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 602
+    },
+    {
+      "symbol": "adminSalesTasks.updateStatus.useMutation",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 738
+    },
+    {
+      "symbol": "kpi.operationalPerformance.useQuery",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 804
+    },
+    {
+      "symbol": "adminSalesTasks.getByDate.useQuery",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 967
+    },
+    {
+      "symbol": "adminSalesTasks.getWeekMeeting.useQuery",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 971
+    },
+    {
+      "symbol": "adminSalesTasks.getStats.useQuery",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 975
+    },
+    {
+      "symbol": "kpi.adminSalesKPI.useQuery",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 979
+    },
+    {
+      "symbol": "kpi.adminSalesCategoryAnalysis.useQuery",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 983
+    },
+    {
+      "symbol": "adminSalesTasks.updateWeekMeeting.useMutation",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 989
+    },
+    {
+      "symbol": "leadFollowup.log.useMutation",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 1373
+    },
+    {
+      "symbol": "leadFollowup.getLogs.useQuery",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 1377
+    },
+    {
+      "symbol": "leadFollowup.allTelesalesStats.useQuery",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 1378
+    },
+    {
+      "symbol": "leadFollowup.adminSalesKPI.useQuery",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 1380
+    },
+    {
+      "symbol": "tasks.stats.useQuery",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 1668
+    },
+    {
+      "symbol": "tasks.filtered.useQuery",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 1671
+    },
+    {
+      "symbol": "tasks.list.useQuery",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 1679
+    },
+    {
+      "symbol": "tasks.criticalEnhanced.useQuery",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 1683
+    },
+    {
+      "symbol": "tasks.engineers.useQuery",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 1684
+    },
+    {
+      "symbol": "softDelete.task.useMutation",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 1689
+    },
+    {
+      "symbol": "closing.autoCreateFromTask.useMutation",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 1693
+    },
+    {
+      "symbol": "engineers.list.useQuery",
+      "file": "client/src/pages/UserManagement.tsx",
+      "line": 99
+    },
+    {
+      "symbol": "appUsers.create.useMutation",
+      "file": "client/src/pages/UserManagement.tsx",
+      "line": 101
+    },
+    {
+      "symbol": "appUsers.getPermissions.useQuery",
+      "file": "client/src/pages/UserManagement.tsx",
+      "line": 309
+    },
+    {
+      "symbol": "appUsers.updatePermissions.useMutation",
+      "file": "client/src/pages/UserManagement.tsx",
+      "line": 310
+    },
+    {
+      "symbol": "appUsers.update.useMutation",
+      "file": "client/src/pages/UserManagement.tsx",
+      "line": 433
+    },
+    {
+      "symbol": "appUsers.activityLogs.useQuery",
+      "file": "client/src/pages/UserManagement.tsx",
+      "line": 527
+    },
+    {
+      "symbol": "appUsers.listEngineers.useQuery",
+      "file": "client/src/pages/UserManagement.tsx",
+      "line": 572
+    },
+    {
+      "symbol": "appUsers.bulkCreateAccounts.useMutation",
+      "file": "client/src/pages/UserManagement.tsx",
+      "line": 574
+    },
+    {
+      "symbol": "appUsers.createEngineerAccount.useMutation",
+      "file": "client/src/pages/UserManagement.tsx",
+      "line": 585
+    },
+    {
+      "symbol": "appUsers.resetPassword.useMutation",
+      "file": "client/src/pages/UserManagement.tsx",
+      "line": 596
+    },
+    {
+      "symbol": "appUsers.toggleStatus.useMutation",
+      "file": "client/src/pages/UserManagement.tsx",
+      "line": 606
+    },
+    {
+      "symbol": "appUsers.list.useQuery",
+      "file": "client/src/pages/UserManagement.tsx",
+      "line": 809
+    },
+    {
+      "symbol": "visits.updateFull.useMutation",
+      "file": "client/src/pages/VisitsModule.tsx",
+      "line": 103
+    },
+    {
+      "symbol": "softDelete.visit.useMutation",
+      "file": "client/src/pages/VisitsModule.tsx",
+      "line": 315
+    },
+    {
+      "symbol": "visits.stats.useQuery",
+      "file": "client/src/pages/VisitsModule.tsx",
+      "line": 349
+    },
+    {
+      "symbol": "visits.list.useQuery",
+      "file": "client/src/pages/VisitsModule.tsx",
+      "line": 357
+    },
+    {
+      "symbol": "engineers.list.useQuery",
+      "file": "client/src/pages/VisitsModule.tsx",
+      "line": 364
+    },
+    {
+      "symbol": "visits.alerts.useQuery",
+      "file": "client/src/pages/VisitsModule.tsx",
+      "line": 365
+    },
+    {
+      "symbol": "visits.debt.useQuery",
+      "file": "client/src/pages/VisitsModule.tsx",
+      "line": 366
+    },
+    {
+      "symbol": "visits.dailyTracking.useQuery",
+      "file": "client/src/pages/VisitsModule.tsx",
+      "line": 367
+    },
+    {
+      "symbol": "visits.adminSalesKPI.useQuery",
+      "file": "client/src/pages/VisitsModule.tsx",
+      "line": 368
+    },
+    {
+      "symbol": "visits.needingAction.useQuery",
+      "file": "client/src/pages/VisitsModule.tsx",
+      "line": 369
+    },
+    {
+      "symbol": "visits.create.useMutation",
+      "file": "client/src/pages/VisitsModule.tsx",
+      "line": 381
+    },
+    {
+      "symbol": "kpi.weeklyPerformance.useQuery",
+      "file": "client/src/pages/WeeklyReport.tsx",
+      "line": 362
+    },
+    {
+      "symbol": "kpi.engineerPerformance.useQuery",
+      "file": "client/src/pages/WeeklyReport.tsx",
+      "line": 367
+    },
+    {
+      "symbol": "workDist.log.useMutation",
+      "file": "client/src/pages/WorkDistribution.tsx",
+      "line": 110
+    },
+    {
+      "symbol": "engineers.list.useQuery",
+      "file": "client/src/pages/WorkDistribution.tsx",
+      "line": 404
+    },
+    {
+      "symbol": "workDist.myDistribution.useQuery",
+      "file": "client/src/pages/WorkDistribution.tsx",
+      "line": 422
+    },
+    {
+      "symbol": "workDist.allEngineers.useQuery",
+      "file": "client/src/pages/WorkDistribution.tsx",
+      "line": 427
+    },
+    {
+      "symbol": "workDist.fullRanking.useQuery",
+      "file": "client/src/pages/WorkDistribution.tsx",
+      "line": 432
+    },
+    {
+      "symbol": "workDist.criticalInsights.useQuery",
+      "file": "client/src/pages/WorkDistribution.tsx",
+      "line": 437
+    },
+    {
+      "symbol": "auth.me.useQuery",
+      "file": "client/src/_core/hooks/useAuth.ts",
+      "line": 16
+    },
+    {
+      "symbol": "auth.logout.useMutation",
+      "file": "client/src/_core/hooks/useAuth.ts",
+      "line": 21
+    },
+    {
+      "symbol": "voice.transcribe.useMutation",
+      "file": "server/_core/voiceTranscription.ts",
+      "line": 12
+    }
+  ],
+  "procedures": [
+    {
+      "name": "me",
+      "guard": "publicProcedure",
+      "kind": "query",
+      "file": "server/routers.ts",
+      "line": 388
+    },
+    {
+      "name": "logout",
+      "guard": "publicProcedure",
+      "kind": "mutation",
+      "file": "server/routers.ts",
+      "line": 389
+    },
+    {
+      "name": "isSeeded",
+      "guard": "protectedProcedure",
+      "kind": "query",
+      "file": "server/routers.ts",
+      "line": 397
+    },
+    {
+      "name": "run",
+      "guard": "adminProcedure",
+      "kind": "mutation",
+      "file": "server/routers.ts",
+      "line": 398
+    },
+    {
+      "name": "reset",
+      "guard": "adminProcedure",
+      "kind": "mutation",
+      "file": "server/routers.ts",
+      "line": 402
+    },
+    {
+      "name": "list",
+      "guard": "protectedProcedure",
+      "kind": "query",
+      "file": "server/routers.ts",
+      "line": 436
+    },
+    {
+      "name": "critical",
+      "guard": "protectedProcedure",
+      "kind": "query",
+      "file": "server/routers.ts",
+      "line": 478
+    },
+    {
+      "name": "engineers",
+      "guard": "protectedProcedure",
+      "kind": "query",
+      "file": "server/routers.ts",
+      "line": 485
+    },
+    {
+      "name": "criticalEnhanced",
+      "guard": "protectedProcedure",
+      "kind": "query",
+      "file": "server/routers.ts",
+      "line": 527
+    },
+    {
+      "name": "pendingReviews",
+      "guard": "protectedProcedure",
+      "kind": "query",
+      "file": "server/routers.ts",
+      "line": 564
+    },
+    {
+      "name": "reviewStats",
+      "guard": "protectedProcedure",
+      "kind": "query",
+      "file": "server/routers.ts",
+      "line": 565
+    },
+    {
+      "name": "lostDealsAnalysis",
+      "guard": "protectedProcedure",
+      "kind": "query",
+      "file": "server/routers.ts",
+      "line": 819
+    },
+    {
+      "name": "lostReasonLabels",
+      "guard": "protectedProcedure",
+      "kind": "query",
+      "file": "server/routers.ts",
+      "line": 820
+    },
+    {
+      "name": "salesEngineers",
+      "guard": "protectedProcedure",
+      "kind": "query",
+      "file": "server/routers.ts",
+      "line": 837
+    },
+    {
+      "name": "config",
+      "guard": "protectedProcedure",
+      "kind": "query",
+      "file": "server/routers.ts",
+      "line": 911
+    },
+    {
+      "name": "discountTiers",
+      "guard": "protectedProcedure",
+      "kind": "query",
+      "file": "server/routers.ts",
+      "line": 1132
+    },
+    {
+      "name": "commissionTiers",
+      "guard": "protectedProcedure",
+      "kind": "query",
+      "file": "server/routers.ts",
+      "line": 1140
+    },
+    {
+      "name": "weeklyReport",
+      "guard": "protectedProcedure",
+      "kind": "query",
+      "file": "server/routers.ts",
+      "line": 1155
+    },
+    {
+      "name": "weeklyPerformance",
+      "guard": "protectedProcedure",
+      "kind": "query",
+      "file": "server/routers.ts",
+      "line": 1157
+    },
+    {
+      "name": "standardDistribution",
+      "guard": "protectedProcedure",
+      "kind": "query",
+      "file": "server/routers.ts",
+      "line": 1161
+    },
+    {
+      "name": "taskTypeLabels",
+      "guard": "protectedProcedure",
+      "kind": "query",
+      "file": "server/routers.ts",
+      "line": 1162
+    },
+    {
+      "name": "departmentLabels",
+      "guard": "protectedProcedure",
+      "kind": "query",
+      "file": "server/routers.ts",
+      "line": 1179
+    },
+    {
+      "name": "salesDepartments",
+      "guard": "protectedProcedure",
+      "kind": "query",
+      "file": "server/routers.ts",
+      "line": 1180
+    },
+    {
+      "name": "allowedTaskTypes",
+      "guard": "protectedProcedure",
+      "kind": "query",
+      "file": "server/routers.ts",
+      "line": 1181
+    },
+    {
+      "name": "stats",
+      "guard": "protectedProcedure",
+      "kind": "query",
+      "file": "server/routers.ts",
+      "line": 1255
+    },
+    {
+      "name": "dailyFollowUp",
+      "guard": "protectedProcedure",
+      "kind": "query",
+      "file": "server/routers.ts",
+      "line": 1430
+    },
+    {
+      "name": "engineersCommission",
+      "guard": "protectedProcedure",
+      "kind": "query",
+      "file": "server/routers.ts",
+      "line": 1432
+    },
+    {
+      "name": "alerts",
+      "guard": "protectedProcedure",
+      "kind": "query",
+      "file": "server/routers.ts",
+      "line": 1472
+    },
+    {
+      "name": "categories",
+      "guard": "protectedProcedure",
+      "kind": "query",
+      "file": "server/routers.ts",
+      "line": 1495
+    },
+    {
+      "name": "config",
+      "guard": "protectedProcedure",
+      "kind": "query",
+      "file": "server/routers.ts",
+      "line": 1877
+    },
+    {
+      "name": "weeklyFull",
+      "guard": "protectedProcedure",
+      "kind": "query",
+      "file": "server/routers.ts",
+      "line": 1885
+    },
+    {
+      "name": "overview",
+      "guard": "protectedProcedure",
+      "kind": "query",
+      "file": "server/routers.ts",
+      "line": 1905
+    },
+    {
+      "name": "bonusSummary",
+      "guard": "protectedProcedure",
+      "kind": "query",
+      "file": "server/routers.ts",
+      "line": 1912
+    },
+    {
+      "name": "categories",
+      "guard": "protectedProcedure",
+      "kind": "query",
+      "file": "server/routers.ts",
+      "line": 1923
+    }
+  ],
+  "schema_tables": [
+    {
+      "name": "users",
+      "line": 7
+    },
+    {
+      "name": "engineers",
+      "line": 22
+    },
+    {
+      "name": "dailyTasks",
+      "line": 47
+    },
+    {
+      "name": "leads",
+      "line": 111
+    },
+    {
+      "name": "visits",
+      "line": 134
+    },
+    {
+      "name": "deals",
+      "line": 205
+    },
+    {
+      "name": "monthlyTargets",
+      "line": 256
+    },
+    {
+      "name": "collections",
+      "line": 270
+    },
+    {
+      "name": "engineerTargets",
+      "line": 287
+    },
+    {
+      "name": "discountTiers",
+      "line": 316
+    },
+    {
+      "name": "commissionTiers",
+      "line": 327
+    },
+    {
+      "name": "designReviews",
+      "line": 338
+    },
+    {
+      "name": "incentiveTiers",
+      "line": 352
+    },
+    {
+      "name": "customers",
+      "line": 363
+    },
+    {
+      "name": "products",
+      "line": 375
+    },
+    {
+      "name": "sales",
+      "line": 391
+    },
+    {
+      "name": "payments",
+      "line": 407
+    },
+    {
+      "name": "paymentPromises",
+      "line": 426
+    },
+    {
+      "name": "commissionPayments",
+      "line": 443
+    },
+    {
+      "name": "adminSalesTasks",
+      "line": 458
+    },
+    {
+      "name": "adminSalesMeetings",
+      "line": 481
+    },
+    {
+      "name": "meetingReviews",
+      "line": 497
+    },
+    {
+      "name": "leadFollowupLogs",
+      "line": 528
+    },
+    {
+      "name": "saleItems",
+      "line": 546
+    },
+    {
+      "name": "auditLogs",
+      "line": 557
+    },
+    {
+      "name": "leadDailyStats",
+      "line": 574
+    },
+    {
+      "name": "workLogs",
+      "line": 594
+    },
+    {
+      "name": "playbookItems",
+      "line": 623
+    },
+    {
+      "name": "playbookQuotations",
+      "line": 649
+    },
+    {
+      "name": "meetingSessions",
+      "line": 669
+    },
+    {
+      "name": "sessionActions",
+      "line": 698
+    },
+    {
+      "name": "engineerEvaluations",
+      "line": 724
+    },
+    {
+      "name": "engineerCareerLevels",
+      "line": 773
+    },
+    {
+      "name": "dealTimeline",
+      "line": 795
+    },
+    {
+      "name": "dealDiscountAllocations",
+      "line": 823
+    },
+    {
+      "name": "discountBonusCaps",
+      "line": 846
+    },
+    {
+      "name": "companyGoals",
+      "line": 868
+    },
+    {
+      "name": "engineerPersonalGoals",
+      "line": 895
+    },
+    {
+      "name": "appUsers",
+      "line": 928
+    },
+    {
+      "name": "userPermissions",
+      "line": 957
+    },
+    {
+      "name": "activityLogs",
+      "line": 992
+    },
+    {
+      "name": "rolePermissions",
+      "line": 1025
+    },
+    {
+      "name": "sectionPermissions",
+      "line": 1049
+    },
+    {
+      "name": "dealTasks",
+      "line": 1071
+    },
+    {
+      "name": "projectStages",
+      "line": 1105
+    },
+    {
+      "name": "projects",
+      "line": 1122
+    },
+    {
+      "name": "projectMovements",
+      "line": 1195
+    },
+    {
+      "name": "projectDelayLedger",
+      "line": 1230
+    },
+    {
+      "name": "projectUpdates",
+      "line": 1248
+    },
+    {
+      "name": "projectAuditLogs",
+      "line": 1280
+    },
+    {
+      "name": "projectDelayReasons",
+      "line": 1297
+    }
+  ],
+  "schema_enums": [],
+  "env_vars": {
+    "BUILT_IN_FORGE_API_KEY": [
+      {
+        "file": "server/_core/env.ts",
+        "line": 15
+      }
+    ],
+    "BUILT_IN_FORGE_API_URL": [
+      {
+        "file": "server/_core/env.ts",
+        "line": 14
+      }
+    ],
+    "CORS_ORIGIN": [
+      {
+        "file": "server/_core/index.ts",
+        "line": 73
+      }
+    ],
+    "DATABASE_URL": [
+      {
+        "file": "drizzle.config.ts",
+        "line": 3
+      },
+      {
+        "file": "migrate_visits2.mjs",
+        "line": 5
+      },
+      {
+        "file": "scripts/create-accounts.mjs",
+        "line": 7
+      },
+      {
+        "file": "scripts/migrate-auth.mjs",
+        "line": 5
+      },
+      {
+        "file": "server/db.ts",
+        "line": 60
+      },
+      {
+        "file": "server/db.ts",
+        "line": 63
+      },
+      {
+        "file": "server/db.ts",
+        "line": 64
+      },
+      {
+        "file": "server/_core/env.runtime.test.ts",
+        "line": 7
+      },
+      {
+        "file": "server/_core/env.ts",
+        "line": 10
+      },
+      {
+        "file": "server/_core/index.ts",
+        "line": 37
+      }
+    ],
+    "JWT_SECRET": [
+      {
+        "file": "server/db.ts",
+        "line": 10896
+      }
+    ],
+    "NODE_ENV": [
+      {
+        "file": "vite.config.ts",
+        "line": 82
+      },
+      {
+        "file": "server/db.ts",
+        "line": 60
+      },
+      {
+        "file": "server/db.ts",
+        "line": 10900
+      },
+      {
+        "file": "server/routers.ts",
+        "line": 403
+      },
+      {
+        "file": "server/routers.ts",
+        "line": 2174
+      },
+      {
+        "file": "server/_core/env.ts",
+        "line": 13
+      },
+      {
+        "file": "server/_core/index.ts",
+        "line": 36
+      },
+      {
+        "file": "server/_core/index.ts",
+        "line": 207
+      },
+      {
+        "file": "server/_core/vite.ts",
+        "line": 52
+      }
+    ],
+    "OAUTH_SERVER_URL": [
+      {
+        "file": "server/_core/env.ts",
+        "line": 11
+      }
+    ],
+    "OWNER_OPEN_ID": [
+      {
+        "file": "server/_core/env.ts",
+        "line": 12
+      }
+    ],
+    "PORT": [
+      {
+        "file": "server/_core/index.ts",
+        "line": 213
+      }
+    ],
+    "VITE_APP_ID": [
+      {
+        "file": "server/_core/env.ts",
+        "line": 8
+      }
+    ]
+  },
+  "imports": {
+    "drizzle.config.ts": [
+      "drizzle-kit"
+    ],
+    "migrate_visits2.mjs": [
+      "mysql2/promise",
+      "dotenv"
+    ],
+    "vite.config.ts": [
+      "@builder.io/vite-plugin-jsx-loc",
+      "@tailwindcss/vite",
+      "@vitejs/plugin-react",
+      "node:fs",
+      "node:path",
+      "vite",
+      "vite-plugin-manus-runtime"
+    ],
+    "vitest.config.ts": [
+      "vitest/config",
+      "path"
+    ],
+    "drizzle/relations.ts": [
+      "./schema"
+    ],
+    "drizzle/schema.ts": [
+      "drizzle-orm/mysql-core"
+    ],
+    "scripts/create-accounts.mjs": [
+      "dotenv",
+      "mysql2/promise",
+      "bcryptjs"
+    ],
+    "scripts/migrate-auth.mjs": [
+      "mysql2/promise",
+      "dotenv"
+    ],
+    "server/admin-sales-calendar.test.ts": [
+      "vitest"
+    ],
+    "server/app-users.test.ts": [
+      "vitest",
+      "./db",
+      "./db",
+      "../drizzle/schema",
+      "drizzle-orm"
+    ],
+    "server/auth.logout.test.ts": [
+      "vitest",
+      "./routers",
+      "../shared/const",
+      "./_core/context"
+    ],
+    "server/closing.month.test.ts": [
+      "vitest"
+    ],
+    "server/control-panel.test.ts": [
+      "vitest",
+      "./routers",
+      "./_core/context"
+    ],
+    "server/dateRangePicker.test.ts": [
+      "vitest",
+      "../client/src/components/DateRangePicker",
+      "../shared/dateUtils"
+    ],
+    "server/db.ts": [
+      "drizzle-orm",
+      "drizzle-orm/mysql2",
+      "@shared/authorization",
+      "@shared/money",
+      "../drizzle/schema",
+      "./_core/env",
+      "bcryptjs",
+      "../shared/activityTypes",
+      "./_core/notification",
+      "dotenv/config",
+      "../drizzle/schema",
+      "drizzle-orm",
+      "../drizzle/schema",
+      "jose",
+      "jose"
+    ],
+    "server/dealTasks.test.ts": [
+      "vitest",
+      "./db"
+    ],
+    "server/discount_system.test.ts": [
+      "vitest",
+      "./db"
+    ],
+    "server/financial.module.test.ts": [
+      "vitest"
+    ],
+    "server/kpi.commission.test.ts": [
+      "vitest"
+    ],
+    "server/lead.followup.test.ts": [
+      "vitest"
+    ],
+    "server/lead_daily_stats.test.ts": [
+      "vitest"
+    ],
+    "server/localAuth.ts": [
+      "bcryptjs",
+      "jose",
+      "express",
+      "drizzle-orm",
+      "./db",
+      "../drizzle/schema",
+      "./_core/env",
+      "@shared/const",
+      "./_core/httpCookies"
+    ],
+    "server/lost_deal_analysis.test.ts": [
+      "vitest",
+      "./db"
+    ],
+    "server/management.focus.test.ts": [
+      "vitest"
+    ],
+    "server/money.test.ts": [
+      "vitest",
+      "../shared/money"
+    ],
+    "server/performance-discount.test.ts": [
+      "vitest"
+    ],
+    "server/project-timeline-permissions.test.ts": [
+      "vitest",
+      "./routers"
+    ],
+    "server/project-timeline.test.ts": [
+      "vitest",
+      "./db"
+    ],
+    "server/role-permissions.test.ts": [
+      "vitest",
+      "./db",
+      "./db"
+    ],
+    "server/routers.ts": [
+      "zod",
+      "@shared/const",
+      "./localAuth",
+      "./_core/cookies",
+      "./_core/systemRouter",
+      "./_core/httpCookies",
+      "@trpc/server",
+      "./_core/trpc",
+      "./db",
+      "../shared/activityTypes",
+      "./db",
+      "../drizzle/schema",
+      "drizzle-orm",
+      "./db",
+      "../drizzle/schema",
+      "./db",
+      "../drizzle/schema.js",
+      "drizzle-orm",
+      "./db",
+      "../drizzle/schema",
+      "drizzle-orm",
+      "./db",
+      "../drizzle/schema",
+      "drizzle-orm",
+      "./localAuth",
+      "./localAuth",
+      "./localAuth",
+      "./localAuth",
+      "./localAuth",
+      "./localAuth",
+      "./localAuth",
+      "./localAuth",
+      "./localAuth"
+    ],
+    "server/sales.test.ts": [
+      "vitest",
+      "./routers",
+      "./_core/context"
+    ],
+    "server/scoring.test.ts": [
+      "vitest",
+      "./db"
+    ],
+    "server/soft.delete.test.ts": [
+      "vitest"
+    ],
+    "server/storage.ts": [
+      "./_core/env"
+    ],
+    "server/task-type-department.test.ts": [
+      "vitest",
+      "./db"
+    ],
+    "server/time.calendar.test.ts": [
+      "vitest"
+    ],
+    "server/user-management.test.ts": [
+      "vitest",
+      "bcryptjs"
+    ],
+    "server/visits-kpi.test.ts": [
+      "vitest"
+    ],
+    "client/src/App.tsx": [
+      "@/components/ui/sonner",
+      "@/components/ui/tooltip",
+      "@/pages/NotFound",
+      "wouter",
+      "react",
+      "./components/ErrorBoundary",
+      "./contexts/ThemeContext",
+      "./components/DashboardLayout",
+      "./pages/Home",
+      "./pages/LoginPage",
+      "./pages/Overview",
+      "./pages/TasksModule",
+      "./pages/LeadsModule",
+      "./pages/VisitsModule",
+      "./pages/ClosingModule",
+      "./pages/SalesModule",
+      "./pages/KPIModule",
+      "./pages/CollectionsModule",
+      "./pages/PlanningModule",
+      "./pages/PromotionSystem",
+      "./pages/ReportsModule",
+      "./pages/SalesExecutionSystem",
+      "@/pages/UserManagement",
+      "@/pages/PermissionsPanel",
+      "@/pages/ProjectTimelineModule"
+    ],
+    "client/src/main.tsx": [
+      "@/lib/trpc",
+      "@tanstack/react-query",
+      "@trpc/client",
+      "react-dom/client",
+      "superjson",
+      "./App",
+      "./index.css"
+    ],
+    "client/src/components/AIChatBox.tsx": [
+      "@/components/ui/button",
+      "@/components/ui/textarea",
+      "@/components/ui/scroll-area",
+      "@/lib/utils",
+      "lucide-react",
+      "react",
+      "streamdown"
+    ],
+    "client/src/components/DailyTimeline.tsx": [
+      "react",
+      "@/lib/trpc",
+      "lucide-react",
+      "@/components/ui/badge",
+      "@/components/ui/button",
+      "@/components/ui/dialog",
+      "@/components/ui/input",
+      "@/components/ui/label",
+      "@/components/ui/select",
+      "@/components/ui/textarea",
+      "sonner"
+    ],
+    "client/src/components/DashboardLayout.tsx": [
+      "@/components/ui/avatar",
+      "@/components/ui/sidebar",
+      "@/hooks/useMobile",
+      "@/hooks/useLocalAuth",
+      "@/hooks/useRoleAccess",
+      "lucide-react",
+      "react",
+      "wouter",
+      "@/lib/trpc"
+    ],
+    "client/src/components/DashboardLayoutSkeleton.tsx": [
+      "./ui/skeleton"
+    ],
+    "client/src/components/DateRangePicker.tsx": [
+      "react",
+      "lucide-react",
+      "@/components/ui/button",
+      "@/lib/utils",
+      "@shared/dateUtils"
+    ],
+    "client/src/components/DeleteConfirmDialog.tsx": [
+      "react",
+      "@/components/ui/dialog",
+      "@/components/ui/button",
+      "@/components/ui/label",
+      "@/components/ui/textarea",
+      "@/components/ui/select",
+      "lucide-react"
+    ],
+    "client/src/components/ErrorBoundary.tsx": [
+      "@/lib/utils",
+      "lucide-react",
+      "react"
+    ],
+    "client/src/components/InteractiveCalendar.tsx": [
+      "react",
+      "@dnd-kit/core",
+      "@dnd-kit/utilities",
+      "@/lib/trpc",
+      "@/components/ui/button",
+      "@/components/ui/badge",
+      "@/components/ui/select",
+      "@/components/ui/dialog",
+      "@/components/ui/input",
+      "@/components/ui/textarea",
+      "@/components/ui/label",
+      "sonner",
+      "lucide-react"
+    ],
+    "client/src/components/ManusDialog.tsx": [
+      "react",
+      "@/components/ui/button",
+      "@/components/ui/dialog"
+    ],
+    "client/src/components/Map.tsx": [
+      "react",
+      "@/hooks/usePersistFn",
+      "@/lib/utils"
+    ],
+    "client/src/components/TaskCalendarView.tsx": [
+      "react",
+      "@/lib/trpc",
+      "@/components/ui/badge",
+      "@/components/ui/button",
+      "@/components/ui/select",
+      "@/components/ui/dialog",
+      "lucide-react"
+    ],
+    "client/src/components/TimeFilterBar.tsx": [
+      "react",
+      "lucide-react",
+      "@/components/ui/button",
+      "@/components/ui/popover",
+      "@/components/ui/input",
+      "@/components/ui/label"
+    ],
+    "client/src/contexts/ThemeContext.tsx": [
+      "react"
+    ],
+    "client/src/hooks/useAppAuth.ts": [
+      "@/lib/trpc",
+      "wouter",
+      "react"
+    ],
+    "client/src/hooks/useComposition.ts": [
+      "react",
+      "./usePersistFn"
+    ],
+    "client/src/hooks/useLocalAuth.ts": [
+      "@/lib/trpc",
+      "wouter",
+      "react"
+    ],
+    "client/src/hooks/useMobile.tsx": [
+      "react"
+    ],
+    "client/src/hooks/usePersistFn.ts": [
+      "react"
+    ],
+    "client/src/hooks/useRoleAccess.ts": [
+      "react",
+      "@/lib/trpc",
+      "@shared/authorization"
+    ],
+    "client/src/hooks/useSectionPermission.ts": [
+      "@/lib/trpc",
+      "./useLocalAuth"
+    ],
+    "client/src/lib/trpc.ts": [
+      "@trpc/react-query",
+      "../../../server/routers"
+    ],
+    "client/src/lib/utils.ts": [
+      "clsx",
+      "tailwind-merge"
+    ],
+    "client/src/pages/ClosingModule.tsx": [
+      "react",
+      "@/lib/trpc",
+      "@/hooks/useSectionPermission",
+      "@/components/ui/card",
+      "@/components/ui/badge",
+      "@/components/ui/button",
+      "@/components/ui/select",
+      "@/components/DateRangePicker",
+      "@/components/ui/dialog",
+      "@/components/ui/input",
+      "@/components/ui/label",
+      "@/components/ui/textarea",
+      "sonner",
+      "lucide-react",
+      "@/components/DeleteConfirmDialog",
+      "@/hooks/useLocalAuth"
+    ],
+    "client/src/pages/CollectionsModule.tsx": [
+      "react",
+      "@/lib/trpc",
+      "@/components/ui/card",
+      "@/components/ui/badge",
+      "@/components/ui/button",
+      "@/components/ui/progress",
+      "@/components/ui/select",
+      "@/components/DateRangePicker",
+      "@shared/dateUtils",
+      "@/components/ui/dialog",
+      "@/components/ui/input",
+      "@/components/ui/label",
+      "@/components/ui/tabs",
+      "sonner",
+      "lucide-react",
+      "recharts"
+    ],
+    "client/src/pages/ComponentShowcase.tsx": [
+      "@/components/ui/accordion",
+      "@/components/ui/alert",
+      "@/components/ui/aspect-ratio",
+      "@/components/ui/avatar",
+      "@/components/ui/badge",
+      "@/components/ui/breadcrumb",
+      "@/components/ui/button",
+      "@/components/ui/calendar",
+      "@/components/ui/card",
+      "@/components/ui/carousel",
+      "@/components/ui/checkbox",
+      "@/components/ui/collapsible",
+      "@/components/ui/command",
+      "@/components/ui/context-menu",
+      "@/components/ui/dialog",
+      "@/components/ui/drawer",
+      "@/components/ui/dropdown-menu",
+      "@/components/ui/hover-card",
+      "@/components/ui/input",
+      "@/components/ui/input-otp",
+      "@/components/ui/label",
+      "@/components/ui/menubar",
+      "@/components/ui/pagination",
+      "@/components/ui/popover",
+      "@/components/ui/progress",
+      "@/components/ui/radio-group",
+      "@/components/ui/resizable",
+      "@/components/ui/scroll-area",
+      "@/components/ui/select",
+      "@/components/ui/separator",
+      "@/components/ui/sheet",
+      "@/components/ui/skeleton",
+      "@/components/ui/slider",
+      "@/components/ui/switch",
+      "@/components/ui/table",
+      "@/components/ui/tabs",
+      "@/components/ui/textarea",
+      "@/components/ui/toggle",
+      "@/components/ui/toggle-group",
+      "@/components/ui/tooltip",
+      "@/contexts/ThemeContext",
+      "date-fns",
+      "date-fns/locale",
+      "lucide-react",
+      "react",
+      "sonner",
+      "@/components/AIChatBox"
+    ],
+    "client/src/pages/Home.tsx": [
+      "react",
+      "wouter"
+    ],
+    "client/src/pages/KPIModule.tsx": [
+      "react",
+      "@/lib/trpc",
+      "@/hooks/useSectionPermission",
+      "@/components/ui/card",
+      "@/components/ui/badge",
+      "@/components/ui/select",
+      "@/components/DateRangePicker",
+      "recharts",
+      "@/components/ui/progress",
+      "lucide-react"
+    ],
+    "client/src/pages/LeadsModule.tsx": [
+      "react",
+      "@/lib/trpc",
+      "@/components/ui/card",
+      "@/components/ui/button",
+      "@/components/ui/input",
+      "@/components/ui/label",
+      "@/components/ui/textarea",
+      "@/components/ui/badge",
+      "@/components/DateRangePicker",
+      "lucide-react",
+      "@/_core/hooks/useAuth",
+      "sonner"
+    ],
+    "client/src/pages/LoginPage.tsx": [
+      "react",
+      "@/lib/trpc",
+      "wouter",
+      "@/components/ui/card",
+      "@/components/ui/button",
+      "@/components/ui/input",
+      "@/components/ui/label",
+      "lucide-react",
+      "sonner"
+    ],
+    "client/src/pages/NotFound.tsx": [
+      "@/components/ui/button",
+      "@/components/ui/card",
+      "lucide-react",
+      "wouter"
+    ],
+    "client/src/pages/Overview.tsx": [
+      "react",
+      "@/lib/trpc",
+      "@/components/ui/card",
+      "@/components/ui/badge",
+      "@/components/ui/button",
+      "@/components/ui/progress",
+      "recharts",
+      "lucide-react",
+      "sonner"
+    ],
+    "client/src/pages/PermissionsPanel.tsx": [
+      "react",
+      "@/lib/trpc",
+      "@/components/ui/badge",
+      "@/components/ui/button",
+      "@/components/ui/switch",
+      "@/components/ui/select",
+      "@/components/ui/tabs",
+      "@/components/ui/card",
+      "sonner",
+      "@/hooks/useLocalAuth",
+      "lucide-react"
+    ],
+    "client/src/pages/PlanningModule.tsx": [
+      "react",
+      "@/lib/trpc",
+      "@/hooks/useSectionPermission",
+      "@/components/ui/card",
+      "@/components/ui/badge",
+      "@/components/ui/button",
+      "@/components/ui/progress",
+      "@/components/ui/input",
+      "@/components/ui/label",
+      "@/components/ui/textarea",
+      "sonner",
+      "lucide-react",
+      "recharts"
+    ],
+    "client/src/pages/ProjectTimelineModule.tsx": [
+      "react",
+      "@/lib/trpc",
+      "xlsx",
+      "@/hooks/useLocalAuth",
+      "@/components/ui/button",
+      "@/components/ui/card",
+      "@/components/ui/badge",
+      "@/components/ui/input",
+      "@/components/ui/label",
+      "@/components/ui/textarea",
+      "@/components/ui/select",
+      "@/components/ui/dialog",
+      "@/components/ui/tabs",
+      "lucide-react",
+      "sonner"
+    ],
+    "client/src/pages/PromotionSystem.tsx": [
+      "react",
+      "@/lib/trpc",
+      "@/components/ui/card",
+      "@/components/ui/badge",
+      "@/components/ui/button",
+      "@/components/ui/progress",
+      "@/components/ui/dialog",
+      "@/components/ui/select",
+      "@/components/ui/tabs",
+      "@/components/ui/textarea",
+      "@/components/ui/input",
+      "@/components/ui/label",
+      "sonner",
+      "lucide-react"
+    ],
+    "client/src/pages/ReportsModule.tsx": [
+      "@/lib/trpc",
+      "@/components/ui/card",
+      "@/components/ui/badge",
+      "@/components/ui/button",
+      "@/components/ui/tabs",
+      "@/components/ui/select",
+      "@/components/DateRangePicker",
+      "@/components/ui/progress",
+      "recharts",
+      "react",
+      "lucide-react",
+      "html2canvas",
+      "jspdf"
+    ],
+    "client/src/pages/SalesExecutionSystem.tsx": [
+      "react",
+      "@/lib/trpc",
+      "@/components/ui/tabs",
+      "@/components/ui/card",
+      "@/components/ui/badge",
+      "@/components/ui/button",
+      "@/components/ui/input",
+      "@/components/ui/textarea",
+      "@/components/ui/select",
+      "@/components/ui/progress",
+      "@/components/ui/dialog",
+      "@/components/ui/label",
+      "lucide-react",
+      "sonner",
+      "recharts"
+    ],
+    "client/src/pages/SalesModule.tsx": [
+      "react",
+      "@/lib/trpc",
+      "@/components/ui/card",
+      "@/components/ui/badge",
+      "@/components/ui/button",
+      "@/components/ui/progress",
+      "@/components/ui/input",
+      "@/components/ui/label",
+      "@/components/ui/select",
+      "@/components/ui/dialog",
+      "@/components/ui/tabs",
+      "sonner",
+      "recharts",
+      "lucide-react"
+    ],
+    "client/src/pages/TasksModule.tsx": [
+      "react",
+      "@/lib/trpc",
+      "@/components/ui/card",
+      "@/components/ui/badge",
+      "@/components/ui/button",
+      "@/components/ui/input",
+      "@/components/ui/label",
+      "@/components/ui/select",
+      "@/components/ui/dialog",
+      "@/components/ui/textarea",
+      "sonner",
+      "@/components/DeleteConfirmDialog",
+      "lucide-react",
+      "@/components/InteractiveCalendar",
+      "@/components/TimeFilterBar",
+      "@/components/DailyTimeline",
+      "lucide-react"
+    ],
+    "client/src/pages/UserManagement.tsx": [
+      "react",
+      "@/lib/trpc",
+      "@/hooks/useLocalAuth",
+      "@/components/ui/card",
+      "@/components/ui/button",
+      "@/components/ui/input",
+      "@/components/ui/label",
+      "@/components/ui/badge",
+      "@/components/ui/select",
+      "@/components/ui/dialog",
+      "@/components/ui/switch",
+      "@/components/ui/tabs",
+      "@/components/ui/alert",
+      "sonner",
+      "lucide-react"
+    ],
+    "client/src/pages/VisitsModule.tsx": [
+      "react",
+      "@/lib/trpc",
+      "@/components/ui/card",
+      "@/components/ui/badge",
+      "@/components/ui/button",
+      "@/components/ui/select",
+      "@/components/DateRangePicker",
+      "@/components/ui/dialog",
+      "@/components/ui/input",
+      "@/components/ui/label",
+      "@/components/ui/tabs",
+      "@/components/ui/textarea",
+      "sonner",
+      "lucide-react",
+      "@/components/DeleteConfirmDialog",
+      "recharts"
+    ],
+    "client/src/pages/WeeklyReport.tsx": [
+      "react",
+      "@/lib/trpc",
+      "@/components/ui/card",
+      "@/components/ui/badge",
+      "@/components/ui/progress",
+      "recharts",
+      "lucide-react"
+    ],
+    "client/src/pages/WorkDistribution.tsx": [
+      "react",
+      "@/lib/trpc",
+      "@/_core/hooks/useAuth",
+      "@/components/DashboardLayout",
+      "@/components/ui/card",
+      "@/components/ui/badge",
+      "@/components/ui/button",
+      "@/components/ui/select",
+      "@/components/ui/dialog",
+      "@/components/ui/textarea",
+      "@/components/ui/label",
+      "@/components/ui/input",
+      "sonner",
+      "lucide-react"
+    ],
+    "client/src/_core/hooks/useAuth.ts": [
+      "@/const",
+      "@/lib/trpc",
+      "@trpc/client",
+      "react"
+    ],
+    "client/src/components/ui/accordion.tsx": [
+      "react",
+      "@radix-ui/react-accordion",
+      "lucide-react",
+      "@/lib/utils"
+    ],
+    "client/src/components/ui/alert-dialog.tsx": [
+      "react",
+      "@radix-ui/react-alert-dialog",
+      "@/lib/utils",
+      "@/components/ui/button"
+    ],
+    "client/src/components/ui/alert.tsx": [
+      "react",
+      "class-variance-authority",
+      "@/lib/utils"
+    ],
+    "client/src/components/ui/aspect-ratio.tsx": [
+      "@radix-ui/react-aspect-ratio"
+    ],
+    "client/src/components/ui/avatar.tsx": [
+      "react",
+      "@radix-ui/react-avatar",
+      "@/lib/utils"
+    ],
+    "client/src/components/ui/badge.tsx": [
+      "react",
+      "@radix-ui/react-slot",
+      "class-variance-authority",
+      "@/lib/utils"
+    ],
+    "client/src/components/ui/breadcrumb.tsx": [
+      "react",
+      "@radix-ui/react-slot",
+      "lucide-react",
+      "@/lib/utils"
+    ],
+    "client/src/components/ui/button-group.tsx": [
+      "@radix-ui/react-slot",
+      "class-variance-authority",
+      "@/lib/utils",
+      "@/components/ui/separator"
+    ],
+    "client/src/components/ui/button.tsx": [
+      "react",
+      "@radix-ui/react-slot",
+      "class-variance-authority",
+      "@/lib/utils"
+    ],
+    "client/src/components/ui/calendar.tsx": [
+      "react",
+      "lucide-react",
+      "react-day-picker",
+      "@/lib/utils",
+      "@/components/ui/button"
+    ],
+    "client/src/components/ui/card.tsx": [
+      "react",
+      "@/lib/utils"
+    ],
+    "client/src/components/ui/carousel.tsx": [
+      "react",
+      "embla-carousel-react",
+      "lucide-react",
+      "@/lib/utils",
+      "@/components/ui/button"
+    ],
+    "client/src/components/ui/chart.tsx": [
+      "react",
+      "recharts",
+      "@/lib/utils"
+    ],
+    "client/src/components/ui/checkbox.tsx": [
+      "react",
+      "@radix-ui/react-checkbox",
+      "lucide-react",
+      "@/lib/utils"
+    ],
+    "client/src/components/ui/collapsible.tsx": [
+      "@radix-ui/react-collapsible"
+    ],
+    "client/src/components/ui/command.tsx": [
+      "react",
+      "cmdk",
+      "lucide-react",
+      "@/lib/utils",
+      "@/components/ui/dialog"
+    ],
+    "client/src/components/ui/context-menu.tsx": [
+      "react",
+      "@radix-ui/react-context-menu",
+      "lucide-react",
+      "@/lib/utils"
+    ],
+    "client/src/components/ui/dialog.tsx": [
+      "@/lib/utils",
+      "@radix-ui/react-dialog",
+      "lucide-react",
+      "react"
+    ],
+    "client/src/components/ui/drawer.tsx": [
+      "react",
+      "vaul",
+      "@/lib/utils"
+    ],
+    "client/src/components/ui/dropdown-menu.tsx": [
+      "react",
+      "@radix-ui/react-dropdown-menu",
+      "lucide-react",
+      "@/lib/utils"
+    ],
+    "client/src/components/ui/empty.tsx": [
+      "class-variance-authority",
+      "@/lib/utils"
+    ],
+    "client/src/components/ui/field.tsx": [
+      "react",
+      "class-variance-authority",
+      "@/lib/utils",
+      "@/components/ui/label",
+      "@/components/ui/separator"
+    ],
+    "client/src/components/ui/form.tsx": [
+      "react",
+      "@radix-ui/react-label",
+      "@radix-ui/react-slot",
+      "react-hook-form",
+      "@/lib/utils",
+      "@/components/ui/label"
+    ],
+    "client/src/components/ui/hover-card.tsx": [
+      "react",
+      "@radix-ui/react-hover-card",
+      "@/lib/utils"
+    ],
+    "client/src/components/ui/input-group.tsx": [
+      "react",
+      "class-variance-authority",
+      "@/lib/utils",
+      "@/components/ui/button",
+      "@/components/ui/input",
+      "@/components/ui/textarea"
+    ],
+    "client/src/components/ui/input-otp.tsx": [
+      "react",
+      "input-otp",
+      "lucide-react",
+      "@/lib/utils"
+    ],
+    "client/src/components/ui/input.tsx": [
+      "@/components/ui/dialog",
+      "@/hooks/useComposition",
+      "@/lib/utils",
+      "react"
+    ],
+    "client/src/components/ui/item.tsx": [
+      "react",
+      "@radix-ui/react-slot",
+      "class-variance-authority",
+      "@/lib/utils",
+      "@/components/ui/separator"
+    ],
+    "client/src/components/ui/kbd.tsx": [
+      "@/lib/utils"
+    ],
+    "client/src/components/ui/label.tsx": [
+      "react",
+      "@radix-ui/react-label",
+      "@/lib/utils"
+    ],
+    "client/src/components/ui/menubar.tsx": [
+      "react",
+      "@radix-ui/react-menubar",
+      "lucide-react",
+      "@/lib/utils"
+    ],
+    "client/src/components/ui/navigation-menu.tsx": [
+      "react",
+      "@radix-ui/react-navigation-menu",
+      "class-variance-authority",
+      "lucide-react",
+      "@/lib/utils"
+    ],
+    "client/src/components/ui/pagination.tsx": [
+      "react",
+      "lucide-react",
+      "@/lib/utils",
+      "@/components/ui/button"
+    ],
+    "client/src/components/ui/popover.tsx": [
+      "react",
+      "@radix-ui/react-popover",
+      "@/lib/utils"
+    ],
+    "client/src/components/ui/progress.tsx": [
+      "react",
+      "@radix-ui/react-progress",
+      "@/lib/utils"
+    ],
+    "client/src/components/ui/radio-group.tsx": [
+      "react",
+      "@radix-ui/react-radio-group",
+      "lucide-react",
+      "@/lib/utils"
+    ],
+    "client/src/components/ui/resizable.tsx": [
+      "react",
+      "lucide-react",
+      "react-resizable-panels",
+      "@/lib/utils"
+    ],
+    "client/src/components/ui/scroll-area.tsx": [
+      "react",
+      "@radix-ui/react-scroll-area",
+      "@/lib/utils"
+    ],
+    "client/src/components/ui/select.tsx": [
+      "react",
+      "@radix-ui/react-select",
+      "lucide-react",
+      "@/lib/utils"
+    ],
+    "client/src/components/ui/separator.tsx": [
+      "react",
+      "@radix-ui/react-separator",
+      "@/lib/utils"
+    ],
+    "client/src/components/ui/sheet.tsx": [
+      "react",
+      "@radix-ui/react-dialog",
+      "lucide-react",
+      "@/lib/utils"
+    ],
+    "client/src/components/ui/sidebar.tsx": [
+      "@/components/ui/button",
+      "@/components/ui/input",
+      "@/components/ui/separator",
+      "@/components/ui/sheet",
+      "@/components/ui/skeleton",
+      "@/components/ui/tooltip",
+      "@/hooks/useMobile",
+      "@/lib/utils",
+      "@radix-ui/react-slot",
+      "class-variance-authority",
+      "lucide-react",
+      "react"
+    ],
+    "client/src/components/ui/skeleton.tsx": [
+      "@/lib/utils"
+    ],
+    "client/src/components/ui/slider.tsx": [
+      "react",
+      "@radix-ui/react-slider",
+      "@/lib/utils"
+    ],
+    "client/src/components/ui/sonner.tsx": [
+      "next-themes",
+      "sonner"
+    ],
+    "client/src/components/ui/spinner.tsx": [
+      "lucide-react",
+      "@/lib/utils"
+    ],
+    "client/src/components/ui/switch.tsx": [
+      "react",
+      "@radix-ui/react-switch",
+      "@/lib/utils"
+    ],
+    "client/src/components/ui/table.tsx": [
+      "react",
+      "@/lib/utils"
+    ],
+    "client/src/components/ui/tabs.tsx": [
+      "react",
+      "@radix-ui/react-tabs",
+      "@/lib/utils"
+    ],
+    "client/src/components/ui/textarea.tsx": [
+      "@/components/ui/dialog",
+      "@/hooks/useComposition",
+      "@/lib/utils",
+      "react"
+    ],
+    "client/src/components/ui/toggle-group.tsx": [
+      "react",
+      "@radix-ui/react-toggle-group",
+      "class-variance-authority",
+      "@/lib/utils",
+      "@/components/ui/toggle"
+    ],
+    "client/src/components/ui/toggle.tsx": [
+      "react",
+      "@radix-ui/react-toggle",
+      "class-variance-authority",
+      "@/lib/utils"
+    ],
+    "client/src/components/ui/tooltip.tsx": [
+      "react",
+      "@radix-ui/react-tooltip",
+      "@/lib/utils"
+    ],
+    "server/_core/context.ts": [
+      "@trpc/server/adapters/express",
+      "../../drizzle/schema",
+      "../db",
+      "../localAuth",
+      "./httpCookies",
+      "./sdk"
+    ],
+    "server/_core/cookies.ts": [
+      "express"
+    ],
+    "server/_core/dataApi.ts": [
+      "./env"
+    ],
+    "server/_core/env.runtime.test.ts": [
+      "vitest",
+      "./env"
+    ],
+    "server/_core/env.test.ts": [
+      "vitest",
+      "./env"
+    ],
+    "server/_core/httpCookies.ts": [
+      "express",
+      "cookie"
+    ],
+    "server/_core/imageGeneration.ts": [
+      "server/storage",
+      "./env"
+    ],
+    "server/_core/index.ts": [
+      "express",
+      "http",
+      "net",
+      "@trpc/server/adapters/express",
+      "./oauth",
+      "../routers",
+      "../routers",
+      "./context",
+      "./vite",
+      "./env",
+      "../db",
+      "../../drizzle/schema",
+      "drizzle-orm",
+      "dotenv/config"
+    ],
+    "server/_core/llm.ts": [
+      "./env"
+    ],
+    "server/_core/map.ts": [
+      "./env"
+    ],
+    "server/_core/notification.ts": [
+      "@trpc/server",
+      "./env"
+    ],
+    "server/_core/oauth.ts": [
+      "@shared/const",
+      "express",
+      "../db",
+      "./cookies",
+      "./httpCookies",
+      "./sdk"
+    ],
+    "server/_core/sdk.ts": [
+      "@shared/const",
+      "@shared/_core/errors",
+      "axios",
+      "cookie",
+      "express",
+      "jose",
+      "../../drizzle/schema",
+      "../db",
+      "./env",
+      "./types/manusTypes"
+    ],
+    "server/_core/systemRouter.ts": [
+      "zod",
+      "./notification",
+      "./trpc"
+    ],
+    "server/_core/trpc.ts": [
+      "@shared/const",
+      "@trpc/server",
+      "superjson",
+      "./context"
+    ],
+    "server/_core/vite.ts": [
+      "express",
+      "fs",
+      "http",
+      "nanoid",
+      "path",
+      "vite",
+      "../../vite.config"
+    ],
+    "server/_core/voiceTranscription.ts": [
+      "./env",
+      "./_core/voiceTranscription"
+    ]
+  },
+  "exports": {
+    "drizzle/schema.ts": [
+      "users",
+      "User",
+      "InsertUser",
+      "engineers",
+      "Engineer",
+      "dailyTasks",
+      "DailyTask",
+      "leads",
+      "Lead",
+      "visits",
+      "Visit",
+      "deals",
+      "Deal",
+      "monthlyTargets",
+      "MonthlyTarget",
+      "collections",
+      "Collection",
+      "engineerTargets",
+      "EngineerTarget",
+      "discountTiers",
+      "DiscountTier",
+      "commissionTiers",
+      "CommissionTier",
+      "designReviews",
+      "DesignReview",
+      "incentiveTiers",
+      "IncentiveTier",
+      "customers",
+      "products",
+      "sales",
+      "payments",
+      "Payment",
+      "InsertPayment",
+      "paymentPromises",
+      "PaymentPromise",
+      "InsertPaymentPromise",
+      "commissionPayments",
+      "CommissionPayment",
+      "adminSalesTasks",
+      "AdminSalesTask",
+      "InsertAdminSalesTask",
+      "adminSalesMeetings",
+      "AdminSalesMeeting",
+      "InsertAdminSalesMeeting",
+      "meetingReviews",
+      "MeetingReview",
+      "InsertMeetingReview",
+      "leadFollowupLogs",
+      "LeadFollowupLog",
+      "InsertLeadFollowupLog",
+      "saleItems",
+      "auditLogs",
+      "AuditLog",
+      "InsertAuditLog",
+      "leadDailyStats",
+      "LeadDailyStat",
+      "InsertLeadDailyStat",
+      "workLogs",
+      "WorkLog",
+      "InsertWorkLog",
+      "playbookItems",
+      "PlaybookItem",
+      "InsertPlaybookItem",
+      "playbookQuotations",
+      "PlaybookQuotation",
+      "InsertPlaybookQuotation",
+      "meetingSessions",
+      "MeetingSession",
+      "InsertMeetingSession",
+      "sessionActions",
+      "SessionAction",
+      "InsertSessionAction",
+      "engineerEvaluations",
+      "EngineerEvaluation",
+      "InsertEngineerEvaluation",
+      "engineerCareerLevels",
+      "EngineerCareerLevel",
+      "InsertEngineerCareerLevel",
+      "dealTimeline",
+      "DealTimeline",
+      "InsertDealTimeline",
+      "dealDiscountAllocations",
+      "DealDiscountAllocation",
+      "InsertDealDiscountAllocation",
+      "discountBonusCaps",
+      "DiscountBonusCap",
+      "InsertDiscountBonusCap",
+      "companyGoals",
+      "CompanyGoal",
+      "InsertCompanyGoal",
+      "engineerPersonalGoals",
+      "EngineerPersonalGoal",
+      "InsertEngineerPersonalGoal",
+      "appUsers",
+      "AppUser",
+      "InsertAppUser",
+      "userPermissions",
+      "UserPermission",
+      "InsertUserPermission",
+      "activityLogs",
+      "ActivityLog",
+      "InsertActivityLog",
+      "rolePermissions",
+      "RolePermission",
+      "InsertRolePermission",
+      "sectionPermissions",
+      "SectionPermission",
+      "InsertSectionPermission",
+      "dealTasks",
+      "DealTask",
+      "InsertDealTask",
+      "projectStages",
+      "ProjectStage",
+      "InsertProjectStage",
+      "projects",
+      "Project",
+      "InsertProject",
+      "projectMovements",
+      "ProjectMovement",
+      "InsertProjectMovement",
+      "projectDelayLedger",
+      "ProjectDelayLedgerEntry",
+      "InsertProjectDelayLedgerEntry",
+      "projectUpdates",
+      "ProjectUpdate",
+      "InsertProjectUpdate",
+      "projectAuditLogs",
+      "ProjectAuditLog",
+      "InsertProjectAuditLog",
+      "projectDelayReasons",
+      "ProjectDelayReason",
+      "InsertProjectDelayReason"
+    ],
+    "server/db.ts": [
+      "getDb",
+      "upsertUser",
+      "getUserByOpenId",
+      "getEngineers",
+      "getEngineerById",
+      "updateEngineerProfile",
+      "createEngineer",
+      "calcTaskScore",
+      "getDailyTasksStats",
+      "getTasksList",
+      "getCriticalTasks",
+      "createTask",
+      "updateTaskStatus",
+      "deleteTask",
+      "rescheduleTask",
+      "getEngineersWithRole",
+      "createEngineerWithRole",
+      "deleteEngineer",
+      "getLeadsStats",
+      "getLeadsList",
+      "createLead",
+      "updateLeadStatus",
+      "getVisitsStats",
+      "getVisitsList",
+      "createVisit",
+      "updateVisitStatus",
+      "updateVisitFull",
+      "getDealsStats",
+      "getDealsList",
+      "createDeal",
+      "updateDealStage",
+      "getMonthlySalesStats",
+      "getMonthlySalesTrend",
+      "getEngineersKPI",
+      "getCollectionsStats",
+      "getCollectionsList",
+      "createCollection",
+      "updateCollection",
+      "getMonthlyTarget",
+      "upsertMonthlyTarget",
+      "isSeeded",
+      "getCustomers",
+      "getProducts",
+      "getProductCategories",
+      "createCustomer",
+      "updateCustomer",
+      "deleteCustomer",
+      "createProduct",
+      "updateProduct",
+      "deleteProduct",
+      "getSales",
+      "createSale",
+      "updateSaleStatus",
+      "deleteSale",
+      "getCustomerById",
+      "getProductById",
+      "getSaleById",
+      "getDashboardStats",
+      "getMonthlySalesTrendLegacy",
+      "getSalesByStatus",
+      "calcCommission",
+      "getDiscountTier",
+      "getEngineersSalesPerformance",
+      "getSalesControlStats",
+      "getDiscountTiers",
+      "upsertDiscountTier",
+      "deleteDiscountTier",
+      "getCommissionTiers",
+      "upsertCommissionTier",
+      "deleteCommissionTier",
+      "upsertEngineerTarget",
+      "upsertEngineerOperationalTargets",
+      "calcProgressiveCommission",
+      "calcProgressiveCommissionDetails",
+      "getClientFinancialProfile",
+      "getAllCollectionsWithSummary",
+      "addPayment",
+      "addPaymentPromise",
+      "updatePromiseStatus",
+      "getDailyFollowUpList",
+      "getEngineersCollectionCommission",
+      "markCommissionPaid",
+      "addCollection",
+      "updateCollectionStatus",
+      "ADMIN_TASK_CATEGORY_LABELS",
+      "ADMIN_TASK_CATEGORY_OBJECTIVES",
+      "DAILY_TASK_TEMPLATES",
+      "WEEKLY_TASK_TEMPLATES",
+      "MONTHLY_TASK_TEMPLATES",
+      "generateAdminSalesDailyTasks",
+      "generateAdminSalesWeeklyTasks",
+      "generateAdminSalesMonthlyTasks",
+      "getAdminSalesTasks",
+      "createAdminSalesTask",
+      "updateAdminSalesTaskFull",
+      "updateAdminSalesTaskStatus",
+      "getOrCreateWeekMeeting",
+      "updateWeekMeeting",
+      "getAdminSalesStats",
+      "getManagementFocus",
+      "submitMeetingRecordingLink",
+      "upsertMeetingReview",
+      "getMeetingReview",
+      "getEngineerClosingQualityScore",
+      "logLeadFollowup",
+      "getLeadFollowupLogs",
+      "getAdminSalesFollowupKPI",
+      "getTelesalesFollowupKPI",
+      "getAllTelesalesFollowupStats",
+      "softDeleteVisit",
+      "getVisitsDebt",
+      "getVisitsAlerts",
+      "getVisitActiveStage",
+      "getVisitsNeedingAction",
+      "getVisitsDailyTracking",
+      "updateVisitWithAdminTracking",
+      "getAdminSalesVisitsKPI",
+      "getEngineerVisitsKPI",
+      "logAuditAction",
+      "getAuditLogs",
+      "softDeleteEngineer",
+      "softDeleteTask",
+      "softDeleteLead",
+      "softDeleteVisitFull",
+      "softDeleteDeal",
+      "upsertLeadDailyStats",
+      "getLeadDailyStatsList",
+      "getLeadSummaryStats",
+      "getDiscountTierInfo",
+      "getDiscountSummary",
+      "validateDealDiscount",
+      "createDealWithDiscount",
+      "updateDealFull",
+      "getEngineerDiscountSummary",
+      "LOST_REASON_LABELS",
+      "getLostDealsAnalysis",
+      "getTasksCalendarView",
+      "getEngineersTrend",
+      "getWeeklyReport",
+      "WORK_DISTRIBUTION_TARGETS",
+      "ACTIVITY_LABELS",
+      "getActivityCategory",
+      "logWorkActivity",
+      "getWorkDistribution",
+      "calculateDistributionScore",
+      "getDistributionFeedback",
+      "getAllEngineersDistribution",
+      "getWeeklyDistribution",
+      "getCriticalInsights",
+      "getEngineerRankingFull",
+      "TASK_TYPE_LABELS",
+      "TASK_TYPE_CATEGORY",
+      "doTimesOverlap",
+      "getTasksFiltered",
+      "getTasksTimeSummary",
+      "checkTimeOverlap",
+      "getCriticalTasksEnhanced",
+      "getTasksForTimeline",
+      "STANDARD_DISTRIBUTION",
+      "getDistributionCategory",
+      "TASK_TYPE_LABELS_V2",
+      "calcDistributionScore",
+      "generateCriticalInsights",
+      "generateSmartSummary",
+      "getEngineerPerformanceReport",
+      "getWeeklyPerformanceAnalysis",
+      "getPerformanceBasedDiscountPct",
+      "calcSavedDiscountBonus",
+      "getEngineerPipelineStats",
+      "getPipelineOverview",
+      "updateDiscountApproval",
+      "computeAndSaveDealBonus",
+      "getEngineerBonusSummary",
+      "IDEAL_DISTRIBUTION",
+      "classifyTaskType",
+      "calcDistributionScoreFromHours",
+      "generateBehaviorAlerts",
+      "generateCriticalInsightsV2",
+      "getOutputBasedKPI",
+      "getWeeklyPerformanceFull",
+      "getPlaybookItems",
+      "getPlaybookItemById",
+      "createPlaybookItem",
+      "updatePlaybookItem",
+      "deletePlaybookItem",
+      "importPlaybookItems",
+      "getPlaybookCategories",
+      "createPlaybookQuotation",
+      "getPlaybookQuotations",
+      "updatePlaybookRecordingLink",
+      "updatePlaybookQuotationStatus",
+      "getFunnelAnalysis",
+      "getMeetingReviewsList",
+      "getWeeklyCoachingSummary",
+      "createMeetingSession",
+      "endMeetingSession",
+      "logSessionAction",
+      "getSessionDetails",
+      "getEngineerMeetingStats",
+      "getAllMeetingSessionsAdmin",
+      "updateSessionRecordingLink",
+      "getEngineerWeeklyCoaching",
+      "getFullFunnelAnalysis",
+      "getEngineersFunnelComparison",
+      "getEngineerFunnelPlaybookInsights",
+      "isMeetingTaskType",
+      "validateMeetingTaskCompletion",
+      "getMeetingTasksMissingRecording",
+      "autoCreateReviewTask",
+      "getPendingMeetingReviews",
+      "getMeetingReviewAdminStats",
+      "createOrUpdateMeetingReview",
+      "getMeetingReviewByTask",
+      "getEngineerMeetingReviewSummary",
+      "getMeetingTasksPendingReview",
+      "createOrUpdateMonthlyEvaluation",
+      "getEngineerEvaluationHistory",
+      "getAllEngineersEvaluationDashboard",
+      "promoteEngineer",
+      "getOrCreateEngineerCareerLevel",
+      "getManagementDecisionDashboard",
+      "getEngineerPromotionProgress",
+      "getOperationalPerformance",
+      "getEnhancedRanking",
+      "SALES_ENGINEER_ROLES",
+      "NON_SALES_ROLES",
+      "SALES_DEPARTMENTS",
+      "NON_SALES_DEPARTMENTS",
+      "DEPARTMENT_LABELS",
+      "ALLOWED_TASK_TYPES_BY_DEPARTMENT",
+      "filterByRole",
+      "filterByDepartment",
+      "isSalesDepartment",
+      "getTeleSalesKPI",
+      "getSiteEngineersKPI",
+      "getAdminSalesKPI",
+      "getAdminSalesCategoryAnalysis",
+      "getSalesEngineersOnly",
+      "DEAL_OWNER_ROLES",
+      "getSalesEngineers",
+      "addDealTimelineEntry",
+      "getDealTimeline",
+      "autoCreateOrUpdateDealFromTask",
+      "updateDealEngineer",
+      "getAdvancedDiscountSummary",
+      "validateAdvancedDealDiscount",
+      "calcDealSavingBonus",
+      "calcScoreBasedDiscountDistribution",
+      "getCompanyClosingKPI",
+      "getTeamRewardStatus",
+      "getLostDealsImpact",
+      "autoCreateContractFromDeal",
+      "addPaymentWithFollowUp",
+      "getCollectionBasedCommission",
+      "getCollectionDashboard",
+      "getCollectionAlerts",
+      "getCollectionsWithCommission",
+      "getAdvancedDiscountDistribution",
+      "distributeDiscountToDeals",
+      "getDiscountSummaryForEngineer",
+      "calculateDiscountBonus",
+      "getDiscountBonusSummary",
+      "getDiscountDashboard",
+      "setDiscountBonusCap",
+      "getEngineerOperationalTargets",
+      "getTeamPerformanceRanking",
+      "calcClosingRateIncentive",
+      "calcKPIShare",
+      "calcSalesIncentive",
+      "getEngineerEarningsBreakdown",
+      "getAllEngineersEarningsBreakdown",
+      "calcCompanyClosingBonus",
+      "calcEngineerBonusEligibility",
+      "getCompanyClosingBonusForAllEngineers",
+      "getCompanyGoal",
+      "setCompanyGoal",
+      "getCompanyGoalProgress",
+      "getEngineerPersonalGoals",
+      "setPersonalGoal",
+      "calcPersonalScore",
+      "calcTotalPerformanceScore",
+      "getAllEngineersPerformanceScores",
+      "getEngineerActualCounts",
+      "calcOperationalScoreFromTasks",
+      "getEngineerActivitySummary",
+      "DEFAULT_ROLE_PERMISSIONS",
+      "createAppUser",
+      "createDefaultPermissions",
+      "loginAppUser",
+      "verifyAppUserToken",
+      "getAppUsers",
+      "getUserPermissions",
+      "updateUserPermissions",
+      "updateAppUser",
+      "logActivity",
+      "getActivityLogs",
+      "getRolePermissions",
+      "getAllRolePermissions",
+      "updateRolePermission",
+      "updateAllRolePermissions",
+      "getRoleModulePermission",
+      "getSectionPermissions",
+      "getAllSectionPermissions",
+      "updateSectionPermission",
+      "bulkUpdateSectionPermissions",
+      "MODULE_SECTIONS",
+      "calcAutoDistribution",
+      "applyAutoDistribution",
+      "manualOverrideEngineerTarget",
+      "getEngineerFullTarget",
+      "listEngineersWithAccountStatus",
+      "bulkCreateEngineersAccounts",
+      "changeEngineerPassword",
+      "resetEngineerPassword",
+      "toggleEngineerAccountStatus",
+      "createEngineerAccount",
+      "reopenDeal",
+      "setDealAccountingMonth",
+      "getCollectionPeriodAnalysis",
+      "createDealTask",
+      "getOverdueDealTasks",
+      "getPendingDealTasks",
+      "markDealTaskDone",
+      "getFollowupKPI",
+      "getFollowupComplianceReport",
+      "getAdminSalesCalendarView",
+      "DiscountTierDef",
+      "PERFORMANCE_DISCOUNT_TIERS",
+      "CompositeDiscountInput",
+      "CompositeDiscountResult",
+      "TierBreakdownItem",
+      "calcCompositeDiscountScore",
+      "getEngineerCompositeDiscountScore",
+      "getTeamCompositeDiscountScore",
+      "PROJECT_DELAY_OWNERS",
+      "PROJECT_STAGE_DELAY_OWNER_CODES",
+      "getProjectStageDelayOwnerCodes",
+      "isProjectStageDelayOwnerAllowed",
+      "calculateNewProjectDelay",
+      "PROJECT_STATUS_META",
+      "getProjectDelayCategory",
+      "calculateRequiredProjectUpdateStatus",
+      "calculateProjectStatus",
+      "isProjectTimelineExcluded",
+      "isExecutionSlaRunning",
+      "getProjectTimelineConfig",
+      "getProjectStages",
+      "updateProjectStageConfig",
+      "HistoricalProjectTimelineRow",
+      "importHistoricalProjectTimeline",
+      "ensureProjectFromClosedDeal",
+      "PRE_EXECUTION_WAITING_STATUSES",
+      "PRE_EXECUTION_WAITING_OWNERS",
+      "EXECUTION_SURVEY_STATUSES",
+      "isExecutionSurveyComplete",
+      "updateProjectPreExecution",
+      "startProjectExecution",
+      "syncProjectsFromClosedDeals",
+      "recalculateProjectRuntime",
+      "addProjectDelay",
+      "transitionProjectStage",
+      "updateProjectReview",
+      "PROJECT_CLOSING_STATUSES",
+      "validateProjectClosingInput",
+      "closeProject",
+      "setProjectHold",
+      "getProjectTimelineDetail",
+      "getProjectTimelineList",
+      "getProjectTimelineDashboard",
+      "getProjectTimelineAnalytics"
+    ],
+    "server/localAuth.ts": [
+      "LocalSessionPayload",
+      "signLocalSession",
+      "verifyLocalSession",
+      "localLogin",
+      "getLocalSessionFromRequest",
+      "hashPassword",
+      "createEngineerAccount"
+    ],
+    "server/routers.ts": [
+      "getAdminCallerFromRequest",
+      "canEditProjectTimeline",
+      "canManageProjectTimeline",
+      "appRouter",
+      "AppRouter"
+    ],
+    "server/storage.ts": [
+      "storagePut",
+      "storageGet"
+    ],
+    "shared/activityTypes.ts": [
+      "ACTIVITY_KEYS",
+      "ActivityKey",
+      "ACTIVITY_LABELS",
+      "ACTIVITY_LABELS_AR",
+      "ACTIVITY_WEIGHTS",
+      "TASK_TYPE_TO_ACTIVITY",
+      "GOAL_TYPE_TO_ACTIVITY",
+      "calcOperationalScore",
+      "ACTIVITY_ICONS",
+      "ACTIVITY_COLORS"
+    ],
+    "shared/authorization.ts": [
+      "APP_ROLES",
+      "AppRole",
+      "SALES_ROLES",
+      "MANAGER_ROLES",
+      "SYSTEM_MODULES",
+      "SYSTEM_ROLES",
+      "SystemModuleKey",
+      "SystemRoleKey",
+      "isManagerRole",
+      "isSalesRole"
+    ],
+    "shared/const.ts": [
+      "COOKIE_NAME",
+      "LOCAL_AUTH_COOKIE",
+      "ONE_YEAR_MS",
+      "AXIOS_TIMEOUT_MS",
+      "UNAUTHED_ERR_MSG",
+      "NOT_ADMIN_ERR_MSG"
+    ],
+    "shared/dateUtils.ts": [
+      "formatLocalDate"
+    ],
+    "shared/money.ts": [
+      "MoneyInput",
+      "toCents",
+      "fromCents",
+      "addMoney",
+      "subtractMoney",
+      "percentOfMoney"
+    ],
+    "client/src/const.ts": [
+      "getLoginUrl"
+    ],
+    "client/src/components/AIChatBox.tsx": [
+      "Message",
+      "AIChatBoxProps",
+      "AIChatBox"
+    ],
+    "client/src/components/DailyTimeline.tsx": [
+      "TASK_TYPE_CONFIG",
+      "DailyTimeline"
+    ],
+    "client/src/components/DashboardLayout.tsx": [
+      "DashboardLayout"
+    ],
+    "client/src/components/DashboardLayoutSkeleton.tsx": [
+      "DashboardLayoutSkeleton"
+    ],
+    "client/src/components/DateRangePicker.tsx": [
+      "DateRangeMode",
+      "MonthYearFilter",
+      "CustomRangeFilter",
+      "DateFilter",
+      "DateRangePickerProps",
+      "DateRangePicker",
+      "dateFilterToParams",
+      "getCurrentMonthFilter"
+    ],
+    "client/src/components/DeleteConfirmDialog.tsx": [
+      "DeleteReason",
+      "DeleteConfirmDialog"
+    ],
+    "client/src/components/InteractiveCalendar.tsx": [
+      "InteractiveCalendar"
+    ],
+    "client/src/components/ManusDialog.tsx": [
+      "ManusDialog"
+    ],
+    "client/src/components/Map.tsx": [
+      "MapView"
+    ],
+    "client/src/components/TaskCalendarView.tsx": [
+      "TaskCalendarView"
+    ],
+    "client/src/components/TimeFilterBar.tsx": [
+      "DateRangeType",
+      "TimeFilterValue",
+      "TimeFilterBar"
+    ],
+    "client/src/contexts/ThemeContext.tsx": [
+      "ThemeProvider",
+      "useTheme"
+    ],
+    "client/src/hooks/useAppAuth.ts": [
+      "AppUser",
+      "useAppAuth",
+      "usePermission",
+      "useRequireAppAuth"
+    ],
+    "client/src/hooks/useComposition.ts": [
+      "UseCompositionReturn",
+      "UseCompositionOptions",
+      "useComposition"
+    ],
+    "client/src/hooks/useLocalAuth.ts": [
+      "useLocalAuth",
+      "useRequireAuth"
+    ],
+    "client/src/hooks/useMobile.tsx": [
+      "useIsMobile"
+    ],
+    "client/src/hooks/usePersistFn.ts": [
+      "usePersistFn"
+    ],
+    "client/src/hooks/useRoleAccess.ts": [
+      "RoleAccess",
+      "useRoleAccess",
+      "useModulePermission",
+      "getRoleAccess"
+    ],
+    "client/src/hooks/useSectionPermission.ts": [
+      "useSectionPermission"
+    ],
+    "client/src/lib/trpc.ts": [
+      "trpc"
+    ],
+    "client/src/lib/utils.ts": [
+      "cn"
+    ],
+    "client/src/pages/ClosingModule.tsx": [
+      "ClosingModule"
+    ],
+    "client/src/pages/CollectionsModule.tsx": [
+      "CollectionsModule"
+    ],
+    "client/src/pages/ComponentShowcase.tsx": [
+      "ComponentsShowcase"
+    ],
+    "client/src/pages/Home.tsx": [
+      "Home"
+    ],
+    "client/src/pages/KPIModule.tsx": [
+      "KPIModule"
+    ],
+    "client/src/pages/LeadsModule.tsx": [
+      "LeadsModule"
+    ],
+    "client/src/pages/LoginPage.tsx": [
+      "LoginPage"
+    ],
+    "client/src/pages/NotFound.tsx": [
+      "NotFound"
+    ],
+    "client/src/pages/Overview.tsx": [
+      "Overview"
+    ],
+    "client/src/pages/PermissionsPanel.tsx": [
+      "PermissionsPanel"
+    ],
+    "client/src/pages/PlanningModule.tsx": [
+      "PlanningModule"
+    ],
+    "client/src/pages/ProjectTimelineModule.tsx": [
+      "ProjectTimelineModule"
+    ],
+    "client/src/pages/PromotionSystem.tsx": [
+      "PromotionSystem"
+    ],
+    "client/src/pages/ReportsModule.tsx": [
+      "ReportsModule"
+    ],
+    "client/src/pages/SalesExecutionSystem.tsx": [
+      "SalesExecutionSystem"
+    ],
+    "client/src/pages/SalesModule.tsx": [
+      "SalesModule"
+    ],
+    "client/src/pages/TasksModule.tsx": [
+      "TasksModule"
+    ],
+    "client/src/pages/UserManagement.tsx": [
+      "UserManagement"
+    ],
+    "client/src/pages/VisitsModule.tsx": [
+      "VisitsModule"
+    ],
+    "client/src/pages/WeeklyReport.tsx": [
+      "WeeklyReport"
+    ],
+    "client/src/pages/WorkDistribution.tsx": [
+      "WorkDistributionContent",
+      "WorkDistribution"
+    ],
+    "client/src/_core/hooks/useAuth.ts": [
+      "useAuth"
+    ],
+    "client/src/components/ui/chart.tsx": [
+      "ChartConfig"
+    ],
+    "client/src/components/ui/dialog.tsx": [
+      "useDialogComposition"
+    ],
+    "server/_core/context.ts": [
+      "RequestActor",
+      "TrpcContext",
+      "createContext"
+    ],
+    "server/_core/cookies.ts": [
+      "getSessionCookieOptions"
+    ],
+    "server/_core/dataApi.ts": [
+      "DataApiCallOptions",
+      "callDataApi"
+    ],
+    "server/_core/env.ts": [
+      "getSessionSecret",
+      "ENV"
+    ],
+    "server/_core/httpCookies.ts": [
+      "getRequestCookie",
+      "setResponseCookie",
+      "clearResponseCookie"
+    ],
+    "server/_core/imageGeneration.ts": [
+      "GenerateImageOptions",
+      "GenerateImageResponse",
+      "generateImage"
+    ],
+    "server/_core/llm.ts": [
+      "Role",
+      "TextContent",
+      "ImageContent",
+      "FileContent",
+      "MessageContent",
+      "Message",
+      "Tool",
+      "ToolChoicePrimitive",
+      "ToolChoiceByName",
+      "ToolChoiceExplicit",
+      "ToolChoice",
+      "InvokeParams",
+      "ToolCall",
+      "InvokeResult",
+      "JsonSchema",
+      "OutputSchema",
+      "ResponseFormat",
+      "invokeLLM"
+    ],
+    "server/_core/map.ts": [
+      "makeRequest",
+      "TravelMode",
+      "MapType",
+      "SpeedUnit",
+      "LatLng",
+      "DirectionsResult",
+      "DistanceMatrixResult",
+      "GeocodingResult",
+      "PlacesSearchResult",
+      "PlaceDetailsResult",
+      "ElevationResult",
+      "TimeZoneResult",
+      "RoadsResult"
+    ],
+    "server/_core/notification.ts": [
+      "NotificationPayload",
+      "notifyOwner"
+    ],
+    "server/_core/oauth.ts": [
+      "registerOAuthRoutes"
+    ],
+    "server/_core/sdk.ts": [
+      "SessionPayload",
+      "sdk"
+    ],
+    "server/_core/systemRouter.ts": [
+      "systemRouter"
+    ],
+    "server/_core/trpc.ts": [
+      "router",
+      "publicProcedure",
+      "protectedProcedure",
+      "adminProcedure"
+    ],
+    "server/_core/vite.ts": [
+      "setupVite",
+      "serveStatic"
+    ],
+    "server/_core/voiceTranscription.ts": [
+      "TranscribeOptions",
+      "WhisperSegment",
+      "WhisperResponse",
+      "TranscriptionResponse",
+      "TranscriptionError",
+      "transcribeAudio",
+      "voiceRouter"
+    ],
+    "server/_core/types/cookie.d.ts": [
+      "parse"
+    ],
+    "server/_core/types/manusTypes.ts": [
+      "AuthorizeRequest",
+      "AuthorizeResponse",
+      "ExchangeTokenRequest",
+      "ExchangeTokenResponse",
+      "GetUserInfoRequest",
+      "GetUserInfoResponse",
+      "CanAccessRequest",
+      "CanAccessResponse",
+      "GetUserInfoWithJwtRequest",
+      "GetUserInfoWithJwtResponse"
+    ],
+    "shared/_core/errors.ts": [
+      "HttpError",
+      "BadRequestError",
+      "UnauthorizedError",
+      "ForbiddenError",
+      "NotFoundError"
+    ]
+  },
+  "components": [
+    {
+      "file": "client/src/App.tsx",
+      "symbols": [
+        "App",
+        "ClosingModule",
+        "CollectionsModule",
+        "KPIModule",
+        "LeadsModule",
+        "LoadingFallback",
+        "Overview",
+        "PermissionsPanel",
+        "PlanningModule",
+        "ProjectTimelineModule",
+        "PromotionSystem",
+        "ReportsModule",
+        "Router",
+        "SalesExecutionSystem",
+        "SalesModule",
+        "TasksModule",
+        "UserManagement",
+        "VisitsModule"
+      ]
+    },
+    {
+      "file": "client/src/components/AIChatBox.tsx",
+      "symbols": [
+        "AIChatBox",
+        "ChatPage"
+      ]
+    },
+    {
+      "file": "client/src/components/DailyTimeline.tsx",
+      "symbols": [
+        "AddTimeTaskDialog",
+        "CATEGORY_LABELS",
+        "DailyTimeline",
+        "EMPTY",
+        "END_HOUR",
+        "HOUR_HEIGHT",
+        "START_HOUR",
+        "STATUS_CONFIG",
+        "TASK_TYPE_CONFIG",
+        "TimelineBlock"
+      ]
+    },
+    {
+      "file": "client/src/components/DashboardLayout.tsx",
+      "symbols": [
+        "DEFAULT_WIDTH",
+        "DashboardLayout",
+        "DashboardLayoutContent",
+        "MAX_WIDTH",
+        "MIN_WIDTH",
+        "SIDEBAR_WIDTH_KEY"
+      ]
+    },
+    {
+      "file": "client/src/components/DashboardLayoutSkeleton.tsx",
+      "symbols": [
+        "DashboardLayoutSkeleton"
+      ]
+    },
+    {
+      "file": "client/src/components/DateRangePicker.tsx",
+      "symbols": [
+        "ARABIC_DAYS_SHORT",
+        "ARABIC_MONTHS",
+        "CalendarGrid",
+        "CustomRangePicker",
+        "DateRangePicker",
+        "MonthPicker"
+      ]
+    },
+    {
+      "file": "client/src/components/DeleteConfirmDialog.tsx",
+      "symbols": [
+        "DeleteConfirmDialog",
+        "REASON_LABELS"
+      ]
+    },
+    {
+      "file": "client/src/components/InteractiveCalendar.tsx",
+      "symbols": [
+        "DayView",
+        "DraggableTask",
+        "DroppableCell",
+        "HOURS",
+        "InteractiveCalendar",
+        "MonthView",
+        "PRIORITY_CONFIG",
+        "STATUS_CONFIG",
+        "TASK_TYPES",
+        "TASK_TYPE_CONFIG",
+        "TaskBlock",
+        "TaskDetailModal",
+        "TaskModal",
+        "TimelineView",
+        "WeekView"
+      ]
+    },
+    {
+      "file": "client/src/components/ManusDialog.tsx",
+      "symbols": [
+        "ManusDialog"
+      ]
+    },
+    {
+      "file": "client/src/components/Map.tsx",
+      "symbols": [
+        "API_KEY",
+        "FORGE_BASE_URL",
+        "MAPS_PROXY_URL",
+        "MapView"
+      ]
+    },
+    {
+      "file": "client/src/components/TaskCalendarView.tsx",
+      "symbols": [
+        "DayColumn",
+        "MonthGridView",
+        "PRIORITY_CONFIG",
+        "STATUS_CONFIG",
+        "TASK_TYPE_CONFIG",
+        "TaskBlock",
+        "TaskCalendarView",
+        "TaskCalendarViewInner",
+        "TaskDetailDialog",
+        "WeekView"
+      ]
+    },
+    {
+      "file": "client/src/components/TimeFilterBar.tsx",
+      "symbols": [
+        "PRESETS",
+        "TimeFilterBar"
+      ]
+    },
+    {
+      "file": "client/src/contexts/ThemeContext.tsx",
+      "symbols": [
+        "ThemeContext",
+        "ThemeProvider"
+      ]
+    },
+    {
+      "file": "client/src/hooks/useMobile.tsx",
+      "symbols": [
+        "MOBILE_BREAKPOINT"
+      ]
+    },
+    {
+      "file": "client/src/pages/ClosingModule.tsx",
+      "symbols": [
+        "ClosingModule",
+        "LOST_REASON_OPTIONS",
+        "MONTH",
+        "MONTHS_AR",
+        "STAGE_COLORS",
+        "STAGE_LABELS",
+        "STAGE_ORDER",
+        "YEAR"
+      ]
+    },
+    {
+      "file": "client/src/pages/CollectionsModule.tsx",
+      "symbols": [
+        "CollectionsModule",
+        "PAYMENT_TYPE",
+        "PROMISE_STATUS",
+        "SALES_DEPTS",
+        "STATUS_COLORS",
+        "STATUS_LABELS"
+      ]
+    },
+    {
+      "file": "client/src/pages/ComponentShowcase.tsx",
+      "symbols": [
+        "ComponentsShowcase"
+      ]
+    },
+    {
+      "file": "client/src/pages/Home.tsx",
+      "symbols": [
+        "Home"
+      ]
+    },
+    {
+      "file": "client/src/pages/KPIModule.tsx",
+      "symbols": [
+        "COMMISSION_TIERS",
+        "INCENTIVE_TIERS",
+        "KPIModule",
+        "KPI_RULES",
+        "MONTHS",
+        "StatusBadge",
+        "WeightBar"
+      ]
+    },
+    {
+      "file": "client/src/pages/LeadsModule.tsx",
+      "symbols": [
+        "AdvancedDateFilter",
+        "DailyInputForm",
+        "DailyLogTable",
+        "LeadsModule",
+        "PRESETS",
+        "PerformanceAlerts",
+        "SummaryCards"
+      ]
+    },
+    {
+      "file": "client/src/pages/LoginPage.tsx",
+      "symbols": [
+        "LoginPage"
+      ]
+    },
+    {
+      "file": "client/src/pages/NotFound.tsx",
+      "symbols": [
+        "NotFound"
+      ]
+    },
+    {
+      "file": "client/src/pages/Overview.tsx",
+      "symbols": [
+        "AlertBadge",
+        "KPICard",
+        "MONTH",
+        "ManagementFocusSection",
+        "Overview",
+        "STAGE_COLORS",
+        "STAGE_LABELS",
+        "TODAY",
+        "YEAR"
+      ]
+    },
+    {
+      "file": "client/src/pages/PermissionsPanel.tsx",
+      "symbols": [
+        "PermissionsPanel",
+        "VisibilityBadge"
+      ]
+    },
+    {
+      "file": "client/src/pages/PlanningModule.tsx",
+      "symbols": [
+        "CompanyGoalsTab",
+        "DEVELOPMENT_AREAS",
+        "EVALUATION_METHODS",
+        "Icon",
+        "IndividualGoalsTab",
+        "MONTHS",
+        "OPERATIONAL_ITEMS",
+        "PersonalDevelopmentTab",
+        "PlanningModule"
+      ]
+    },
+    {
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "symbols": [
+        "CompactPreExecutionPanel",
+        "CurrentStageOverview",
+        "MetricCard",
+        "PRE_EXECUTION_LABELS",
+        "ProjectCloseCard",
+        "ProjectTimelineModule",
+        "STAGE_DELAY_OWNER_CODES",
+        "STATUS_META",
+        "ScheduleUpdateCard",
+        "StageConfigRow",
+        "StageDelayCard",
+        "StatusBadge"
+      ]
+    },
+    {
+      "file": "client/src/pages/PromotionSystem.tsx",
+      "symbols": [
+        "CAREER_CONFIG",
+        "DECISION_CONFIG",
+        "EngineerDetailModal",
+        "EngineerEvalCard",
+        "EvaluationForm",
+        "LEVEL_CONFIG",
+        "MONTHS_AR",
+        "PromotionSystem"
+      ]
+    },
+    {
+      "file": "client/src/pages/ReportsModule.tsx",
+      "symbols": [
+        "COLORS",
+        "InsightCard",
+        "MONTHS_AR",
+        "MonthlyReportTab",
+        "ProjectTimelineReportSnapshot",
+        "QUARTERS",
+        "QuarterlyReportTab",
+        "ReportsModule",
+        "ScoreBadge",
+        "WeeklyEngineerCard",
+        "WeeklyReportTab"
+      ]
+    },
+    {
+      "file": "client/src/pages/SalesExecutionSystem.tsx",
+      "symbols": [
+        "COLORS",
+        "CoachingDashboardTab",
+        "FunnelAnalysisTab",
+        "MONTH",
+        "MeetingReviewTab",
+        "PlaybookTab",
+        "SalesExecutionSystem",
+        "YEAR"
+      ]
+    },
+    {
+      "file": "client/src/pages/SalesModule.tsx",
+      "symbols": [
+        "ProgressBadge",
+        "RankBadge",
+        "STAGE_COLORS",
+        "STAGE_LABELS",
+        "SalesModule"
+      ]
+    },
+    {
+      "file": "client/src/pages/TasksModule.tsx",
+      "symbols": [
+        "ADMIN_TASK_STATUS",
+        "ALL_TASK_TYPES",
+        "AddTaskDialog",
+        "AdminSalesTab",
+        "AdminSalesTaskCard",
+        "DEPT_OPTIONS",
+        "DIMENSIONS",
+        "EMPTY_FORM",
+        "FOLLOWUP_STATUS_CONFIG",
+        "LeadFollowupTab",
+        "MEETING_STATUS",
+        "MONTHS",
+        "ManageEngineersDialog",
+        "MeetingNotesEditor",
+        "MeetingReviewPanel",
+        "PRIORITY_CONFIG",
+        "QUALITY_CONFIG",
+        "STATUS_CONFIG",
+        "ScoreBadge",
+        "TASK_TYPE_COLORS",
+        "TASK_TYPE_DISPLAY",
+        "TASK_TYPE_LABELS",
+        "TasksModule",
+        "UpdateStatusDialog",
+        "WorkDistributionTab"
+      ]
+    },
+    {
+      "file": "client/src/pages/UserManagement.tsx",
+      "symbols": [
+        "ActivityLogsView",
+        "CreateUserForm",
+        "EditUserForm",
+        "EngineersAccountsTab",
+        "FieldError",
+        "MODULES",
+        "MODULE_LABELS",
+        "PermissionsEditor",
+        "ROLE_COLORS",
+        "ROLE_LABELS",
+        "SALES_ROLES",
+        "UserManagement"
+      ]
+    },
+    {
+      "file": "client/src/pages/VisitsModule.tsx",
+      "symbols": [
+        "BOOKING_STATUS_LABELS",
+        "CONFIRMATION_LABELS",
+        "FullUpdateDialog",
+        "KpiCard",
+        "MONTH",
+        "STATUS_COLORS",
+        "STATUS_LABELS",
+        "ScoreBar",
+        "TODAY",
+        "UPLOAD_LABELS",
+        "VisitDeleteConfirm",
+        "VisitsModule",
+        "YEAR"
+      ]
+    },
+    {
+      "file": "client/src/pages/WeeklyReport.tsx",
+      "symbols": [
+        "AchievementBadge",
+        "ActualVsTargetBar",
+        "CAT_COLORS",
+        "CAT_LABELS",
+        "DistributionPie",
+        "EngineerCard",
+        "Icon",
+        "InsightCard",
+        "MONTHS",
+        "OpTargetRow",
+        "STANDARD",
+        "ScoreBadge",
+        "TASK_LABELS",
+        "TeamRadar",
+        "WeeklyReport"
+      ]
+    },
+    {
+      "file": "client/src/pages/WorkDistribution.tsx",
+      "symbols": [
+        "ACTIVITY_LABELS",
+        "ACTIVITY_TYPES",
+        "CAT_COLORS",
+        "CAT_LABELS",
+        "DistBar",
+        "EngineerDistCard",
+        "LogActivityDialog",
+        "MyDistributionView",
+        "ScoreBadge",
+        "TARGETS",
+        "WorkDistribution",
+        "WorkDistributionContent"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/accordion.tsx",
+      "symbols": [
+        "Accordion",
+        "AccordionContent",
+        "AccordionItem",
+        "AccordionTrigger"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/alert-dialog.tsx",
+      "symbols": [
+        "AlertDialog",
+        "AlertDialogAction",
+        "AlertDialogCancel",
+        "AlertDialogContent",
+        "AlertDialogDescription",
+        "AlertDialogFooter",
+        "AlertDialogHeader",
+        "AlertDialogOverlay",
+        "AlertDialogPortal",
+        "AlertDialogTitle",
+        "AlertDialogTrigger"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/alert.tsx",
+      "symbols": [
+        "Alert",
+        "AlertDescription",
+        "AlertTitle"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/aspect-ratio.tsx",
+      "symbols": [
+        "AspectRatio"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/avatar.tsx",
+      "symbols": [
+        "Avatar",
+        "AvatarFallback",
+        "AvatarImage"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/badge.tsx",
+      "symbols": [
+        "Badge",
+        "Comp"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/breadcrumb.tsx",
+      "symbols": [
+        "Breadcrumb",
+        "BreadcrumbEllipsis",
+        "BreadcrumbItem",
+        "BreadcrumbLink",
+        "BreadcrumbList",
+        "BreadcrumbPage",
+        "BreadcrumbSeparator",
+        "Comp"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/button-group.tsx",
+      "symbols": [
+        "ButtonGroup",
+        "ButtonGroupSeparator",
+        "ButtonGroupText",
+        "Comp"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/button.tsx",
+      "symbols": [
+        "Button",
+        "Comp"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/calendar.tsx",
+      "symbols": [
+        "Calendar",
+        "CalendarDayButton"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/card.tsx",
+      "symbols": [
+        "Card",
+        "CardAction",
+        "CardContent",
+        "CardDescription",
+        "CardFooter",
+        "CardHeader",
+        "CardTitle"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/carousel.tsx",
+      "symbols": [
+        "Carousel",
+        "CarouselContent",
+        "CarouselContext",
+        "CarouselItem",
+        "CarouselNext",
+        "CarouselPrevious"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/chart.tsx",
+      "symbols": [
+        "ChartContainer",
+        "ChartContext",
+        "ChartLegend",
+        "ChartLegendContent",
+        "ChartStyle",
+        "ChartTooltip",
+        "ChartTooltipContent",
+        "THEMES"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/checkbox.tsx",
+      "symbols": [
+        "Checkbox"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/collapsible.tsx",
+      "symbols": [
+        "Collapsible",
+        "CollapsibleContent",
+        "CollapsibleTrigger"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/command.tsx",
+      "symbols": [
+        "Command",
+        "CommandDialog",
+        "CommandEmpty",
+        "CommandGroup",
+        "CommandInput",
+        "CommandItem",
+        "CommandList",
+        "CommandSeparator",
+        "CommandShortcut"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/context-menu.tsx",
+      "symbols": [
+        "ContextMenu",
+        "ContextMenuCheckboxItem",
+        "ContextMenuContent",
+        "ContextMenuGroup",
+        "ContextMenuItem",
+        "ContextMenuLabel",
+        "ContextMenuPortal",
+        "ContextMenuRadioGroup",
+        "ContextMenuRadioItem",
+        "ContextMenuSeparator",
+        "ContextMenuShortcut",
+        "ContextMenuSub",
+        "ContextMenuSubContent",
+        "ContextMenuSubTrigger",
+        "ContextMenuTrigger"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/dialog.tsx",
+      "symbols": [
+        "Dialog",
+        "DialogClose",
+        "DialogCompositionContext",
+        "DialogContent",
+        "DialogDescription",
+        "DialogFooter",
+        "DialogHeader",
+        "DialogOverlay",
+        "DialogPortal",
+        "DialogTitle",
+        "DialogTrigger"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/drawer.tsx",
+      "symbols": [
+        "Drawer",
+        "DrawerClose",
+        "DrawerContent",
+        "DrawerDescription",
+        "DrawerFooter",
+        "DrawerHeader",
+        "DrawerOverlay",
+        "DrawerPortal",
+        "DrawerTitle",
+        "DrawerTrigger"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/dropdown-menu.tsx",
+      "symbols": [
+        "DropdownMenu",
+        "DropdownMenuCheckboxItem",
+        "DropdownMenuContent",
+        "DropdownMenuGroup",
+        "DropdownMenuItem",
+        "DropdownMenuLabel",
+        "DropdownMenuPortal",
+        "DropdownMenuRadioGroup",
+        "DropdownMenuRadioItem",
+        "DropdownMenuSeparator",
+        "DropdownMenuShortcut",
+        "DropdownMenuSub",
+        "DropdownMenuSubContent",
+        "DropdownMenuSubTrigger",
+        "DropdownMenuTrigger"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/empty.tsx",
+      "symbols": [
+        "Empty",
+        "EmptyContent",
+        "EmptyDescription",
+        "EmptyHeader",
+        "EmptyMedia",
+        "EmptyTitle"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/field.tsx",
+      "symbols": [
+        "Field",
+        "FieldContent",
+        "FieldDescription",
+        "FieldError",
+        "FieldGroup",
+        "FieldLabel",
+        "FieldLegend",
+        "FieldSeparator",
+        "FieldSet",
+        "FieldTitle"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/form.tsx",
+      "symbols": [
+        "Form",
+        "FormControl",
+        "FormDescription",
+        "FormField",
+        "FormFieldContext",
+        "FormItem",
+        "FormItemContext",
+        "FormLabel",
+        "FormMessage"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/hover-card.tsx",
+      "symbols": [
+        "HoverCard",
+        "HoverCardContent",
+        "HoverCardTrigger"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/input-group.tsx",
+      "symbols": [
+        "InputGroup",
+        "InputGroupAddon",
+        "InputGroupButton",
+        "InputGroupInput",
+        "InputGroupText",
+        "InputGroupTextarea"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/input-otp.tsx",
+      "symbols": [
+        "InputOTP",
+        "InputOTPGroup",
+        "InputOTPSeparator",
+        "InputOTPSlot"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/input.tsx",
+      "symbols": [
+        "Input"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/item.tsx",
+      "symbols": [
+        "Comp",
+        "Item",
+        "ItemActions",
+        "ItemContent",
+        "ItemDescription",
+        "ItemFooter",
+        "ItemGroup",
+        "ItemHeader",
+        "ItemMedia",
+        "ItemSeparator",
+        "ItemTitle"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/kbd.tsx",
+      "symbols": [
+        "Kbd",
+        "KbdGroup"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/label.tsx",
+      "symbols": [
+        "Label"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/menubar.tsx",
+      "symbols": [
+        "Menubar",
+        "MenubarCheckboxItem",
+        "MenubarContent",
+        "MenubarGroup",
+        "MenubarItem",
+        "MenubarLabel",
+        "MenubarMenu",
+        "MenubarPortal",
+        "MenubarRadioGroup",
+        "MenubarRadioItem",
+        "MenubarSeparator",
+        "MenubarShortcut",
+        "MenubarSub",
+        "MenubarSubContent",
+        "MenubarSubTrigger",
+        "MenubarTrigger"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/navigation-menu.tsx",
+      "symbols": [
+        "NavigationMenu",
+        "NavigationMenuContent",
+        "NavigationMenuIndicator",
+        "NavigationMenuItem",
+        "NavigationMenuLink",
+        "NavigationMenuList",
+        "NavigationMenuTrigger",
+        "NavigationMenuViewport"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/pagination.tsx",
+      "symbols": [
+        "Pagination",
+        "PaginationContent",
+        "PaginationEllipsis",
+        "PaginationItem",
+        "PaginationLink",
+        "PaginationNext",
+        "PaginationPrevious"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/popover.tsx",
+      "symbols": [
+        "Popover",
+        "PopoverAnchor",
+        "PopoverContent",
+        "PopoverTrigger"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/progress.tsx",
+      "symbols": [
+        "Progress"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/radio-group.tsx",
+      "symbols": [
+        "RadioGroup",
+        "RadioGroupItem"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/resizable.tsx",
+      "symbols": [
+        "ResizableHandle",
+        "ResizablePanel",
+        "ResizablePanelGroup"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/scroll-area.tsx",
+      "symbols": [
+        "ScrollArea",
+        "ScrollBar"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/select.tsx",
+      "symbols": [
+        "Select",
+        "SelectContent",
+        "SelectGroup",
+        "SelectItem",
+        "SelectLabel",
+        "SelectScrollDownButton",
+        "SelectScrollUpButton",
+        "SelectSeparator",
+        "SelectTrigger",
+        "SelectValue"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/separator.tsx",
+      "symbols": [
+        "Separator"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/sheet.tsx",
+      "symbols": [
+        "Sheet",
+        "SheetClose",
+        "SheetContent",
+        "SheetDescription",
+        "SheetFooter",
+        "SheetHeader",
+        "SheetOverlay",
+        "SheetPortal",
+        "SheetTitle",
+        "SheetTrigger"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/sidebar.tsx",
+      "symbols": [
+        "Comp",
+        "SIDEBAR_COOKIE_MAX_AGE",
+        "SIDEBAR_COOKIE_NAME",
+        "SIDEBAR_KEYBOARD_SHORTCUT",
+        "SIDEBAR_WIDTH",
+        "SIDEBAR_WIDTH_ICON",
+        "SIDEBAR_WIDTH_MOBILE",
+        "Sidebar",
+        "SidebarContent",
+        "SidebarContext",
+        "SidebarFooter",
+        "SidebarGroup",
+        "SidebarGroupAction",
+        "SidebarGroupContent",
+        "SidebarGroupLabel",
+        "SidebarHeader",
+        "SidebarInput",
+        "SidebarInset",
+        "SidebarMenu",
+        "SidebarMenuAction",
+        "SidebarMenuBadge",
+        "SidebarMenuButton",
+        "SidebarMenuItem",
+        "SidebarMenuSkeleton",
+        "SidebarMenuSub",
+        "SidebarMenuSubButton",
+        "SidebarMenuSubItem",
+        "SidebarProvider",
+        "SidebarRail",
+        "SidebarSeparator",
+        "SidebarTrigger"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/skeleton.tsx",
+      "symbols": [
+        "Skeleton"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/slider.tsx",
+      "symbols": [
+        "Slider"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/sonner.tsx",
+      "symbols": [
+        "Toaster"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/spinner.tsx",
+      "symbols": [
+        "Spinner"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/switch.tsx",
+      "symbols": [
+        "Switch"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/table.tsx",
+      "symbols": [
+        "Table",
+        "TableBody",
+        "TableCaption",
+        "TableCell",
+        "TableFooter",
+        "TableHead",
+        "TableHeader",
+        "TableRow"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/tabs.tsx",
+      "symbols": [
+        "Tabs",
+        "TabsContent",
+        "TabsList",
+        "TabsTrigger"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/textarea.tsx",
+      "symbols": [
+        "Textarea"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/toggle-group.tsx",
+      "symbols": [
+        "ToggleGroup",
+        "ToggleGroupContext",
+        "ToggleGroupItem"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/toggle.tsx",
+      "symbols": [
+        "Toggle"
+      ]
+    },
+    {
+      "file": "client/src/components/ui/tooltip.tsx",
+      "symbols": [
+        "Tooltip",
+        "TooltipContent",
+        "TooltipProvider",
+        "TooltipTrigger"
+      ]
+    }
+  ],
+  "api_endpoints": [
+    {
+      "method": "GET",
+      "path": "/healthz",
+      "file": "server/_core/index.ts",
+      "line": 56
+    },
+    {
+      "method": "GET",
+      "path": "/readyz",
+      "file": "server/_core/index.ts",
+      "line": 59
+    },
+    {
+      "method": "GET",
+      "path": "/api/summary",
+      "file": "server/_core/index.ts",
+      "line": 90
+    },
+    {
+      "method": "GET",
+      "path": "/api/list",
+      "file": "server/_core/index.ts",
+      "line": 115
+    },
+    {
+      "method": "GET",
+      "path": "/api/kpi",
+      "file": "server/_core/index.ts",
+      "line": 164
+    },
+    {
+      "method": "GET",
+      "path": "/api/oauth/callback",
+      "file": "server/_core/oauth.ts",
+      "line": 14
+    }
+  ],
+  "status_literals": [
+    {
+      "value": "admin",
+      "file": "scripts/create-accounts.mjs",
+      "line": 14
+    },
+    {
+      "value": "admin_sales",
+      "file": "scripts/create-accounts.mjs",
+      "line": 20
+    },
+    {
+      "value": "active",
+      "file": "scripts/create-accounts.mjs",
+      "line": 37
+    },
+    {
+      "value": "admin_sales",
+      "file": "server/admin-sales-calendar.test.ts",
+      "line": 36
+    },
+    {
+      "value": "engineer",
+      "file": "server/admin-sales-calendar.test.ts",
+      "line": 40
+    },
+    {
+      "value": "specialist",
+      "file": "server/admin-sales-calendar.test.ts",
+      "line": 44
+    },
+    {
+      "value": "planned",
+      "file": "server/admin-sales-calendar.test.ts",
+      "line": 162
+    },
+    {
+      "value": "sales_engineer",
+      "file": "server/app-users.test.ts",
+      "line": 29
+    },
+    {
+      "value": "user",
+      "file": "server/auth.logout.test.ts",
+      "line": 22
+    },
+    {
+      "value": "closed_won",
+      "file": "server/closing.month.test.ts",
+      "line": 46
+    },
+    {
+      "value": "closed_won",
+      "file": "server/closing.month.test.ts",
+      "line": 69
+    },
+    {
+      "value": "negotiation",
+      "file": "server/closing.month.test.ts",
+      "line": 92
+    },
+    {
+      "value": "closed_won",
+      "file": "server/closing.month.test.ts",
+      "line": 115
+    },
+    {
+      "value": "closed_won",
+      "file": "server/closing.month.test.ts",
+      "line": 156
+    },
+    {
+      "value": "closed_won",
+      "file": "server/closing.month.test.ts",
+      "line": 157
+    },
+    {
+      "value": "closed_won",
+      "file": "server/closing.month.test.ts",
+      "line": 158
+    },
+    {
+      "value": "admin",
+      "file": "server/control-panel.test.ts",
+      "line": 13
+    },
+    {
+      "value": "admin",
+      "file": "server/db.ts",
+      "line": 87
+    },
+    {
+      "value": "admin",
+      "file": "server/db.ts",
+      "line": 87
+    },
+    {
+      "value": "active",
+      "file": "server/db.ts",
+      "line": 132
+    },
+    {
+      "value": "planned",
+      "file": "server/db.ts",
+      "line": 255
+    },
+    {
+      "value": "planned",
+      "file": "server/db.ts",
+      "line": 306
+    },
+    {
+      "value": "planned",
+      "file": "server/db.ts",
+      "line": 330
+    },
+    {
+      "value": "active",
+      "file": "server/db.ts",
+      "line": 351
+    },
+    {
+      "value": "inactive",
+      "file": "server/db.ts",
+      "line": 358
+    },
+    {
+      "value": "new",
+      "file": "server/db.ts",
+      "line": 407
+    },
+    {
+      "value": "scheduled",
+      "file": "server/db.ts",
+      "line": 549
+    },
+    {
+      "value": "proposal",
+      "file": "server/db.ts",
+      "line": 722
+    },
+    {
+      "value": "on_track",
+      "file": "server/db.ts",
+      "line": 1107
+    },
+    {
+      "value": "paid",
+      "file": "server/db.ts",
+      "line": 1700
+    },
+    {
+      "value": "paid",
+      "file": "server/db.ts",
+      "line": 1701
+    },
+    {
+      "value": "overdue",
+      "file": "server/db.ts",
+      "line": 1702
+    },
+    {
+      "value": "stage1",
+      "file": "server/db.ts",
+      "line": 1768
+    },
+    {
+      "value": "pending",
+      "file": "server/db.ts",
+      "line": 1770
+    },
+    {
+      "value": "stage2",
+      "file": "server/db.ts",
+      "line": 1777
+    },
+    {
+      "value": "pending",
+      "file": "server/db.ts",
+      "line": 1779
+    },
+    {
+      "value": "pending",
+      "file": "server/db.ts",
+      "line": 1794
+    },
+    {
+      "value": "paid",
+      "file": "server/db.ts",
+      "line": 1846
+    },
+    {
+      "value": "on_track",
+      "file": "server/db.ts",
+      "line": 1860
+    },
+    {
+      "value": "on_track",
+      "file": "server/db.ts",
+      "line": 1866
+    },
+    {
+      "value": "pending",
+      "file": "server/db.ts",
+      "line": 1939
+    },
+    {
+      "value": "pending",
+      "file": "server/db.ts",
+      "line": 1959
+    },
+    {
+      "value": "pending",
+      "file": "server/db.ts",
+      "line": 1979
+    },
+    {
+      "value": "pending",
+      "file": "server/db.ts",
+      "line": 2030
+    },
+    {
+      "value": "pending",
+      "file": "server/db.ts",
+      "line": 2066
+    },
+    {
+      "value": "deleted",
+      "file": "server/db.ts",
+      "line": 2603
+    },
+    {
+      "value": "cancelled",
+      "file": "server/db.ts",
+      "line": 2604
+    },
+    {
+      "value": "booking",
+      "file": "server/db.ts",
+      "line": 2607
+    },
+    {
+      "value": "confirmation",
+      "file": "server/db.ts",
+      "line": 2610
+    },
+    {
+      "value": "execution",
+      "file": "server/db.ts",
+      "line": 2617
+    },
+    {
+      "value": "execution",
+      "file": "server/db.ts",
+      "line": 2619
+    },
+    {
+      "value": "upload",
+      "file": "server/db.ts",
+      "line": 2623
+    },
+    {
+      "value": "quality",
+      "file": "server/db.ts",
+      "line": 2628
+    },
+    {
+      "value": "financial",
+      "file": "server/db.ts",
+      "line": 2635
+    },
+    {
+      "value": "complete",
+      "file": "server/db.ts",
+      "line": 2640
+    },
+    {
+      "value": "inactive",
+      "file": "server/db.ts",
+      "line": 2908
+    },
+    {
+      "value": "proposal",
+      "file": "server/db.ts",
+      "line": 3247
+    },
+    {
+      "value": "on_track",
+      "file": "server/db.ts",
+      "line": 3337
+    },
+    {
+      "value": "balanced",
+      "file": "server/db.ts",
+      "line": 3925
+    },
+    {
+      "value": "approved",
+      "file": "server/db.ts",
+      "line": 4966
+    },
+    {
+      "value": "draft",
+      "file": "server/db.ts",
+      "line": 5469
+    },
+    {
+      "value": "presented",
+      "file": "server/db.ts",
+      "line": 5492
+    },
+    {
+      "value": "draft",
+      "file": "server/db.ts",
+      "line": 5498
+    },
+    {
+      "value": "active",
+      "file": "server/db.ts",
+      "line": 5639
+    },
+    {
+      "value": "completed",
+      "file": "server/db.ts",
+      "line": 5691
+    },
+    {
+      "value": "planned",
+      "file": "server/db.ts",
+      "line": 6208
+    },
+    {
+      "value": "on_track",
+      "file": "server/db.ts",
+      "line": 8872
+    },
+    {
+      "value": "planned",
+      "file": "server/db.ts",
+      "line": 8944
+    },
+    {
+      "value": "sales_engineer",
+      "file": "server/db.ts",
+      "line": 10794
+    },
+    {
+      "value": "active",
+      "file": "server/db.ts",
+      "line": 10814
+    },
+    {
+      "value": "active",
+      "file": "server/db.ts",
+      "line": 10844
+    },
+    {
+      "value": "sales_engineer",
+      "file": "server/db.ts",
+      "line": 11070
+    },
+    {
+      "value": "active",
+      "file": "server/db.ts",
+      "line": 11072
+    },
+    {
+      "value": "active",
+      "file": "server/db.ts",
+      "line": 11664
+    },
+    {
+      "value": "negotiation",
+      "file": "server/db.ts",
+      "line": 11716
+    },
+    {
+      "value": "negotiation",
+      "file": "server/db.ts",
+      "line": 11743
+    },
+    {
+      "value": "pending",
+      "file": "server/db.ts",
+      "line": 11885
+    },
+    {
+      "value": "overdue",
+      "file": "server/db.ts",
+      "line": 11899
+    },
+    {
+      "value": "done",
+      "file": "server/db.ts",
+      "line": 11946
+    },
+    {
+      "value": "completed",
+      "file": "server/db.ts",
+      "line": 12738
+    },
+    {
+      "value": "completed",
+      "file": "server/db.ts",
+      "line": 12981
+    },
+    {
+      "value": "active",
+      "file": "server/db.ts",
+      "line": 13001
+    },
+    {
+      "value": "completed",
+      "file": "server/db.ts",
+      "line": 13199
+    },
+    {
+      "value": "completed",
+      "file": "server/db.ts",
+      "line": 13405
+    },
+    {
+      "value": "completed",
+      "file": "server/db.ts",
+      "line": 13463
+    },
+    {
+      "value": "on_hold",
+      "file": "server/db.ts",
+      "line": 13499
+    },
+    {
+      "value": "active",
+      "file": "server/db.ts",
+      "line": 13524
+    },
+    {
+      "value": "pending",
+      "file": "server/dealTasks.test.ts",
+      "line": 5
+    },
+    {
+      "value": "overdue",
+      "file": "server/dealTasks.test.ts",
+      "line": 7
+    },
+    {
+      "value": "pending",
+      "file": "server/dealTasks.test.ts",
+      "line": 10
+    },
+    {
+      "value": "admin",
+      "file": "server/localAuth.ts",
+      "line": 106
+    },
+    {
+      "value": "active",
+      "file": "server/localAuth.ts",
+      "line": 133
+    },
+    {
+      "value": "manager",
+      "file": "server/role-permissions.test.ts",
+      "line": 93
+    },
+    {
+      "value": "manager",
+      "file": "server/role-permissions.test.ts",
+      "line": 94
+    },
+    {
+      "value": "manager",
+      "file": "server/role-permissions.test.ts",
+      "line": 119
+    },
+    {
+      "value": "sales_engineer",
+      "file": "server/role-permissions.test.ts",
+      "line": 120
+    },
+    {
+      "value": "manager",
+      "file": "server/role-permissions.test.ts",
+      "line": 213
+    },
+    {
+      "value": "sales_engineer",
+      "file": "server/role-permissions.test.ts",
+      "line": 214
+    },
+    {
+      "value": "active",
+      "file": "server/routers.ts",
+      "line": 135
+    },
+    {
+      "value": "active",
+      "file": "server/routers.ts",
+      "line": 136
+    },
+    {
+      "value": "active",
+      "file": "server/routers.ts",
+      "line": 137
+    },
+    {
+      "value": "active",
+      "file": "server/routers.ts",
+      "line": 138
+    },
+    {
+      "value": "active",
+      "file": "server/routers.ts",
+      "line": 139
+    },
+    {
+      "value": "active",
+      "file": "server/routers.ts",
+      "line": 140
+    },
+    {
+      "value": "closed_won",
+      "file": "server/routers.ts",
+      "line": 288
+    },
+    {
+      "value": "admin",
+      "file": "server/routers.ts",
+      "line": 338
+    },
+    {
+      "value": "manager",
+      "file": "server/routers.ts",
+      "line": 358
+    },
+    {
+      "value": "in_progress",
+      "file": "server/routers.ts",
+      "line": 547
+    },
+    {
+      "value": "admin",
+      "file": "server/routers.ts",
+      "line": 1754
+    },
+    {
+      "value": "admin",
+      "file": "server/sales.test.ts",
+      "line": 5
+    },
+    {
+      "value": "completed",
+      "file": "server/scoring.test.ts",
+      "line": 54
+    },
+    {
+      "value": "delayed",
+      "file": "server/scoring.test.ts",
+      "line": 55
+    },
+    {
+      "value": "client_delay",
+      "file": "server/scoring.test.ts",
+      "line": 56
+    },
+    {
+      "value": "completed",
+      "file": "server/scoring.test.ts",
+      "line": 67
+    },
+    {
+      "value": "completed",
+      "file": "server/scoring.test.ts",
+      "line": 68
+    },
+    {
+      "value": "completed",
+      "file": "server/scoring.test.ts",
+      "line": 69
+    },
+    {
+      "value": "not_done",
+      "file": "server/scoring.test.ts",
+      "line": 79
+    },
+    {
+      "value": "not_done",
+      "file": "server/scoring.test.ts",
+      "line": 80
+    },
+    {
+      "value": "client_delay",
+      "file": "server/scoring.test.ts",
+      "line": 90
+    },
+    {
+      "value": "client_delay",
+      "file": "server/scoring.test.ts",
+      "line": 91
+    },
+    {
+      "value": "delayed",
+      "file": "server/scoring.test.ts",
+      "line": 99
+    },
+    {
+      "value": "completed",
+      "file": "server/soft.delete.test.ts",
+      "line": 129
+    },
+    {
+      "value": "completed",
+      "file": "server/soft.delete.test.ts",
+      "line": 130
+    },
+    {
+      "value": "cancelled",
+      "file": "server/soft.delete.test.ts",
+      "line": 131
+    },
+    {
+      "value": "postponed",
+      "file": "server/soft.delete.test.ts",
+      "line": 132
+    },
+    {
+      "value": "completed",
+      "file": "server/soft.delete.test.ts",
+      "line": 133
+    },
+    {
+      "value": "cancelled",
+      "file": "server/soft.delete.test.ts",
+      "line": 142
+    },
+    {
+      "value": "postponed",
+      "file": "server/soft.delete.test.ts",
+      "line": 149
+    },
+    {
+      "value": "completed",
+      "file": "server/soft.delete.test.ts",
+      "line": 156
+    },
+    {
+      "value": "completed",
+      "file": "server/soft.delete.test.ts",
+      "line": 163
+    },
+    {
+      "value": "completed",
+      "file": "server/soft.delete.test.ts",
+      "line": 164
+    },
+    {
+      "value": "system",
+      "file": "client/src/components/AIChatBox.tsx",
+      "line": 13
+    },
+    {
+      "value": "system",
+      "file": "client/src/components/AIChatBox.tsx",
+      "line": 76
+    },
+    {
+      "value": "assistant",
+      "file": "client/src/components/AIChatBox.tsx",
+      "line": 83
+    },
+    {
+      "value": "user",
+      "file": "client/src/components/AIChatBox.tsx",
+      "line": 94
+    },
+    {
+      "value": "planned",
+      "file": "client/src/components/InteractiveCalendar.tsx",
+      "line": 328
+    },
+    {
+      "value": "planned",
+      "file": "client/src/components/InteractiveCalendar.tsx",
+      "line": 362
+    },
+    {
+      "value": "not_done",
+      "file": "client/src/components/InteractiveCalendar.tsx",
+      "line": 1307
+    },
+    {
+      "value": "sales_engineer",
+      "file": "client/src/hooks/useAppAuth.ts",
+      "line": 9
+    },
+    {
+      "value": "closed_lost",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 289
+    },
+    {
+      "value": "closed_lost",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 1106
+    },
+    {
+      "value": "paid",
+      "file": "client/src/pages/CollectionsModule.tsx",
+      "line": 477
+    },
+    {
+      "value": "paid",
+      "file": "client/src/pages/CollectionsModule.tsx",
+      "line": 588
+    },
+    {
+      "value": "system",
+      "file": "client/src/pages/ComponentShowcase.tsx",
+      "line": 192
+    },
+    {
+      "value": "user",
+      "file": "client/src/pages/ComponentShowcase.tsx",
+      "line": 214
+    },
+    {
+      "value": "assistant",
+      "file": "client/src/pages/ComponentShowcase.tsx",
+      "line": 221
+    },
+    {
+      "value": "assistant",
+      "file": "client/src/pages/ComponentShowcase.tsx",
+      "line": 222
+    },
+    {
+      "value": "combobox",
+      "file": "client/src/pages/ComponentShowcase.tsx",
+      "line": 542
+    },
+    {
+      "value": "sales_engineer",
+      "file": "client/src/pages/UserManagement.tsx",
+      "line": 92
+    },
+    {
+      "value": "sales_engineer",
+      "file": "client/src/pages/UserManagement.tsx",
+      "line": 106
+    },
+    {
+      "value": "balanced",
+      "file": "client/src/pages/WorkDistribution.tsx",
+      "line": 29
+    },
+    {
+      "value": "alert",
+      "file": "client/src/components/ui/alert.tsx",
+      "line": 30
+    },
+    {
+      "value": "link",
+      "file": "client/src/components/ui/breadcrumb.tsx",
+      "line": 56
+    },
+    {
+      "value": "presentation",
+      "file": "client/src/components/ui/breadcrumb.tsx",
+      "line": 73
+    },
+    {
+      "value": "presentation",
+      "file": "client/src/components/ui/breadcrumb.tsx",
+      "line": 90
+    },
+    {
+      "value": "group",
+      "file": "client/src/components/ui/button-group.tsx",
+      "line": 31
+    },
+    {
+      "value": "region",
+      "file": "client/src/components/ui/carousel.tsx",
+      "line": 122
+    },
+    {
+      "value": "group",
+      "file": "client/src/components/ui/carousel.tsx",
+      "line": 159
+    },
+    {
+      "value": "group",
+      "file": "client/src/components/ui/field.tsx",
+      "line": 86
+    },
+    {
+      "value": "alert",
+      "file": "client/src/components/ui/field.tsx",
+      "line": 221
+    },
+    {
+      "value": "group",
+      "file": "client/src/components/ui/input-group.tsx",
+      "line": 13
+    },
+    {
+      "value": "group",
+      "file": "client/src/components/ui/input-group.tsx",
+      "line": 65
+    },
+    {
+      "value": "separator",
+      "file": "client/src/components/ui/input-otp.tsx",
+      "line": 69
+    },
+    {
+      "value": "list",
+      "file": "client/src/components/ui/item.tsx",
+      "line": 11
+    },
+    {
+      "value": "navigation",
+      "file": "client/src/components/ui/pagination.tsx",
+      "line": 14
+    },
+    {
+      "value": "status",
+      "file": "client/src/components/ui/spinner.tsx",
+      "line": 8
+    },
+    {
+      "value": "ok",
+      "file": "server/_core/index.ts",
+      "line": 57
+    },
+    {
+      "value": "not_ready",
+      "file": "server/_core/index.ts",
+      "line": 62
+    },
+    {
+      "value": "ready",
+      "file": "server/_core/index.ts",
+      "line": 64
+    },
+    {
+      "value": "not_ready",
+      "file": "server/_core/index.ts",
+      "line": 66
+    }
+  ]
+}

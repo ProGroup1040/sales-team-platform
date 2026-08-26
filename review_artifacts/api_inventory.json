@@ -1,0 +1,3659 @@
+{
+  "namespaces": [
+    {
+      "namespace": "auth",
+      "line": 387,
+      "procedures": [
+        {
+          "name": "me",
+          "guard": "publicProcedure",
+          "kind": "mutation",
+          "input": "none shown",
+          "line": 388
+        },
+        {
+          "name": "logout",
+          "guard": "publicProcedure",
+          "kind": "query",
+          "input": "none shown",
+          "line": 389
+        }
+      ]
+    },
+    {
+      "namespace": "seed",
+      "line": 396,
+      "procedures": [
+        {
+          "name": "isSeeded",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "none shown",
+          "line": 397
+        },
+        {
+          "name": "run",
+          "guard": "adminProcedure",
+          "kind": "mutation",
+          "input": "none shown",
+          "line": 398
+        },
+        {
+          "name": "reset",
+          "guard": "adminProcedure",
+          "kind": "query",
+          "input": "none shown",
+          "line": 402
+        }
+      ]
+    },
+    {
+      "namespace": "engineers",
+      "line": 435,
+      "procedures": [
+        {
+          "name": "list",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 436
+        },
+        {
+          "name": "create",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 437
+        }
+      ]
+    },
+    {
+      "namespace": "tasks",
+      "line": 444,
+      "procedures": [
+        {
+          "name": "stats",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 445
+        },
+        {
+          "name": "list",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 447
+        },
+        {
+          "name": "create",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "none shown",
+          "line": 449
+        },
+        {
+          "name": "updateStatus",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 470
+        },
+        {
+          "name": "delete",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 474
+        },
+        {
+          "name": "reschedule",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 476
+        },
+        {
+          "name": "critical",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 478
+        },
+        {
+          "name": "calendarView",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 479
+        },
+        {
+          "name": "calendarViewAdmin",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 482
+        },
+        {
+          "name": "engineers",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 485
+        },
+        {
+          "name": "createEngineer",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 486
+        },
+        {
+          "name": "deleteEngineer",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 491
+        },
+        {
+          "name": "updateEngineerProfile",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 493
+        },
+        {
+          "name": "filtered",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 507
+        },
+        {
+          "name": "timeSummary",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 515
+        },
+        {
+          "name": "checkOverlap",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 520
+        },
+        {
+          "name": "criticalEnhanced",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 527
+        },
+        {
+          "name": "timeline",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 528
+        },
+        {
+          "name": "submitRecording",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "none shown",
+          "line": 533
+        },
+        {
+          "name": "missingRecordings",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 562
+        },
+        {
+          "name": "pendingReviews",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 564
+        },
+        {
+          "name": "reviewStats",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 565
+        },
+        {
+          "name": "createWithTime",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "none shown",
+          "line": 566
+        },
+        {
+          "name": "moveTask",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "none shown",
+          "line": 591
+        },
+        {
+          "name": "updateFull",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "none shown",
+          "line": 615
+        }
+      ]
+    },
+    {
+      "namespace": "leads",
+      "line": 649,
+      "procedures": [
+        {
+          "name": "stats",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 650
+        },
+        {
+          "name": "list",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 652
+        },
+        {
+          "name": "create",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 654
+        },
+        {
+          "name": "updateStatus",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 658
+        }
+      ]
+    },
+    {
+      "namespace": "visits",
+      "line": 665,
+      "procedures": [
+        {
+          "name": "stats",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 666
+        },
+        {
+          "name": "list",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 668
+        },
+        {
+          "name": "create",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 679
+        },
+        {
+          "name": "updateStatus",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 687
+        },
+        {
+          "name": "updateFull",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "none shown",
+          "line": 703
+        },
+        {
+          "name": "softDelete",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 724
+        },
+        {
+          "name": "debt",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 728
+        },
+        {
+          "name": "alerts",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 730
+        },
+        {
+          "name": "dailyTracking",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 732
+        },
+        {
+          "name": "adminSalesKPI",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 734
+        },
+        {
+          "name": "engineerKPI",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 736
+        },
+        {
+          "name": "needingAction",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 738
+        }
+      ]
+    },
+    {
+      "namespace": "closing",
+      "line": 743,
+      "procedures": [
+        {
+          "name": "stats",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 744
+        },
+        {
+          "name": "list",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 746
+        },
+        {
+          "name": "create",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 748
+        },
+        {
+          "name": "updateStage",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 756
+        },
+        {
+          "name": "discountSummary",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 771
+        },
+        {
+          "name": "validateDiscount",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 781
+        },
+        {
+          "name": "engineerDiscountSummary",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 785
+        },
+        {
+          "name": "dealAllocations",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 796
+        },
+        {
+          "name": "discountSummaryForEngineer",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 798
+        },
+        {
+          "name": "discountDashboard",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 800
+        },
+        {
+          "name": "discountBonusSummary",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 802
+        },
+        {
+          "name": "calculateDealBonus",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 807
+        },
+        {
+          "name": "setDiscountCap",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 809
+        },
+        {
+          "name": "lostDealsAnalysis",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 819
+        },
+        {
+          "name": "lostReasonLabels",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 820
+        },
+        {
+          "name": "updateDealStage",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 822
+        },
+        {
+          "name": "salesEngineers",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 837
+        },
+        {
+          "name": "timeline",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 839
+        },
+        {
+          "name": "updateEngineer",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 842
+        },
+        {
+          "name": "reopen",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 856
+        },
+        {
+          "name": "setAccountingMonth",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 868
+        },
+        {
+          "name": "autoCreateFromTask",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "none shown",
+          "line": 888
+        }
+      ]
+    },
+    {
+      "namespace": "projectTimeline",
+      "line": 910,
+      "procedures": [
+        {
+          "name": "config",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 911
+        },
+        {
+          "name": "list",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "none shown",
+          "line": 916
+        },
+        {
+          "name": "dashboard",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 939
+        },
+        {
+          "name": "analytics",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 954
+        },
+        {
+          "name": "detail",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 961
+        },
+        {
+          "name": "syncFromDeals",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 966
+        },
+        {
+          "name": "importHistorical",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 971
+        },
+        {
+          "name": "updatePreExecution",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "none shown",
+          "line": 984
+        },
+        {
+          "name": "startExecution",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1005
+        },
+        {
+          "name": "transition",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1015
+        },
+        {
+          "name": "addDelay",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1028
+        },
+        {
+          "name": "update",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1043
+        },
+        {
+          "name": "close",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1059
+        },
+        {
+          "name": "setHold",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1070
+        },
+        {
+          "name": "updateStageConfig",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "none shown",
+          "line": 1082
+        }
+      ]
+    },
+    {
+      "namespace": "sales",
+      "line": 1101,
+      "procedures": [
+        {
+          "name": "controlStats",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1103
+        },
+        {
+          "name": "engineersPerformance",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1106
+        },
+        {
+          "name": "monthlyStats",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1109
+        },
+        {
+          "name": "trend",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1114
+        },
+        {
+          "name": "setEngineerTarget",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1119
+        },
+        {
+          "name": "setOperationalTargets",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1123
+        },
+        {
+          "name": "discountTiers",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1132
+        },
+        {
+          "name": "upsertDiscountTier",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1133
+        },
+        {
+          "name": "deleteDiscountTier",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1137
+        },
+        {
+          "name": "commissionTiers",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1140
+        },
+        {
+          "name": "upsertCommissionTier",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1141
+        },
+        {
+          "name": "deleteCommissionTier",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1145
+        }
+      ]
+    },
+    {
+      "namespace": "kpi",
+      "line": 1150,
+      "procedures": [
+        {
+          "name": "engineers",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1151
+        },
+        {
+          "name": "trend",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1153
+        },
+        {
+          "name": "weeklyReport",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1155
+        },
+        {
+          "name": "weeklyPerformance",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1157
+        },
+        {
+          "name": "engineerPerformance",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1158
+        },
+        {
+          "name": "standardDistribution",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1161
+        },
+        {
+          "name": "taskTypeLabels",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1162
+        },
+        {
+          "name": "operationalPerformance",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1164
+        },
+        {
+          "name": "enhancedRanking",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1168
+        },
+        {
+          "name": "teleSalesKPI",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1172
+        },
+        {
+          "name": "siteEngineersKPI",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1175
+        },
+        {
+          "name": "departmentLabels",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1179
+        },
+        {
+          "name": "salesDepartments",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1180
+        },
+        {
+          "name": "allowedTaskTypes",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1181
+        },
+        {
+          "name": "companyClosingKPI",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1183
+        },
+        {
+          "name": "teamRewardStatus",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1186
+        },
+        {
+          "name": "lostDealsImpact",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1190
+        },
+        {
+          "name": "teamCompositeDiscountScore",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1195
+        },
+        {
+          "name": "engineerCompositeDiscountScore",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1202
+        },
+        {
+          "name": "performanceDiscountTiers",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1206
+        },
+        {
+          "name": "scoreBasedDiscountDistribution",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1209
+        },
+        {
+          "name": "advancedDiscountDistribution",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1213
+        },
+        {
+          "name": "adminSalesKPI",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1217
+        },
+        {
+          "name": "adminSalesCategoryAnalysis",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1221
+        },
+        {
+          "name": "engineerOperationalTargets",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1225
+        },
+        {
+          "name": "teamPerformanceRanking",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1229
+        },
+        {
+          "name": "engineerEarnings",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1233
+        },
+        {
+          "name": "allEngineersEarnings",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1236
+        },
+        {
+          "name": "commissionDetails",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1239
+        },
+        {
+          "name": "companyClosingBonus",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1245
+        },
+        {
+          "name": "closingBonusTiers",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1248
+        }
+      ]
+    },
+    {
+      "namespace": "collections",
+      "line": 1254,
+      "procedures": [
+        {
+          "name": "stats",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1255
+        },
+        {
+          "name": "list",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1256
+        },
+        {
+          "name": "create",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1258
+        },
+        {
+          "name": "update",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1263
+        }
+      ]
+    },
+    {
+      "namespace": "planning",
+      "line": 1269,
+      "procedures": [
+        {
+          "name": "getTarget",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1270
+        },
+        {
+          "name": "setTarget",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1272
+        },
+        {
+          "name": "calculate",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1277
+        },
+        {
+          "name": "getCompanyGoal",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1287
+        },
+        {
+          "name": "setCompanyGoal",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1290
+        },
+        {
+          "name": "getCompanyGoalProgress",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1306
+        },
+        {
+          "name": "getPersonalGoals",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1310
+        },
+        {
+          "name": "setPersonalGoal",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1313
+        },
+        {
+          "name": "engineerPerformanceScore",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1327
+        },
+        {
+          "name": "allEngineersPerformanceScores",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1330
+        },
+        {
+          "name": "getOperationalBreakdown",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1334
+        },
+        {
+          "name": "getActivitySummary",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1337
+        },
+        {
+          "name": "getActivityTypes",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1340
+        },
+        {
+          "name": "previewDistribution",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1351
+        },
+        {
+          "name": "applyDistribution",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1355
+        },
+        {
+          "name": "manualOverride",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1359
+        },
+        {
+          "name": "getEngineerFullTarget",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1376
+        }
+      ]
+    },
+    {
+      "namespace": "financial",
+      "line": 1382,
+      "procedures": [
+        {
+          "name": "allContracts",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1384
+        },
+        {
+          "name": "clientProfile",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1387
+        },
+        {
+          "name": "addContract",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1390
+        },
+        {
+          "name": "addPayment",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1398
+        },
+        {
+          "name": "addPromise",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1413
+        },
+        {
+          "name": "updatePromise",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1425
+        },
+        {
+          "name": "dailyFollowUp",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1430
+        },
+        {
+          "name": "engineersCommission",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1432
+        },
+        {
+          "name": "markCommissionPaid",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1434
+        },
+        {
+          "name": "updateContractStatus",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1437
+        },
+        {
+          "name": "calcCommission",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1442
+        },
+        {
+          "name": "autoCreateContract",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1448
+        },
+        {
+          "name": "addPaymentWithFollowUp",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1451
+        },
+        {
+          "name": "collectionCommission",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1465
+        },
+        {
+          "name": "dashboard",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1469
+        },
+        {
+          "name": "alerts",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1472
+        },
+        {
+          "name": "contractsWithCommission",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1474
+        },
+        {
+          "name": "periodAnalysis",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1476
+        }
+      ]
+    },
+    {
+      "namespace": "customers",
+      "line": 1482,
+      "procedures": [
+        {
+          "name": "list",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1483
+        },
+        {
+          "name": "create",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1485
+        },
+        {
+          "name": "update",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1487
+        },
+        {
+          "name": "delete",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1489
+        }
+      ]
+    },
+    {
+      "namespace": "products",
+      "line": 1492,
+      "procedures": [
+        {
+          "name": "list",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1493
+        },
+        {
+          "name": "categories",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1495
+        },
+        {
+          "name": "create",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1496
+        },
+        {
+          "name": "update",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1498
+        },
+        {
+          "name": "delete",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1500
+        }
+      ]
+    },
+    {
+      "namespace": "management",
+      "line": 1506,
+      "procedures": [
+        {
+          "name": "focus",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1507
+        }
+      ]
+    },
+    {
+      "namespace": "meetingReview",
+      "line": 1512,
+      "procedures": [
+        {
+          "name": "submitLink",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1514
+        },
+        {
+          "name": "getReview",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1522
+        },
+        {
+          "name": "upsertReview",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1526
+        },
+        {
+          "name": "getClosingQuality",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1543
+        }
+      ]
+    },
+    {
+      "namespace": "adminSalesTasks",
+      "line": 1547,
+      "procedures": [
+        {
+          "name": "getByDate",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1549
+        },
+        {
+          "name": "updateStatus",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1553
+        },
+        {
+          "name": "getWeekMeeting",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1564
+        },
+        {
+          "name": "updateWeekMeeting",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1568
+        },
+        {
+          "name": "getStats",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1582
+        },
+        {
+          "name": "create",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1586
+        },
+        {
+          "name": "updateFull",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1602
+        }
+      ]
+    },
+    {
+      "namespace": "leadFollowup",
+      "line": 1622,
+      "procedures": [
+        {
+          "name": "log",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1624
+        },
+        {
+          "name": "getLogs",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1637
+        },
+        {
+          "name": "adminSalesKPI",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1647
+        },
+        {
+          "name": "telesalesKPI",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1652
+        },
+        {
+          "name": "allTelesalesStats",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1657
+        }
+      ]
+    },
+    {
+      "namespace": "softDelete",
+      "line": 1662,
+      "procedures": [
+        {
+          "name": "engineer",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1663
+        },
+        {
+          "name": "task",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1673
+        },
+        {
+          "name": "lead",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1683
+        },
+        {
+          "name": "visit",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1693
+        },
+        {
+          "name": "deal",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1703
+        },
+        {
+          "name": "getAuditLogs",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1712
+        }
+      ]
+    },
+    {
+      "namespace": "localAuth",
+      "line": 1717,
+      "procedures": [
+        {
+          "name": "login",
+          "guard": "publicProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1719
+        },
+        {
+          "name": "me",
+          "guard": "publicProcedure",
+          "kind": "query",
+          "input": "none shown",
+          "line": 1741
+        },
+        {
+          "name": "logout",
+          "guard": "publicProcedure",
+          "kind": "mutation",
+          "input": "none shown",
+          "line": 1759
+        },
+        {
+          "name": "myPermissions",
+          "guard": "publicProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1766
+        }
+      ]
+    },
+    {
+      "namespace": "leadDailyStats",
+      "line": 1777,
+      "procedures": [
+        {
+          "name": "upsert",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1779
+        },
+        {
+          "name": "list",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1794
+        },
+        {
+          "name": "summary",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1802
+        }
+      ]
+    },
+    {
+      "namespace": "workDist",
+      "line": 1811,
+      "procedures": [
+        {
+          "name": "log",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1813
+        },
+        {
+          "name": "myDistribution",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1844
+        },
+        {
+          "name": "allEngineers",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1853
+        },
+        {
+          "name": "weeklyAnalysis",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1858
+        },
+        {
+          "name": "criticalInsights",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1867
+        },
+        {
+          "name": "fullRanking",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1872
+        },
+        {
+          "name": "config",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1877
+        }
+      ]
+    },
+    {
+      "namespace": "reports",
+      "line": 1883,
+      "procedures": [
+        {
+          "name": "weeklyFull",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1885
+        },
+        {
+          "name": "monthlyKPI",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1887
+        },
+        {
+          "name": "quarterly",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1891
+        }
+      ]
+    },
+    {
+      "namespace": "pipeline",
+      "line": 1901,
+      "procedures": [
+        {
+          "name": "engineerStats",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1902
+        },
+        {
+          "name": "overview",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1905
+        },
+        {
+          "name": "approveDiscount",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1906
+        },
+        {
+          "name": "computeBonus",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1909
+        },
+        {
+          "name": "bonusSummary",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1912
+        }
+      ]
+    },
+    {
+      "namespace": "playbook",
+      "line": 1915,
+      "procedures": [
+        {
+          "name": "list",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1917
+        },
+        {
+          "name": "getById",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 1920
+        },
+        {
+          "name": "categories",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1923
+        },
+        {
+          "name": "create",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1924
+        },
+        {
+          "name": "update",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1946
+        },
+        {
+          "name": "delete",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1970
+        },
+        {
+          "name": "import",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1973
+        },
+        {
+          "name": "createQuotation",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 1994
+        },
+        {
+          "name": "listQuotations",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 2004
+        },
+        {
+          "name": "updateRecording",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 2007
+        },
+        {
+          "name": "updateStatus",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 2010
+        },
+        {
+          "name": "funnelAnalysis",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 2014
+        },
+        {
+          "name": "reviewsList",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 2018
+        },
+        {
+          "name": "weeklyCoaching",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 2021
+        }
+      ]
+    },
+    {
+      "namespace": "session",
+      "line": 2026,
+      "procedures": [
+        {
+          "name": "create",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 2027
+        },
+        {
+          "name": "end",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 2040
+        },
+        {
+          "name": "logAction",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 2043
+        },
+        {
+          "name": "details",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 2053
+        },
+        {
+          "name": "engineerStats",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 2056
+        },
+        {
+          "name": "adminList",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 2059
+        },
+        {
+          "name": "updateRecording",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 2062
+        },
+        {
+          "name": "weeklyCoaching",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 2065
+        }
+      ]
+    },
+    {
+      "namespace": "promotion",
+      "line": 2070,
+      "procedures": [
+        {
+          "name": "createMeetingReview",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 2072
+        },
+        {
+          "name": "getMeetingReviewByTask",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 2088
+        },
+        {
+          "name": "getMeetingReviewSummary",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 2092
+        },
+        {
+          "name": "getMeetingTasksPendingReview",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 2096
+        },
+        {
+          "name": "createMonthlyEvaluation",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 2100
+        },
+        {
+          "name": "getEvaluationHistory",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 2116
+        },
+        {
+          "name": "getAllEngineersDashboard",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 2120
+        },
+        {
+          "name": "promoteEngineer",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 2124
+        },
+        {
+          "name": "getCareerLevel",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 2128
+        },
+        {
+          "name": "getManagementDashboard",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 2133
+        },
+        {
+          "name": "getEngineerPromotionProgress",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 2136
+        }
+      ]
+    },
+    {
+      "namespace": "funnel",
+      "line": 2142,
+      "procedures": [
+        {
+          "name": "full",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 2143
+        },
+        {
+          "name": "comparison",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 2149
+        },
+        {
+          "name": "playbookInsights",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 2151
+        }
+      ]
+    },
+    {
+      "namespace": "appUsers",
+      "line": 2157,
+      "procedures": [
+        {
+          "name": "login",
+          "guard": "publicProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 2159
+        },
+        {
+          "name": "logout",
+          "guard": "publicProcedure",
+          "kind": "mutation",
+          "input": "none shown",
+          "line": 2183
+        },
+        {
+          "name": "me",
+          "guard": "publicProcedure",
+          "kind": "query",
+          "input": "none shown",
+          "line": 2190
+        },
+        {
+          "name": "list",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 2201
+        },
+        {
+          "name": "create",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 2210
+        },
+        {
+          "name": "update",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 2240
+        },
+        {
+          "name": "getPermissions",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 2260
+        },
+        {
+          "name": "updatePermissions",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 2270
+        },
+        {
+          "name": "activityLogs",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 2292
+        },
+        {
+          "name": "defaultPermissions",
+          "guard": "publicProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 2306
+        },
+        {
+          "name": "listEngineers",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 2310
+        },
+        {
+          "name": "bulkCreateAccounts",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 2319
+        },
+        {
+          "name": "createEngineerAccount",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 2331
+        },
+        {
+          "name": "resetPassword",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 2349
+        },
+        {
+          "name": "changePassword",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 2361
+        },
+        {
+          "name": "toggleStatus",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 2382
+        }
+      ]
+    },
+    {
+      "namespace": "rolePermissions",
+      "line": 2395,
+      "procedures": [
+        {
+          "name": "getAll",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 2397
+        },
+        {
+          "name": "getByRole",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 2407
+        },
+        {
+          "name": "update",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 2417
+        },
+        {
+          "name": "updateAll",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 2443
+        },
+        {
+          "name": "meta",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "none shown",
+          "line": 2470
+        }
+      ]
+    },
+    {
+      "namespace": "sectionPermissions",
+      "line": 2478,
+      "procedures": [
+        {
+          "name": "myPermissions",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "none shown",
+          "line": 2480
+        },
+        {
+          "name": "getAll",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "none shown",
+          "line": 2498
+        },
+        {
+          "name": "initDefaults",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "none shown",
+          "line": 2508
+        },
+        {
+          "name": "getByRole",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 2555
+        },
+        {
+          "name": "update",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 2566
+        },
+        {
+          "name": "bulkUpdate",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 2590
+        },
+        {
+          "name": "moduleSections",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 2616
+        }
+      ]
+    },
+    {
+      "namespace": "dealTasks",
+      "line": 2621,
+      "procedures": [
+        {
+          "name": "create",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 2623
+        },
+        {
+          "name": "listOverdue",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 2639
+        },
+        {
+          "name": "listPending",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 2643
+        },
+        {
+          "name": "markDone",
+          "guard": "protectedProcedure",
+          "kind": "mutation",
+          "input": "zod input",
+          "line": 2647
+        },
+        {
+          "name": "followupKPI",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 2654
+        },
+        {
+          "name": "complianceReport",
+          "guard": "protectedProcedure",
+          "kind": "query",
+          "input": "zod input",
+          "line": 2662
+        }
+      ]
+    }
+  ],
+  "frontend_calls": [
+    {
+      "namespace": "ai",
+      "procedure": "chat",
+      "file": "client/src/components/AIChatBox.tsx",
+      "line": 79
+    },
+    {
+      "namespace": "tasks",
+      "procedure": "createWithTime",
+      "file": "client/src/components/DailyTimeline.tsx",
+      "line": 84
+    },
+    {
+      "namespace": "tasks",
+      "procedure": "timeline",
+      "file": "client/src/components/DailyTimeline.tsx",
+      "line": 306
+    },
+    {
+      "namespace": "localAuth",
+      "procedure": "logout",
+      "file": "client/src/components/DashboardLayout.tsx",
+      "line": 117
+    },
+    {
+      "namespace": "tasks",
+      "procedure": "createWithTime",
+      "file": "client/src/components/InteractiveCalendar.tsx",
+      "line": 404
+    },
+    {
+      "namespace": "tasks",
+      "procedure": "updateFull",
+      "file": "client/src/components/InteractiveCalendar.tsx",
+      "line": 408
+    },
+    {
+      "namespace": "adminSalesTasks",
+      "procedure": "create",
+      "file": "client/src/components/InteractiveCalendar.tsx",
+      "line": 413
+    },
+    {
+      "namespace": "adminSalesTasks",
+      "procedure": "updateFull",
+      "file": "client/src/components/InteractiveCalendar.tsx",
+      "line": 417
+    },
+    {
+      "namespace": "tasks",
+      "procedure": "calendarView",
+      "file": "client/src/components/InteractiveCalendar.tsx",
+      "line": 1207
+    },
+    {
+      "namespace": "tasks",
+      "procedure": "calendarViewAdmin",
+      "file": "client/src/components/InteractiveCalendar.tsx",
+      "line": 1213
+    },
+    {
+      "namespace": "tasks",
+      "procedure": "moveTask",
+      "file": "client/src/components/InteractiveCalendar.tsx",
+      "line": 1224
+    },
+    {
+      "namespace": "adminSalesTasks",
+      "procedure": "updateFull",
+      "file": "client/src/components/InteractiveCalendar.tsx",
+      "line": 1228
+    },
+    {
+      "namespace": "tasks",
+      "procedure": "delete",
+      "file": "client/src/components/InteractiveCalendar.tsx",
+      "line": 1233
+    },
+    {
+      "namespace": "tasks",
+      "procedure": "calendarView",
+      "file": "client/src/components/TaskCalendarView.tsx",
+      "line": 500
+    },
+    {
+      "namespace": "appUsers",
+      "procedure": "me",
+      "file": "client/src/hooks/useAppAuth.ts",
+      "line": 22
+    },
+    {
+      "namespace": "appUsers",
+      "procedure": "logout",
+      "file": "client/src/hooks/useAppAuth.ts",
+      "line": 28
+    },
+    {
+      "namespace": "localAuth",
+      "procedure": "me",
+      "file": "client/src/hooks/useLocalAuth.ts",
+      "line": 6
+    },
+    {
+      "namespace": "localAuth",
+      "procedure": "logout",
+      "file": "client/src/hooks/useLocalAuth.ts",
+      "line": 11
+    },
+    {
+      "namespace": "localAuth",
+      "procedure": "myPermissions",
+      "file": "client/src/hooks/useRoleAccess.ts",
+      "line": 159
+    },
+    {
+      "namespace": "sectionPermissions",
+      "procedure": "myPermissions",
+      "file": "client/src/hooks/useSectionPermission.ts",
+      "line": 11
+    },
+    {
+      "namespace": "closing",
+      "procedure": "stats",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 109
+    },
+    {
+      "namespace": "closing",
+      "procedure": "list",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 110
+    },
+    {
+      "namespace": "engineers",
+      "procedure": "list",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 111
+    },
+    {
+      "namespace": "closing",
+      "procedure": "discountSummary",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 113
+    },
+    {
+      "namespace": "closing",
+      "procedure": "engineerDiscountSummary",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 114
+    },
+    {
+      "namespace": "kpi",
+      "procedure": "teamCompositeDiscountScore",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 116
+    },
+    {
+      "namespace": "closing",
+      "procedure": "lostDealsAnalysis",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 120
+    },
+    {
+      "namespace": "dealTasks",
+      "procedure": "listOverdue",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 122
+    },
+    {
+      "namespace": "dealTasks",
+      "procedure": "listPending",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 123
+    },
+    {
+      "namespace": "closing",
+      "procedure": "discountDashboard",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 128
+    },
+    {
+      "namespace": "closing",
+      "procedure": "salesEngineers",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 133
+    },
+    {
+      "namespace": "closing",
+      "procedure": "timeline",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 136
+    },
+    {
+      "namespace": "closing",
+      "procedure": "updateEngineer",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 140
+    },
+    {
+      "namespace": "closing",
+      "procedure": "create",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 158
+    },
+    {
+      "namespace": "closing",
+      "procedure": "updateStage",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 162
+    },
+    {
+      "namespace": "dealTasks",
+      "procedure": "create",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 183
+    },
+    {
+      "namespace": "dealTasks",
+      "procedure": "markDone",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 184
+    },
+    {
+      "namespace": "closing",
+      "procedure": "updateDealStage",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 187
+    },
+    {
+      "namespace": "softDelete",
+      "procedure": "deal",
+      "file": "client/src/pages/ClosingModule.tsx",
+      "line": 196
+    },
+    {
+      "namespace": "financial",
+      "procedure": "allContracts",
+      "file": "client/src/pages/CollectionsModule.tsx",
+      "line": 49
+    },
+    {
+      "namespace": "financial",
+      "procedure": "dailyFollowUp",
+      "file": "client/src/pages/CollectionsModule.tsx",
+      "line": 50
+    },
+    {
+      "namespace": "financial",
+      "procedure": "engineersCommission",
+      "file": "client/src/pages/CollectionsModule.tsx",
+      "line": 51
+    },
+    {
+      "namespace": "engineers",
+      "procedure": "list",
+      "file": "client/src/pages/CollectionsModule.tsx",
+      "line": 52
+    },
+    {
+      "namespace": "financial",
+      "procedure": "dashboard",
+      "file": "client/src/pages/CollectionsModule.tsx",
+      "line": 63
+    },
+    {
+      "namespace": "financial",
+      "procedure": "alerts",
+      "file": "client/src/pages/CollectionsModule.tsx",
+      "line": 64
+    },
+    {
+      "namespace": "financial",
+      "procedure": "contractsWithCommission",
+      "file": "client/src/pages/CollectionsModule.tsx",
+      "line": 65
+    },
+    {
+      "namespace": "financial",
+      "procedure": "periodAnalysis",
+      "file": "client/src/pages/CollectionsModule.tsx",
+      "line": 73
+    },
+    {
+      "namespace": "financial",
+      "procedure": "addPaymentWithFollowUp",
+      "file": "client/src/pages/CollectionsModule.tsx",
+      "line": 79
+    },
+    {
+      "namespace": "financial",
+      "procedure": "autoCreateContract",
+      "file": "client/src/pages/CollectionsModule.tsx",
+      "line": 93
+    },
+    {
+      "namespace": "financial",
+      "procedure": "addContract",
+      "file": "client/src/pages/CollectionsModule.tsx",
+      "line": 105
+    },
+    {
+      "namespace": "financial",
+      "procedure": "addPayment",
+      "file": "client/src/pages/CollectionsModule.tsx",
+      "line": 109
+    },
+    {
+      "namespace": "financial",
+      "procedure": "addPromise",
+      "file": "client/src/pages/CollectionsModule.tsx",
+      "line": 113
+    },
+    {
+      "namespace": "financial",
+      "procedure": "updatePromise",
+      "file": "client/src/pages/CollectionsModule.tsx",
+      "line": 117
+    },
+    {
+      "namespace": "ai",
+      "procedure": "chat",
+      "file": "client/src/pages/ComponentShowcase.tsx",
+      "line": 222
+    },
+    {
+      "namespace": "kpi",
+      "procedure": "engineers",
+      "file": "client/src/pages/KPIModule.tsx",
+      "line": 102
+    },
+    {
+      "namespace": "kpi",
+      "procedure": "trend",
+      "file": "client/src/pages/KPIModule.tsx",
+      "line": 103
+    },
+    {
+      "namespace": "kpi",
+      "procedure": "operationalPerformance",
+      "file": "client/src/pages/KPIModule.tsx",
+      "line": 104
+    },
+    {
+      "namespace": "kpi",
+      "procedure": "enhancedRanking",
+      "file": "client/src/pages/KPIModule.tsx",
+      "line": 105
+    },
+    {
+      "namespace": "kpi",
+      "procedure": "teleSalesKPI",
+      "file": "client/src/pages/KPIModule.tsx",
+      "line": 106
+    },
+    {
+      "namespace": "kpi",
+      "procedure": "siteEngineersKPI",
+      "file": "client/src/pages/KPIModule.tsx",
+      "line": 107
+    },
+    {
+      "namespace": "kpi",
+      "procedure": "companyClosingKPI",
+      "file": "client/src/pages/KPIModule.tsx",
+      "line": 108
+    },
+    {
+      "namespace": "kpi",
+      "procedure": "teamRewardStatus",
+      "file": "client/src/pages/KPIModule.tsx",
+      "line": 109
+    },
+    {
+      "namespace": "kpi",
+      "procedure": "lostDealsImpact",
+      "file": "client/src/pages/KPIModule.tsx",
+      "line": 110
+    },
+    {
+      "namespace": "kpi",
+      "procedure": "scoreBasedDiscountDistribution",
+      "file": "client/src/pages/KPIModule.tsx",
+      "line": 111
+    },
+    {
+      "namespace": "kpi",
+      "procedure": "allEngineersEarnings",
+      "file": "client/src/pages/KPIModule.tsx",
+      "line": 112
+    },
+    {
+      "namespace": "kpi",
+      "procedure": "companyClosingBonus",
+      "file": "client/src/pages/KPIModule.tsx",
+      "line": 113
+    },
+    {
+      "namespace": "dealTasks",
+      "procedure": "complianceReport",
+      "file": "client/src/pages/KPIModule.tsx",
+      "line": 116
+    },
+    {
+      "namespace": "planning",
+      "procedure": "allEngineersPerformanceScores",
+      "file": "client/src/pages/KPIModule.tsx",
+      "line": 122
+    },
+    {
+      "namespace": "planning",
+      "procedure": "getOperationalBreakdown",
+      "file": "client/src/pages/KPIModule.tsx",
+      "line": 123
+    },
+    {
+      "namespace": "engineers",
+      "procedure": "list",
+      "file": "client/src/pages/KPIModule.tsx",
+      "line": 127
+    },
+    {
+      "namespace": "leadDailyStats",
+      "procedure": "upsert",
+      "file": "client/src/pages/LeadsModule.tsx",
+      "line": 201
+    },
+    {
+      "namespace": "leadDailyStats",
+      "procedure": "summary",
+      "file": "client/src/pages/LeadsModule.tsx",
+      "line": 287
+    },
+    {
+      "namespace": "leadDailyStats",
+      "procedure": "list",
+      "file": "client/src/pages/LeadsModule.tsx",
+      "line": 339
+    },
+    {
+      "namespace": "leadDailyStats",
+      "procedure": "summary",
+      "file": "client/src/pages/LeadsModule.tsx",
+      "line": 420
+    },
+    {
+      "namespace": "appUsers",
+      "procedure": "changePassword",
+      "file": "client/src/pages/LoginPage.tsx",
+      "line": 23
+    },
+    {
+      "namespace": "localAuth",
+      "procedure": "login",
+      "file": "client/src/pages/LoginPage.tsx",
+      "line": 33
+    },
+    {
+      "namespace": "management",
+      "procedure": "focus",
+      "file": "client/src/pages/Overview.tsx",
+      "line": 261
+    },
+    {
+      "namespace": "promotion",
+      "procedure": "getAllEngineersDashboard",
+      "file": "client/src/pages/Overview.tsx",
+      "line": 262
+    },
+    {
+      "namespace": "tasks",
+      "procedure": "stats",
+      "file": "client/src/pages/Overview.tsx",
+      "line": 263
+    },
+    {
+      "namespace": "tasks",
+      "procedure": "critical",
+      "file": "client/src/pages/Overview.tsx",
+      "line": 264
+    },
+    {
+      "namespace": "leads",
+      "procedure": "stats",
+      "file": "client/src/pages/Overview.tsx",
+      "line": 265
+    },
+    {
+      "namespace": "visits",
+      "procedure": "stats",
+      "file": "client/src/pages/Overview.tsx",
+      "line": 266
+    },
+    {
+      "namespace": "closing",
+      "procedure": "stats",
+      "file": "client/src/pages/Overview.tsx",
+      "line": 267
+    },
+    {
+      "namespace": "sales",
+      "procedure": "monthlyStats",
+      "file": "client/src/pages/Overview.tsx",
+      "line": 268
+    },
+    {
+      "namespace": "collections",
+      "procedure": "stats",
+      "file": "client/src/pages/Overview.tsx",
+      "line": 269
+    },
+    {
+      "namespace": "sales",
+      "procedure": "trend",
+      "file": "client/src/pages/Overview.tsx",
+      "line": 270
+    },
+    {
+      "namespace": "kpi",
+      "procedure": "engineers",
+      "file": "client/src/pages/Overview.tsx",
+      "line": 271
+    },
+    {
+      "namespace": "closing",
+      "procedure": "list",
+      "file": "client/src/pages/Overview.tsx",
+      "line": 272
+    },
+    {
+      "namespace": "tasks",
+      "procedure": "missingRecordings",
+      "file": "client/src/pages/Overview.tsx",
+      "line": 273
+    },
+    {
+      "namespace": "tasks",
+      "procedure": "pendingReviews",
+      "file": "client/src/pages/Overview.tsx",
+      "line": 274
+    },
+    {
+      "namespace": "workDist",
+      "procedure": "allEngineers",
+      "file": "client/src/pages/Overview.tsx",
+      "line": 276
+    },
+    {
+      "namespace": "rolePermissions",
+      "procedure": "getAll",
+      "file": "client/src/pages/PermissionsPanel.tsx",
+      "line": 85
+    },
+    {
+      "namespace": "rolePermissions",
+      "procedure": "update",
+      "file": "client/src/pages/PermissionsPanel.tsx",
+      "line": 89
+    },
+    {
+      "namespace": "sectionPermissions",
+      "procedure": "getAll",
+      "file": "client/src/pages/PermissionsPanel.tsx",
+      "line": 95
+    },
+    {
+      "namespace": "sectionPermissions",
+      "procedure": "moduleSections",
+      "file": "client/src/pages/PermissionsPanel.tsx",
+      "line": 99
+    },
+    {
+      "namespace": "sectionPermissions",
+      "procedure": "update",
+      "file": "client/src/pages/PermissionsPanel.tsx",
+      "line": 102
+    },
+    {
+      "namespace": "sectionPermissions",
+      "procedure": "initDefaults",
+      "file": "client/src/pages/PermissionsPanel.tsx",
+      "line": 106
+    },
+    {
+      "namespace": "planning",
+      "procedure": "getCompanyGoal",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 58
+    },
+    {
+      "namespace": "planning",
+      "procedure": "getCompanyGoalProgress",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 59
+    },
+    {
+      "namespace": "sales",
+      "procedure": "trend",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 60
+    },
+    {
+      "namespace": "planning",
+      "procedure": "setCompanyGoal",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 108
+    },
+    {
+      "namespace": "engineers",
+      "procedure": "list",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 413
+    },
+    {
+      "namespace": "sales",
+      "procedure": "engineersPerformance",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 414
+    },
+    {
+      "namespace": "planning",
+      "procedure": "previewDistribution",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 415
+    },
+    {
+      "namespace": "kpi",
+      "procedure": "engineerOperationalTargets",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 436
+    },
+    {
+      "namespace": "planning",
+      "procedure": "getPersonalGoals",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 441
+    },
+    {
+      "namespace": "sales",
+      "procedure": "setEngineerTarget",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 446
+    },
+    {
+      "namespace": "sales",
+      "procedure": "setOperationalTargets",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 455
+    },
+    {
+      "namespace": "planning",
+      "procedure": "applyDistribution",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 464
+    },
+    {
+      "namespace": "planning",
+      "procedure": "manualOverride",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 474
+    },
+    {
+      "namespace": "planning",
+      "procedure": "setPersonalGoal",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 485
+    },
+    {
+      "namespace": "planning",
+      "procedure": "setPersonalGoal",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 495
+    },
+    {
+      "namespace": "engineers",
+      "procedure": "list",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 1139
+    },
+    {
+      "namespace": "planning",
+      "procedure": "getPersonalGoals",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 1143
+    },
+    {
+      "namespace": "planning",
+      "procedure": "setPersonalGoal",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 1156
+    },
+    {
+      "namespace": "planning",
+      "procedure": "setPersonalGoal",
+      "file": "client/src/pages/PlanningModule.tsx",
+      "line": 1166
+    },
+    {
+      "namespace": "projectTimeline",
+      "procedure": "updatePreExecution",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 163
+    },
+    {
+      "namespace": "projectTimeline",
+      "procedure": "startExecution",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 167
+    },
+    {
+      "namespace": "projectTimeline",
+      "procedure": "update",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 208
+    },
+    {
+      "namespace": "projectTimeline",
+      "procedure": "close",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 222
+    },
+    {
+      "namespace": "projectTimeline",
+      "procedure": "addDelay",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 236
+    },
+    {
+      "namespace": "projectTimeline",
+      "procedure": "config",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 298
+    },
+    {
+      "namespace": "engineers",
+      "procedure": "list",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 299
+    },
+    {
+      "namespace": "projectTimeline",
+      "procedure": "list",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 319
+    },
+    {
+      "namespace": "projectTimeline",
+      "procedure": "dashboard",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 320
+    },
+    {
+      "namespace": "projectTimeline",
+      "procedure": "analytics",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 330
+    },
+    {
+      "namespace": "projectTimeline",
+      "procedure": "detail",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 338
+    },
+    {
+      "namespace": "projectTimeline",
+      "procedure": "syncFromDeals",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 349
+    },
+    {
+      "namespace": "projectTimeline",
+      "procedure": "transition",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 356
+    },
+    {
+      "namespace": "projectTimeline",
+      "procedure": "update",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 360
+    },
+    {
+      "namespace": "projectTimeline",
+      "procedure": "addDelay",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 364
+    },
+    {
+      "namespace": "projectTimeline",
+      "procedure": "setHold",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 368
+    },
+    {
+      "namespace": "projectTimeline",
+      "procedure": "updateStageConfig",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 372
+    },
+    {
+      "namespace": "projectTimeline",
+      "procedure": "importHistorical",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 379
+    },
+    {
+      "namespace": "projectTimeline",
+      "procedure": "updatePreExecution",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 388
+    },
+    {
+      "namespace": "projectTimeline",
+      "procedure": "startExecution",
+      "file": "client/src/pages/ProjectTimelineModule.tsx",
+      "line": 392
+    },
+    {
+      "namespace": "promotion",
+      "procedure": "createMonthlyEvaluation",
+      "file": "client/src/pages/PromotionSystem.tsx",
+      "line": 147
+    },
+    {
+      "namespace": "promotion",
+      "procedure": "getEngineerPromotionProgress",
+      "file": "client/src/pages/PromotionSystem.tsx",
+      "line": 261
+    },
+    {
+      "namespace": "promotion",
+      "procedure": "promoteEngineer",
+      "file": "client/src/pages/PromotionSystem.tsx",
+      "line": 265
+    },
+    {
+      "namespace": "promotion",
+      "procedure": "getAllEngineersDashboard",
+      "file": "client/src/pages/PromotionSystem.tsx",
+      "line": 678
+    },
+    {
+      "namespace": "reports",
+      "procedure": "weeklyFull",
+      "file": "client/src/pages/ReportsModule.tsx",
+      "line": 199
+    },
+    {
+      "namespace": "reports",
+      "procedure": "monthlyKPI",
+      "file": "client/src/pages/ReportsModule.tsx",
+      "line": 278
+    },
+    {
+      "namespace": "reports",
+      "procedure": "quarterly",
+      "file": "client/src/pages/ReportsModule.tsx",
+      "line": 413
+    },
+    {
+      "namespace": "projectTimeline",
+      "procedure": "dashboard",
+      "file": "client/src/pages/ReportsModule.tsx",
+      "line": 597
+    },
+    {
+      "namespace": "playbook",
+      "procedure": "list",
+      "file": "client/src/pages/SalesExecutionSystem.tsx",
+      "line": 39
+    },
+    {
+      "namespace": "playbook",
+      "procedure": "categories",
+      "file": "client/src/pages/SalesExecutionSystem.tsx",
+      "line": 40
+    },
+    {
+      "namespace": "playbook",
+      "procedure": "import",
+      "file": "client/src/pages/SalesExecutionSystem.tsx",
+      "line": 41
+    },
+    {
+      "namespace": "engineers",
+      "procedure": "list",
+      "file": "client/src/pages/SalesExecutionSystem.tsx",
+      "line": 272
+    },
+    {
+      "namespace": "promotion",
+      "procedure": "getMeetingTasksPendingReview",
+      "file": "client/src/pages/SalesExecutionSystem.tsx",
+      "line": 273
+    },
+    {
+      "namespace": "promotion",
+      "procedure": "getMeetingReviewSummary",
+      "file": "client/src/pages/SalesExecutionSystem.tsx",
+      "line": 274
+    },
+    {
+      "namespace": "promotion",
+      "procedure": "createMeetingReview",
+      "file": "client/src/pages/SalesExecutionSystem.tsx",
+      "line": 286
+    },
+    {
+      "namespace": "engineers",
+      "procedure": "list",
+      "file": "client/src/pages/SalesExecutionSystem.tsx",
+      "line": 486
+    },
+    {
+      "namespace": "funnel",
+      "procedure": "full",
+      "file": "client/src/pages/SalesExecutionSystem.tsx",
+      "line": 487
+    },
+    {
+      "namespace": "funnel",
+      "procedure": "comparison",
+      "file": "client/src/pages/SalesExecutionSystem.tsx",
+      "line": 491
+    },
+    {
+      "namespace": "engineers",
+      "procedure": "list",
+      "file": "client/src/pages/SalesExecutionSystem.tsx",
+      "line": 656
+    },
+    {
+      "namespace": "playbook",
+      "procedure": "weeklyCoaching",
+      "file": "client/src/pages/SalesExecutionSystem.tsx",
+      "line": 660
+    },
+    {
+      "namespace": "sales",
+      "procedure": "controlStats",
+      "file": "client/src/pages/SalesModule.tsx",
+      "line": 63
+    },
+    {
+      "namespace": "sales",
+      "procedure": "engineersPerformance",
+      "file": "client/src/pages/SalesModule.tsx",
+      "line": 64
+    },
+    {
+      "namespace": "sales",
+      "procedure": "trend",
+      "file": "client/src/pages/SalesModule.tsx",
+      "line": 65
+    },
+    {
+      "namespace": "tasks",
+      "procedure": "engineers",
+      "file": "client/src/pages/SalesModule.tsx",
+      "line": 66
+    },
+    {
+      "namespace": "sales",
+      "procedure": "discountTiers",
+      "file": "client/src/pages/SalesModule.tsx",
+      "line": 67
+    },
+    {
+      "namespace": "sales",
+      "procedure": "commissionTiers",
+      "file": "client/src/pages/SalesModule.tsx",
+      "line": 68
+    },
+    {
+      "namespace": "sales",
+      "procedure": "setEngineerTarget",
+      "file": "client/src/pages/SalesModule.tsx",
+      "line": 78
+    },
+    {
+      "namespace": "sales",
+      "procedure": "upsertDiscountTier",
+      "file": "client/src/pages/SalesModule.tsx",
+      "line": 86
+    },
+    {
+      "namespace": "sales",
+      "procedure": "deleteDiscountTier",
+      "file": "client/src/pages/SalesModule.tsx",
+      "line": 89
+    },
+    {
+      "namespace": "sales",
+      "procedure": "upsertCommissionTier",
+      "file": "client/src/pages/SalesModule.tsx",
+      "line": 92
+    },
+    {
+      "namespace": "sales",
+      "procedure": "deleteCommissionTier",
+      "file": "client/src/pages/SalesModule.tsx",
+      "line": 95
+    },
+    {
+      "namespace": "kpi",
+      "procedure": "engineerOperationalTargets",
+      "file": "client/src/pages/SalesModule.tsx",
+      "line": 101
+    },
+    {
+      "namespace": "kpi",
+      "procedure": "teamPerformanceRanking",
+      "file": "client/src/pages/SalesModule.tsx",
+      "line": 106
+    },
+    {
+      "namespace": "meetingReview",
+      "procedure": "submitLink",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 103
+    },
+    {
+      "namespace": "tasks",
+      "procedure": "updateStatus",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 111
+    },
+    {
+      "namespace": "kpi",
+      "procedure": "allowedTaskTypes",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 246
+    },
+    {
+      "namespace": "tasks",
+      "procedure": "create",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 255
+    },
+    {
+      "namespace": "tasks",
+      "procedure": "createEngineer",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 401
+    },
+    {
+      "namespace": "tasks",
+      "procedure": "updateEngineerProfile",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 408
+    },
+    {
+      "namespace": "softDelete",
+      "procedure": "engineer",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 415
+    },
+    {
+      "namespace": "meetingReview",
+      "procedure": "getReview",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 601
+    },
+    {
+      "namespace": "meetingReview",
+      "procedure": "upsertReview",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 602
+    },
+    {
+      "namespace": "adminSalesTasks",
+      "procedure": "updateStatus",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 738
+    },
+    {
+      "namespace": "kpi",
+      "procedure": "operationalPerformance",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 804
+    },
+    {
+      "namespace": "adminSalesTasks",
+      "procedure": "getByDate",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 967
+    },
+    {
+      "namespace": "adminSalesTasks",
+      "procedure": "getWeekMeeting",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 971
+    },
+    {
+      "namespace": "adminSalesTasks",
+      "procedure": "getStats",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 975
+    },
+    {
+      "namespace": "kpi",
+      "procedure": "adminSalesKPI",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 979
+    },
+    {
+      "namespace": "kpi",
+      "procedure": "adminSalesCategoryAnalysis",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 983
+    },
+    {
+      "namespace": "adminSalesTasks",
+      "procedure": "updateWeekMeeting",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 989
+    },
+    {
+      "namespace": "leadFollowup",
+      "procedure": "log",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 1373
+    },
+    {
+      "namespace": "leadFollowup",
+      "procedure": "getLogs",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 1377
+    },
+    {
+      "namespace": "leadFollowup",
+      "procedure": "allTelesalesStats",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 1378
+    },
+    {
+      "namespace": "leadFollowup",
+      "procedure": "adminSalesKPI",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 1380
+    },
+    {
+      "namespace": "tasks",
+      "procedure": "stats",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 1668
+    },
+    {
+      "namespace": "tasks",
+      "procedure": "filtered",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 1671
+    },
+    {
+      "namespace": "tasks",
+      "procedure": "list",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 1679
+    },
+    {
+      "namespace": "tasks",
+      "procedure": "criticalEnhanced",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 1683
+    },
+    {
+      "namespace": "tasks",
+      "procedure": "engineers",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 1684
+    },
+    {
+      "namespace": "softDelete",
+      "procedure": "task",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 1689
+    },
+    {
+      "namespace": "closing",
+      "procedure": "autoCreateFromTask",
+      "file": "client/src/pages/TasksModule.tsx",
+      "line": 1693
+    },
+    {
+      "namespace": "engineers",
+      "procedure": "list",
+      "file": "client/src/pages/UserManagement.tsx",
+      "line": 99
+    },
+    {
+      "namespace": "appUsers",
+      "procedure": "create",
+      "file": "client/src/pages/UserManagement.tsx",
+      "line": 101
+    },
+    {
+      "namespace": "appUsers",
+      "procedure": "getPermissions",
+      "file": "client/src/pages/UserManagement.tsx",
+      "line": 309
+    },
+    {
+      "namespace": "appUsers",
+      "procedure": "updatePermissions",
+      "file": "client/src/pages/UserManagement.tsx",
+      "line": 310
+    },
+    {
+      "namespace": "appUsers",
+      "procedure": "update",
+      "file": "client/src/pages/UserManagement.tsx",
+      "line": 433
+    },
+    {
+      "namespace": "appUsers",
+      "procedure": "activityLogs",
+      "file": "client/src/pages/UserManagement.tsx",
+      "line": 527
+    },
+    {
+      "namespace": "appUsers",
+      "procedure": "listEngineers",
+      "file": "client/src/pages/UserManagement.tsx",
+      "line": 572
+    },
+    {
+      "namespace": "appUsers",
+      "procedure": "bulkCreateAccounts",
+      "file": "client/src/pages/UserManagement.tsx",
+      "line": 574
+    },
+    {
+      "namespace": "appUsers",
+      "procedure": "createEngineerAccount",
+      "file": "client/src/pages/UserManagement.tsx",
+      "line": 585
+    },
+    {
+      "namespace": "appUsers",
+      "procedure": "resetPassword",
+      "file": "client/src/pages/UserManagement.tsx",
+      "line": 596
+    },
+    {
+      "namespace": "appUsers",
+      "procedure": "toggleStatus",
+      "file": "client/src/pages/UserManagement.tsx",
+      "line": 606
+    },
+    {
+      "namespace": "appUsers",
+      "procedure": "list",
+      "file": "client/src/pages/UserManagement.tsx",
+      "line": 809
+    },
+    {
+      "namespace": "visits",
+      "procedure": "updateFull",
+      "file": "client/src/pages/VisitsModule.tsx",
+      "line": 103
+    },
+    {
+      "namespace": "softDelete",
+      "procedure": "visit",
+      "file": "client/src/pages/VisitsModule.tsx",
+      "line": 315
+    },
+    {
+      "namespace": "visits",
+      "procedure": "stats",
+      "file": "client/src/pages/VisitsModule.tsx",
+      "line": 349
+    },
+    {
+      "namespace": "visits",
+      "procedure": "list",
+      "file": "client/src/pages/VisitsModule.tsx",
+      "line": 357
+    },
+    {
+      "namespace": "engineers",
+      "procedure": "list",
+      "file": "client/src/pages/VisitsModule.tsx",
+      "line": 364
+    },
+    {
+      "namespace": "visits",
+      "procedure": "alerts",
+      "file": "client/src/pages/VisitsModule.tsx",
+      "line": 365
+    },
+    {
+      "namespace": "visits",
+      "procedure": "debt",
+      "file": "client/src/pages/VisitsModule.tsx",
+      "line": 366
+    },
+    {
+      "namespace": "visits",
+      "procedure": "dailyTracking",
+      "file": "client/src/pages/VisitsModule.tsx",
+      "line": 367
+    },
+    {
+      "namespace": "visits",
+      "procedure": "adminSalesKPI",
+      "file": "client/src/pages/VisitsModule.tsx",
+      "line": 368
+    },
+    {
+      "namespace": "visits",
+      "procedure": "needingAction",
+      "file": "client/src/pages/VisitsModule.tsx",
+      "line": 369
+    },
+    {
+      "namespace": "visits",
+      "procedure": "create",
+      "file": "client/src/pages/VisitsModule.tsx",
+      "line": 381
+    },
+    {
+      "namespace": "kpi",
+      "procedure": "weeklyPerformance",
+      "file": "client/src/pages/WeeklyReport.tsx",
+      "line": 362
+    },
+    {
+      "namespace": "kpi",
+      "procedure": "engineerPerformance",
+      "file": "client/src/pages/WeeklyReport.tsx",
+      "line": 367
+    },
+    {
+      "namespace": "workDist",
+      "procedure": "log",
+      "file": "client/src/pages/WorkDistribution.tsx",
+      "line": 110
+    },
+    {
+      "namespace": "engineers",
+      "procedure": "list",
+      "file": "client/src/pages/WorkDistribution.tsx",
+      "line": 404
+    },
+    {
+      "namespace": "workDist",
+      "procedure": "myDistribution",
+      "file": "client/src/pages/WorkDistribution.tsx",
+      "line": 422
+    },
+    {
+      "namespace": "workDist",
+      "procedure": "allEngineers",
+      "file": "client/src/pages/WorkDistribution.tsx",
+      "line": 427
+    },
+    {
+      "namespace": "workDist",
+      "procedure": "fullRanking",
+      "file": "client/src/pages/WorkDistribution.tsx",
+      "line": 432
+    },
+    {
+      "namespace": "workDist",
+      "procedure": "criticalInsights",
+      "file": "client/src/pages/WorkDistribution.tsx",
+      "line": 437
+    },
+    {
+      "namespace": "auth",
+      "procedure": "me",
+      "file": "client/src/_core/hooks/useAuth.ts",
+      "line": 16
+    },
+    {
+      "namespace": "auth",
+      "procedure": "logout",
+      "file": "client/src/_core/hooks/useAuth.ts",
+      "line": 21
+    }
+  ],
+  "http_endpoints": [
+    {
+      "method": "GET",
+      "path": "/healthz",
+      "file": "server/_core/index.ts",
+      "line": 56
+    },
+    {
+      "method": "GET",
+      "path": "/readyz",
+      "file": "server/_core/index.ts",
+      "line": 59
+    },
+    {
+      "method": "GET",
+      "path": "/api/summary",
+      "file": "server/_core/index.ts",
+      "line": 90
+    },
+    {
+      "method": "GET",
+      "path": "/api/list",
+      "file": "server/_core/index.ts",
+      "line": 115
+    },
+    {
+      "method": "GET",
+      "path": "/api/kpi",
+      "file": "server/_core/index.ts",
+      "line": 164
+    },
+    {
+      "method": "GET",
+      "path": "/api/oauth/callback",
+      "file": "server/_core/oauth.ts",
+      "line": 14
+    }
+  ]
+}
