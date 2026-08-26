@@ -8,6 +8,7 @@ import { appRouter } from "../routers";
 import { getAdminCallerFromRequest } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
+import { getSessionSecret } from "./env";
 import { getDealsStats, getDealsList, getEngineersKPI, getDb } from "../db";
 import { deals, engineers } from "../../drizzle/schema";
 import { eq, sql } from "drizzle-orm";
@@ -36,8 +37,8 @@ function validateRuntimeConfig() {
   if (!process.env.DATABASE_URL) {
     throw new Error("DATABASE_URL is required in production");
   }
-  if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
-    throw new Error("JWT_SECRET with at least 32 characters is required in production");
+  if (getSessionSecret().length < 32) {
+    throw new Error("A session secret with at least 32 characters is required in production");
   }
 }
 

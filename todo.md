@@ -34,3 +34,8 @@ P0 security and service-availability gates must be completed before production r
 ## Change control
 
 Every completed row must link to code, tests, or an environment verification record. A requirement is not considered production-ready solely because it appears in a historical checklist or because the frontend hides a menu item.
+
+## Deployment environment repair
+- [x] Configure production-safe APP_JWT_SECRET fallback because the platform-managed JWT_SECRET cannot be edited directly.
+- [x] Verify DATABASE_URL is available to the production service without exposing its value.
+- [ ] Redeploy and validate the production startup health check.
