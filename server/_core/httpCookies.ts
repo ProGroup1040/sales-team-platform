@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import * as cookieModule from "cookie";
 
 type SerializeOptions = {
+  /** Express-compatible duration in milliseconds. */
   maxAge?: number;
   expires?: Date;
   domain?: string;
@@ -17,6 +18,16 @@ type CookieApi = {
 };
 
 const cookie = cookieModule as unknown as CookieApi;
+
+function toSerializedCookieOptions(options: SerializeOptions): SerializeOptions {
+  if (options.maxAge === undefined) return options;
+  return {
+    ...options,
+    // `cookie.serialize` expects seconds whereas Express's `res.cookie` expects
+    // milliseconds. Keep this wrapper's public contract Express-compatible.
+    maxAge: Math.floor(options.maxAge / 1000),
+  };
+}
 
 export function getRequestCookie(req: Request, name: string): string | undefined {
   return cookie.parse(req.headers.cookie ?? "")[name];
@@ -34,7 +45,7 @@ export function setResponseCookie(
     res.cookie(name, value, options);
     return;
   }
-  res.append("Set-Cookie", cookie.serialize(name, value, options));
+  res.append("Set-Cookie", cookie.serialize(name, value, toSerializedCookieOptions(options)));
 }
 
 export function clearResponseCookie(

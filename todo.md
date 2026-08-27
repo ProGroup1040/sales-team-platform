@@ -44,3 +44,9 @@ Every completed row must link to code, tests, or an environment verification rec
 - [x] Restore production runtime authentication using the application-owned production session secret fallback.
 - [x] Verify local Admin UI sign-in, redirect to `/overview`, and authenticated identity in production.
 - [x] Verify Admin Sales UI sign-in, redirect to `/overview`, and session persistence after a full reload in production.
+
+## Authentication incident follow-up
+- [x] Re-test the published credentials safely: both active administrative accounts are accepted by the production login endpoint.
+- [x] Correct local-session cookie lifetime handling so an authenticated session follows the configured one-year policy rather than expiring prematurely.
+- [x] Add and run focused unit coverage for the cookie-duration behavior without exposing passwords or session secrets.
+- [ ] Deploy the cookie-duration correction and verify the production cookie lifetime and sign-in flow.

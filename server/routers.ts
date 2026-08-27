@@ -1727,7 +1727,8 @@ export const appRouter = router({
         const cookieOptions = getSessionCookieOptions(ctx.req);
         setResponseCookie(ctx.res, LOCAL_AUTH_COOKIE, result.token, {
           ...cookieOptions,
-          maxAge: Math.floor(ONE_YEAR_MS / 1000),
+          // `setResponseCookie` follows Express semantics: duration is milliseconds.
+          maxAge: ONE_YEAR_MS,
         });
         return {
           ok: true,
