@@ -49,4 +49,4 @@ Every completed row must link to code, tests, or an environment verification rec
 - [x] Re-test the published credentials safely: both active administrative accounts are accepted by the production login endpoint.
 - [x] Correct local-session cookie lifetime handling so an authenticated session follows the configured one-year policy rather than expiring prematurely.
 - [x] Add and run focused unit coverage for the cookie-duration behavior without exposing passwords or session secrets.
-- [ ] Deploy the cookie-duration correction and verify the production cookie lifetime and sign-in flow.
+- [x] Deploy the cookie-duration correction and verify the production cookie lifetime and sign-in flow.

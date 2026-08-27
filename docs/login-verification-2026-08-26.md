@@ -12,3 +12,5 @@
 ## Incident follow-up
 
 On the latest production endpoint, both administrative credentials were accepted by the local-login procedure. The accounts are active, not deleted, and each has a configured password hash. The investigation did identify a session-cookie duration unit mismatch: Express receives cookie durations in milliseconds, while the previous login code supplied seconds. The correction preserves the intended one-year session policy rather than issuing an approximately 8.8-hour cookie. The fix has unit coverage and awaits production-header verification after deployment.
+
+After deployment, both production login requests were accepted and the `local_session` cookie carried the corrected one-year `Max-Age` value. A fresh Admin sign-in through the published browser form also redirected successfully to `/overview` and displayed the authenticated Admin identity.
