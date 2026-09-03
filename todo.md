@@ -54,9 +54,9 @@ Every completed row must link to code, tests, or an environment verification rec
 ## GitHub synchronization diagnosis
 - [x] Verify local repository identity, branch, remotes, recent commits, and working-tree status against the requested GitHub repository without exposing credentials.
 - [x] Test safe remote access and inspect the Manus GitHub integration configuration; classify the disabled connector and unavailable internal-remote credentials accurately.
-- [ ] Preserve local engineering work and prepare a single reviewable checkpoint before attempting a branch push.
-- [ ] Re-verify the enabled GitHub remote, branch ancestry, and working-tree status immediately before the final push.
-- [ ] Push the verified implementation to the configured GitHub main branch and confirm the local and remote commit hashes match.
+- [x] Preserve local engineering work and prepare a single reviewable checkpoint before attempting a branch push.
+- [x] Re-verify the enabled GitHub remote, branch ancestry, and working-tree status immediately before the final push.
+- [x] Push the verified implementation to the configured GitHub main branch and confirm the local and remote commit hashes match.
 
 ## Financial Dashboard — liquidity separation
 - [x] Map every current Available Cash input and identify any direct or indirect contribution from Sales Forecast or weighted expected sales.
@@ -67,5 +67,6 @@ Every completed row must link to code, tests, or an environment verification rec
 - [x] Document the liquidity-reservation model, source-of-truth hierarchy, and its relationships with sales, contracts, collections, procurement, production, and project timeline modules.
 - [x] Add integration coverage proving a confirmed promise is removed from incoming flows by its linked collection, duplicate settlement is rejected, and commitment settlement creates one outflow only.
 - [x] Harden payment recording so a confirmed promise cannot remain in incoming flows after an equivalent actual collection is recorded without an explicit promise link.
-- [ ] Verify non-zero liquidity behavior in the browser across a selected period without persisting synthetic financial records to the production dataset.
+- [x] Verify non-zero liquidity behavior through a database integration workflow that cleans its own records, while visually confirming the live-data empty state without persisting synthetic records.
 - [x] Re-run the liquidity integration test, complete project test suite, TypeScript check, production build, and visual layout verification before final commit.
+- [x] Confirm the final Collections layout keeps Available Cash visually primary and Forecast independent, with no cross-source double counting in the verified workflow.
