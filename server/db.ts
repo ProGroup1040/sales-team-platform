@@ -10933,6 +10933,15 @@ export async function loginAppUser(
   return { user, token: await signAppUserToken(user) };
 }
 
+export async function getAppUserById(userId: number): Promise<AppUser | null> {
+  const db = await getDb();
+  if (db) {
+    const [user] = await db.select().from(appUsers).where(eq(appUsers.id, userId)).limit(1);
+    return user ?? null;
+  }
+  return useTestAppUserStore() ? testAppUsers.get(userId) ?? null : null;
+}
+
 async function signAppUserToken(user: AppUser): Promise<string> {
   const { SignJWT } = await import("jose");
   return new SignJWT({

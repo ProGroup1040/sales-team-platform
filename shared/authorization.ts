@@ -26,6 +26,55 @@ export const MANAGER_ROLES = [
   "system_user",
 ] as const satisfies readonly AppRole[];
 
+/** Roles allowed to administer internal user accounts. */
+export const USER_MANAGEMENT_ROLES = [
+  "manager",
+  "admin_sales",
+  "admin",
+] as const satisfies readonly AppRole[];
+
+/** Only these roles may create or promote an account to manager. */
+export const PRIVILEGED_ROLE_MANAGEMENT_ROLES = [
+  "manager",
+  "admin",
+] as const satisfies readonly AppRole[];
+
+export function canManageUsers(role: string | null | undefined): boolean {
+  return Boolean(
+    role && (USER_MANAGEMENT_ROLES as readonly string[]).includes(role)
+  );
+}
+
+export function canManagePrivilegedRoles(
+  role: string | null | undefined
+): boolean {
+  return Boolean(
+    role &&
+      (PRIVILEGED_ROLE_MANAGEMENT_ROLES as readonly string[]).includes(role)
+  );
+}
+
+const MANAGED_USER_ROLES = [
+  "sales_engineer",
+  "sales_specialist",
+  "admin_sales",
+  "manager",
+  "admin",
+] as const;
+
+export function canAssignUserRole(
+  actorRole: string | null | undefined,
+  targetRole: string | null | undefined
+): boolean {
+  if (!canManageUsers(actorRole) || !targetRole) return false;
+  if (!(MANAGED_USER_ROLES as readonly string[]).includes(targetRole))
+    return false;
+  if (["manager", "admin"].includes(targetRole)) {
+    return canManagePrivilegedRoles(actorRole);
+  }
+  return true;
+}
+
 export const SYSTEM_MODULES = [
   { key: "overview", label: "نظرة عامة" },
   { key: "tasks", label: "المهام اليومية" },

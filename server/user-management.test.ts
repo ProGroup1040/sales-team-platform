@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import bcrypt from 'bcryptjs';
+import { canAssignUserRole, canManagePrivilegedRoles, canManageUsers } from '../shared/authorization';
 
 // ─── Mock DB ──────────────────────────────────────────────────────────────────
 // Test the validation logic and business rules without hitting real DB
@@ -130,6 +131,26 @@ describe('User Management - Password Security', () => {
     const hash1 = await bcrypt.hash(password, 10);
     const hash2 = await bcrypt.hash(password, 10);
     expect(hash1).not.toBe(hash2);
+  });
+});
+
+describe('User Management - Authorization Boundaries', () => {
+  it('allows manager and admin to assign the manager role', () => {
+    expect(canAssignUserRole('manager', 'manager')).toBe(true);
+    expect(canAssignUserRole('admin', 'manager')).toBe(true);
+  });
+
+  it('prevents admin_sales from assigning or retaining the manager role', () => {
+    expect(canManageUsers('admin_sales')).toBe(true);
+    expect(canManagePrivilegedRoles('admin_sales')).toBe(false);
+    expect(canAssignUserRole('admin_sales', 'manager')).toBe(false);
+    expect(canAssignUserRole('admin_sales', 'sales_engineer')).toBe(true);
+  });
+
+  it('rejects unknown and non-management actors', () => {
+    expect(canManageUsers('sales_engineer')).toBe(false);
+    expect(canAssignUserRole('sales_engineer', 'sales_engineer')).toBe(false);
+    expect(canAssignUserRole(undefined, 'manager')).toBe(false);
   });
 });
 

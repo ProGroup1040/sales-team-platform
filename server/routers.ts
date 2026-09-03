@@ -96,7 +96,7 @@ import {
   // Activity Types Integration
   getEngineerActualCounts, calcOperationalScoreFromTasks, getEngineerActivitySummary,
   // Internal App Users System
-  createAppUser, loginAppUser, verifyAppUserToken, getAppUsers, getUserPermissions,
+  createAppUser, loginAppUser, verifyAppUserToken, getAppUsers, getAppUserById, getUserPermissions,
   updateUserPermissions, updateAppUser, logActivity, getActivityLogs,
   DEFAULT_ROLE_PERMISSIONS,
   getRolePermissions, getAllRolePermissions, updateRolePermission, updateAllRolePermissions,
@@ -120,6 +120,7 @@ import {
   addProjectDelay, updateProjectReview, setProjectHold, updateProjectStageConfig, updateProjectPreExecution, startProjectExecution, closeProject,
 } from "./db";
 import { ACTIVITY_KEYS, ACTIVITY_LABELS as ACT_LABELS_EN, ACTIVITY_LABELS_AR, ACTIVITY_WEIGHTS, ACTIVITY_ICONS, ACTIVITY_COLORS } from '../shared/activityTypes';
+import { canAssignUserRole, canManagePrivilegedRoles, canManageUsers } from '../shared/authorization';
 
 // ─── Seed Data ────────────────────────────────────────────────────────────────
 async function seedData() {
@@ -338,6 +339,26 @@ async function getCallerFromContext(ctx: any): Promise<{ id: number; role: strin
     return { id: ctx.user.id, role: "admin", name: ctx.user.name ?? ctx.user.email ?? "Admin" };
   }
   return ctx?.req ? getAdminCallerFromRequest(ctx.req) : null;
+}
+
+async function requireUserManagementCaller(ctx: any, message: string) {
+  const caller = await getCallerFromContext(ctx);
+  if (!caller) throw new TRPCError({ code: "UNAUTHORIZED", message: "يجب تسجيل الدخول أولاً" });
+  if (!canManageUsers(caller.role)) throw new TRPCError({ code: "FORBIDDEN", message });
+  return caller;
+}
+
+async function requirePrivilegedRoleManagementCaller(ctx: any, message: string) {
+  const caller = await getCallerFromContext(ctx);
+  if (!caller) throw new TRPCError({ code: "UNAUTHORIZED", message: "يجب تسجيل الدخول أولاً" });
+  if (!canManagePrivilegedRoles(caller.role)) throw new TRPCError({ code: "FORBIDDEN", message });
+  return caller;
+}
+
+function assertCanAssignRole(actorRole: string, targetRole: string | undefined) {
+  if (targetRole !== undefined && !canAssignUserRole(actorRole, targetRole)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "لا تملك صلاحية تعيين هذا الدور" });
+  }
 }
 
 const PROJECT_TIMELINE_MANAGER_ROLES = new Set(["manager", "admin", "admin_sales"]);
@@ -2201,10 +2222,7 @@ export const appRouter = router({
     // List all users (manager/admin only)
     list: protectedProcedure
       .query(async ({ ctx }) => {
-        const req = (ctx as any).req;
-        const caller = await getCallerFromContext(ctx);
-        if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'يجب تسجيل الدخول أولاً' });
-        if (!['manager', 'admin_sales', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN', message: 'ليس لديك صلاحية الوصول' });
+        await requireUserManagementCaller(ctx, 'ليس لديك صلاحية الوصول');
         return getAppUsers();
       }),
     // Create user (manager only)
@@ -2218,10 +2236,8 @@ export const appRouter = router({
         email: z.string().email('صيغة البريد الإلكتروني غير صحيحة').optional().or(z.literal('')).transform(v => v || undefined),
       }))
       .mutation(async ({ input, ctx }) => {
-        const req = (ctx as any).req;
-        const caller = await getCallerFromContext(ctx);
-        if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'يجب تسجيل الدخول أولاً' });
-        if (!['manager', 'admin_sales', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN', message: 'ليس لديك صلاحية إنشاء مستخدمين' });
+        const caller = await requireUserManagementCaller(ctx, 'ليس لديك صلاحية إنشاء مستخدمين');
+        assertCanAssignRole(caller.role, input.role);
         try {
           const newUser = await createAppUser(input);
           await logActivity({ userId: caller.id, action: 'create', module: 'users', details: `إنشاء مستخدم: ${input.username}` });
@@ -2248,11 +2264,11 @@ export const appRouter = router({
         password: z.string().min(6).optional(),
       }))
       .mutation(async ({ input, ctx }) => {
-        const req = (ctx as any).req;
-        const caller = await getCallerFromContext(ctx);
-        if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'يجب تسجيل الدخول أولاً' });
-        if (!['manager', 'admin_sales', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN', message: 'ليس لديك صلاحية تعديل المستخدمين' });
+        const caller = await requireUserManagementCaller(ctx, 'ليس لديك صلاحية تعديل المستخدمين');
+        const target = await getAppUserById(input.userId);
+        if (!target) throw new TRPCError({ code: 'NOT_FOUND', message: 'المستخدم غير موجود' });
         const { userId, ...data } = input;
+        assertCanAssignRole(caller.role, data.role ?? target.role);
         await updateAppUser(userId, data);
         await logActivity({ userId: caller.id, action: 'update', module: 'users', recordId: userId, details: `تحديث مستخدم #${userId}` });
         return { success: true };
@@ -2261,10 +2277,7 @@ export const appRouter = router({
     getPermissions: protectedProcedure
       .input(z.object({ userId: z.number() }))
       .query(async ({ input, ctx }) => {
-        const req = (ctx as any).req;
-        const caller = await getCallerFromContext(ctx);
-        if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'يجب تسجيل الدخول أولاً' });
-        if (!['manager', 'admin_sales', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
+        await requireUserManagementCaller(ctx, 'ليس لديك صلاحية الوصول');
         return getUserPermissions(input.userId);
       }),
     // Update permissions for a user
@@ -2281,10 +2294,7 @@ export const appRouter = router({
         })),
       }))
       .mutation(async ({ input, ctx }) => {
-        const req = (ctx as any).req;
-        const caller = await getCallerFromContext(ctx);
-        if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'يجب تسجيل الدخول أولاً' });
-        if (!['manager', 'admin_sales', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
+        const caller = await requireUserManagementCaller(ctx, 'ليس لديك صلاحية تعديل الصلاحيات');
         await updateUserPermissions(input.userId, input.permissions);
         await logActivity({ userId: caller.id, action: 'permission_change', module: 'users', recordId: input.userId, details: `تحديث صلاحيات مستخدم #${input.userId}` });
         return { success: true };
@@ -2297,33 +2307,27 @@ export const appRouter = router({
         limit: z.number().optional(),
       }).optional())
       .query(async ({ input, ctx }) => {
-        const req = (ctx as any).req;
-        const caller = await getCallerFromContext(ctx);
-        if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'يجب تسجيل الدخول أولاً' });
-        if (!['manager', 'admin_sales', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
+        await requireUserManagementCaller(ctx, 'ليس لديك صلاحية الوصول إلى سجل النشاط');
         return getActivityLogs(input);
       }),
      // Default permissions per role
-    defaultPermissions: publicProcedure
-      .query(async () => DEFAULT_ROLE_PERMISSIONS),
+    defaultPermissions: protectedProcedure
+      .query(async ({ ctx }) => {
+        await requireUserManagementCaller(ctx, 'ليس لديك صلاحية الوصول');
+        return DEFAULT_ROLE_PERMISSIONS;
+      }),
     // ─── Engineer Account Management ─────────────────────────────────────────
     // قراءة كل المهندسين مع حالة الـ account
     listEngineers: protectedProcedure
       .query(async ({ ctx }) => {
-        const req = (ctx as any).req;
-        const caller = await getCallerFromContext(ctx);
-        if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED' });
-        if (!['manager', 'admin_sales', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
+        await requireUserManagementCaller(ctx, 'ليس لديك صلاحية الوصول');
         return listEngineersWithAccountStatus();
       }),
     // إنشاء حسابات تلقائياً لكل المهندسين
     bulkCreateAccounts: protectedProcedure
       .input(z.object({ defaultPassword: z.string().min(6).optional() }))
       .mutation(async ({ input, ctx }) => {
-        const req = (ctx as any).req;
-        const caller = await getCallerFromContext(ctx);
-        if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED' });
-        if (!['manager', 'admin_sales', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
+        const caller = await requireUserManagementCaller(ctx, 'ليس لديك صلاحية إنشاء الحسابات');
         const result = await bulkCreateEngineersAccounts(input.defaultPassword ?? '12345678');
         await logActivity({ userId: caller.id, action: 'create', module: 'users', details: `إنشاء حسابات تلقائية: ${result.created.length} حساب` });
         return result;
@@ -2337,10 +2341,7 @@ export const appRouter = router({
         forceChange: z.boolean().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
-        const req = (ctx as any).req;
-        const caller = await getCallerFromContext(ctx);
-        if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED' });
-        if (!['manager', 'admin_sales', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
+        const caller = await requireUserManagementCaller(ctx, 'ليس لديك صلاحية إنشاء الحسابات');
         const result = await createEngineerAccount(input.engineerId, input.username, input.password, input.forceChange ?? true);
         if (!result.success) throw new TRPCError({ code: 'CONFLICT', message: result.error });
         await logActivity({ userId: caller.id, action: 'create', module: 'users', details: `إنشاء حساب للمهندس #${input.engineerId}: ${input.username}` });
@@ -2350,10 +2351,7 @@ export const appRouter = router({
     resetPassword: protectedProcedure
       .input(z.object({ engineerId: z.number(), newPassword: z.string().min(6) }))
       .mutation(async ({ input, ctx }) => {
-        const req = (ctx as any).req;
-        const caller = await getCallerFromContext(ctx);
-        if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED' });
-        if (!['manager', 'admin_sales', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
+        const caller = await requireUserManagementCaller(ctx, 'ليس لديك صلاحية تعديل كلمات المرور');
         await resetEngineerPassword(input.engineerId, input.newPassword);
         await logActivity({ userId: caller.id, action: 'update', module: 'users', recordId: input.engineerId, details: `إعادة تعيين كلمة مرور المهندس #${input.engineerId}` });
         return { success: true };
@@ -2383,10 +2381,7 @@ export const appRouter = router({
     toggleStatus: protectedProcedure
       .input(z.object({ engineerId: z.number(), status: z.enum(['active', 'inactive']) }))
       .mutation(async ({ input, ctx }) => {
-        const req = (ctx as any).req;
-        const caller = await getCallerFromContext(ctx);
-        if (!caller) throw new TRPCError({ code: 'UNAUTHORIZED' });
-        if (!['manager', 'admin_sales', 'admin'].includes(caller.role)) throw new TRPCError({ code: 'FORBIDDEN' });
+        const caller = await requireUserManagementCaller(ctx, 'ليس لديك صلاحية تعديل حالة الحساب');
         await toggleEngineerAccountStatus(input.engineerId, input.status);
         await logActivity({ userId: caller.id, action: 'update', module: 'users', recordId: input.engineerId, details: `تغيير حالة المهندس #${input.engineerId}: ${input.status}` });
         return { success: true };
@@ -2397,9 +2392,7 @@ export const appRouter = router({
     // جلب كل الصلاحيات لكل الـ Roles (للـ Matrix)
     getAll: protectedProcedure
       .query(async ({ ctx }) => {
-        const caller = await getCallerFromContext(ctx);
-        if (!caller) throw new TRPCError({ code: "UNAUTHORIZED" });
-        if (!["manager", "admin_sales", "admin"].includes(caller.role)) throw new TRPCError({ code: "FORBIDDEN" });
+        await requirePrivilegedRoleManagementCaller(ctx, "ليس لديك صلاحية الوصول إلى صلاحيات الأدوار");
         const perms = await getAllRolePermissions();
         return { permissions: perms, modules: SYSTEM_MODULES, roles: SYSTEM_ROLES };
       }),
@@ -2408,9 +2401,7 @@ export const appRouter = router({
     getByRole: protectedProcedure
       .input(z.object({ role: z.string() }))
       .query(async ({ input, ctx }) => {
-        const caller = await getCallerFromContext(ctx);
-        if (!caller) throw new TRPCError({ code: "UNAUTHORIZED" });
-        if (!["manager", "admin_sales", "admin"].includes(caller.role)) throw new TRPCError({ code: "FORBIDDEN" });
+        await requirePrivilegedRoleManagementCaller(ctx, "ليس لديك صلاحية الوصول إلى صلاحيات الأدوار");
         return getRolePermissions(input.role);
       }),
 
@@ -2426,9 +2417,7 @@ export const appRouter = router({
         dataScope: z.enum(['own', 'team', 'all']),
       }))
       .mutation(async ({ input, ctx }) => {
-        const caller = await getCallerFromContext(ctx);
-        if (!caller) throw new TRPCError({ code: "UNAUTHORIZED" });
-        if (!["manager", "admin_sales", "admin"].includes(caller.role)) throw new TRPCError({ code: "FORBIDDEN" });
+        const caller = await requirePrivilegedRoleManagementCaller(ctx, "ليس لديك صلاحية تعديل صلاحيات الأدوار");
         const { role, module, ...data } = input;
         await updateRolePermission(role, module, data);
         await logActivity({
@@ -2454,9 +2443,7 @@ export const appRouter = router({
         })),
       }))
       .mutation(async ({ input, ctx }) => {
-        const caller = await getCallerFromContext(ctx);
-        if (!caller) throw new TRPCError({ code: "UNAUTHORIZED" });
-        if (!["manager", "admin_sales", "admin"].includes(caller.role)) throw new TRPCError({ code: "FORBIDDEN" });
+        const caller = await requirePrivilegedRoleManagementCaller(ctx, "ليس لديك صلاحية تعديل صلاحيات الأدوار");
         await updateAllRolePermissions(input.role, input.permissions);
         await logActivity({
           userId: caller.id,
@@ -2469,11 +2456,14 @@ export const appRouter = router({
 
     // جلب الـ Modules وRoles المتاحة
     meta: protectedProcedure
-      .query(async () => ({
-        modules: SYSTEM_MODULES,
-        roles: SYSTEM_ROLES,
-        moduleSections: MODULE_SECTIONS,
-      })),
+      .query(async ({ ctx }) => {
+        await requirePrivilegedRoleManagementCaller(ctx, "ليس لديك صلاحية الوصول إلى صلاحيات الأدوار");
+        return {
+          modules: SYSTEM_MODULES,
+          roles: SYSTEM_ROLES,
+          moduleSections: MODULE_SECTIONS,
+        };
+      }),
   }),
   // ─── Section Permissions Router ──────────────────────────────────────────
   sectionPermissions: router({
