@@ -1411,7 +1411,7 @@ export const appRouter = router({
     clientProfile: protectedProcedure.input(z.object({ collectionId: z.number() }))
       .query(async ({ input }) => getClientFinancialProfile(input.collectionId)),
     // إضافة عقد جديد
-    addContract: protectedProcedure.input(z.object({
+    addContract: adminProcedure.input(z.object({
       clientName: z.string().min(1),
       contractAmount: z.number().positive(),
       dueDate: z.string().optional(),
@@ -1459,10 +1459,10 @@ export const appRouter = router({
     // كوميشن المهندسين من التحصيل
     engineersCommission: protectedProcedure.query(async () => getEngineersCollectionCommission()),
     // صرف كوميشن
-    markCommissionPaid: protectedProcedure.input(z.object({ id: z.number() }))
+    markCommissionPaid: adminProcedure.input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => { await markCommissionPaid(input.id); return { success: true }; }),
     // تحديث حالة العقد
-    updateContractStatus: protectedProcedure.input(z.object({
+    updateContractStatus: adminProcedure.input(z.object({
       id: z.number(),
       status: z.enum(["on_track", "due_soon", "overdue", "completed"]),
     })).mutation(async ({ input }) => { await updateCollectionStatus(input.id, input.status); return { success: true }; }),
@@ -1511,17 +1511,17 @@ export const appRouter = router({
       .query(async ({ input }) => getFinancialLiquidityDashboard(input.startDate, input.endDate)),
     commitments: protectedProcedure.input(z.object({ startDate: z.string(), endDate: z.string() }))
       .query(async ({ input }) => getFinancialCommitments(input.startDate, input.endDate)),
-    setCashBalance: protectedProcedure.input(z.object({
+    setCashBalance: adminProcedure.input(z.object({
       asOfDate: z.string(), amount: z.number().min(0), notes: z.string().optional(), updatedBy: z.string().optional(),
     })).mutation(async ({ input }) => { await setFinancialCashBalance(input); return { success: true }; }),
-    addCommitment: protectedProcedure.input(z.object({
+    addCommitment: adminProcedure.input(z.object({
       description: z.string().min(1).max(255), amount: z.number().positive(), dueDate: z.string(),
       projectId: z.number().int().positive().optional(), collectionId: z.number().int().positive().optional(),
       dealId: z.number().int().positive().optional(), notes: z.string().optional(), createdBy: z.string().optional(),
     })).mutation(async ({ input }) => ({ id: await addFinancialCommitment(input) })),
-    settleCommitment: protectedProcedure.input(z.object({ id: z.number().int().positive(), settledBy: z.string().optional() }))
+    settleCommitment: adminProcedure.input(z.object({ id: z.number().int().positive(), settledBy: z.string().optional() }))
       .mutation(async ({ input }) => { await settleFinancialCommitment(input.id, input.settledBy); return { success: true }; }),
-    cancelCommitment: protectedProcedure.input(z.object({ id: z.number().int().positive() }))
+    cancelCommitment: adminProcedure.input(z.object({ id: z.number().int().positive() }))
       .mutation(async ({ input }) => { await cancelFinancialCommitment(input.id); return { success: true }; }),
   }),
   // ── Legacy: Customers / Products ───────────────────────────────────────────────────────────────────────────────

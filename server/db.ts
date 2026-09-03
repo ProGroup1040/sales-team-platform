@@ -69,11 +69,20 @@ export async function getDb() {
   return _db;
 }
 
+/**
+ * Return a live database handle or fail explicitly.
+ * Critical writes must not report success when persistence is unavailable.
+ */
+export async function requireDb() {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  return db;
+}
+
 // ─── Users ────────────────────────────────────────────────────────────────────
 export async function upsertUser(user: InsertUser): Promise<void> {
   if (!user.openId) throw new Error("User openId is required");
-  const db = await getDb();
-  if (!db) return;
+  const db = await requireDb();
   const values: InsertUser = { openId: user.openId };
   const updateSet: Record<string, unknown> = {};
   const textFields = ["name", "email", "loginMethod"] as const;
@@ -1097,9 +1106,8 @@ export async function createCollection(data: {
   clientName: string; contractAmount: number; collectedAmount?: number;
   dueDate?: string; dealId?: number; notes?: string;
 }) {
-  const db = await getDb();
-  if (!db) return;
-    await db.insert(collections).values({
+  const db = await requireDb();
+  await db.insert(collections).values({
       clientName: data.clientName,
       contractAmount: data.contractAmount.toString(),
       collectedAmount: (data.collectedAmount ?? 0).toString(),
@@ -2053,15 +2061,13 @@ export async function getEngineersCollectionCommission() {
 
 /** تحديث حالة كوميشن (صرف) */
 export async function markCommissionPaid(id: number) {
-  const db = await getDb();
-  if (!db) return;
+  const db = await requireDb();
   await db.update(commissionPayments).set({ status: "paid", paidAt: new Date() }).where(eq(commissionPayments.id, id));
 }
 
 /** إضافة عقد جديد */
 export async function addCollection(data: { clientName: string; contractAmount: number; dueDate?: string; dealId?: number; notes?: string }) {
-  const db = await getDb();
-  if (!db) return null;
+  const db = await requireDb();
   const [result] = await db.insert(collections).values({
     clientName: data.clientName,
     contractAmount: data.contractAmount.toString(),
@@ -2076,8 +2082,7 @@ export async function addCollection(data: { clientName: string; contractAmount: 
 
 /** تحديث حالة العقد */
 export async function updateCollectionStatus(id: number, status: "on_track" | "due_soon" | "overdue" | "completed") {
-  const db = await getDb();
-  if (!db) return;
+  const db = await requireDb();
   await db.update(collections).set({ status }).where(eq(collections.id, id));
 }
 
@@ -3450,8 +3455,7 @@ export async function createDealWithDiscount(data: {
   visitId?: number; leadId?: number; nextAction?: string; nextActionDate?: string; notes?: string;
   discountPercent?: number; discountValue?: number; discountNote?: string;
 }) {
-  const db = await getDb();
-  if (!db) return;
+  const db = await requireDb();
   await db.insert(deals).values({
     engineerId: data.engineerId,
     clientName: data.clientName,
@@ -11445,8 +11449,7 @@ export async function updateRolePermission(
     dataScope?: "own" | "team" | "all";
   }
 ): Promise<void> {
-  const db = await getDb();
-  if (!db) return;
+  const db = await requireDb();
   // Check if exists
   const [existing] = await db
     .select()
@@ -11526,8 +11529,7 @@ export async function updateSectionPermission(
   visibility: 'all' | 'self' | 'hidden',
   canEdit: number
 ): Promise<void> {
-  const db = await getDb();
-  if (!db) return;
+  const db = await requireDb();
   // Check if exists
   const existing = await db.select({ id: sectionPermissions.id })
     .from(sectionPermissions)
@@ -11902,8 +11904,7 @@ export async function changeEngineerPassword(engineerId: number, oldPassword: st
 
 /** إعادة تعيين كلمة مرور مهندس (يستخدمها الأدمن) */
 export async function resetEngineerPassword(engineerId: number, newPassword: string): Promise<{ success: boolean }> {
-  const db = await getDb();
-  if (!db) return { success: false };
+  const db = await requireDb();
   const newHash = await bcrypt.hash(newPassword, 10);
   await db.update(engineers).set({
     passwordHash: newHash,
@@ -11914,8 +11915,7 @@ export async function resetEngineerPassword(engineerId: number, newPassword: str
 
 /** تفعيل / تعطيل حساب مهندس */
 export async function toggleEngineerAccountStatus(engineerId: number, status: "active" | "inactive"): Promise<{ success: boolean }> {
-  const db = await getDb();
-  if (!db) return { success: false };
+  const db = await requireDb();
   await db.update(engineers).set({ status }).where(eq(engineers.id, engineerId));
   return { success: true };
 }
