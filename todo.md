@@ -50,3 +50,22 @@ Every completed row must link to code, tests, or an environment verification rec
 - [x] Correct local-session cookie lifetime handling so an authenticated session follows the configured one-year policy rather than expiring prematurely.
 - [x] Add and run focused unit coverage for the cookie-duration behavior without exposing passwords or session secrets.
 - [x] Deploy the cookie-duration correction and verify the production cookie lifetime and sign-in flow.
+
+## GitHub synchronization diagnosis
+- [x] Verify local repository identity, branch, remotes, recent commits, and working-tree status against the requested GitHub repository without exposing credentials.
+- [x] Test safe remote access and inspect the Manus GitHub integration configuration; classify the disabled connector and unavailable internal-remote credentials accurately.
+- [ ] Preserve local engineering work and prepare a single reviewable checkpoint before attempting a branch push.
+- [ ] Re-verify the enabled GitHub remote, branch ancestry, and working-tree status immediately before the final push.
+- [ ] Push the verified implementation to the configured GitHub main branch and confirm the local and remote commit hashes match.
+
+## Financial Dashboard — liquidity separation
+- [x] Map every current Available Cash input and identify any direct or indirect contribution from Sales Forecast or weighted expected sales.
+- [x] Implement the Available Cash equation using only current cash, confirmed incoming flows in the selected period, and due commitments or payments in the same period.
+- [x] Preserve the existing Sales Forecast formula as a separate Forecast / Projected Financial Outlook indicator with no Available Cash contribution.
+- [x] Add server-side validation and tests preventing duplicate recognition between forecast, scheduled incoming flows, actual collections, and current cash.
+- [x] Present separate Available Cash and projected-outlook levels in the Financial Dashboard, then verify the selected-period calculations in the browser.
+- [x] Document the liquidity-reservation model, source-of-truth hierarchy, and its relationships with sales, contracts, collections, procurement, production, and project timeline modules.
+- [x] Add integration coverage proving a confirmed promise is removed from incoming flows by its linked collection, duplicate settlement is rejected, and commitment settlement creates one outflow only.
+- [x] Harden payment recording so a confirmed promise cannot remain in incoming flows after an equivalent actual collection is recorded without an explicit promise link.
+- [ ] Verify non-zero liquidity behavior in the browser across a selected period without persisting synthetic financial records to the production dataset.
+- [x] Re-run the liquidity integration test, complete project test suite, TypeScript check, production build, and visual layout verification before final commit.

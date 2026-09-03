@@ -42,8 +42,12 @@ export default function CollectionsModule() {
   const [expandedContract, setExpandedContract] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [newContract, setNewContract] = useState({ clientName: "", contractAmount: "", dueDate: "", notes: "" });
-  const [newPayment, setNewPayment] = useState<{ amount: string; paymentDate: string; paymentType: "initial" | "installment" | "final" | "visit_fee"; receiptNumber: string; notes: string; engineerId: string }>({ amount: "", paymentDate: new Date().toISOString().split("T")[0], paymentType: "installment", receiptNumber: "", notes: "", engineerId: "" });
+  const [newPayment, setNewPayment] = useState<{ amount: string; paymentDate: string; paymentType: "initial" | "installment" | "final" | "visit_fee"; receiptNumber: string; notes: string; engineerId: string; promiseId?: number }>({ amount: "", paymentDate: new Date().toISOString().split("T")[0], paymentType: "installment", receiptNumber: "", notes: "", engineerId: "" });
   const [newPromise, setNewPromise] = useState({ promiseAmount: "", promiseDate: "", notes: "" });
+  const [showCashBalance, setShowCashBalance] = useState(false);
+  const [showAddCommitment, setShowAddCommitment] = useState(false);
+  const [cashBalanceForm, setCashBalanceForm] = useState({ amount: "", asOfDate: new Date().toISOString().split("T")[0], notes: "" });
+  const [commitmentForm, setCommitmentForm] = useState({ description: "", amount: "", dueDate: "", notes: "" });
 
   const utils = trpc.useUtils();
   const { data: contracts = [], isLoading } = trpc.financial.allContracts.useQuery({});
@@ -71,6 +75,8 @@ export default function CollectionsModule() {
     ? formatLocalDate(new Date(dateFilter.year, dateFilter.month, 0))
     : formatLocalDate(dateFilter.endDate);
   const { data: periodAnalysis } = trpc.financial.periodAnalysis.useQuery({ startDate: periodStart, endDate: periodEnd });
+  const { data: liquidityDashboard } = trpc.financial.liquidityDashboard.useQuery({ startDate: periodStart, endDate: periodEnd });
+  const { data: commitments = [] } = trpc.financial.commitments.useQuery({ startDate: periodStart, endDate: periodEnd });
 
   // Filter: Sales Engineers + Sales Specialists + Admin Sales only
   const SALES_DEPTS = ["sales_engineer", "sales_specialist", "admin_sales"];
@@ -86,6 +92,7 @@ export default function CollectionsModule() {
       utils.financial.contractsWithCommission.invalidate();
       utils.financial.alerts.invalidate();
       utils.financial.dashboard.invalidate();
+      utils.financial.liquidityDashboard.invalidate();
     },
     onError: () => toast.error("حدث خطأ في تسجيل الدفعة"),
   });
@@ -107,15 +114,32 @@ export default function CollectionsModule() {
     onError: () => toast.error("حدث خطأ"),
   });
   const addPaymentMut = trpc.financial.addPayment.useMutation({
-    onSuccess: () => { toast.success("تم تسجيل الدفعة"); setShowAddPayment(null); utils.financial.allContracts.invalidate(); utils.financial.engineersCommission.invalidate(); },
+    onSuccess: () => { toast.success("تم تسجيل الدفعة وتحديث الرصيد الفعلي"); setShowAddPayment(null); setNewPayment({ amount: "", paymentDate: new Date().toISOString().split("T")[0], paymentType: "installment", receiptNumber: "", notes: "", engineerId: "" }); utils.financial.allContracts.invalidate(); utils.financial.engineersCommission.invalidate(); utils.financial.liquidityDashboard.invalidate(); },
     onError: () => toast.error("حدث خطأ"),
   });
   const addPromiseMut = trpc.financial.addPromise.useMutation({
-    onSuccess: () => { toast.success("تم تسجيل وعد الدفع"); setShowAddPromise(null); utils.financial.allContracts.invalidate(); },
+    onSuccess: () => { toast.success("تم تسجيل وعد الدفع"); setShowAddPromise(null); utils.financial.allContracts.invalidate(); utils.financial.liquidityDashboard.invalidate(); },
     onError: () => toast.error("حدث خطأ"),
   });
-  const updatePromiseMut = trpc.financial.updatePromise.useMutation({
-    onSuccess: () => { toast.success("تم تحديث حالة الوعد"); utils.financial.allContracts.invalidate(); utils.financial.dailyFollowUp.invalidate(); },
+  const confirmPromiseMut = trpc.financial.confirmPromise.useMutation({
+    onSuccess: () => { toast.success("تم اعتماد التدفق الوارد للسيولة المستقبلية"); utils.financial.allContracts.invalidate(); utils.financial.dashboard.invalidate(); },
+    onError: () => toast.error("تعذر اعتماد وعد الدفع"),
+  });
+  const setCashBalanceMut = trpc.financial.setCashBalance.useMutation({
+    onSuccess: () => { toast.success("تم حفظ الرصيد النقدي الفعلي"); setShowCashBalance(false); utils.financial.liquidityDashboard.invalidate(); },
+    onError: () => toast.error("تعذر حفظ الرصيد النقدي"),
+  });
+  const addCommitmentMut = trpc.financial.addCommitment.useMutation({
+    onSuccess: () => { toast.success("تم حجز الالتزام للمشروع"); setShowAddCommitment(false); setCommitmentForm({ description: "", amount: "", dueDate: "", notes: "" }); utils.financial.commitments.invalidate(); utils.financial.liquidityDashboard.invalidate(); },
+    onError: () => toast.error("تعذر إضافة الالتزام"),
+  });
+  const settleCommitmentMut = trpc.financial.settleCommitment.useMutation({
+    onSuccess: () => { toast.success("تم تسجيل السداد وخفض الرصيد الفعلي"); utils.financial.commitments.invalidate(); utils.financial.liquidityDashboard.invalidate(); },
+    onError: () => toast.error("تعذر تسوية الالتزام"),
+  });
+  const cancelCommitmentMut = trpc.financial.cancelCommitment.useMutation({
+    onSuccess: () => { toast.success("تم إلغاء الحجز"); utils.financial.commitments.invalidate(); utils.financial.liquidityDashboard.invalidate(); },
+    onError: () => toast.error("تعذر إلغاء الالتزام"),
   });
 
   const stats = useMemo(() => {
@@ -161,6 +185,45 @@ export default function CollectionsModule() {
           </Button>
         </div>
       </div>
+
+      <section className="space-y-4" aria-label="السيولة والتوقعات المالية">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <h2 className="text-lg font-bold text-foreground">السيولة والحجز</h2>
+            <p className="text-xs text-muted-foreground">الرصيد الفعلي والتدفقات المؤكدة والالتزامات فقط — دون إدخال المبيعات المتوقعة.</p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => { setCashBalanceForm(p => ({ ...p, asOfDate: periodStart })); setShowCashBalance(true); }}>تحديث رصيد بداية الفترة</Button>
+            <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white" onClick={() => setShowAddCommitment(true)}>حجز التزام</Button>
+          </div>
+        </div>
+        <div className="grid lg:grid-cols-3 gap-4">
+          <Card className="lg:col-span-2 border-emerald-200 bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/20 dark:to-background">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2"><Banknote className="w-5 h-5 text-emerald-600" /> Available Cash — السيولة المتاحة للصرف</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="rounded-lg bg-background/80 p-3"><div className="text-xs text-muted-foreground">الرصيد الفعلي حتى نهاية الفترة</div><div className="font-bold text-emerald-700">{fmt(liquidityDashboard?.currentCash ?? 0)} ج.م</div></div>
+                <div className="rounded-lg bg-background/80 p-3"><div className="text-xs text-muted-foreground">تدفقات مؤكدة</div><div className="font-bold text-blue-700">+ {fmt(liquidityDashboard?.confirmedIncoming ?? 0)} ج.م</div><div className="text-xs text-muted-foreground">{liquidityDashboard?.confirmedIncomingCount ?? 0} دفعة</div></div>
+                <div className="rounded-lg bg-background/80 p-3"><div className="text-xs text-muted-foreground">التزامات مستحقة</div><div className="font-bold text-red-700">− {fmt(liquidityDashboard?.dueCommitments ?? 0)} ج.م</div><div className="text-xs text-muted-foreground">{liquidityDashboard?.dueCommitmentsCount ?? 0} التزام</div></div>
+                <div className="rounded-lg bg-emerald-600 p-3 text-white"><div className="text-xs text-emerald-50">المتاح للصرف</div><div className="text-xl font-extrabold">{fmt(liquidityDashboard?.availableCash ?? 0)} ج.م</div><div className="text-xs text-emerald-100">للفترة المختارة</div></div>
+              </div>
+              <p className="mt-3 text-xs text-muted-foreground">المعادلة: الرصيد النقدي الفعلي + التدفقات الواردة المؤكدة غير المحصّلة − الالتزامات المستحقة. إجمالي الحجز المفتوح: <strong>{fmt(liquidityDashboard?.reservedCash ?? 0)} ج.م</strong>.</p>
+              {!liquidityDashboard?.currentCashBasis && <p className="mt-2 rounded bg-amber-100 px-3 py-2 text-xs text-amber-800">لم يُسجل رصيد نقدي أساس بعد؛ لذلك يبدأ الرصيد الفعلي من الحركات المسجلة فقط.</p>}
+            </CardContent>
+          </Card>
+          <Card className="border-indigo-200 bg-gradient-to-br from-indigo-50 to-white dark:from-indigo-950/20 dark:to-background">
+            <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><TrendingUp className="w-5 h-5 text-indigo-600" /> Forecast / Projected Outlook</CardTitle></CardHeader>
+            <CardContent className="space-y-2">
+              <div className="text-2xl font-extrabold text-indigo-700">{fmt(liquidityDashboard?.forecast.expectedSales ?? 0)} ج.م</div>
+              <p className="text-xs text-muted-foreground">{liquidityDashboard?.forecast.plannedVisits ?? 0} معاينة × {liquidityDashboard?.forecast.conversionRate ?? 0}% تحويل × {fmt(liquidityDashboard?.forecast.averageDealValue ?? 0)} متوسط صفقة</p>
+              <p className="rounded bg-indigo-100 px-2 py-1.5 text-xs font-medium text-indigo-800">مؤشر استشرافي مستقل — لا يدخل في السيولة المتاحة.</p>
+            </CardContent>
+          </Card>
+        </div>
+        {commitments.length > 0 && <Card className="border-amber-200"><CardHeader className="pb-2"><CardTitle className="text-sm">الحجوزات والالتزامات خلال الفترة</CardTitle></CardHeader><CardContent className="space-y-2">{commitments.map((commitment) => <div key={commitment.id} className="flex items-center justify-between gap-3 rounded-lg bg-amber-50/70 p-3 dark:bg-amber-950/20"><div><div className="font-medium text-sm">{commitment.description}</div><div className="text-xs text-muted-foreground">مستحق: {fmtDate(commitment.dueDate)}</div></div><div className="flex items-center gap-2"><div className="font-bold text-amber-700">{fmt(parseFloat(commitment.amount as string))} ج.م</div>{commitment.status === "reserved" && <><Button size="sm" variant="outline" onClick={() => settleCommitmentMut.mutate({ id: commitment.id })}>تسجيل السداد</Button><Button size="sm" variant="ghost" className="text-red-600" onClick={() => cancelCommitmentMut.mutate({ id: commitment.id })}>إلغاء</Button></>}</div></div>)}</CardContent></Card>}
+      </section>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -473,10 +536,19 @@ export default function CollectionsModule() {
                                   {PROMISE_STATUS[p.status]?.label || p.status}
                                 </Badge>
                                 {p.status === "pending" && (
-                                  <Button size="sm" variant="ghost" className="h-6 text-xs text-emerald-600"
-                                    onClick={() => updatePromiseMut.mutate({ id: p.id, status: "paid" })}>
-                                    ✓ تم
-                                  </Button>
+                                  <div className="flex items-center gap-1">
+                                    <Button size="sm" variant="ghost" className="h-6 text-xs text-blue-600"
+                                      onClick={() => confirmPromiseMut.mutate({ id: p.id, isConfirmed: !(p as any).isConfirmed })}>
+                                      {(p as any).isConfirmed ? "إلغاء الاعتماد" : "اعتماد كتدفق"}
+                                    </Button>
+                                    <Button size="sm" variant="ghost" className="h-6 text-xs text-emerald-600"
+                                      onClick={() => {
+                                        setNewPayment({ amount: String(p.promiseAmount), paymentDate: new Date().toISOString().split("T")[0], paymentType: "installment", receiptNumber: "", notes: `تسوية وعد دفع #${p.id}`, engineerId: "", promiseId: p.id });
+                                        setShowAddPayment(contract.id);
+                                      }}>
+                                      تسجيل تحصيل
+                                    </Button>
+                                  </div>
                                 )}
                               </div>
                             ))}
@@ -580,13 +652,16 @@ export default function CollectionsModule() {
                   <div className="text-sm text-muted-foreground text-center py-4">لا توجد وعود اليوم</div>
                 ) : (
                   <div className="space-y-2">
-                    {(followUp.promisesDueToday as Array<{ id: number; clientName: string; promiseAmount: string | number; status: string }>).map((p) => (
+                    {(followUp.promisesDueToday as Array<{ id: number; collectionId: number; clientName: string; promiseAmount: string | number; status: string }>).map((p) => (
                       <div key={p.id} className="flex items-center justify-between text-sm bg-purple-50 dark:bg-purple-950/20 rounded px-3 py-2">
                         <span className="font-medium">{p.clientName}</span>
                         <span className="text-purple-700">{fmt(parseFloat(p.promiseAmount as string))} ج.م</span>
                         <Button size="sm" variant="ghost" className="h-6 text-xs text-emerald-600"
-                          onClick={() => updatePromiseMut.mutate({ id: p.id, status: "paid" })}>
-                          ✓ تم الدفع
+                          onClick={() => {
+                            setNewPayment({ amount: String(p.promiseAmount), paymentDate: new Date().toISOString().split("T")[0], paymentType: "installment", receiptNumber: "", notes: `تسوية وعد دفع #${p.id}`, engineerId: "", promiseId: p.id });
+                            setShowAddPayment(p.collectionId);
+                          }}>
+                          تسجيل تحصيل
                         </Button>
                       </div>
                     ))}
@@ -922,6 +997,7 @@ export default function CollectionsModule() {
                 receiptNumber: newPayment.receiptNumber || undefined,
                 notes: newPayment.notes || undefined,
                 engineerId: newPayment.engineerId ? parseInt(newPayment.engineerId) : undefined,
+                promiseId: newPayment.promiseId,
               });
             }} disabled={addPaymentMut.isPending}>
               {addPaymentMut.isPending ? "جاري الحفظ..." : "تسجيل الدفعة"}
@@ -956,6 +1032,31 @@ export default function CollectionsModule() {
               {addPromiseMut.isPending ? "جاري الحفظ..." : "تسجيل الوعد"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showCashBalance} onOpenChange={setShowCashBalance}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogDescription className="sr-only">إدخال الرصيد النقدي الفعلي في بداية الفترة كنقطة أساس.</DialogDescription><DialogTitle>تحديث رصيد بداية الفترة</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div><Label>رصيد الصندوق والبنوك في بداية الفترة (ج.م) *</Label><Input type="number" min="0" value={cashBalanceForm.amount} onChange={e => setCashBalanceForm(p => ({ ...p, amount: e.target.value }))} placeholder="رصيد فعلي بعد التسوية" /></div>
+            <div><Label>تاريخ بداية الفترة *</Label><Input type="date" value={cashBalanceForm.asOfDate} onChange={e => setCashBalanceForm(p => ({ ...p, asOfDate: e.target.value }))} /></div>
+            <div><Label>ملاحظات التسوية</Label><Input value={cashBalanceForm.notes} onChange={e => setCashBalanceForm(p => ({ ...p, notes: e.target.value }))} placeholder="اختياري" /></div>
+          </div>
+          <DialogFooter><Button variant="outline" onClick={() => setShowCashBalance(false)}>إلغاء</Button><Button disabled={!cashBalanceForm.amount || setCashBalanceMut.isPending} onClick={() => setCashBalanceMut.mutate({ asOfDate: cashBalanceForm.asOfDate, amount: parseFloat(cashBalanceForm.amount), notes: cashBalanceForm.notes || undefined })}>{setCashBalanceMut.isPending ? "جاري الحفظ..." : "حفظ الرصيد"}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showAddCommitment} onOpenChange={setShowAddCommitment}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogDescription className="sr-only">حجز التزام مالي مستحق لمشروع أو مورد.</DialogDescription><DialogTitle>حجز التزام مالي</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div><Label>وصف الالتزام *</Label><Input value={commitmentForm.description} onChange={e => setCommitmentForm(p => ({ ...p, description: e.target.value }))} placeholder="مثال: أمر شراء خامات مشروع" /></div>
+            <div><Label>المبلغ (ج.م) *</Label><Input type="number" min="0" value={commitmentForm.amount} onChange={e => setCommitmentForm(p => ({ ...p, amount: e.target.value }))} placeholder="0" /></div>
+            <div><Label>تاريخ الاستحقاق *</Label><Input type="date" value={commitmentForm.dueDate} onChange={e => setCommitmentForm(p => ({ ...p, dueDate: e.target.value }))} /></div>
+            <div><Label>ملاحظات</Label><Input value={commitmentForm.notes} onChange={e => setCommitmentForm(p => ({ ...p, notes: e.target.value }))} placeholder="اختياري" /></div>
+          </div>
+          <DialogFooter><Button variant="outline" onClick={() => setShowAddCommitment(false)}>إلغاء</Button><Button className="bg-amber-600 hover:bg-amber-700 text-white" disabled={!commitmentForm.description || !commitmentForm.amount || !commitmentForm.dueDate || addCommitmentMut.isPending} onClick={() => addCommitmentMut.mutate({ description: commitmentForm.description, amount: parseFloat(commitmentForm.amount), dueDate: commitmentForm.dueDate, notes: commitmentForm.notes || undefined })}>{addCommitmentMut.isPending ? "جاري الحجز..." : "حجز الالتزام"}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

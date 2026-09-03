@@ -1,6 +1,6 @@
 import {
   int, tinyint, mysqlEnum, mysqlTable, text, timestamp,
-  varchar, decimal, date, float, boolean
+  varchar, decimal, date, float, boolean, uniqueIndex
 } from "drizzle-orm/mysql-core";
 
 // ─── Users ────────────────────────────────────────────────────────────────────
@@ -407,13 +407,14 @@ export const sales = mysqlTable("sales", {
 export const payments = mysqlTable("payments", {
   id: int("id").autoincrement().primaryKey(),
   collectionId: int("collectionId").notNull(),   // ربط بالعقد
+  paymentPromiseId: int("paymentPromiseId").unique(), // يمنع تسوية وعد الدفع نفسه بأكثر من تحصيل
   engineerId: int("engineerId"),                  // المهندس المسؤول
   clientName: varchar("clientName", { length: 120 }).notNull(),
   amount: decimal("amount", { precision: 14, scale: 2 }).notNull(),
   paymentDate: date("paymentDate").notNull(),
   paymentType: mysqlEnum("paymentType", ["initial", "installment", "final", "visit_fee"]).default("installment").notNull(),
   addedBy: mysqlEnum("addedBy", ["engineer", "admin"]).default("admin").notNull(),
-  receiptNumber: varchar("receiptNumber", { length: 80 }),
+  receiptNumber: varchar("receiptNumber", { length: 80 }).unique(),
   receiptUrl: text("receiptUrl"),                          // رابط إيصال الدفع
   nextPaymentDate: date("nextPaymentDate"),               // تاريخ الدفعة القادمة
   notes: text("notes"),
@@ -421,6 +422,56 @@ export const payments = mysqlTable("payments", {
 });
 export type Payment = typeof payments.$inferSelect;
 export type InsertPayment = typeof payments.$inferInsert;
+
+// ─── Financial Cash Ledger (الدفتر النقدي الفعلي) ────────────────────────────
+// Current cash is built from approved balance snapshots plus actual cash movements.
+// It intentionally does not contain forecast or pending promise values.
+export const financialCashBalances = mysqlTable("financial_cash_balances", {
+  id: int("id").autoincrement().primaryKey(),
+  asOfDate: date("asOfDate").notNull().unique(),
+  amount: decimal("amount", { precision: 14, scale: 2 }).notNull(),
+  notes: text("notes"),
+  updatedBy: varchar("updatedBy", { length: 120 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type FinancialCashBalance = typeof financialCashBalances.$inferSelect;
+
+export const financialCashMovements = mysqlTable("financial_cash_movements", {
+  id: int("id").autoincrement().primaryKey(),
+  direction: mysqlEnum("direction", ["inflow", "outflow"]).notNull(),
+  sourceType: mysqlEnum("sourceType", ["payment", "commitment", "manual_adjustment"]).notNull(),
+  sourceId: int("sourceId"),
+  amount: decimal("amount", { precision: 14, scale: 2 }).notNull(),
+  effectiveDate: date("effectiveDate").notNull(),
+  description: varchar("description", { length: 255 }).notNull(),
+  notes: text("notes"),
+  createdBy: varchar("createdBy", { length: 120 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("financial_cash_movements_source_unique").on(table.sourceType, table.sourceId),
+]);
+export type FinancialCashMovement = typeof financialCashMovements.$inferSelect;
+
+// ─── Financial Commitments (حجوزات والتزامات المشروع) ────────────────────────
+// A commitment reserves spend for a project and becomes a single cash outflow only
+// when it is settled. It is never inferred from a sales forecast.
+export const financialCommitments = mysqlTable("financial_commitments", {
+  id: int("id").autoincrement().primaryKey(),
+  projectId: int("projectId"),
+  collectionId: int("collectionId"),
+  dealId: int("dealId"),
+  description: varchar("description", { length: 255 }).notNull(),
+  amount: decimal("amount", { precision: 14, scale: 2 }).notNull(),
+  dueDate: date("dueDate").notNull(),
+  status: mysqlEnum("status", ["reserved", "paid", "cancelled"]).default("reserved").notNull(),
+  settledAt: timestamp("settledAt"),
+  notes: text("notes"),
+  createdBy: varchar("createdBy", { length: 120 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type FinancialCommitment = typeof financialCommitments.$inferSelect;
 
 // ─── Payment Promises (وعود الدفع) ────────────────────────────────────────────
 export const paymentPromises = mysqlTable("payment_promises", {
@@ -430,6 +481,7 @@ export const paymentPromises = mysqlTable("payment_promises", {
   clientName: varchar("clientName", { length: 120 }).notNull(),
   promiseAmount: decimal("promiseAmount", { precision: 14, scale: 2 }).notNull(),
   promiseDate: date("promiseDate").notNull(),
+  isConfirmed: tinyint("isConfirmed").default(0).notNull(),
   status: mysqlEnum("status", ["pending", "paid", "overdue"]).default("pending").notNull(),
   paidAt: timestamp("paidAt"),
   notes: text("notes"),

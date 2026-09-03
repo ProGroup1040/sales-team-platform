@@ -1,0 +1,1 @@
+ALTER TABLE `payments` ADD CONSTRAINT `payments_receiptNumber_unique` UNIQUE(`receiptNumber`);

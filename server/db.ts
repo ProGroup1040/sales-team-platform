@@ -3,6 +3,7 @@ import { and, between, count, desc, eq, gte, isNull, lte, or, sql, sum, avg, lt,
 import { drizzle } from "drizzle-orm/mysql2";
 import { SYSTEM_MODULES, SYSTEM_ROLES } from "@shared/authorization";
 import { fromCents, subtractMoney, toCents } from "@shared/money";
+import { calculateAvailableCash, calculateExpectedSales } from "@shared/financialLiquidity";
 export { SYSTEM_MODULES, SYSTEM_ROLES };
 import {
   InsertUser, users,
@@ -12,6 +13,7 @@ import {
   designReviews, incentiveTiers,
   customers, products, sales, saleItems,
   payments, paymentPromises, commissionPayments,
+  financialCashBalances, financialCashMovements, financialCommitments,
   InsertPayment, InsertPaymentPromise,
   adminSalesTasks, adminSalesMeetings,
   InsertAdminSalesTask, InsertAdminSalesMeeting,
@@ -1725,26 +1727,89 @@ export async function getAllCollectionsWithSummary(engineerId?: number) {
 }
 
 /** إضافة دفعة جديدة وتحديث collectedAmount */
-export async function addPayment(data: InsertPayment) {
+async function recordFinancialCashMovement(tx: any, data: {
+  direction: "inflow" | "outflow";
+  sourceType: "payment" | "commitment" | "manual_adjustment";
+  sourceId?: number;
+  amount: string | number;
+  effectiveDate: Date;
+  description: string;
+  notes?: string;
+  createdBy?: string;
+}) {
+  const amountCents = toCents(data.amount);
+  if (amountCents <= 0) throw new Error("Cash movement amount must be positive");
+  await tx.insert(financialCashMovements).values({
+    direction: data.direction,
+    sourceType: data.sourceType,
+    sourceId: data.sourceId ?? null,
+    amount: fromCents(amountCents),
+    effectiveDate: data.effectiveDate,
+    description: data.description,
+    notes: data.notes,
+    createdBy: data.createdBy,
+  });
+}
+
+/** إضافة دفعة فعلية؛ تُسجل مرة واحدة في العقد ودفتر السيولة. */
+export async function addPayment(data: InsertPayment & { promiseId?: number }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
+  const { promiseId, ...paymentData } = data;
   const amountCents = toCents(data.amount);
   if (amountCents <= 0) throw new Error("Payment amount must be positive");
   const paymentDate = data.paymentDate instanceof Date ? data.paymentDate : new Date(`${String(data.paymentDate)}T00:00:00`);
   if (Number.isNaN(paymentDate.getTime())) throw new Error("Invalid payment date");
 
   return db.transaction(async tx => {
-    const [result] = await tx.insert(payments).values({ ...data, amount: fromCents(amountCents), paymentDate } as any);
-    const allPayments = await tx.select().from(payments).where(eq(payments.collectionId, data.collectionId));
+    let resolvedPromiseId = promiseId;
+    if (!resolvedPromiseId) {
+      const matchingPromises = await tx.select().from(paymentPromises).where(and(
+        eq(paymentPromises.collectionId, paymentData.collectionId),
+        eq(paymentPromises.status, "pending"),
+        eq(paymentPromises.isConfirmed, 1),
+        eq(paymentPromises.promiseAmount, fromCents(amountCents)),
+      ));
+      if (matchingPromises.length === 1) resolvedPromiseId = matchingPromises[0].id;
+      if (matchingPromises.length > 1) throw new Error("Multiple confirmed payment promises match this amount; select the promise explicitly");
+    }
+    if (resolvedPromiseId) {
+      const [promise] = await tx.select().from(paymentPromises).where(eq(paymentPromises.id, resolvedPromiseId)).limit(1);
+      if (!promise || promise.collectionId !== paymentData.collectionId || promise.status !== "pending") {
+        throw new Error("Payment promise is not available for settlement");
+      }
+      if (toCents(promise.promiseAmount) !== amountCents) {
+        throw new Error("A payment promise must be settled for its confirmed amount");
+      }
+    }
+
+    const [result] = await tx.insert(payments).values({ ...paymentData, paymentPromiseId: resolvedPromiseId ?? null, amount: fromCents(amountCents), paymentDate } as any);
+    const paymentId = Number((result as { insertId?: number }).insertId);
+    if (!Number.isInteger(paymentId) || paymentId <= 0) throw new Error("Payment was not created");
+    await recordFinancialCashMovement(tx, {
+      direction: "inflow",
+      sourceType: "payment",
+      sourceId: paymentId,
+      amount: fromCents(amountCents),
+      effectiveDate: paymentDate,
+      description: `تحصيل فعلي: ${paymentData.clientName}`,
+      notes: paymentData.notes ?? undefined,
+      createdBy: paymentData.addedBy,
+    });
+    if (resolvedPromiseId) {
+      await tx.update(paymentPromises).set({ status: "paid", paidAt: new Date() }).where(eq(paymentPromises.id, resolvedPromiseId));
+    }
+
+    const allPayments = await tx.select().from(payments).where(eq(payments.collectionId, paymentData.collectionId));
     const totalCents = allPayments.reduce((sum, payment) => sum + toCents(payment.amount ?? 0), 0);
-    const [col] = await tx.select().from(collections).where(eq(collections.id, data.collectionId)).limit(1);
+    const [col] = await tx.select().from(collections).where(eq(collections.id, paymentData.collectionId)).limit(1);
     if (!col) throw new Error("Collection not found");
     const contractCents = toCents(col.contractAmount ?? 0);
     if (contractCents < 0) throw new Error("Collection amount is invalid");
     const pct = contractCents > 0 ? totalCents / contractCents : 0;
     const newStatus: "on_track" | "due_soon" | "overdue" | "completed" = pct >= 1 ? "completed" : col.status;
-    await tx.update(collections).set({ collectedAmount: fromCents(totalCents), status: newStatus, lastPaymentAt: new Date() }).where(eq(collections.id, data.collectionId));
-    await checkAndCreateCommissionStage(data.collectionId, totalCents / 100, contractCents / 100, pct, tx);
+    await tx.update(collections).set({ collectedAmount: fromCents(totalCents), status: newStatus, lastPaymentAt: new Date() }).where(eq(collections.id, paymentData.collectionId));
+    await checkAndCreateCommissionStage(paymentData.collectionId, totalCents / 100, contractCents / 100, pct, tx);
     return result;
   });
 }
@@ -1790,13 +1855,160 @@ export async function addPaymentPromise(data: InsertPaymentPromise) {
   return result;
 }
 
-/** تحديث حالة وعد الدفع */
-export async function updatePromiseStatus(id: number, status: "pending" | "paid" | "overdue") {
+/** تحديث حالة متابعة وعد الدفع. لا يجوز تحويله إلى مدفوع دون إنشاء دفعة فعلية. */
+export async function updatePromiseStatus(id: number, status: "pending" | "overdue") {
   const db = await getDb();
   if (!db) return;
-  const updateData: Record<string, unknown> = { status };
-  if (status === "paid") updateData.paidAt = new Date();
-  await db.update(paymentPromises).set(updateData).where(eq(paymentPromises.id, id));
+  await db.update(paymentPromises).set({ status }).where(eq(paymentPromises.id, id));
+}
+
+/** اعتماد أو إلغاء اعتماد تدفق وارد محتمل. لا يصبح التحصيل نقداً إلا عبر دفعة فعلية. */
+export async function setPaymentPromiseConfirmation(id: number, isConfirmed: boolean) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const [promise] = await db.select().from(paymentPromises).where(eq(paymentPromises.id, id)).limit(1);
+  if (!promise) throw new Error("Payment promise not found");
+  if (promise.status !== "pending") throw new Error("Only pending payment promises can be confirmed");
+  await db.update(paymentPromises).set({ isConfirmed: isConfirmed ? 1 : 0 }).where(eq(paymentPromises.id, id));
+}
+
+/** حفظ رصيد نقدي مصادق عليه كنقطة أساس، بعيداً عن Forecast والتحصيل المتوقع. */
+export async function setFinancialCashBalance(data: { asOfDate: string; amount: number; notes?: string; updatedBy?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const asOfDate = new Date(`${data.asOfDate}T00:00:00`);
+  if (Number.isNaN(asOfDate.getTime())) throw new Error("Invalid balance date");
+  const amountCents = toCents(data.amount);
+  if (amountCents < 0) throw new Error("Cash balance cannot be negative");
+  await db.insert(financialCashBalances).values({
+    asOfDate,
+    amount: fromCents(amountCents),
+    notes: data.notes,
+    updatedBy: data.updatedBy,
+  }).onDuplicateKeyUpdate({ set: { amount: fromCents(amountCents), notes: data.notes, updatedBy: data.updatedBy } });
+}
+
+/** إضافة التزام أو حجز لمشروع؛ لا يُنشئ تدفقاً خارجاً قبل التسوية. */
+export async function addFinancialCommitment(data: {
+  description: string;
+  amount: number;
+  dueDate: string;
+  projectId?: number;
+  collectionId?: number;
+  dealId?: number;
+  notes?: string;
+  createdBy?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const amountCents = toCents(data.amount);
+  if (amountCents <= 0) throw new Error("Commitment amount must be positive");
+  const dueDate = new Date(`${data.dueDate}T00:00:00`);
+  if (Number.isNaN(dueDate.getTime())) throw new Error("Invalid commitment due date");
+  const [result] = await db.insert(financialCommitments).values({
+    description: data.description.trim(), amount: fromCents(amountCents), dueDate,
+    projectId: data.projectId ?? null, collectionId: data.collectionId ?? null, dealId: data.dealId ?? null,
+    notes: data.notes, createdBy: data.createdBy,
+  });
+  return Number((result as { insertId?: number }).insertId);
+}
+
+/** تسوية الالتزام: تنشئ حركة نقدية خارجة واحدة وتغلق الحجز في معاملة واحدة. */
+export async function settleFinancialCommitment(id: number, settledBy?: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  return db.transaction(async tx => {
+    const [commitment] = await tx.select().from(financialCommitments).where(eq(financialCommitments.id, id)).limit(1);
+    if (!commitment || commitment.status !== "reserved") throw new Error("Commitment is not available for settlement");
+    await recordFinancialCashMovement(tx, {
+      direction: "outflow", sourceType: "commitment", sourceId: id,
+      amount: commitment.amount, effectiveDate: new Date(),
+      description: `سداد التزام: ${commitment.description}`,
+      notes: commitment.notes ?? undefined, createdBy: settledBy,
+    });
+    await tx.update(financialCommitments).set({ status: "paid", settledAt: new Date() }).where(eq(financialCommitments.id, id));
+  });
+}
+
+export async function cancelFinancialCommitment(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const [commitment] = await db.select().from(financialCommitments).where(eq(financialCommitments.id, id)).limit(1);
+  if (!commitment || commitment.status !== "reserved") throw new Error("Commitment is not available for cancellation");
+  await db.update(financialCommitments).set({ status: "cancelled" }).where(eq(financialCommitments.id, id));
+}
+
+export async function getFinancialCommitments(startDate: string, endDate: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T23:59:59`);
+  return db.select().from(financialCommitments)
+    .where(and(gte(financialCommitments.dueDate, start), lte(financialCommitments.dueDate, end)))
+    .orderBy(financialCommitments.dueDate);
+}
+
+/**
+ * السيولة المتاحة = الرصيد الفعلي + التدفقات المؤكدة غير المحصلة - الالتزامات المستحقة.
+ * Forecast محسوب للعرض الاستشرافي فقط ولا يدخل أبداً في availableCash.
+ */
+export async function getFinancialLiquidityDashboard(startDate: string, endDate: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T23:59:59`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) throw new Error("Invalid liquidity period");
+
+  const [balance] = await db.select().from(financialCashBalances)
+    .where(lte(financialCashBalances.asOfDate, start)).orderBy(desc(financialCashBalances.asOfDate)).limit(1);
+  const baseCents = toCents(balance?.amount ?? 0);
+  const movementConditions = [lte(financialCashMovements.effectiveDate, end)];
+  if (balance) movementConditions.push(gte(financialCashMovements.effectiveDate, balance.asOfDate));
+  const movements = await db.select({ direction: financialCashMovements.direction, amount: financialCashMovements.amount })
+    .from(financialCashMovements).where(and(...movementConditions));
+  const netMovementCents = movements.reduce((total, movement) => total + (movement.direction === "inflow" ? toCents(movement.amount) : -toCents(movement.amount)), 0);
+  const currentCashCents = baseCents + netMovementCents;
+
+  const incomingRows = await db.select({ amount: sql<string>`COALESCE(SUM(${paymentPromises.promiseAmount}), 0)`, count: count() }).from(paymentPromises)
+    .where(and(eq(paymentPromises.status, "pending"), eq(paymentPromises.isConfirmed, 1), gte(paymentPromises.promiseDate, start), lte(paymentPromises.promiseDate, end)));
+  const confirmedIncomingCents = toCents(incomingRows[0]?.amount ?? 0);
+
+  const dueRows = await db.select({ amount: sql<string>`COALESCE(SUM(${financialCommitments.amount}), 0)`, count: count() }).from(financialCommitments)
+    .where(and(eq(financialCommitments.status, "reserved"), gte(financialCommitments.dueDate, start), lte(financialCommitments.dueDate, end)));
+  const dueCommitmentsCents = toCents(dueRows[0]?.amount ?? 0);
+  const reservedRows = await db.select({ amount: sql<string>`COALESCE(SUM(${financialCommitments.amount}), 0)`, count: count() }).from(financialCommitments)
+    .where(eq(financialCommitments.status, "reserved"));
+  const reservedCents = toCents(reservedRows[0]?.amount ?? 0);
+
+  const goal = await getCompanyGoal(start.getFullYear(), start.getMonth() + 1);
+  const avgDealValue = toCents(goal?.avgDealValue ?? 0) / 100;
+  const plannedVisits = goal?.requiredVisits ?? 0;
+  const conversionRate = Number(goal?.closingRateTarget ?? 0);
+  const expectedSales = calculateExpectedSales(plannedVisits, conversionRate, avgDealValue);
+
+  return {
+    period: { startDate, endDate },
+    currentCash: currentCashCents / 100,
+    currentCashBasis: balance ? { asOfDate: balance.asOfDate, amount: baseCents / 100 } : null,
+    confirmedIncoming: confirmedIncomingCents / 100,
+    confirmedIncomingCount: incomingRows[0]?.count ?? 0,
+    dueCommitments: dueCommitmentsCents / 100,
+    dueCommitmentsCount: dueRows[0]?.count ?? 0,
+    reservedCash: reservedCents / 100,
+    reservedCount: reservedRows[0]?.count ?? 0,
+    availableCash: calculateAvailableCash({
+      currentCash: currentCashCents / 100,
+      confirmedIncoming: confirmedIncomingCents / 100,
+      dueCommitments: dueCommitmentsCents / 100,
+    }),
+    forecast: {
+      expectedSales,
+      plannedVisits,
+      conversionRate,
+      averageDealValue: avgDealValue,
+      includedInAvailableCash: false,
+    },
+  };
 }
 
 /** قائمة المتابعة اليومية */
@@ -8889,6 +9101,7 @@ export async function addPaymentWithFollowUp(data: {
   receiptUrl?: string;
   nextPaymentDate?: string;
   notes?: string;
+  promiseId?: number;
 }): Promise<{ paymentId: number; taskCreated: boolean }> {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
@@ -8900,8 +9113,29 @@ export async function addPaymentWithFollowUp(data: {
   if (nextPaymentDate && Number.isNaN(nextPaymentDate.getTime())) throw new Error("Invalid next payment date");
 
   return db.transaction(async tx => {
+    let resolvedPromiseId = data.promiseId;
+    if (!resolvedPromiseId) {
+      const matchingPromises = await tx.select().from(paymentPromises).where(and(
+        eq(paymentPromises.collectionId, data.collectionId),
+        eq(paymentPromises.status, "pending"),
+        eq(paymentPromises.isConfirmed, 1),
+        eq(paymentPromises.promiseAmount, fromCents(amountCents)),
+      ));
+      if (matchingPromises.length === 1) resolvedPromiseId = matchingPromises[0].id;
+      if (matchingPromises.length > 1) throw new Error("Multiple confirmed payment promises match this amount; select the promise explicitly");
+    }
+    if (resolvedPromiseId) {
+      const [promise] = await tx.select().from(paymentPromises).where(eq(paymentPromises.id, resolvedPromiseId)).limit(1);
+      if (!promise || promise.collectionId !== data.collectionId || promise.status !== "pending") {
+        throw new Error("Payment promise is not available for settlement");
+      }
+      if (toCents(promise.promiseAmount) !== amountCents) {
+        throw new Error("A payment promise must be settled for its confirmed amount");
+      }
+    }
     const [payResult] = await tx.insert(payments).values({
       collectionId: data.collectionId,
+      paymentPromiseId: resolvedPromiseId ?? null,
       engineerId: data.engineerId ?? null,
       clientName: data.clientName.trim(),
       amount: fromCents(amountCents),
@@ -8915,6 +9149,15 @@ export async function addPaymentWithFollowUp(data: {
     });
     const paymentId = Number((payResult as any).insertId);
     if (!Number.isInteger(paymentId) || paymentId <= 0) throw new Error("Payment was not created");
+    await recordFinancialCashMovement(tx, {
+      direction: "inflow", sourceType: "payment", sourceId: paymentId,
+      amount: fromCents(amountCents), effectiveDate: paymentDate,
+      description: `تحصيل فعلي: ${data.clientName.trim()}`,
+      notes: data.notes, createdBy: data.addedBy,
+    });
+    if (resolvedPromiseId) {
+      await tx.update(paymentPromises).set({ status: "paid", paidAt: new Date() }).where(eq(paymentPromises.id, resolvedPromiseId));
+    }
 
     const collRows = await tx.select({
       collectedAmount: collections.collectedAmount,
@@ -10897,7 +11140,7 @@ function getAppUserJwtSecret(): Uint8Array {
   if (configuredSecret && configuredSecret.length >= 32) {
     return new TextEncoder().encode(configuredSecret);
   }
-  if (process.env.NODE_ENV === "test") {
+  if (process.env.NODE_ENV === "test" || process.env.VITEST === "true") {
     return new TextEncoder().encode(TEST_APP_USER_JWT_SECRET);
   }
   throw new Error("JWT_SECRET must be configured with at least 32 characters");

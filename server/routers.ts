@@ -29,6 +29,9 @@ import {
   getProducts, getProductById, createProduct, updateProduct, deleteProduct, getProductCategories,
   getSales, getSaleById, createSale, updateSaleStatus, deleteSale,
   getAllCollectionsWithSummary, addPayment, addPaymentPromise, updatePromiseStatus,
+  setPaymentPromiseConfirmation, setFinancialCashBalance, addFinancialCommitment,
+  settleFinancialCommitment, cancelFinancialCommitment, getFinancialCommitments,
+  getFinancialLiquidityDashboard,
   getDailyFollowUpList, getEngineersCollectionCommission, markCommissionPaid,
   addCollection, updateCollectionStatus, calcProgressiveCommission,
   autoCreateContractFromDeal, addPaymentWithFollowUp, getCollectionBasedCommission,
@@ -1426,6 +1429,7 @@ export const appRouter = router({
       addedBy: z.enum(["engineer", "admin"]).default("admin"),
       receiptNumber: z.string().optional(),
       notes: z.string().optional(),
+      promiseId: z.number().optional(),
     })).mutation(async ({ input }) => {
       const result = await addPayment({ ...input, amount: String(input.amount), paymentDate: input.paymentDate as unknown as Date });
       return { success: true };
@@ -1438,15 +1442,18 @@ export const appRouter = router({
       promiseAmount: z.number().positive(),
       promiseDate: z.string(),
       notes: z.string().optional(),
+      isConfirmed: z.boolean().optional().default(false),
     })).mutation(async ({ input }) => {
-      await addPaymentPromise({ ...input, promiseAmount: String(input.promiseAmount), promiseDate: input.promiseDate as unknown as Date });
+      await addPaymentPromise({ ...input, promiseAmount: String(input.promiseAmount), promiseDate: input.promiseDate as unknown as Date, isConfirmed: input.isConfirmed ? 1 : 0 });
       return { success: true };
     }),
     // تحديث حالة وعد الدفع
     updatePromise: protectedProcedure.input(z.object({
       id: z.number(),
-      status: z.enum(["pending", "paid", "overdue"]),
+      status: z.enum(["pending", "overdue"]),
     })).mutation(async ({ input }) => { await updatePromiseStatus(input.id, input.status); return { success: true }; }),
+    confirmPromise: protectedProcedure.input(z.object({ id: z.number(), isConfirmed: z.boolean() }))
+      .mutation(async ({ input }) => { await setPaymentPromiseConfirmation(input.id, input.isConfirmed); return { success: true }; }),
     // قائمة المتابعة اليومية
     dailyFollowUp: protectedProcedure.query(async () => getDailyFollowUpList()),
     // كوميشن المهندسين من التحصيل
@@ -1481,6 +1488,7 @@ export const appRouter = router({
       receiptUrl: z.string().optional(),
       nextPaymentDate: z.string().optional(),
       notes: z.string().optional(),
+      promiseId: z.number().optional(),
     })).mutation(async ({ input }) => addPaymentWithFollowUp(input)),
     // Commission على المحصّل فقط
     collectionCommission: protectedProcedure.input(z.object({
@@ -1498,6 +1506,23 @@ export const appRouter = router({
       startDate: z.string(),
       endDate: z.string(),
     })).query(async ({ input }) => getCollectionPeriodAnalysis(input.startDate, input.endDate)),
+    // السيولة والتوقعات: مصدران منفصلان بصورة صريحة.
+    liquidityDashboard: protectedProcedure.input(z.object({ startDate: z.string(), endDate: z.string() }))
+      .query(async ({ input }) => getFinancialLiquidityDashboard(input.startDate, input.endDate)),
+    commitments: protectedProcedure.input(z.object({ startDate: z.string(), endDate: z.string() }))
+      .query(async ({ input }) => getFinancialCommitments(input.startDate, input.endDate)),
+    setCashBalance: protectedProcedure.input(z.object({
+      asOfDate: z.string(), amount: z.number().min(0), notes: z.string().optional(), updatedBy: z.string().optional(),
+    })).mutation(async ({ input }) => { await setFinancialCashBalance(input); return { success: true }; }),
+    addCommitment: protectedProcedure.input(z.object({
+      description: z.string().min(1).max(255), amount: z.number().positive(), dueDate: z.string(),
+      projectId: z.number().int().positive().optional(), collectionId: z.number().int().positive().optional(),
+      dealId: z.number().int().positive().optional(), notes: z.string().optional(), createdBy: z.string().optional(),
+    })).mutation(async ({ input }) => ({ id: await addFinancialCommitment(input) })),
+    settleCommitment: protectedProcedure.input(z.object({ id: z.number().int().positive(), settledBy: z.string().optional() }))
+      .mutation(async ({ input }) => { await settleFinancialCommitment(input.id, input.settledBy); return { success: true }; }),
+    cancelCommitment: protectedProcedure.input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ input }) => { await cancelFinancialCommitment(input.id); return { success: true }; }),
   }),
   // ── Legacy: Customers / Products ───────────────────────────────────────────────────────────────────────────────
   customers: router({
