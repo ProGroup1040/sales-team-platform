@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
+import { calcProgressiveCommission, calcProgressiveCommissionDetails } from "./db";
+
 // ─── Commission Tiers Logic ────────────────────────────────────────────────────
 function calcCommissionPct(totalDealValue: number): number {
   if (totalDealValue >= 2_000_000) {
@@ -70,6 +72,26 @@ describe('Commission Tiers', () => {
 
   it('2.5M = 2.5%', () => {
     expect(calcCommissionPct(2_500_000)).toBe(2.5);
+  });
+});
+
+describe('Progressive commission engine', () => {
+  it('handles exact and adjacent tier boundaries', () => {
+    expect(calcProgressiveCommission(999_999.99)).toBe(10_000);
+    expect(calcProgressiveCommission(1_000_000)).toBe(10_000);
+    expect(calcProgressiveCommission(1_250_000)).toBe(13_125);
+    expect(calcProgressiveCommission(1_500_000)).toBe(16_875);
+    expect(calcProgressiveCommission(1_750_000)).toBe(21_250);
+    expect(calcProgressiveCommission(2_000_000)).toBe(26_250);
+    expect(calcProgressiveCommission(2_000_000.01)).toBe(26_250);
+  });
+
+  it('keeps fractional monetary values at cent precision', () => {
+    const total = calcProgressiveCommission(1_500_000.01);
+    const details = calcProgressiveCommissionDetails(1_500_000.01);
+    expect(total).toBe(16_875);
+    expect(details.reduce((sum, tier) => sum + tier.commission, 0)).toBe(total);
+    expect(details.reduce((sum, tier) => sum + tier.amount, 0)).toBe(1_500_000.01);
   });
 });
 

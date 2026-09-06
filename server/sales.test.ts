@@ -31,9 +31,13 @@ describe("auth router", () => {
 });
 
 describe("sales router", () => {
-  it("sales.monthlyStats returns valid structure", async () => {
+  it("sales.monthlyStats returns valid structure or explicit database outage", async () => {
     const ctx = createAuthContext();
     const caller = appRouter.createCaller(ctx);
+    if (!process.env.DATABASE_URL) {
+      await expect(caller.sales.monthlyStats({ year: 2025, month: 1 })).rejects.toThrow("Database unavailable");
+      return;
+    }
     const stats = await caller.sales.monthlyStats({ year: 2025, month: 1 });
     expect(stats).toHaveProperty("target");
     expect(stats).toHaveProperty("actual");
@@ -43,9 +47,13 @@ describe("sales router", () => {
     expect(stats.achievementRate).toBeGreaterThanOrEqual(0);
   });
 
-  it("sales.trend returns array of monthly data", async () => {
+  it("sales.trend returns array of monthly data or explicit database outage", async () => {
     const ctx = createAuthContext();
     const caller = appRouter.createCaller(ctx);
+    if (!process.env.DATABASE_URL) {
+      await expect(caller.sales.trend({ months: 6 })).rejects.toThrow("Database unavailable");
+      return;
+    }
     const trend = await caller.sales.trend({ months: 6 });
     expect(Array.isArray(trend)).toBe(true);
     expect(trend.length).toBe(6);
@@ -138,9 +146,13 @@ describe("planning router", () => {
 });
 
 describe("collections router", () => {
-  it("collections.stats returns valid structure", async () => {
+  it("collections.stats returns valid structure or explicit database outage", async () => {
     const ctx = createAuthContext();
     const caller = appRouter.createCaller(ctx);
+    if (!process.env.DATABASE_URL) {
+      await expect(caller.collections.stats()).rejects.toThrow("Database unavailable");
+      return;
+    }
     const stats = await caller.collections.stats();
     expect(stats).toHaveProperty("totalContracts");
     expect(stats).toHaveProperty("totalCollected");
@@ -153,9 +165,13 @@ describe("collections router", () => {
 });
 
 describe("kpi router", () => {
-  it("kpi.engineers returns array with valid structure", async () => {
+  it("kpi.engineers returns valid structure or explicit database outage", async () => {
     const ctx = createAuthContext();
     const caller = appRouter.createCaller(ctx);
+    if (!process.env.DATABASE_URL) {
+      await expect(caller.kpi.engineers({ year: 2025, month: 1 })).rejects.toThrow("Database unavailable");
+      return;
+    }
     const kpi = await caller.kpi.engineers({ year: 2025, month: 1 });
     expect(Array.isArray(kpi)).toBe(true);
     for (const eng of kpi) {

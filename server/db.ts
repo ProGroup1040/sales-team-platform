@@ -2,7 +2,7 @@ import "dotenv/config";
 import { and, between, count, desc, eq, gte, isNull, lte, or, sql, sum, avg, lt, ne, inArray, notInArray, not } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { SYSTEM_MODULES, SYSTEM_ROLES } from "@shared/authorization";
-import { fromCents, subtractMoney, toCents } from "@shared/money";
+import { centsToNumber, fromCents, sumCents, subtractMoney, toCents, toCentsOrZero } from "@shared/money";
 import { calculateAvailableCash, calculateExpectedSales } from "@shared/financialLiquidity";
 export { SYSTEM_MODULES, SYSTEM_ROLES };
 import {
@@ -766,14 +766,13 @@ export async function updateDealStage(id: number, stage: string, nextAction?: st
 
 // ─── Monthly Sales ────────────────────────────────────────────────────────────
 export async function getMonthlySalesStats(year: number, month: number) {
-  const db = await getDb();
-  if (!db) return { target: 0, actual: 0, achievementRate: 0, remaining: 0 };
+  const db = await requireDb();
   const startDate = new Date(year, month - 1, 1);
   const endDate = new Date(year, month, 0, 23, 59, 59, 999);
 
   const targetRow = await db.select().from(monthlyTargets)
     .where(and(eq(monthlyTargets.year, year), eq(monthlyTargets.month, month))).limit(1);
-  const target = targetRow.length > 0 ? Number(targetRow[0].targetAmount) || 0 : 0;
+  const target = targetRow.length > 0 ? centsToNumber(toCentsOrZero(targetRow[0].targetAmount)) : 0;
 
   // Keep monthly sales aligned with KPI/reporting attribution: an explicit
   // accounting month wins, then the closing month, then closedAt as a fallback.
@@ -791,11 +790,7 @@ export async function getMonthlySalesStats(year: number, month: number) {
     eq(deals.stage, "closed_won"),
     dealBelongsToMonth,
   ));
-  const actual = wonDeals.reduce((sum, deal) => {
-    const netValue = Number(deal.netValue);
-    const grossValue = Number(deal.value);
-    return sum + (Number.isFinite(netValue) ? netValue : Number.isFinite(grossValue) ? grossValue : 0);
-  }, 0);
+  const actual = centsToNumber(sumCents(wonDeals.map(deal => deal.netValue ?? deal.value)));
 
   const achievementRate = target > 0 ? Math.round((actual / target) * 100) : 0;
   const remaining = Math.max(0, target - actual);
@@ -826,8 +821,7 @@ export async function getMonthlySalesTrend(months: number = 6) {
 // KPI Weights: Tasks & Execution = 55%, Response Speed = 20%, CRM Update = 25%
 // Efficiency penalty: if avg visits per closed deal > 3, reduce tasks score
 export async function getEngineersKPI(year: number, month: number) {
-  const db = await getDb();
-  if (!db) return [];
+  const db = await requireDb();
   const engList = await getEngineers();
   const startDate = new Date(year, month - 1, 1);
   const endDate = new Date(year, month, 0, 23, 59, 59);
@@ -914,9 +908,10 @@ export async function getEngineersKPI(year: number, month: number) {
     const rating = kpiScore >= 90 ? 'ممتاز' : kpiScore >= 75 ? 'جيد جداً' : kpiScore >= 60 ? 'جيد' : kpiScore >= 45 ? 'مقبول' : 'ضعيف';
 
     // ── Sales figures (from closed_won deals) ────────────────────────────────────
-    const totalDealValue = engDeals.filter(d => d.stage === 'closed_won').reduce((s, d) => s + parseFloat((d.netValue as string) || (d.value as string) || '0'), 0);
+    const totalDealValueCents = sumCents(engDeals.filter(d => d.stage === 'closed_won').map(d => d.netValue ?? d.value));
+    const totalDealValue = centsToNumber(totalDealValueCents);
     const engTarget = engTargetsList.find(t => t.engineerId === eng.id);
-    const targetAmount = engTarget ? parseFloat(engTarget.targetAmount) : 0;
+    const targetAmount = engTarget ? centsToNumber(toCentsOrZero(engTarget.targetAmount)) : 0;
     const achievementPct = targetAmount > 0 ? (totalDealValue / targetAmount) * 100 : 0;
 
     // ── Progressive Cumulative Commission System ─────────────────────────────────────────────
@@ -935,40 +930,41 @@ export async function getEngineersKPI(year: number, month: number) {
       { from: 1_750_000, to: 2_000_000, rate: 2.0 },
     ];
     // حساب الكوميشن التراكمي مع Breakdown لكل شريحة
-    let progressiveCommissionValue = 0;
+    let progressiveCommissionCents = 0;
     const commissionBreakdown: Array<{ label: string; amount: number; rate: number; portion: number }> = [];
-    let remaining = totalDealValue;
+    let remainingCents = totalDealValueCents;
     for (const tier of commissionTiersFixed) {
-      if (remaining <= 0) break;
-      const tierSize = tier.to - tier.from;
-      const portion = Math.min(remaining, tierSize);
-      const tierCommission = Math.round(portion * (tier.rate / 100));
-      progressiveCommissionValue += tierCommission;
-      if (portion > 0) {
+      if (remainingCents <= 0) break;
+      const tierSizeCents = (tier.to - tier.from) * 100;
+      const portionCents = Math.min(remainingCents, tierSizeCents);
+      const tierCommissionCents = Math.round(portionCents * (tier.rate / 100));
+      progressiveCommissionCents += tierCommissionCents;
+      if (portionCents > 0) {
         commissionBreakdown.push({
           label: `${(tier.from/1000).toFixed(0)}K → ${(tier.to/1000).toFixed(0)}K`,
-          amount: tierCommission, rate: tier.rate, portion
+          amount: centsToNumber(tierCommissionCents), rate: tier.rate, portion: centsToNumber(portionCents)
         });
       }
-      remaining -= portion;
+      remainingCents -= portionCents;
     }
     // فوق 2M: شرائح إضافية +0.25% كل 250K
-    if (remaining > 0) {
+    if (remainingCents > 0) {
       let extraBase = 2.0;
-      let extraRemaining = remaining;
-      while (extraRemaining > 0) {
-        const portion = Math.min(extraRemaining, 250_000);
-        const tierCommission = Math.round(portion * (extraBase / 100));
-        progressiveCommissionValue += tierCommission;
+      let extraRemainingCents = remainingCents;
+      while (extraRemainingCents > 0) {
+        const portionCents = Math.min(extraRemainingCents, 250_000 * 100);
+        const tierCommissionCents = Math.round(portionCents * (extraBase / 100));
+        progressiveCommissionCents += tierCommissionCents;
         commissionBreakdown.push({
           label: `+250K (${extraBase}%)`,
-          amount: tierCommission, rate: extraBase, portion
+          amount: centsToNumber(tierCommissionCents), rate: extraBase, portion: centsToNumber(portionCents)
         });
-        extraRemaining -= portion;
+        extraRemainingCents -= portionCents;
         extraBase += 0.25;
       }
     }
-    // للتوافق مع الكود القديم: نحسب effective rate كنسبة مئوية من الإجمالي
+    // Round only once at the accounting boundary; tier values remain exact cents.
+    const progressiveCommissionValue = centsToNumber(progressiveCommissionCents);
     const baseCommissionPct = totalDealValue > 0 ? (progressiveCommissionValue / totalDealValue) * 100 : 0;
 
     // ── Incentive Tiers (fixed amounts based on total sales) ──────────────────────
@@ -1079,13 +1075,12 @@ export async function getEngineersKPI(year: number, month: number) {
 
 // ─── Collections ──────────────────────────────────────────────────────────────
 export async function getCollectionsStats() {
-  const db = await getDb();
-  if (!db) return { totalContracts: 0, totalCollected: 0, outstanding: 0, overdue: 0, collectionRate: 0 };
+  const db = await requireDb();
   const all = await db.select().from(collections);
-  const totalContracts = all.reduce((s, c) => s + parseFloat(c.contractAmount), 0);
-  const totalCollected = all.reduce((s, c) => s + parseFloat(c.collectedAmount ?? '0'), 0);
-  const outstanding = totalContracts - totalCollected;
-  const overdue = all.filter(c => c.status === 'overdue').reduce((s, c) => s + (parseFloat(c.contractAmount) - parseFloat(c.collectedAmount ?? '0')), 0);
+  const totalContracts = centsToNumber(sumCents(all.map(c => c.contractAmount)));
+  const totalCollected = centsToNumber(sumCents(all.map(c => c.collectedAmount)));
+  const outstanding = centsToNumber(sumCents(all.map(c => toCentsOrZero(c.contractAmount) - toCentsOrZero(c.collectedAmount))));
+  const overdue = centsToNumber(sumCents(all.filter(c => c.status === 'overdue').map(c => toCentsOrZero(c.contractAmount) - toCentsOrZero(c.collectedAmount))));
   const collectionRate = totalContracts > 0 ? Math.round((totalCollected / totalContracts) * 100) : 0;
   return { totalContracts, totalCollected, outstanding, overdue, collectionRate };
 }
@@ -1328,8 +1323,7 @@ export function getDiscountTier(salesAmount: number, tiers: Array<{ minSales: st
 
 /** جلب أهداف المهندسين للشهر مع حساب الأداء الفعلي */
 export async function getEngineersSalesPerformance(year: number, month: number) {
-  const db = await getDb();
-  if (!db) return [];
+  const db = await requireDb();
   const startDate = new Date(year, month - 1, 1);
   const endDate = new Date(year, month, 0, 23, 59, 59);
 
@@ -1354,10 +1348,10 @@ export async function getEngineersSalesPerformance(year: number, month: number) 
   const commTiers = await db.select().from(commissionTiers).orderBy(commissionTiers.minAchievementPct);
   return engList.map(eng => {
     const targetRow = targets.find(t => t.engineerId === eng.id);
-    const targetAmount = targetRow ? parseFloat(targetRow.targetAmount) : 0;
+    const targetAmount = targetRow ? centsToNumber(toCentsOrZero(targetRow.targetAmount)) : 0;
     const manpower = targetRow?.manpower ?? 1;
     const engWonDeals = wonDeals.filter(d => d.engineerId === eng.id);
-    const actualSales = engWonDeals.reduce((s, d) => s + parseFloat((d.netValue as string) || d.value || '0'), 0);
+    const actualSales = centsToNumber(sumCents(engWonDeals.map(d => d.netValue ?? d.value)));
     const achievementPct = targetAmount > 0 ? Math.round((actualSales / targetAmount) * 100) : 0;
     const remaining = Math.max(0, targetAmount - actualSales);
 
@@ -1398,8 +1392,7 @@ export async function getEngineersSalesPerformance(year: number, month: number) 
 
 /** إحصاءات Sales Control Tower الشاملة */
 export async function getSalesControlStats(year: number, month: number) {
-  const db = await getDb();
-  if (!db) return null;
+  const db = await requireDb();
   const startDate = new Date(year, month - 1, 1);
   const endDate = new Date(year, month, 0, 23, 59, 59);
 
@@ -1409,8 +1402,8 @@ export async function getSalesControlStats(year: number, month: number) {
   const legacyTargetRow = await db.select().from(monthlyTargets)
     .where(and(eq(monthlyTargets.year, year), eq(monthlyTargets.month, month))).limit(1);
   const totalTarget = goalRow.length > 0
-    ? parseFloat(goalRow[0].revenueTarget)
-    : legacyTargetRow.length > 0 ? parseFloat(legacyTargetRow[0].targetAmount) : 0;
+    ? centsToNumber(toCentsOrZero(goalRow[0].revenueTarget))
+    : legacyTargetRow.length > 0 ? centsToNumber(toCentsOrZero(legacyTargetRow[0].targetAmount)) : 0;
   const companyClosingRateTarget = goalRow.length > 0 ? parseFloat(goalRow[0].closingRateTarget) : 35;
   const requiredDeals = goalRow.length > 0 ? (goalRow[0].requiredDeals ?? 0) : 0;
 
@@ -1425,7 +1418,7 @@ export async function getSalesControlStats(year: number, month: number) {
         and(isNull(deals.accountingMonth as any), isNull(deals.closingMonth as any), between(deals.closedAt as any, startDate, endDate))
       )
     ));
-  const actualSales = wonDeals.reduce((s, d) => s + parseFloat((d.netValue as string) || d.value || '0'), 0);
+  const actualSales = centsToNumber(sumCents(wonDeals.map(d => d.netValue ?? d.value)));
   const achievementRate = totalTarget > 0 ? Math.round((actualSales / totalTarget) * 100) : 0;
   const remaining = Math.max(0, totalTarget - actualSales);
 
@@ -1441,7 +1434,7 @@ export async function getSalesControlStats(year: number, month: number) {
   // Capacity Planning
   const engTargets = await db.select().from(engineerTargets)
     .where(and(eq(engineerTargets.year, year), eq(engineerTargets.month, month)));
-  const totalCapacity = engTargets.reduce((s, t) => s + parseFloat(t.targetAmount), 0);
+  const totalCapacity = centsToNumber(sumCents(engTargets.map(t => t.targetAmount)));
 
   // Conversion Metrics
   const allVisits = await db.select({ total: count() }).from(visits)
@@ -1622,9 +1615,9 @@ export async function upsertEngineerOperationalTargets(data: {
  * بعد 2,000,000: +0.25% لكل 250K زيادة (على كل المبلغ فوق 2M)
  */
 export function calcProgressiveCommission(collected: number): number {
-  if (collected <= 0) return 0;
-  let commission = 0;
-  // الشرائح التدريجية
+  const collectedCents = toCents(collected);
+  if (collectedCents <= 0) return 0;
+  let commissionCents = 0;
   const tiers = [
     { from: 0,         to: 1_000_000, rate: 0.01   },
     { from: 1_000_000, to: 1_250_000, rate: 0.0125 },
@@ -1633,36 +1626,35 @@ export function calcProgressiveCommission(collected: number): number {
     { from: 1_750_000, to: 2_000_000, rate: 0.02   },
   ];
   for (const tier of tiers) {
-    if (collected <= tier.from) break;
-    const taxable = Math.min(collected, tier.to) - tier.from;
-    commission += taxable * tier.rate;
+    const fromCents = tier.from * 100;
+    if (collectedCents <= fromCents) break;
+    const taxableCents = Math.min(collectedCents, tier.to * 100) - fromCents;
+    commissionCents += Math.round(taxableCents * tier.rate);
   }
-  // بعد 2M: كل 250K زيادة تضيف 0.25% على الجزء فوق 2M
-  if (collected > 2_000_000) {
-    const above2M = collected - 2_000_000;
-    const extraSteps = Math.floor(above2M / 250_000);
-    // لكل شريحة 250K فوق 2M يزداد المعدل 0.25%
-    let remaining = above2M;
+  if (collectedCents > 2_000_000 * 100) {
+    const above2MCents = collectedCents - 2_000_000 * 100;
+    const extraSteps = Math.floor(above2MCents / (250_000 * 100));
+    let remainingCents = above2MCents;
     for (let step = 0; step < extraSteps; step++) {
       const stepRate = 0.02 + (step + 1) * 0.0025;
-      const stepAmount = Math.min(250_000, remaining);
-      commission += stepAmount * stepRate;
-      remaining -= stepAmount;
+      const stepAmountCents = Math.min(250_000 * 100, remainingCents);
+      commissionCents += Math.round(stepAmountCents * stepRate);
+      remainingCents -= stepAmountCents;
     }
-    // الكسر المتبقي بعد آخر 250K كاملة
-    if (remaining > 0) {
+    if (remainingCents > 0) {
       const lastRate = 0.02 + (extraSteps + 1) * 0.0025;
-      commission += remaining * lastRate;
+      commissionCents += Math.round(remainingCents * lastRate);
     }
   }
-  return Math.round(commission);
+  return centsToNumber(commissionCents);
 }
 
 /**
  * تفاصيل حساب Progressive Commission (للعرض في الواجهة)
  */
 export function calcProgressiveCommissionDetails(collected: number): Array<{ label: string; amount: number; rate: number; commission: number }> {
-  if (collected <= 0) return [];
+  const collectedCents = toCents(collected);
+  if (collectedCents <= 0) return [];
   const details: Array<{ label: string; amount: number; rate: number; commission: number }> = [];
   const tiers = [
     { from: 0,         to: 1_000_000, rate: 0.01,   label: 'أول 1,000,000' },
@@ -1672,23 +1664,24 @@ export function calcProgressiveCommissionDetails(collected: number): Array<{ lab
     { from: 1_750_000, to: 2_000_000, rate: 0.02,   label: '1,750,000 → 2,000,000' },
   ];
   for (const tier of tiers) {
-    if (collected <= tier.from) break;
-    const taxable = Math.min(collected, tier.to) - tier.from;
-    details.push({ label: tier.label, amount: Math.round(taxable), rate: tier.rate * 100, commission: Math.round(taxable * tier.rate) });
+    const fromCents = tier.from * 100;
+    if (collectedCents <= fromCents) break;
+    const taxableCents = Math.min(collectedCents, tier.to * 100) - fromCents;
+    details.push({ label: tier.label, amount: centsToNumber(taxableCents), rate: tier.rate * 100, commission: centsToNumber(Math.round(taxableCents * tier.rate)) });
   }
-  if (collected > 2_000_000) {
-    const above2M = collected - 2_000_000;
-    const extraSteps = Math.floor(above2M / 250_000);
-    let remaining = above2M;
+  if (collectedCents > 2_000_000 * 100) {
+    const above2MCents = collectedCents - 2_000_000 * 100;
+    const extraSteps = Math.floor(above2MCents / (250_000 * 100));
+    let remainingCents = above2MCents;
     for (let step = 0; step < extraSteps; step++) {
       const stepRate = 0.02 + (step + 1) * 0.0025;
-      const stepAmount = Math.min(250_000, remaining);
-      details.push({ label: `فوق 2M - شريحة ${step + 1}`, amount: Math.round(stepAmount), rate: stepRate * 100, commission: Math.round(stepAmount * stepRate) });
-      remaining -= stepAmount;
+      const stepAmountCents = Math.min(250_000 * 100, remainingCents);
+      details.push({ label: `فوق 2M - شريحة ${step + 1}`, amount: centsToNumber(stepAmountCents), rate: stepRate * 100, commission: centsToNumber(Math.round(stepAmountCents * stepRate)) });
+      remainingCents -= stepAmountCents;
     }
-    if (remaining > 0) {
+    if (remainingCents > 0) {
       const lastRate = 0.02 + (extraSteps + 1) * 0.0025;
-      details.push({ label: `فوق 2M - كسر`, amount: Math.round(remaining), rate: lastRate * 100, commission: Math.round(remaining * lastRate) });
+      details.push({ label: `فوق 2M - كسر`, amount: centsToNumber(remainingCents), rate: lastRate * 100, commission: centsToNumber(Math.round(remainingCents * lastRate)) });
     }
   }
   return details;
@@ -1696,16 +1689,15 @@ export function calcProgressiveCommissionDetails(collected: number): Array<{ lab
 
 /** جلب ملف العميل المالي الكامل (Client Financial Profile) */
 export async function getClientFinancialProfile(collectionId: number) {
-  const db = await getDb();
-  if (!db) return null;
+  const db = await requireDb();
   const [col] = await db.select().from(collections).where(eq(collections.id, collectionId)).limit(1);
   if (!col) return null;
   const paymentsList = await db.select().from(payments).where(eq(payments.collectionId, collectionId));
   const promisesList = await db.select().from(paymentPromises).where(eq(paymentPromises.collectionId, collectionId));
   const commList = await db.select().from(commissionPayments).where(eq(commissionPayments.collectionId, collectionId));
-  const totalPaid = paymentsList.reduce((s, p) => s + parseFloat(p.amount as string), 0);
-  const contractAmt = parseFloat(col.contractAmount as string);
-  const remaining = contractAmt - totalPaid;
+  const totalPaid = centsToNumber(sumCents(paymentsList.map(p => p.amount)));
+  const contractAmt = centsToNumber(toCentsOrZero(col.contractAmount));
+  const remaining = centsToNumber(toCentsOrZero(col.contractAmount) - sumCents(paymentsList.map(p => p.amount)));
   const pct = contractAmt > 0 ? Math.round((totalPaid / contractAmt) * 100) : 0;
   let status: "paid" | "partial" | "overdue" = "partial";
   if (pct >= 100) status = "paid";
@@ -1715,15 +1707,14 @@ export async function getClientFinancialProfile(collectionId: number) {
 
 /** جلب كل العقود مع ملخص التحصيل */
 export async function getAllCollectionsWithSummary(engineerId?: number) {
-  const db = await getDb();
-  if (!db) return [];
+  const db = await requireDb();
   const cols = await db.select().from(collections);
   const results = await Promise.all(cols.map(async (col) => {
     const paymentsList = await db.select().from(payments).where(eq(payments.collectionId, col.id));
     const promisesList = await db.select().from(paymentPromises).where(eq(paymentPromises.collectionId, col.id));
-    const totalPaid = paymentsList.reduce((s, p) => s + parseFloat(p.amount as string), 0);
-    const contractAmt = parseFloat(col.contractAmount as string);
-    const remaining = contractAmt - totalPaid;
+    const totalPaid = centsToNumber(sumCents(paymentsList.map(p => p.amount)));
+    const contractAmt = centsToNumber(toCentsOrZero(col.contractAmount));
+    const remaining = centsToNumber(toCentsOrZero(col.contractAmount) - sumCents(paymentsList.map(p => p.amount)));
     const pct = contractAmt > 0 ? Math.round((totalPaid / contractAmt) * 100) : 0;
     // حالة الكوميشن
     const commList = await db.select().from(commissionPayments).where(eq(commissionPayments.collectionId, col.id));
@@ -2041,17 +2032,16 @@ export async function getDailyFollowUpList() {
 
 /** ملخص كوميشن المهندسين من التحصيل */
 export async function getEngineersCollectionCommission() {
-  const db = await getDb();
-  if (!db) return [];
+  const db = await requireDb();
   const engs = await db.select().from(engineers)
     .where(and(eq(engineers.status, "active"), eq(engineers.isDeleted, 0)));
   const results = await Promise.all(engs.map(async (eng) => {
     const engPayments = await db.select().from(payments).where(eq(payments.engineerId, eng.id));
-    const totalCollected = engPayments.reduce((s, p) => s + parseFloat(p.amount as string), 0);
+    const totalCollected = centsToNumber(sumCents(engPayments.map(p => p.amount)));
     const totalCommission = calcProgressiveCommission(totalCollected);
     const commList = await db.select().from(commissionPayments).where(eq(commissionPayments.engineerId, eng.id));
-    const commPaid = commList.filter(c => c.status === "paid").reduce((s, c) => s + parseFloat(c.commissionAmount as string), 0);
-    const commPending = commList.filter(c => c.status === "pending").reduce((s, c) => s + parseFloat(c.commissionAmount as string), 0);
+    const commPaid = centsToNumber(sumCents(commList.filter(c => c.status === "paid").map(c => c.commissionAmount)));
+    const commPending = centsToNumber(sumCents(commList.filter(c => c.status === "pending").map(c => c.commissionAmount)));
     const stage1 = commList.filter(c => c.stage === "stage1");
     const stage2 = commList.filter(c => c.stage === "stage2");
     return { engineer: eng, totalCollected, totalCommission, commPaid, commPending, stage1Count: stage1.length, stage2Count: stage2.length, stage1Pending: stage1.filter(c => c.status === "pending").length, stage2Pending: stage2.filter(c => c.status === "pending").length };
@@ -9312,20 +9302,20 @@ export async function getCollectionDashboard(month: number, year: number) {
 
   return {
     today: {
-      collected: parseFloat(todayPayments[0]?.total ?? "0"),
+      collected: centsToNumber(toCentsOrZero(todayPayments[0]?.total ?? "0")),
       count: todayPayments[0]?.count ?? 0,
     },
     month: {
-      collected: parseFloat(monthPayments[0]?.total ?? "0"),
+      collected: centsToNumber(toCentsOrZero(monthPayments[0]?.total ?? "0")),
       count: monthPayments[0]?.count ?? 0,
     },
     overdue: {
       count: overdueContracts[0]?.count ?? 0,
-      remaining: parseFloat(overdueContracts[0]?.total ?? "0"),
+      remaining: centsToNumber(toCentsOrZero(overdueContracts[0]?.total ?? "0")),
     },
     upcoming: {
       count: upcomingPayments[0]?.count ?? 0,
-      total: parseFloat(upcomingPayments[0]?.total ?? "0"),
+      total: centsToNumber(toCentsOrZero(upcomingPayments[0]?.total ?? "0")),
     },
   };
 }
@@ -9370,11 +9360,11 @@ export async function getCollectionAlerts() {
 
     const promDateStr = promDate.toISOString().split("T")[0];
     if (promDateStr === todayStr) {
-      alerts.push({ type: "due_today", id: p.id, collectionId: p.collectionId, clientName: p.clientName, amount: parseFloat(p.amount), date: promDate, engineerId: p.engineerId ?? null });
+      alerts.push({ type: "due_today", id: p.id, collectionId: p.collectionId, clientName: p.clientName, amount: centsToNumber(toCentsOrZero(p.amount)), date: promDate, engineerId: p.engineerId ?? null });
     } else if (promDate < today) {
-      alerts.push({ type: "overdue", id: p.id, collectionId: p.collectionId, clientName: p.clientName, amount: parseFloat(p.amount), date: promDate, engineerId: p.engineerId ?? null });
+      alerts.push({ type: "overdue", id: p.id, collectionId: p.collectionId, clientName: p.clientName, amount: centsToNumber(toCentsOrZero(p.amount)), date: promDate, engineerId: p.engineerId ?? null });
     } else if (promDate <= nextWeek) {
-      alerts.push({ type: "upcoming", id: p.id, collectionId: p.collectionId, clientName: p.clientName, amount: parseFloat(p.amount), date: promDate, engineerId: p.engineerId ?? null });
+      alerts.push({ type: "upcoming", id: p.id, collectionId: p.collectionId, clientName: p.clientName, amount: centsToNumber(toCentsOrZero(p.amount)), date: promDate, engineerId: p.engineerId ?? null });
     }
   }
 
@@ -9408,8 +9398,10 @@ export async function getCollectionsWithCommission(engineerId?: number) {
     .orderBy(desc(collections.createdAt));
 
   return rows.map(r => {
-    const collected = parseFloat(r.collectedAmount ?? "0");
-    const contract = parseFloat(r.contractAmount ?? "0");
+    const collectedCents = toCentsOrZero(r.collectedAmount);
+    const contractCents = toCentsOrZero(r.contractAmount);
+    const collected = centsToNumber(collectedCents);
+    const contract = centsToNumber(contractCents);
     const rate = collected <= 1_000_000 ? 0.01
       : collected <= 1_250_000 ? 0.0125
       : collected <= 1_500_000 ? 0.015
@@ -9421,9 +9413,9 @@ export async function getCollectionsWithCommission(engineerId?: number) {
       contractAmount: contract,
       collectedAmount: collected,
       collectionRate: contract > 0 ? (collected / contract) * 100 : 0,
-      commissionEarned: collected * rate,
+      commissionEarned: centsToNumber(Math.round(collectedCents * rate)),
       commissionRate: rate * 100,
-      remainingAmount: Math.max(0, contract - collected),
+      remainingAmount: centsToNumber(Math.max(0, contractCents - collectedCents)),
     };
   });
 }

@@ -73,9 +73,13 @@ describe("Control Panel - Planning Router", () => {
 });
 
 describe("Control Panel - Sales Router", () => {
-  it("sales.monthlyStats returns valid structure", async () => {
+  it("sales.monthlyStats returns valid structure or explicit database outage", async () => {
     const ctx = createAdminContext();
     const caller = appRouter.createCaller(ctx);
+    if (!process.env.DATABASE_URL) {
+      await expect(caller.sales.monthlyStats({ year: 2025, month: 1 })).rejects.toThrow("Database unavailable");
+      return;
+    }
     const stats = await caller.sales.monthlyStats({ year: 2025, month: 1 });
     expect(stats).toHaveProperty("target");
     expect(stats).toHaveProperty("actual");
@@ -85,9 +89,13 @@ describe("Control Panel - Sales Router", () => {
     expect(stats.achievementRate).toBeGreaterThanOrEqual(0);
   });
 
-  it("sales.trend returns array", async () => {
+  it("sales.trend returns array or explicit database outage", async () => {
     const ctx = createAdminContext();
     const caller = appRouter.createCaller(ctx);
+    if (!process.env.DATABASE_URL) {
+      await expect(caller.sales.trend({ months: 3 })).rejects.toThrow("Database unavailable");
+      return;
+    }
     const trend = await caller.sales.trend({ months: 3 });
     expect(Array.isArray(trend)).toBe(true);
     expect(trend.length).toBe(3);
@@ -115,9 +123,13 @@ describe("Control Panel - Closing Router", () => {
 });
 
 describe("Control Panel - Collections Router", () => {
-  it("collections.stats returns valid structure", async () => {
+  it("collections.stats returns valid structure or explicit database outage", async () => {
     const ctx = createAdminContext();
     const caller = appRouter.createCaller(ctx);
+    if (!process.env.DATABASE_URL) {
+      await expect(caller.collections.stats()).rejects.toThrow("Database unavailable");
+      return;
+    }
     const stats = await caller.collections.stats();
     expect(stats).toHaveProperty("totalContracts");
     expect(stats).toHaveProperty("totalCollected");
@@ -130,9 +142,13 @@ describe("Control Panel - Collections Router", () => {
 });
 
 describe("Control Panel - KPI Router", () => {
-  it("kpi.engineers returns array", async () => {
+  it("kpi.engineers returns array or explicit database outage", async () => {
     const ctx = createAdminContext();
     const caller = appRouter.createCaller(ctx);
+    if (!process.env.DATABASE_URL) {
+      await expect(caller.kpi.engineers({ year: 2025, month: 1 })).rejects.toThrow("Database unavailable");
+      return;
+    }
     const kpi = await caller.kpi.engineers({ year: 2025, month: 1 });
     expect(Array.isArray(kpi)).toBe(true);
     for (const eng of kpi) {
