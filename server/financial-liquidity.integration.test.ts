@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import {
   addFinancialCommitment,
   addPayment,
+  addPaymentWithFollowUp,
   getDb,
   getFinancialLiquidityDashboard,
   settleFinancialCommitment,
@@ -24,6 +25,13 @@ describe("Financial liquidity database workflow", () => {
   let collectionId = 0;
   let promiseId = 0;
   let paymentId = 0;
+  let rollbackPaymentId = 0;
+  let concurrentPromiseId = 0;
+  const concurrentPaymentIds: number[] = [];
+  let concurrentFollowUpPromiseId = 0;
+  const concurrentFollowUpPaymentIds: number[] = [];
+  let retryPromiseId = 0;
+  let retryPaymentId = 0;
   let commitmentId = 0;
   let concurrentCommitmentId = 0;
 
@@ -44,10 +52,29 @@ describe("Financial liquidity database workflow", () => {
     const db = await getDb();
     if (!db) return;
     if (paymentId) await db.delete(financialCashMovements).where(and(eq(financialCashMovements.sourceType, "payment"), eq(financialCashMovements.sourceId, paymentId)));
+    if (rollbackPaymentId) await db.delete(financialCashMovements).where(and(eq(financialCashMovements.sourceType, "payment"), eq(financialCashMovements.sourceId, rollbackPaymentId)));
+    if (retryPaymentId) await db.delete(financialCashMovements).where(and(eq(financialCashMovements.sourceType, "payment"), eq(financialCashMovements.sourceId, retryPaymentId)));
+    for (const concurrentPaymentId of concurrentPaymentIds) {
+      await db.delete(financialCashMovements).where(and(eq(financialCashMovements.sourceType, "payment"), eq(financialCashMovements.sourceId, concurrentPaymentId)));
+    }
+    for (const concurrentPaymentId of concurrentFollowUpPaymentIds) {
+      await db.delete(financialCashMovements).where(and(eq(financialCashMovements.sourceType, "payment"), eq(financialCashMovements.sourceId, concurrentPaymentId)));
+    }
     if (commitmentId) await db.delete(financialCashMovements).where(and(eq(financialCashMovements.sourceType, "commitment"), eq(financialCashMovements.sourceId, commitmentId)));
     if (concurrentCommitmentId) await db.delete(financialCashMovements).where(and(eq(financialCashMovements.sourceType, "commitment"), eq(financialCashMovements.sourceId, concurrentCommitmentId)));
     if (paymentId) await db.delete(payments).where(eq(payments.id, paymentId));
+    if (rollbackPaymentId) await db.delete(payments).where(eq(payments.id, rollbackPaymentId));
+    if (retryPaymentId) await db.delete(payments).where(eq(payments.id, retryPaymentId));
+    for (const concurrentPaymentId of concurrentPaymentIds) {
+      await db.delete(payments).where(eq(payments.id, concurrentPaymentId));
+    }
+    for (const concurrentPaymentId of concurrentFollowUpPaymentIds) {
+      await db.delete(payments).where(eq(payments.id, concurrentPaymentId));
+    }
     if (promiseId) await db.delete(paymentPromises).where(eq(paymentPromises.id, promiseId));
+    if (concurrentPromiseId) await db.delete(paymentPromises).where(eq(paymentPromises.id, concurrentPromiseId));
+    if (concurrentFollowUpPromiseId) await db.delete(paymentPromises).where(eq(paymentPromises.id, concurrentFollowUpPromiseId));
+    if (retryPromiseId) await db.delete(paymentPromises).where(eq(paymentPromises.id, retryPromiseId));
     if (commitmentId) await db.delete(financialCommitments).where(eq(financialCommitments.id, commitmentId));
     if (concurrentCommitmentId) await db.delete(financialCommitments).where(eq(financialCommitments.id, concurrentCommitmentId));
     await db.delete(financialCashBalances).where(eq(financialCashBalances.asOfDate, new Date(`${periodStart}T00:00:00`)));
@@ -109,6 +136,111 @@ describe("Financial liquidity database workflow", () => {
     const db = await getDb();
     const movements = await db!.select().from(financialCashMovements)
       .where(and(eq(financialCashMovements.sourceType, "commitment"), eq(financialCashMovements.sourceId, concurrentCommitmentId)));
+    expect(movements).toHaveLength(1);
+  }, 15_000);
+
+  it("يمنع طلبا تحصيل متزامنين من تسوية الوعد نفسه مرتين", async () => {
+    const db = await getDb();
+    const [promiseResult] = await db!.insert(paymentPromises).values({
+      collectionId, clientName: `${tag}-payment-race`, promiseAmount: "100.00",
+      promiseDate: new Date(`${periodEnd}T00:00:00`), isConfirmed: 1,
+    });
+    concurrentPromiseId = Number((promiseResult as { insertId?: number }).insertId);
+
+    const results = await Promise.allSettled([
+      addPayment({ collectionId, clientName: tag, amount: "100.00", paymentDate: new Date(`${periodStart}T00:00:00`), paymentType: "installment", addedBy: "admin", promiseId: concurrentPromiseId }),
+      addPayment({ collectionId, clientName: tag, amount: "100.00", paymentDate: new Date(`${periodStart}T00:00:00`), paymentType: "installment", addedBy: "engineer", promiseId: concurrentPromiseId }),
+    ]);
+    const successful = results.filter((result): result is PromiseFulfilledResult<unknown> => result.status === "fulfilled");
+    const rejectionReasons = results
+      .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+      .map((result) => {
+        if (!(result.reason instanceof Error)) return String(result.reason);
+        const cause = result.reason.cause;
+        return `${result.reason.message} :: ${cause instanceof Error ? cause.message : String(cause ?? "")}`;
+      });
+    expect(successful, `Payment race rejection reasons: ${rejectionReasons.join(" | ")}`).toHaveLength(1);
+    expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+    concurrentPaymentIds.push(Number((successful[0].value as { insertId?: number }).insertId));
+
+    const paymentsForPromise = await db!.select().from(payments).where(eq(payments.paymentPromiseId, concurrentPromiseId));
+    const movements = await db!.select().from(financialCashMovements)
+      .where(and(eq(financialCashMovements.sourceType, "payment"), eq(financialCashMovements.sourceId, concurrentPaymentIds[0])));
+    const [promise] = await db!.select().from(paymentPromises).where(eq(paymentPromises.id, concurrentPromiseId));
+    expect(paymentsForPromise).toHaveLength(1);
+    expect(movements).toHaveLength(1);
+    expect(promise.status).toBe("paid");
+  }, 15_000);
+
+  it("لا يترك دفعة أو حركة نقدية إضافية عندما يفشل التحصيل المكرر", async () => {
+    const receiptNumber = `rollback-${tag}`;
+    const initial = await addPayment({
+      collectionId, clientName: tag, amount: "50.00", paymentDate: new Date(`${periodStart}T00:00:00`),
+      paymentType: "installment", addedBy: "admin", receiptNumber,
+    });
+    rollbackPaymentId = Number((initial as { insertId?: number }).insertId);
+
+    await expect(addPayment({
+      collectionId, clientName: tag, amount: "50.00", paymentDate: new Date(`${periodStart}T00:00:00`),
+      paymentType: "installment", addedBy: "admin", receiptNumber,
+    })).rejects.toThrow();
+
+    const db = await getDb();
+    const paymentsWithReceipt = await db!.select().from(payments).where(eq(payments.receiptNumber, receiptNumber));
+    const cashMovements = await db!.select().from(financialCashMovements)
+      .where(and(eq(financialCashMovements.sourceType, "payment"), eq(financialCashMovements.sourceId, rollbackPaymentId)));
+    expect(paymentsWithReceipt).toHaveLength(1);
+    expect(cashMovements).toHaveLength(1);
+  }, 15_000);
+
+  it("يمنع مسار التحصيل المتقدم المتزامن من تسوية الوعد نفسه مرتين", async () => {
+    const db = await getDb();
+    const [promiseResult] = await db!.insert(paymentPromises).values({
+      collectionId, clientName: `${tag}-follow-up-race`, promiseAmount: "75.00",
+      promiseDate: new Date(`${periodEnd}T00:00:00`), isConfirmed: 1,
+    });
+    concurrentFollowUpPromiseId = Number((promiseResult as { insertId?: number }).insertId);
+
+    const results = await Promise.allSettled([
+      addPaymentWithFollowUp({ collectionId, clientName: tag, amount: 75, paymentDate: periodStart, paymentType: "installment", addedBy: "admin", promiseId: concurrentFollowUpPromiseId }),
+      addPaymentWithFollowUp({ collectionId, clientName: tag, amount: 75, paymentDate: periodStart, paymentType: "installment", addedBy: "engineer", promiseId: concurrentFollowUpPromiseId }),
+    ]);
+    const successful = results.filter((result): result is PromiseFulfilledResult<{ paymentId: number }> => result.status === "fulfilled");
+    expect(successful).toHaveLength(1);
+    expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+    concurrentFollowUpPaymentIds.push(successful[0].value.paymentId);
+
+    const paymentsForPromise = await db!.select().from(payments).where(eq(payments.paymentPromiseId, concurrentFollowUpPromiseId));
+    const movements = await db!.select().from(financialCashMovements)
+      .where(and(eq(financialCashMovements.sourceType, "payment"), eq(financialCashMovements.sourceId, concurrentFollowUpPaymentIds[0])));
+    const [promise] = await db!.select().from(paymentPromises).where(eq(paymentPromises.id, concurrentFollowUpPromiseId));
+    expect(paymentsForPromise).toHaveLength(1);
+    expect(movements).toHaveLength(1);
+    expect(promise.status).toBe("paid");
+  }, 15_000);
+
+  it("يسمح بإعادة المحاولة الآمنة بعد فشل تسوية وعد قبل أي كتابة", async () => {
+    const db = await getDb();
+    const [promiseResult] = await db!.insert(paymentPromises).values({
+      collectionId, clientName: `${tag}-retry`, promiseAmount: "60.00",
+      promiseDate: new Date(`${periodEnd}T00:00:00`), isConfirmed: 1,
+    });
+    retryPromiseId = Number((promiseResult as { insertId?: number }).insertId);
+
+    await expect(addPayment({
+      collectionId, clientName: tag, amount: "50.00", paymentDate: new Date(`${periodStart}T00:00:00`),
+      paymentType: "installment", addedBy: "admin", promiseId: retryPromiseId,
+    })).rejects.toThrow("A payment promise must be settled for its confirmed amount");
+
+    const retry = await addPayment({
+      collectionId, clientName: tag, amount: "60.00", paymentDate: new Date(`${periodStart}T00:00:00`),
+      paymentType: "installment", addedBy: "admin", promiseId: retryPromiseId,
+    });
+    retryPaymentId = Number((retry as { insertId?: number }).insertId);
+    const paymentsForPromise = await db!.select().from(payments).where(eq(payments.paymentPromiseId, retryPromiseId));
+    const movements = await db!.select().from(financialCashMovements)
+      .where(and(eq(financialCashMovements.sourceType, "payment"), eq(financialCashMovements.sourceId, retryPaymentId)));
+    expect(paymentsForPromise).toHaveLength(1);
     expect(movements).toHaveLength(1);
   }, 15_000);
 });

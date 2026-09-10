@@ -1456,18 +1456,20 @@ export const appRouter = router({
     /** تعديل يدوي (Manual Override) لمهندس */
     manualOverride: protectedProcedure
       .input(z.object({
-        engineerId: z.number(), year: z.number(), month: z.number(),
-        targetAmount: z.number().optional(),
-        targetDeals: z.number().optional(),
-        targetLeads: z.number().optional(),
-        targetMeetings: z.number().optional(),
-        targetQuotations: z.number().optional(),
-        targetPresentations: z.number().optional(),
-        targetRender: z.number().optional(),
-        target2D: z.number().optional(),
-        target3D: z.number().optional(),
-        targetClosings: z.number().optional(),
-        notes: z.string().optional(),
+        engineerId: z.number().int().positive(),
+        year: z.number().int().min(2020).max(2100),
+        month: z.number().int().min(1).max(12),
+        targetAmount: z.number().finite().min(0).max(1_000_000_000).optional(),
+        targetDeals: z.number().int().min(0).max(1_000_000).optional(),
+        targetLeads: z.number().int().min(0).max(1_000_000).optional(),
+        targetMeetings: z.number().int().min(0).max(1_000_000).optional(),
+        targetQuotations: z.number().int().min(0).max(1_000_000).optional(),
+        targetPresentations: z.number().int().min(0).max(1_000_000).optional(),
+        targetRender: z.number().int().min(0).max(1_000_000).optional(),
+        target2D: z.number().int().min(0).max(1_000_000).optional(),
+        target3D: z.number().int().min(0).max(1_000_000).optional(),
+        targetClosings: z.number().int().min(0).max(1_000_000).optional(),
+        notes: z.string().trim().max(1_000).optional(),
       }))
       .mutation(async ({ input, ctx }) => {
         await requireUserManagementCaller(ctx, "تعديل أهداف المهندسين متاح للإدارة فقط");
@@ -1483,7 +1485,7 @@ export const appRouter = router({
   // ── Financial Module ───────────────────────────────────────────────────────────────────────────────
   financial: router({
     // جلب كل العقود مع ملخص التحصيل
-    allContracts: protectedProcedure.input(z.object({ engineerId: z.number().optional() }))
+    allContracts: protectedProcedure.input(z.object({ engineerId: z.number().int().positive().optional() }))
       .query(async ({ input, ctx }) => {
         const caller = await getCallerFromContext(ctx);
         if (!caller) throw new TRPCError({ code: "UNAUTHORIZED", message: "يجب تسجيل الدخول أولاً" });
@@ -1492,7 +1494,7 @@ export const appRouter = router({
         return getAllCollectionsWithSummary(caller.engineerId);
       }),
     // ملف عميل مالي كامل
-    clientProfile: protectedProcedure.input(z.object({ collectionId: z.number() }))
+    clientProfile: protectedProcedure.input(z.object({ collectionId: z.number().int().positive() }))
       .query(async ({ input, ctx }) => {
         await requireCollectionFinancialAccess(ctx, input.collectionId, "لا تملك صلاحية الاطلاع على هذا العقد");
         return getClientFinancialProfile(input.collectionId);
@@ -1500,23 +1502,23 @@ export const appRouter = router({
     // إضافة عقد جديد
     addContract: adminProcedure.input(z.object({
       clientName: z.string().min(1),
-      contractAmount: z.number().positive(),
-      dueDate: z.string().optional(),
+      contractAmount: z.number().finite().positive().max(1_000_000_000),
+      dueDate: z.string().date().optional(),
       dealId: z.number().optional(),
-      notes: z.string().optional(),
+      notes: z.string().trim().max(2_000).optional(),
     })).mutation(async ({ input }) => { const result = await addCollection(input); return { success: true, id: (result as { insertId?: number })?.insertId }; }),
     // تسجيل دفعة
     addPayment: protectedProcedure.input(z.object({
-      collectionId: z.number(),
-      engineerId: z.number().optional(),
+      collectionId: z.number().int().positive(),
+      engineerId: z.number().int().positive().optional(),
       clientName: z.string().min(1),
-      amount: z.number().positive(),
-      paymentDate: z.string(),
+      amount: z.number().finite().positive().max(1_000_000_000),
+      paymentDate: z.string().date(),
       paymentType: z.enum(["initial", "installment", "final", "visit_fee"]).default("installment"),
       addedBy: z.enum(["engineer", "admin"]).default("admin"),
-      receiptNumber: z.string().optional(),
-      notes: z.string().optional(),
-      promiseId: z.number().optional(),
+      receiptNumber: z.string().trim().max(80).optional(),
+      notes: z.string().trim().max(2_000).optional(),
+      promiseId: z.number().int().positive().optional(),
     })).mutation(async ({ input, ctx }) => {
       const { caller, collection, isFinancialManager } = await requireCollectionFinancialAccess(ctx, input.collectionId, "لا تملك صلاحية تسجيل دفعة لهذا العقد");
       const result = await addPayment({
@@ -1531,12 +1533,12 @@ export const appRouter = router({
     }),
     // إضافة وعد دفع
     addPromise: protectedProcedure.input(z.object({
-      collectionId: z.number(),
-      engineerId: z.number().optional(),
+      collectionId: z.number().int().positive(),
+      engineerId: z.number().int().positive().optional(),
       clientName: z.string().min(1),
-      promiseAmount: z.number().positive(),
-      promiseDate: z.string(),
-      notes: z.string().optional(),
+      promiseAmount: z.number().finite().positive().max(1_000_000_000),
+      promiseDate: z.string().date(),
+      notes: z.string().trim().max(2_000).optional(),
       isConfirmed: z.boolean().optional().default(false),
     })).mutation(async ({ input, ctx }) => {
       const { caller, collection, isFinancialManager } = await requireCollectionFinancialAccess(ctx, input.collectionId, "لا تملك صلاحية تسجيل وعد دفع لهذا العقد");
@@ -1552,14 +1554,14 @@ export const appRouter = router({
     }),
     // تحديث حالة وعد الدفع
     updatePromise: protectedProcedure.input(z.object({
-      id: z.number(),
+      id: z.number().int().positive(),
       status: z.enum(["pending", "overdue"]),
     })).mutation(async ({ input, ctx }) => {
       await requirePromiseFinancialAccess(ctx, input.id, "لا تملك صلاحية تحديث وعد الدفع");
       await updatePromiseStatus(input.id, input.status);
       return { success: true };
     }),
-    confirmPromise: protectedProcedure.input(z.object({ id: z.number(), isConfirmed: z.boolean() }))
+    confirmPromise: protectedProcedure.input(z.object({ id: z.number().int().positive(), isConfirmed: z.boolean() }))
       .mutation(async ({ input, ctx }) => {
         await requireFinancialManager(ctx, "اعتماد وعود الدفع محصور بالإدارة المالية");
         await getPaymentPromiseAccessById(input.id).then((promise) => {
@@ -2434,11 +2436,11 @@ export const appRouter = router({
     // Create user (manager only)
     create: protectedProcedure
       .input(z.object({
-        name: z.string().min(2, 'الاسم يجب أن يكون حرفين على الأقل'),
-        username: z.string().min(3, 'اسم المستخدم يجب أن يكون 3 أحرف على الأقل').regex(/^[a-zA-Z0-9._-]+$/, 'اسم المستخدم يجب أن يحتوي على حروف وأرقام فقط'),
+        name: z.string().trim().min(2, 'الاسم يجب أن يكون حرفين على الأقل').max(120),
+        username: z.string().trim().min(3, 'اسم المستخدم يجب أن يكون 3 أحرف على الأقل').max(64).regex(/^[a-zA-Z0-9._-]+$/, 'اسم المستخدم يجب أن يحتوي على حروف وأرقام فقط'),
         password: z.string().min(MIN_ACCOUNT_PASSWORD_LENGTH, `كلمة المرور يجب أن تكون ${MIN_ACCOUNT_PASSWORD_LENGTH} حرفاً على الأقل`).max(128),
         role: z.enum(['sales_engineer', 'sales_specialist', 'admin_sales', 'manager']),
-        engineerId: z.number().optional(),
+        engineerId: z.number().int().positive().optional(),
         email: z.string().email('صيغة البريد الإلكتروني غير صحيحة').optional().or(z.literal('')).transform(v => v || undefined),
       }))
       .mutation(async ({ input, ctx }) => {
@@ -2462,10 +2464,10 @@ export const appRouter = router({
     // Update user (manager only)
     update: protectedProcedure
       .input(z.object({
-        userId: z.number(),
-        name: z.string().optional(),
+        userId: z.number().int().positive(),
+        name: z.string().trim().min(2).max(120).optional(),
         role: z.enum(['sales_engineer', 'sales_specialist', 'admin_sales', 'manager']).optional(),
-        engineerId: z.number().nullable().optional(),
+        engineerId: z.number().int().positive().nullable().optional(),
         status: z.enum(['active', 'inactive']).optional(),
         password: z.string().min(MIN_ACCOUNT_PASSWORD_LENGTH).max(128).optional(),
       }))
@@ -2481,7 +2483,7 @@ export const appRouter = router({
       }),
     // Get permissions for a user
     getPermissions: protectedProcedure
-      .input(z.object({ userId: z.number() }))
+      .input(z.object({ userId: z.number().int().positive() }))
       .query(async ({ input, ctx }) => {
         await requireUserManagementCaller(ctx, 'ليس لديك صلاحية الوصول');
         return getUserPermissions(input.userId);
@@ -2489,7 +2491,7 @@ export const appRouter = router({
     // Update permissions for a user
     updatePermissions: protectedProcedure
       .input(z.object({
-        userId: z.number(),
+        userId: z.number().int().positive(),
         permissions: z.array(z.object({
           module: z.string(),
           canView: z.number(),
@@ -2544,8 +2546,8 @@ export const appRouter = router({
     // إنشاء حساب لمهندس واحد
     createEngineerAccount: protectedProcedure
       .input(z.object({
-        engineerId: z.number(),
-        username: z.string().min(3).regex(/^[a-zA-Z0-9._-]+$/),
+        engineerId: z.number().int().positive(),
+        username: z.string().trim().min(3).max(64).regex(/^[a-zA-Z0-9._-]+$/),
         password: z.string().min(MIN_ACCOUNT_PASSWORD_LENGTH).max(128),
         forceChange: z.boolean().optional(),
       }))
@@ -2558,7 +2560,7 @@ export const appRouter = router({
       }),
     // إعادة تعيين كلمة مرور (Admin)
     resetPassword: protectedProcedure
-      .input(z.object({ engineerId: z.number(), newPassword: z.string().min(MIN_ACCOUNT_PASSWORD_LENGTH).max(128) }))
+      .input(z.object({ engineerId: z.number().int().positive(), newPassword: z.string().min(MIN_ACCOUNT_PASSWORD_LENGTH).max(128) }))
       .mutation(async ({ input, ctx }) => {
         const { caller } = await requireEngineerAccountManagementCaller(ctx, input.engineerId, 'ليس لديك صلاحية تعديل كلمات المرور');
         await resetEngineerPassword(input.engineerId, input.newPassword);
@@ -2588,7 +2590,7 @@ export const appRouter = router({
       }),
     // تفعيل / تعطيل حساب
     toggleStatus: protectedProcedure
-      .input(z.object({ engineerId: z.number(), status: z.enum(['active', 'inactive']) }))
+      .input(z.object({ engineerId: z.number().int().positive(), status: z.enum(['active', 'inactive']) }))
       .mutation(async ({ input, ctx }) => {
         const { caller } = await requireEngineerAccountManagementCaller(ctx, input.engineerId, 'ليس لديك صلاحية تعديل حالة الحساب');
         await toggleEngineerAccountStatus(input.engineerId, input.status);

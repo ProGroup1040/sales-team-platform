@@ -153,4 +153,44 @@ describe("appUsers privileged account procedures", () => {
     expect(mockedDb.manualOverrideEngineerTarget).toHaveBeenCalledTimes(3);
     expect(mockedDb.manualOverrideEngineerTarget).toHaveBeenCalledWith(input);
   });
+
+  it("rejects invalid manual target fields before reaching the database", async () => {
+    const caller = callerFor("admin_sales");
+
+    await expect(caller.planning.manualOverride({ engineerId: 42, year: 2026, month: 13, targetAmount: 500_000 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.planning.manualOverride({ engineerId: 42, year: 2026, month: 9, targetAmount: -1 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.planning.manualOverride({ engineerId: 42.5, year: 2026, month: 9, targetDeals: 1.5 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(mockedDb.manualOverrideEngineerTarget).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid financial mutation inputs before authorization or persistence", async () => {
+    const caller = callerFor("manager");
+
+    await expect(caller.financial.addPayment({
+      collectionId: 1.5, clientName: "عميل", amount: 100, paymentDate: "2026-09-01",
+    })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.financial.addPromise({
+      collectionId: 1, clientName: "عميل", promiseAmount: -100, promiseDate: "2026-09-01",
+    })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.financial.addPayment({
+      collectionId: 1, clientName: "عميل", amount: 100, paymentDate: "not-a-date",
+    })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.financial.confirmPromise({ id: 0, isConfirmed: true })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("rejects invalid identifiers and usernames for privileged account procedures", async () => {
+    const caller = callerFor("manager");
+
+    await expect(caller.appUsers.create({
+      name: "مستخدم اختبار", username: "invalid username", password: "safe-password-123", role: "sales_engineer",
+    })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.appUsers.update({ userId: 0, name: "مستخدم اختبار" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.appUsers.createEngineerAccount({
+      engineerId: 0, username: "standard.engineer", password: "safe-password-123",
+    })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.appUsers.toggleStatus({ engineerId: -1, status: "inactive" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.appUsers.toggleStatus({ engineerId: 1, status: "disabled" } as never)).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(mockedDb.createEngineerAccount).not.toHaveBeenCalled();
+    expect(mockedDb.toggleEngineerAccountStatus).not.toHaveBeenCalled();
+  });
 });

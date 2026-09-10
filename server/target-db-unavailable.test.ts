@@ -25,7 +25,7 @@ describe("manual target override persistence", () => {
   it("fails explicitly for payment-promise writes when persistence is unavailable", async () => {
     delete process.env.DATABASE_URL;
     vi.resetModules();
-    const { addPaymentPromise, updatePromiseStatus } = await import("./db");
+    const { addPaymentPromise, setPaymentPromiseConfirmation, updatePromiseStatus } = await import("./db");
 
     await expect(addPaymentPromise({
       collectionId: 77,
@@ -37,6 +37,7 @@ describe("manual target override persistence", () => {
       isConfirmed: 0,
     })).rejects.toThrow("Database unavailable");
     await expect(updatePromiseStatus(77, "overdue")).rejects.toThrow("Database unavailable");
+    await expect(setPaymentPromiseConfirmation(77, true)).rejects.toThrow("Database unavailable");
   });
 
   it("fails explicitly for every cash, commitment, and collection write when persistence is unavailable", async () => {
@@ -44,16 +45,21 @@ describe("manual target override persistence", () => {
     vi.resetModules();
     const {
       addFinancialCommitment,
+      addCollection,
       addPayment,
+      addPaymentWithFollowUp,
       cancelFinancialCommitment,
       setFinancialCashBalance,
       settleFinancialCommitment,
+      updateCollectionStatus,
     } = await import("./db");
 
     await expect(setFinancialCashBalance({ asOfDate: "2026-09-01", amount: 1_000 })).rejects.toThrow("Database unavailable");
     await expect(addFinancialCommitment({ description: "التزام اختبار", amount: 500, dueDate: "2026-09-02" })).rejects.toThrow("Database unavailable");
     await expect(settleFinancialCommitment(77)).rejects.toThrow("Database unavailable");
     await expect(cancelFinancialCommitment(77)).rejects.toThrow("Database unavailable");
+    await expect(addCollection({ clientName: "عميل اختبار", contractAmount: 500 })).rejects.toThrow("Database unavailable");
+    await expect(updateCollectionStatus(77, "completed")).rejects.toThrow("Database unavailable");
     await expect(addPayment({
       collectionId: 77,
       clientName: "عميل اختبار",
@@ -61,6 +67,14 @@ describe("manual target override persistence", () => {
       paymentDate: new Date("2026-09-01T00:00:00Z"),
       paymentType: "installment",
       addedBy: "test",
+    })).rejects.toThrow("Database unavailable");
+    await expect(addPaymentWithFollowUp({
+      collectionId: 77,
+      clientName: "عميل اختبار",
+      amount: 500,
+      paymentDate: "2026-09-01",
+      paymentType: "installment",
+      addedBy: "admin",
     })).rejects.toThrow("Database unavailable");
   });
 });

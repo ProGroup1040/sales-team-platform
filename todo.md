@@ -87,10 +87,20 @@ Every completed row must link to code, tests, or an environment verification rec
 - [x] Raise the password policy for newly created or reset app-user accounts while preserving login compatibility for existing accounts.
 - [x] Add server-side session-version invalidation for local and app-user sessions after credential, role, or account-status changes.
 - [ ] Audit database failure behavior, transaction boundaries, numeric financial representations, input validation, and HTML rendering; fix only confirmed defects without changing valid business rules.
-- [ ] Expand database-unavailable tests to every critical financial write operation in the current cash, commitment, and collection workflow.
-- [ ] Expand transaction failure, duplicate-request, retry, and concurrency coverage across the remaining critical payment and target-write paths.
+- [x] Expand database-unavailable tests to every critical financial write operation in the current cash, commitment, and collection workflow.
+- [x] Expand transaction failure, duplicate-request, retry, and concurrency coverage across the remaining critical payment and target-write paths.
+- [x] Make promise settlement an atomic conditional claim before payment insertion so concurrent collection requests yield exactly one payment and one cash movement.
+- [x] Apply the same atomic payment-promise claim to addPaymentWithFollowUp and cover its concurrent-settlement path.
 - [ ] Inventory legacy numeric conversion paths, obtain the required rounding-policy decision, and remediate decision-critical paths with regression tests.
-- [ ] Add explicit schema-validation coverage for sensitive route inputs in the audit scope.
+- [x] Add explicit schema-validation coverage for sensitive route inputs in the audit scope.
+- [x] Constrain manual engineer-target inputs to finite integers, valid calendar periods, non-negative amounts, and bounded notes before any database write.
+- [x] Cover payment-promise confirmation under database-unavailable conditions and validate its sensitive procedure input.
+- [x] Add rollback-focused coverage proving a failed financial payment transaction leaves no persisted ledger or payment row.
+- [x] Extend sensitive input validation tests to financial and privileged account-management procedures beyond planning overrides.
+- [x] Cover database-unavailable behavior for contract creation, contract status updates, and payment-with-follow-up operations.
+- [x] Add invalid-input regression tests for privileged account management identifiers, username formats, and account status values.
+- [x] Prove that a payment or target request can be retried safely after its first attempt fails without creating duplicate financial or target records.
+- [x] Add runtime invalid-status coverage for privileged account status mutations.
 - [x] Add transaction failure, duplicate-request, retry, and concurrency coverage for critical financial and target-write workflows.
 - [x] Add and validate a unique engineer/month/year target constraint so concurrent manual overrides cannot create duplicate target records.
 - [x] Document a staged numeric-money remediation plan for remaining non-reconciled `parseFloat` financial and KPI paths, separating display analytics from ledger values.

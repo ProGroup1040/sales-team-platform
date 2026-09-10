@@ -1843,6 +1843,16 @@ export async function addPayment(data: InsertPayment & { promiseId?: number }) {
       if (toCents(promise.promiseAmount) !== amountCents) {
         throw new Error("A payment promise must be settled for its confirmed amount");
       }
+      const [claimResult] = await tx.update(paymentPromises)
+        .set({ status: "paid", paidAt: new Date() })
+        .where(and(
+          eq(paymentPromises.id, resolvedPromiseId),
+          eq(paymentPromises.collectionId, paymentData.collectionId),
+          eq(paymentPromises.status, "pending"),
+        ));
+      if (Number((claimResult as { affectedRows?: number }).affectedRows) !== 1) {
+        throw new Error("Payment promise is not available for settlement");
+      }
     }
 
     const [result] = await tx.insert(payments).values({ ...paymentData, paymentPromiseId: resolvedPromiseId ?? null, amount: fromCents(amountCents), paymentDate } as any);
@@ -9211,6 +9221,16 @@ export async function addPaymentWithFollowUp(data: {
       }
       if (toCents(promise.promiseAmount) !== amountCents) {
         throw new Error("A payment promise must be settled for its confirmed amount");
+      }
+      const [claimResult] = await tx.update(paymentPromises)
+        .set({ status: "paid", paidAt: new Date() })
+        .where(and(
+          eq(paymentPromises.id, resolvedPromiseId),
+          eq(paymentPromises.collectionId, data.collectionId),
+          eq(paymentPromises.status, "pending"),
+        ));
+      if (Number((claimResult as { affectedRows?: number }).affectedRows) !== 1) {
+        throw new Error("Payment promise is not available for settlement");
       }
     }
     const [payResult] = await tx.insert(payments).values({

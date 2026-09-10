@@ -44,6 +44,8 @@ The sensitive tRPC routes audited in this phase use explicit Zod object schemas;
 
 Critical financial writes are transactional: a payment creates its ledger movement, settles a matching promise, updates the collection, and evaluates commissions within one transaction; commitment settlement creates one outflow and closes the reservation in one transaction. The financial integration suite covers duplicate settlement and two concurrent commitment-settlement requests. Manual target writes use a unique `(engineerId, year, month)` constraint and an atomic upsert, so concurrent overrides retain one record. Critical promise and manual-target writes now fail visibly when the database is unavailable rather than reporting success.
 
+Regression coverage now also submits two concurrent collection requests for one confirmed promise. The payment path conditionally claims the pending promise within the same transaction before inserting the payment; one request creates the payment and its cash-ledger movement, while the other is rejected. The manual-target procedure rejects non-integer engineer identifiers and quantities, invalid calendar periods, negative amounts, oversized amounts, and oversized notes before the database helper is called.
+
 ## Financial integrity boundaries
 
 | Source | Classification | Treatment in current cash calculation |
