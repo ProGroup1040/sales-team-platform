@@ -75,6 +75,21 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
   );
 }
 
+// بعض المتصفحات تسمح بإدخال سنة من 6 أرقام داخل datetime-local عند الكتابة
+// اليدوية، مثل 202600. نعيدها إلى السنة ذات الأربع أرقام، ونرفض أي قيمة
+// لا يمكن تحويلها إلى تاريخ صالح قبل أن تصل إلى tRPC/superjson.
+function normalizeScheduledAtInput(value: string) {
+  const sixDigitYear = value.match(/^(\d{4})00(-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?)$/);
+  return sixDigitYear ? `${sixDigitYear[1]}${sixDigitYear[2]}` : value;
+}
+
+function parseScheduledAtInput(value: string) {
+  const normalized = normalizeScheduledAtInput(value);
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/.test(normalized)) return null;
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 // ─── Full Update Dialog ────────────────────────────────────────────────────────
 function FullUpdateDialog({ visit, onClose, onSuccess }: { visit: any; onClose: () => void; onSuccess: () => void }) {
   // تحويل scheduledAt إلى صيغة datetime-local
@@ -391,12 +406,14 @@ export default function VisitsModule() {
   const handleCreate = () => {
     if (!newVisit.engineerId || !newVisit.clientName || !newVisit.scheduledAt)
       return toast.error('يرجى ملء الحقول المطلوبة');
+    const scheduledAt = parseScheduledAtInput(newVisit.scheduledAt);
+    if (!scheduledAt) return toast.error('يرجى إدخال موعد صحيح (السنة 4 أرقام)');
     createMutation.mutate({
       engineerId: parseInt(newVisit.engineerId),
       clientName: newVisit.clientName,
       clientPhone: newVisit.clientPhone || undefined,
       address: newVisit.address || undefined,
-      scheduledAt: new Date(newVisit.scheduledAt),
+      scheduledAt,
       feeAmount: newVisit.feeAmount ? parseFloat(newVisit.feeAmount) : undefined,
     });
   };
@@ -946,7 +963,13 @@ export default function VisitsModule() {
               </div>
               <div>
                 <Label>موعد المعاينة *</Label>
-                <Input type="datetime-local" value={newVisit.scheduledAt} onChange={e => setNewVisit(p => ({ ...p, scheduledAt: e.target.value }))} />
+                <Input
+                  type="datetime-local"
+                  min="2000-01-01T00:00"
+                  max="2099-12-31T23:59"
+                  value={newVisit.scheduledAt}
+                  onChange={e => setNewVisit(p => ({ ...p, scheduledAt: normalizeScheduledAtInput(e.target.value) }))}
+                />
               </div>
             </div>
             <div>
