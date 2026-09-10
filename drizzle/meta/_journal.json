@@ -428,6 +428,13 @@
       "when": 1788424511938,
       "tag": "0060_high_starfox",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "5",
+      "when": 1789030823957,
+      "tag": "0061_tough_toxin",
+      "breakpoints": true
     }
   ]
 }

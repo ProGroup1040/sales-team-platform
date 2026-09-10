@@ -11844,18 +11844,17 @@ export async function listEngineersWithAccountStatus(): Promise<Array<{
 }
 
 /** إنشاء حسابات تلقائياً لكل المهندسين الذين ليس لديهم username */
-export async function bulkCreateEngineersAccounts(defaultPassword: string = "12345678"): Promise<{
+export async function bulkCreateEngineersAccounts(defaultPassword: string): Promise<{
   created: Array<{ id: number; name: string; username: string }>;
   skipped: Array<{ id: number; name: string; reason: string }>;
 }> {
-  const db = await getDb();
-  if (!db) return { created: [], skipped: [] };
+  const db = await requireDb();
   const allEngineers = await db.select().from(engineers).where(
     and(eq(engineers.isDeleted, 0), eq(engineers.status, "active"))
   );
   const created: Array<{ id: number; name: string; username: string }> = [];
   const skipped: Array<{ id: number; name: string; reason: string }> = [];
-  const passwordHash = await bcrypt.hash(defaultPassword, 10);
+  const passwordHash = await bcrypt.hash(defaultPassword, 12);
   for (const eng of allEngineers) {
     if (eng.username) {
       skipped.push({ id: eng.id, name: eng.name, reason: "لديه حساب بالفعل" });
@@ -11891,7 +11890,7 @@ export async function changeEngineerPassword(engineerId: number, oldPassword: st
   if (!eng || !eng.passwordHash) return { success: false, error: "المستخدم غير موجود" };
   const valid = await bcrypt.compare(oldPassword, eng.passwordHash);
   if (!valid) return { success: false, error: "كلمة المرور القديمة غير صحيحة" };
-  const newHash = await bcrypt.hash(newPassword, 10);
+  const newHash = await bcrypt.hash(newPassword, 12);
   await db.update(engineers).set({
     passwordHash: newHash,
     forcePasswordChange: 0,
@@ -11902,7 +11901,7 @@ export async function changeEngineerPassword(engineerId: number, oldPassword: st
 /** إعادة تعيين كلمة مرور مهندس (يستخدمها الأدمن) */
 export async function resetEngineerPassword(engineerId: number, newPassword: string): Promise<{ success: boolean }> {
   const db = await requireDb();
-  const newHash = await bcrypt.hash(newPassword, 10);
+  const newHash = await bcrypt.hash(newPassword, 12);
   await db.update(engineers).set({
     passwordHash: newHash,
     forcePasswordChange: 1,
@@ -11925,7 +11924,7 @@ export async function createEngineerAccount(engineerId: number, username: string
   const [existing] = await db.select({ id: engineers.id }).from(engineers)
     .where(eq(engineers.username, username.toLowerCase().trim())).limit(1);
   if (existing && existing.id !== engineerId) return { success: false, error: "اسم المستخدم مستخدم بالفعل" };
-  const passwordHash = await bcrypt.hash(password, 10);
+  const passwordHash = await bcrypt.hash(password, 12);
   await db.update(engineers).set({
     username: username.toLowerCase().trim(),
     passwordHash,

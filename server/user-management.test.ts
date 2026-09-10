@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import bcrypt from 'bcryptjs';
-import { canAssignUserRole, canManagePrivilegedRoles, canManageUsers } from '../shared/authorization';
+import { canAssignUserRole, canManageEngineerAccount, canManagePrivilegedRoles, canManageUsers, MIN_ACCOUNT_PASSWORD_LENGTH } from '../shared/authorization';
 
 // ─── Mock DB ──────────────────────────────────────────────────────────────────
 // Test the validation logic and business rules without hitting real DB
@@ -151,6 +151,19 @@ describe('User Management - Authorization Boundaries', () => {
     expect(canManageUsers('sales_engineer')).toBe(false);
     expect(canAssignUserRole('sales_engineer', 'sales_engineer')).toBe(false);
     expect(canAssignUserRole(undefined, 'manager')).toBe(false);
+  });
+
+  it('prevents Admin Sales from taking control of manager or admin engineer accounts', () => {
+    expect(canManageEngineerAccount('admin_sales', 'manager')).toBe(false);
+    expect(canManageEngineerAccount('admin_sales', 'admin')).toBe(false);
+    expect(canManageEngineerAccount('admin_sales', 'sales_engineer')).toBe(true);
+    expect(canManageEngineerAccount('manager', 'manager')).toBe(true);
+    expect(canManageEngineerAccount(undefined, 'sales_engineer')).toBe(false);
+    expect(canManageEngineerAccount('admin_sales', undefined)).toBe(false);
+  });
+
+  it('uses a non-trivial minimum length for newly issued internal-account passwords', () => {
+    expect(MIN_ACCOUNT_PASSWORD_LENGTH).toBe(12);
   });
 });
 

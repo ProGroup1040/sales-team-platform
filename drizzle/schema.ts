@@ -18,6 +18,20 @@ export const users = mysqlTable("users", {
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
+// ─── Authentication throttling ────────────────────────────────────────────────
+// Stores an HMAC-derived request key only; it never persists a raw IP address or username.
+export const loginRateLimits = mysqlTable("login_rate_limits", {
+  id: int("id").autoincrement().primaryKey(),
+  keyHash: varchar("keyHash", { length: 64 }).notNull(),
+  windowStartedAt: timestamp("windowStartedAt").defaultNow().notNull(),
+  attempts: int("attempts").default(0).notNull(),
+  blockedUntil: timestamp("blockedUntil"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  uniqueIndex("login_rate_limits_key_hash_unique").on(table.keyHash),
+]);
+
 // ─── Engineers ────────────────────────────────────────────────────────────────
 export const engineers = mysqlTable("engineers", {
   id: int("id").autoincrement().primaryKey(),

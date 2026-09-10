@@ -39,6 +39,9 @@ export const PRIVILEGED_ROLE_MANAGEMENT_ROLES = [
   "admin",
 ] as const satisfies readonly AppRole[];
 
+/** Minimum length for a newly issued internal-account password. */
+export const MIN_ACCOUNT_PASSWORD_LENGTH = 12;
+
 export function canManageUsers(role: string | null | undefined): boolean {
   return Boolean(
     role && (USER_MANAGEMENT_ROLES as readonly string[]).includes(role)
@@ -69,6 +72,21 @@ export function canAssignUserRole(
   if (!canManageUsers(actorRole) || !targetRole) return false;
   if (!(MANAGED_USER_ROLES as readonly string[]).includes(targetRole))
     return false;
+  if (["manager", "admin"].includes(targetRole)) {
+    return canManagePrivilegedRoles(actorRole);
+  }
+  return true;
+}
+
+/**
+ * Admin Sales may operate standard engineer accounts, but may not take control
+ * of Manager/Admin accounts through reset, activation, or account creation.
+ */
+export function canManageEngineerAccount(
+  actorRole: string | null | undefined,
+  targetRole: string | null | undefined,
+): boolean {
+  if (!canManageUsers(actorRole) || !targetRole) return false;
   if (["manager", "admin"].includes(targetRole)) {
     return canManagePrivilegedRoles(actorRole);
   }

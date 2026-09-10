@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Response } from "express";
 import { setResponseCookie } from "./httpCookies";
+import { getOAuthSessionCookieOptions } from "./oauth";
 import { ONE_YEAR_MS } from "../../shared/const";
 
 describe("setResponseCookie", () => {
@@ -28,5 +29,14 @@ describe("setResponseCookie", () => {
 
     expect(headers).toHaveLength(1);
     expect(headers[0]).toContain("Max-Age=31536000");
+  });
+
+  it("keeps OAuth session durations in milliseconds before serialization", () => {
+    const options = getOAuthSessionCookieOptions({
+      protocol: "https",
+      headers: {},
+    } as never);
+
+    expect(options.maxAge).toBe(ONE_YEAR_MS);
   });
 });

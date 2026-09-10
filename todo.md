@@ -78,5 +78,8 @@ Every completed row must link to code, tests, or an environment verification rec
 - [ ] Verify and remediate confirmed server-side authorization, privileged user-management, password-reset, and session-lifecycle weaknesses with regression tests.
 - [ ] Prevent Admin Sales from resetting credentials or changing the account state of Manager/Admin-level engineer accounts, while preserving authorized management of standard accounts.
 - [ ] Remove the insecure implicit bulk-account default password path and add regression coverage for privileged password operations.
+- [ ] Correct the OAuth session-cookie duration unit and add a regression test covering the shared cookie contract.
+- [ ] Add a deployment-compatible rate limit for local and app-user login attempts without exposing account-existence information.
 - [ ] Audit database failure behavior, transaction boundaries, numeric financial representations, input validation, and HTML rendering; fix only confirmed defects without changing valid business rules.
 - [ ] Add focused unit and integration regression coverage, run the relevant suite and production build, and document residual risks that need an explicit product or infrastructure decision.
+- [ ] Diagnose and repair the missing TasksModule import introduced in the synchronized code so TypeScript and the production build remain valid.

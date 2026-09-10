@@ -10,6 +10,14 @@ function getQueryParam(req: Request, key: string): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+export function getOAuthSessionCookieOptions(req: Request) {
+  return {
+    ...getSessionCookieOptions(req),
+    // The shared cookie writer and Express both receive durations in milliseconds.
+    maxAge: ONE_YEAR_MS,
+  };
+}
+
 export function registerOAuthRoutes(app: Express) {
   app.get("/api/oauth/callback", async (req: Request, res: Response) => {
     const code = getQueryParam(req, "code");
@@ -42,11 +50,7 @@ export function registerOAuthRoutes(app: Express) {
         expiresInMs: ONE_YEAR_MS,
       });
 
-      const cookieOptions = getSessionCookieOptions(req);
-      setResponseCookie(res, COOKIE_NAME, sessionToken, {
-        ...cookieOptions,
-        maxAge: Math.floor(ONE_YEAR_MS / 1000),
-      });
+      setResponseCookie(res, COOKIE_NAME, sessionToken, getOAuthSessionCookieOptions(req));
 
       res.redirect(302, "/");
     } catch (error) {

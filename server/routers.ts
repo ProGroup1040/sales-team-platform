@@ -2,6 +2,7 @@ import { z } from "zod";
 import { COOKIE_NAME, LOCAL_AUTH_COOKIE, ONE_YEAR_MS } from "@shared/const";
 import { localLogin, getLocalSessionFromRequest } from "./localAuth";
 import { getSessionCookieOptions } from "./_core/cookies";
+import { assertLoginAttemptAllowed, clearLoginAttempts, LoginRateLimitError, recordFailedLoginAttempt } from "./_core/loginRateLimit";
 import { systemRouter } from "./_core/systemRouter";
 import { getRequestCookie, setResponseCookie, clearResponseCookie } from "./_core/httpCookies";
 import { TRPCError } from "@trpc/server";
@@ -123,7 +124,7 @@ import {
   addProjectDelay, updateProjectReview, setProjectHold, updateProjectStageConfig, updateProjectPreExecution, startProjectExecution, closeProject,
 } from "./db";
 import { ACTIVITY_KEYS, ACTIVITY_LABELS as ACT_LABELS_EN, ACTIVITY_LABELS_AR, ACTIVITY_WEIGHTS, ACTIVITY_ICONS, ACTIVITY_COLORS } from '../shared/activityTypes';
-import { canAssignUserRole, canManagePrivilegedRoles, canManageUsers } from '../shared/authorization';
+import { canAssignUserRole, canManageEngineerAccount, canManagePrivilegedRoles, canManageUsers, MIN_ACCOUNT_PASSWORD_LENGTH } from '../shared/authorization';
 
 // ─── Seed Data ────────────────────────────────────────────────────────────────
 async function seedData() {
@@ -362,6 +363,18 @@ function assertCanAssignRole(actorRole: string, targetRole: string | undefined) 
   if (targetRole !== undefined && !canAssignUserRole(actorRole, targetRole)) {
     throw new TRPCError({ code: "FORBIDDEN", message: "لا تملك صلاحية تعيين هذا الدور" });
   }
+}
+
+async function requireEngineerAccountManagementCaller(ctx: any, engineerId: number, message: string) {
+  const caller = await requireUserManagementCaller(ctx, message);
+  const target = await getEngineerById(engineerId);
+  if (!target || target.isDeleted) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "حساب المهندس غير موجود" });
+  }
+  if (!canManageEngineerAccount(caller.role, target.role)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "لا تملك صلاحية إدارة هذا الحساب" });
+  }
+  return { caller, target };
 }
 
 const PROJECT_TIMELINE_MANAGER_ROLES = new Set(["manager", "admin", "admin_sales"]);
@@ -1763,12 +1776,25 @@ export const appRouter = router({
     // تسجيل الدخول بيوزرنيم وباسورد
     login: publicProcedure
       .input(z.object({
-        username: z.string().min(1),
-        password: z.string().min(1),
+        username: z.string().trim().min(1).max(64),
+        password: z.string().min(1).max(128),
       }))
       .mutation(async ({ input, ctx }) => {
+        let rateLimitKey: string;
+        try {
+          rateLimitKey = await assertLoginAttemptAllowed(ctx.req, input.username);
+        } catch (error) {
+          if (error instanceof LoginRateLimitError) {
+            throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "محاولات دخول كثيرة، حاول لاحقاً" });
+          }
+          throw error;
+        }
         const result = await localLogin(input.username, input.password);
-        if (!result) throw new Error("يوزرنيم أو باسورد غلط");
+        if (!result) {
+          await recordFailedLoginAttempt(rateLimitKey);
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "اسم المستخدم أو كلمة المرور غير صحيحة" });
+        }
+        await clearLoginAttempts(rateLimitKey);
         const cookieOptions = getSessionCookieOptions(ctx.req);
         setResponseCookie(ctx.res, LOCAL_AUTH_COOKIE, result.token, {
           ...cookieOptions,
@@ -2204,12 +2230,25 @@ export const appRouter = router({
     // Login
     login: publicProcedure
       .input(z.object({
-        username: z.string().min(1),
-        password: z.string().min(1),
+        username: z.string().trim().min(1).max(64),
+        password: z.string().min(1).max(128),
       }))
       .mutation(async ({ input, ctx }) => {
+        let rateLimitKey: string;
+        try {
+          rateLimitKey = await assertLoginAttemptAllowed(ctx.req, input.username);
+        } catch (error) {
+          if (error instanceof LoginRateLimitError) {
+            throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "محاولات دخول كثيرة، حاول لاحقاً" });
+          }
+          throw error;
+        }
         const result = await loginAppUser(input.username, input.password);
-        if (!result) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
+        if (!result) {
+          await recordFailedLoginAttempt(rateLimitKey);
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
+        }
+        await clearLoginAttempts(rateLimitKey);
         // تسجيل النشاط
         await logActivity({ userId: result.user.id, action: 'login', details: 'تسجيل دخول ناجح' });
         // حفظ token في cookie
@@ -2319,6 +2358,9 @@ export const appRouter = router({
       }))
       .mutation(async ({ input, ctx }) => {
         const caller = await requireUserManagementCaller(ctx, 'ليس لديك صلاحية تعديل الصلاحيات');
+        const target = await getAppUserById(input.userId);
+        if (!target) throw new TRPCError({ code: 'NOT_FOUND', message: 'المستخدم غير موجود' });
+        assertCanAssignRole(caller.role, target.role);
         await updateUserPermissions(input.userId, input.permissions);
         await logActivity({ userId: caller.id, action: 'permission_change', module: 'users', recordId: input.userId, details: `تحديث صلاحيات مستخدم #${input.userId}` });
         return { success: true };
@@ -2349,10 +2391,10 @@ export const appRouter = router({
       }),
     // إنشاء حسابات تلقائياً لكل المهندسين
     bulkCreateAccounts: protectedProcedure
-      .input(z.object({ defaultPassword: z.string().min(6).optional() }))
+      .input(z.object({ defaultPassword: z.string().min(MIN_ACCOUNT_PASSWORD_LENGTH).max(128) }))
       .mutation(async ({ input, ctx }) => {
-        const caller = await requireUserManagementCaller(ctx, 'ليس لديك صلاحية إنشاء الحسابات');
-        const result = await bulkCreateEngineersAccounts(input.defaultPassword ?? '12345678');
+        const caller = await requirePrivilegedRoleManagementCaller(ctx, 'إنشاء الحسابات الجماعي متاح للإدارة فقط');
+        const result = await bulkCreateEngineersAccounts(input.defaultPassword);
         await logActivity({ userId: caller.id, action: 'create', module: 'users', details: `إنشاء حسابات تلقائية: ${result.created.length} حساب` });
         return result;
       }),
@@ -2361,11 +2403,11 @@ export const appRouter = router({
       .input(z.object({
         engineerId: z.number(),
         username: z.string().min(3).regex(/^[a-zA-Z0-9._-]+$/),
-        password: z.string().min(6),
+        password: z.string().min(MIN_ACCOUNT_PASSWORD_LENGTH).max(128),
         forceChange: z.boolean().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
-        const caller = await requireUserManagementCaller(ctx, 'ليس لديك صلاحية إنشاء الحسابات');
+        const { caller } = await requireEngineerAccountManagementCaller(ctx, input.engineerId, 'ليس لديك صلاحية إنشاء الحسابات');
         const result = await createEngineerAccount(input.engineerId, input.username, input.password, input.forceChange ?? true);
         if (!result.success) throw new TRPCError({ code: 'CONFLICT', message: result.error });
         await logActivity({ userId: caller.id, action: 'create', module: 'users', details: `إنشاء حساب للمهندس #${input.engineerId}: ${input.username}` });
@@ -2373,16 +2415,16 @@ export const appRouter = router({
       }),
     // إعادة تعيين كلمة مرور (Admin)
     resetPassword: protectedProcedure
-      .input(z.object({ engineerId: z.number(), newPassword: z.string().min(6) }))
+      .input(z.object({ engineerId: z.number(), newPassword: z.string().min(MIN_ACCOUNT_PASSWORD_LENGTH).max(128) }))
       .mutation(async ({ input, ctx }) => {
-        const caller = await requireUserManagementCaller(ctx, 'ليس لديك صلاحية تعديل كلمات المرور');
+        const { caller } = await requireEngineerAccountManagementCaller(ctx, input.engineerId, 'ليس لديك صلاحية تعديل كلمات المرور');
         await resetEngineerPassword(input.engineerId, input.newPassword);
         await logActivity({ userId: caller.id, action: 'update', module: 'users', recordId: input.engineerId, details: `إعادة تعيين كلمة مرور المهندس #${input.engineerId}` });
         return { success: true };
       }),
     // تغيير كلمة المرور (المهندس نفسه)
     changePassword: protectedProcedure
-      .input(z.object({ oldPassword: z.string().min(1), newPassword: z.string().min(6) }))
+      .input(z.object({ oldPassword: z.string().min(1), newPassword: z.string().min(MIN_ACCOUNT_PASSWORD_LENGTH).max(128) }))
       .mutation(async ({ input, ctx }) => {
         const req = (ctx as any).req;
         let engineerId: number | null = null;
@@ -2405,7 +2447,7 @@ export const appRouter = router({
     toggleStatus: protectedProcedure
       .input(z.object({ engineerId: z.number(), status: z.enum(['active', 'inactive']) }))
       .mutation(async ({ input, ctx }) => {
-        const caller = await requireUserManagementCaller(ctx, 'ليس لديك صلاحية تعديل حالة الحساب');
+        const { caller } = await requireEngineerAccountManagementCaller(ctx, input.engineerId, 'ليس لديك صلاحية تعديل حالة الحساب');
         await toggleEngineerAccountStatus(input.engineerId, input.status);
         await logActivity({ userId: caller.id, action: 'update', module: 'users', recordId: input.engineerId, details: `تغيير حالة المهندس #${input.engineerId}: ${input.status}` });
         return { success: true };

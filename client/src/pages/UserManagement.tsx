@@ -567,7 +567,8 @@ function EngineersAccountsTab() {
   const [selectedEng, setSelectedEng] = useState<any>(null);
   const [resetEngId, setResetEngId] = useState<number | null>(null);
   const [newPassword, setNewPassword] = useState("");
-  const [createForm, setCreateForm] = useState({ username: "", password: "12345678", forceChange: true });
+  const [bulkPassword, setBulkPassword] = useState("");
+  const [createForm, setCreateForm] = useState({ username: "", password: "", forceChange: true });
 
   const listQuery = trpc.appUsers.listEngineers.useQuery(undefined, { staleTime: 15000 });
 
@@ -587,7 +588,7 @@ function EngineersAccountsTab() {
       toast.success("تم إنشاء الحساب بنجاح");
       setCreateOpen(false);
       setSelectedEng(null);
-      setCreateForm({ username: "", password: "12345678", forceChange: true });
+      setCreateForm({ username: "", password: "", forceChange: true });
       utils.appUsers.listEngineers.invalidate();
     },
     onError: (e) => toast.error(e.message || "حدث خطأ"),
@@ -649,10 +650,13 @@ function EngineersAccountsTab() {
                 <Alert>
                   <AlertDescription className="text-sm">
                     سيتم إنشاء حسابات لـ <strong>{withoutAccount.length}</strong> مهندس بدون حساب حالياً.
-                    كلمة المرور الافتراضية: <code className="bg-muted px-1 rounded">12345678</code>
-                    وسيتم إجبار كل مهندس على تغييرها عند أول دخول.
+                    أدخل كلمة مرور مؤقتة من 12 حرفاً على الأقل، وسيُجبر كل مهندس على تغييرها عند أول دخول.
                   </AlertDescription>
                 </Alert>
+                <div className="space-y-1">
+                  <Label>كلمة المرور المؤقتة</Label>
+                  <Input dir="ltr" type="password" value={bulkPassword} onChange={(e) => setBulkPassword(e.target.value)} placeholder="12 حرفاً على الأقل" />
+                </div>
                 <div className="max-h-48 overflow-y-auto space-y-1">
                   {withoutAccount.map((e: any) => (
                     <div key={e.id} className="flex items-center justify-between text-sm p-2 rounded bg-muted/50">
@@ -663,8 +667,8 @@ function EngineersAccountsTab() {
                 </div>
                 <Button
                   className="w-full"
-                  onClick={() => bulkMut.mutate({ defaultPassword: "12345678" })}
-                  disabled={bulkMut.isPending}
+                  onClick={() => bulkMut.mutate({ defaultPassword: bulkPassword })}
+                  disabled={bulkMut.isPending || bulkPassword.length < 12}
                 >
                   {bulkMut.isPending ? (
                     <span className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" />جاري الإنشاء...</span>
@@ -725,7 +729,7 @@ function EngineersAccountsTab() {
                   {!eng.hasAccount ? (
                     <Dialog open={createOpen && selectedEng?.id === eng.id} onOpenChange={(open) => { setCreateOpen(open); if (!open) setSelectedEng(null); }}>
                       <DialogTrigger asChild>
-                        <Button size="sm" className="gap-1" onClick={() => { setSelectedEng(eng); setCreateForm({ username: eng.name?.toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '') || '', password: '12345678', forceChange: true }); }}>
+                        <Button size="sm" className="gap-1" onClick={() => { setSelectedEng(eng); setCreateForm({ username: eng.name?.toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '') || '', password: '', forceChange: true }); }}>
                           <UserPlus className="h-3.5 w-3.5" />
                           إنشاء حساب
                         </Button>
@@ -742,13 +746,13 @@ function EngineersAccountsTab() {
                           </div>
                           <div className="space-y-1">
                             <Label>كلمة المرور</Label>
-                            <Input dir="ltr" type="password" value={createForm.password} onChange={(e) => setCreateForm(p => ({ ...p, password: e.target.value }))} />
+                            <Input dir="ltr" type="password" value={createForm.password} onChange={(e) => setCreateForm(p => ({ ...p, password: e.target.value }))} placeholder="12 حرفاً على الأقل" />
                           </div>
                           <div className="flex items-center gap-2">
                             <Switch checked={createForm.forceChange} onCheckedChange={(v) => setCreateForm(p => ({ ...p, forceChange: v }))} />
                             <Label className="text-sm">إجبار تغيير كلمة المرور عند أول دخول</Label>
                           </div>
-                          <Button className="w-full" disabled={createMut.isPending}
+                          <Button className="w-full" disabled={createMut.isPending || createForm.password.length < 12}
                             onClick={() => createMut.mutate({ engineerId: eng.id, username: createForm.username, password: createForm.password, forceChange: createForm.forceChange })}>
                             {createMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'إنشاء الحساب'}
                           </Button>
@@ -771,8 +775,8 @@ function EngineersAccountsTab() {
                             <DialogTitle>إعادة كلمة مرور: {eng.name}</DialogTitle>
                           </DialogHeader>
                           <div className="space-y-3 py-2">
-                            <Input dir="ltr" type="password" placeholder="كلمة المرور الجديدة" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
-                            <Button className="w-full" disabled={resetMut.isPending || !newPassword}
+                            <Input dir="ltr" type="password" placeholder="كلمة المرور الجديدة — 12 حرفاً على الأقل" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+                            <Button className="w-full" disabled={resetMut.isPending || newPassword.length < 12}
                               onClick={() => resetMut.mutate({ engineerId: eng.id, newPassword })}>
                               {resetMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'حفظ كلمة المرور'}
                             </Button>
