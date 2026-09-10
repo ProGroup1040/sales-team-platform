@@ -54,6 +54,8 @@ export const engineers = mysqlTable("engineers", {
   deletedBy: varchar("deletedBy", { length: 120 }),
   // إجبار تغيير كلمة المرور عند أول دخول
   forcePasswordChange: int("forcePasswordChange").default(0).notNull(),
+  // يُزاد عند تغيير بيانات الاعتماد أو الدور أو حالة الحساب لإبطال الجلسات السابقة.
+  sessionVersion: int("sessionVersion").default(1).notNull(),
 });
 export type Engineer = typeof engineers.$inferSelect;
 
@@ -1011,6 +1013,8 @@ export const appUsers = mysqlTable("app_users", {
   // رمز إعادة تعيين كلمة المرور
   resetToken: varchar("resetToken", { length: 255 }),
   resetTokenExpiresAt: timestamp("resetTokenExpiresAt"),
+  // يُزاد عند تغيير كلمة المرور أو الدور أو حالة الحساب لإبطال التوكنات السابقة.
+  sessionVersion: int("sessionVersion").default(1).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

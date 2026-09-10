@@ -14,6 +14,7 @@ export type LocalSessionPayload = {
   role: string;
   name: string;
   forcePasswordChange?: boolean;
+  sessionVersion: number;
 };
 
 function getSecretKey() {
@@ -29,6 +30,7 @@ export async function signLocalSession(payload: LocalSessionPayload): Promise<st
     role: payload.role,
     name: payload.name,
     forcePasswordChange: payload.forcePasswordChange ? 1 : 0,
+    sv: payload.sessionVersion,
   })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
     .setExpirationTime(expirationSeconds)
@@ -39,9 +41,10 @@ export async function verifyLocalSession(token: string | undefined | null): Prom
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, getSecretKey(), { algorithms: ["HS256"] });
-    const { engineerId } = payload as Record<string, unknown>;
+    const { engineerId, sv } = payload as Record<string, unknown>;
     const parsedEngineerId = Number(engineerId);
-    if (!Number.isInteger(parsedEngineerId) || parsedEngineerId <= 0) return null;
+    const sessionVersion = Number(sv);
+    if (!Number.isInteger(parsedEngineerId) || parsedEngineerId <= 0 || !Number.isInteger(sessionVersion) || sessionVersion < 1) return null;
 
     const db = await getDb();
     if (!db) return null;
@@ -50,7 +53,7 @@ export async function verifyLocalSession(token: string | undefined | null): Prom
       eq(engineers.status, "active"),
       eq(engineers.isDeleted, 0),
     )).limit(1);
-    if (!engineer || !engineer.username) return null;
+    if (!engineer || !engineer.username || engineer.sessionVersion !== sessionVersion) return null;
 
     return {
       engineerId: engineer.id,
@@ -58,6 +61,7 @@ export async function verifyLocalSession(token: string | undefined | null): Prom
       role: engineer.role,
       name: engineer.name,
       forcePasswordChange: engineer.forcePasswordChange === 1,
+      sessionVersion: engineer.sessionVersion,
     };
   } catch {
     return null;
@@ -86,6 +90,7 @@ export async function localLogin(username: string, password: string): Promise<{ 
     role: engineer.role,
     name: engineer.name,
     forcePasswordChange: !!((engineer as any).forcePasswordChange),
+    sessionVersion: engineer.sessionVersion,
   };
   const token = await signLocalSession(session);
   return { token, session };
@@ -113,14 +118,14 @@ export async function createEngineerAccount(data: {
 
   // Check if username exists
   const [existing] = await db
-    .select({ id: engineers.id })
+    .select({ id: engineers.id, sessionVersion: engineers.sessionVersion })
     .from(engineers)
     .where(eq(engineers.username, data.username))
     .limit(1);
 
   if (existing) {
     // Update password if engineer already exists with this username
-    await db.update(engineers).set({ passwordHash }).where(eq(engineers.username, data.username));
+    await db.update(engineers).set({ passwordHash, sessionVersion: (existing.sessionVersion ?? 1) + 1 }).where(eq(engineers.username, data.username));
     return;
   }
 

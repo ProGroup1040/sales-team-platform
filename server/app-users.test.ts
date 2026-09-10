@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { createAppUser, loginAppUser, verifyAppUserToken, getAppUsers, getUserPermissions, updateUserPermissions, logActivity, getActivityLogs, DEFAULT_ROLE_PERMISSIONS } from "./db";
+import { createAppUser, getAppUserJwtSecret, loginAppUser, verifyAppUserToken, getAppUsers, getUserPermissions, updateAppUser, updateUserPermissions, logActivity, getActivityLogs, DEFAULT_ROLE_PERMISSIONS } from "./db";
 import { getDb } from "./db";
 
 // ─── Test Suite: Internal App Users System ────────────────────────────────────
 describe("Internal App Users System", () => {
   let testUserId: number;
   const testUsername = `test_user_${Date.now()}`;
+  const testPassword = "TestPassword-2026";
 
   afterAll(async () => {
     // Cleanup: remove test user
@@ -25,7 +26,7 @@ describe("Internal App Users System", () => {
     const user = await createAppUser({
       name: "Test User",
       username: testUsername,
-      password: "test123",
+      password: testPassword,
       role: "sales_engineer",
     });
     expect(user).toBeDefined();
@@ -35,7 +36,7 @@ describe("Internal App Users System", () => {
   });
 
   it("should login with correct credentials", async () => {
-    const result = await loginAppUser(testUsername, "test123");
+    const result = await loginAppUser(testUsername, testPassword);
     expect(result).not.toBeNull();
     expect(result?.user.username).toBe(testUsername);
     expect(result?.token).toBeDefined();
@@ -53,7 +54,7 @@ describe("Internal App Users System", () => {
   });
 
   it("should verify JWT token", async () => {
-    const loginResult = await loginAppUser(testUsername, "test123");
+    const loginResult = await loginAppUser(testUsername, testPassword);
     expect(loginResult).not.toBeNull();
     const verified = await verifyAppUserToken(loginResult!.token);
     expect(verified).not.toBeNull();
@@ -64,6 +65,15 @@ describe("Internal App Users System", () => {
   it("should reject invalid JWT token", async () => {
     const result = await verifyAppUserToken("invalid.token.here");
     expect(result).toBeNull();
+  });
+
+  it("invalidates an existing app-user token after a credential or role change", async () => {
+    const loginResult = await loginAppUser(testUsername, testPassword);
+    expect(loginResult).not.toBeNull();
+
+    await updateAppUser(testUserId, { role: "sales_specialist" });
+
+    await expect(verifyAppUserToken(loginResult!.token)).resolves.toBeNull();
   });
 
   it("should list active app users", async () => {
@@ -105,5 +115,21 @@ describe("Internal App Users System", () => {
     expect(DEFAULT_ROLE_PERMISSIONS).toBeDefined();
     expect(DEFAULT_ROLE_PERMISSIONS.manager).toBeDefined();
     expect(DEFAULT_ROLE_PERMISSIONS.sales_engineer).toBeDefined();
+  });
+
+  it("uses the application session-secret override for app-user token signing", () => {
+    const oldApplicationSecret = process.env.APP_JWT_SECRET;
+    const oldPlatformSecret = process.env.JWT_SECRET;
+    process.env.APP_JWT_SECRET = "a".repeat(48);
+    process.env.JWT_SECRET = "platform-secret-that-must-not-win";
+
+    try {
+      expect(new TextDecoder().decode(getAppUserJwtSecret())).toBe("a".repeat(48));
+    } finally {
+      if (oldApplicationSecret === undefined) delete process.env.APP_JWT_SECRET;
+      else process.env.APP_JWT_SECRET = oldApplicationSecret;
+      if (oldPlatformSecret === undefined) delete process.env.JWT_SECRET;
+      else process.env.JWT_SECRET = oldPlatformSecret;
+    }
   });
 });

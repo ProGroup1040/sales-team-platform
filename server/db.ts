@@ -45,7 +45,7 @@ import {
   projectDelayReasons, ProjectDelayReason, InsertProjectDelayReason,
   type AppUser, type InsertAppUser, type UserPermission, type RolePermission, type SectionPermission
 } from "../drizzle/schema";
-import { ENV } from './_core/env';
+import { ENV, getSessionSecret } from './_core/env';
 import bcrypt from "bcryptjs";
 import { TASK_TYPE_TO_ACTIVITY, ACTIVITY_KEYS, ACTIVITY_WEIGHTS, type ActivityKey } from '../shared/activityTypes';
 import { notifyOwner } from './_core/notification';
@@ -130,6 +130,7 @@ export async function updateEngineerProfile(id: number, data: { name?: string; d
   if (data.name !== undefined) updates.name = data.name;
   if (data.department !== undefined) updates.department = data.department as any;
   if (data.role !== undefined) updates.role = data.role as any;
+  if (data.role !== undefined) updates.sessionVersion = sql`${engineers.sessionVersion} + 1`;
   if (data.phone !== undefined) updates.phone = data.phone;
   if (data.email !== undefined) updates.email = data.email;
   if (data.seniority !== undefined) updates.seniority = data.seniority as any;
@@ -1083,9 +1084,11 @@ export async function getEngineersKPI(year: number, month: number) {
 }
 
 // ─── Collections ──────────────────────────────────────────────────────────────
-export async function getCollectionsStats() {
+export async function getCollectionsStats(engineerId?: number) {
   const db = await requireDb();
-  const all = await db.select().from(collections);
+  const all = engineerId === undefined
+    ? await db.select().from(collections)
+    : await db.select().from(collections).where(eq(collections.engineerId, engineerId));
   const totalContracts = centsToNumber(sumCents(all.map(c => c.contractAmount)));
   const totalCollected = centsToNumber(sumCents(all.map(c => c.collectedAmount)));
   const outstanding = centsToNumber(sumCents(all.map(c => toCentsOrZero(c.contractAmount) - toCentsOrZero(c.collectedAmount))));
@@ -1094,10 +1097,12 @@ export async function getCollectionsStats() {
   return { totalContracts, totalCollected, outstanding, overdue, collectionRate };
 }
 
-export async function getCollectionsList(limit = 20, offset = 0, status?: string) {
-  const db = await getDb();
-  if (!db) return { data: [], total: 0 };
-  const conditions = status ? [eq(collections.status, status as any)] : [];
+export async function getCollectionsList(limit = 20, offset = 0, status?: string, engineerId?: number) {
+  const db = await requireDb();
+  const conditions = [
+    ...(status ? [eq(collections.status, status as any)] : []),
+    ...(engineerId === undefined ? [] : [eq(collections.engineerId, engineerId)]),
+  ];
   const data = await db.select().from(collections)
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(collections.createdAt)).limit(limit).offset(offset);
@@ -1123,8 +1128,7 @@ export async function createCollection(data: {
 }
 
 export async function updateCollection(id: number, collectedAmount: number, status?: string, notes?: string) {
-  const db = await getDb();
-  if (!db) return;
+  const db = await requireDb();
   const updateData: any = { collectedAmount: collectedAmount.toString(), lastPaymentAt: new Date() };
   if (status) updateData.status = status;
   if (notes) updateData.notes = notes;
@@ -1714,10 +1718,33 @@ export async function getClientFinancialProfile(collectionId: number) {
   return { collection: col, payments: paymentsList, promises: promisesList, commissions: commList, totalPaid, remaining, pct, status };
 }
 
+/** Minimal ownership record for server-side financial authorization. */
+export async function getCollectionAccessById(collectionId: number) {
+  const db = await requireDb();
+  const [collection] = await db.select({
+    id: collections.id,
+    engineerId: collections.engineerId,
+    clientName: collections.clientName,
+  }).from(collections).where(eq(collections.id, collectionId)).limit(1);
+  return collection ?? null;
+}
+
+/** Resolves a promise to its owning collection without exposing financial details. */
+export async function getPaymentPromiseAccessById(promiseId: number) {
+  const db = await requireDb();
+  const [promise] = await db.select({
+    id: paymentPromises.id,
+    collectionId: paymentPromises.collectionId,
+  }).from(paymentPromises).where(eq(paymentPromises.id, promiseId)).limit(1);
+  return promise ?? null;
+}
+
 /** جلب كل العقود مع ملخص التحصيل */
 export async function getAllCollectionsWithSummary(engineerId?: number) {
   const db = await requireDb();
-  const cols = await db.select().from(collections);
+  const cols = engineerId === undefined
+    ? await db.select().from(collections)
+    : await db.select().from(collections).where(eq(collections.engineerId, engineerId));
   const results = await Promise.all(cols.map(async (col) => {
     const paymentsList = await db.select().from(payments).where(eq(payments.collectionId, col.id));
     const promisesList = await db.select().from(paymentPromises).where(eq(paymentPromises.collectionId, col.id));
@@ -11056,7 +11083,7 @@ export async function createAppUser(data: {
     if (Array.from(testAppUsers.values()).some(user => user.username === username)) throw new Error("USERNAME_EXISTS");
     if (email && Array.from(testAppUsers.values()).some(user => user.email === email)) throw new Error("EMAIL_EXISTS");
     const now = new Date();
-    const user = {
+  const user = {
       id: nextTestAppUserId++,
       name: data.name.trim(),
       username,
@@ -11068,6 +11095,7 @@ export async function createAppUser(data: {
       lastLoginAt: null,
       resetToken: null,
       resetTokenExpiresAt: null,
+      sessionVersion: 1,
       createdAt: now,
       updatedAt: now,
     } as AppUser;
@@ -11145,8 +11173,8 @@ export async function createDefaultPermissions(
 // ─── App-user token security ───────────────────────────────────────────────────
 const TEST_APP_USER_JWT_SECRET = "sales-team-platform-test-only-secret";
 
-function getAppUserJwtSecret(): Uint8Array {
-  const configuredSecret = process.env.JWT_SECRET;
+export function getAppUserJwtSecret(): Uint8Array {
+  const configuredSecret = getSessionSecret();
   if (configuredSecret && configuredSecret.length >= 32) {
     return new TextEncoder().encode(configuredSecret);
   }
@@ -11203,6 +11231,7 @@ async function signAppUserToken(user: AppUser): Promise<string> {
     role: user.role,
     name: user.name,
     engineerId: user.engineerId,
+    sv: user.sessionVersion,
   })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
@@ -11223,7 +11252,8 @@ export async function verifyAppUserToken(token: string): Promise<{
     const secret = getAppUserJwtSecret();
     const { payload } = await jwtVerify(token, secret, { algorithms: ["HS256"] });
     const userId = Number(payload.sub);
-    if (!Number.isInteger(userId) || userId <= 0) return null;
+    const sessionVersion = Number(payload.sv);
+    if (!Number.isInteger(userId) || userId <= 0 || !Number.isInteger(sessionVersion) || sessionVersion < 1) return null;
 
     // Re-load the account so inactive users and changed roles are not
     // authorized until a seven-day token expires.
@@ -11236,7 +11266,7 @@ export async function verifyAppUserToken(token: string): Promise<{
       : useTestAppUserStore()
         ? testAppUsers.get(userId)
         : undefined;
-    if (!user || user.status !== "active") return null;
+    if (!user || user.status !== "active" || user.sessionVersion !== sessionVersion) return null;
 
     return {
       id: user.id,
@@ -11346,16 +11376,22 @@ export async function updateAppUser(
     if (data.engineerId !== undefined) updated.engineerId = data.engineerId;
     if (data.status !== undefined) updated.status = data.status;
     if (data.password !== undefined) updated.passwordHash = await bcrypt.hash(data.password, 10);
+    if (data.password !== undefined || data.role !== undefined || data.status !== undefined) {
+      updated.sessionVersion = (existing.sessionVersion ?? 1) + 1;
+    }
     testAppUsers.set(userId, updated);
     return;
   }
-  const updateData: Partial<InsertAppUser> = {};
+  const updateData: Record<string, unknown> = {};
   if (data.name !== undefined) updateData.name = data.name;
   if (data.role !== undefined) updateData.role = data.role;
   if (data.engineerId !== undefined) updateData.engineerId = data.engineerId;
   if (data.status !== undefined) updateData.status = data.status;
   if (data.password !== undefined) {
     updateData.passwordHash = await bcrypt.hash(data.password, 10);
+  }
+  if (data.password !== undefined || data.role !== undefined || data.status !== undefined) {
+    updateData.sessionVersion = sql`${appUsers.sessionVersion} + 1`;
   }
   if (Object.keys(updateData).length > 0) {
     await db.update(appUsers).set(updateData).where(eq(appUsers.id, userId));
@@ -11752,8 +11788,7 @@ export async function manualOverrideEngineerTarget(data: {
   targetRender?: number; target2D?: number; target3D?: number;
   targetClosings?: number; notes?: string;
 }) {
-  const db = await getDb();
-  if (!db) return;
+  const db = await requireDb();
 
   const existing = await db.select().from(engineerTargets)
     .where(and(
@@ -11885,6 +11920,7 @@ export async function bulkCreateEngineersAccounts(defaultPassword: string): Prom
       username,
       passwordHash,
       forcePasswordChange: 1,
+      sessionVersion: sql`${engineers.sessionVersion} + 1`,
     } as any).where(eq(engineers.id, eng.id));
     created.push({ id: eng.id, name: eng.name, username });
   }
@@ -11903,6 +11939,7 @@ export async function changeEngineerPassword(engineerId: number, oldPassword: st
   await db.update(engineers).set({
     passwordHash: newHash,
     forcePasswordChange: 0,
+    sessionVersion: sql`${engineers.sessionVersion} + 1`,
   } as any).where(eq(engineers.id, engineerId));
   return { success: true };
 }
@@ -11914,6 +11951,7 @@ export async function resetEngineerPassword(engineerId: number, newPassword: str
   await db.update(engineers).set({
     passwordHash: newHash,
     forcePasswordChange: 1,
+    sessionVersion: sql`${engineers.sessionVersion} + 1`,
   } as any).where(eq(engineers.id, engineerId));
   return { success: true };
 }
@@ -11921,7 +11959,7 @@ export async function resetEngineerPassword(engineerId: number, newPassword: str
 /** تفعيل / تعطيل حساب مهندس */
 export async function toggleEngineerAccountStatus(engineerId: number, status: "active" | "inactive"): Promise<{ success: boolean }> {
   const db = await requireDb();
-  await db.update(engineers).set({ status }).where(eq(engineers.id, engineerId));
+  await db.update(engineers).set({ status, sessionVersion: sql`${engineers.sessionVersion} + 1` }).where(eq(engineers.id, engineerId));
   return { success: true };
 }
 
@@ -11938,6 +11976,7 @@ export async function createEngineerAccount(engineerId: number, username: string
     username: username.toLowerCase().trim(),
     passwordHash,
     forcePasswordChange: forceChange ? 1 : 0,
+    sessionVersion: sql`${engineers.sessionVersion} + 1`,
   } as any).where(eq(engineers.id, engineerId));
   return { success: true };
 }

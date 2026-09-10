@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
+import { useLocalAuth } from "@/hooks/useLocalAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,9 @@ const PROMISE_STATUS: Record<string, { label: string; color: string }> = {
 const PAYMENT_TYPE: Record<string, string> = { initial: "مقدم", installment: "قسط", final: "دفعة نهائية", visit_fee: "رسوم معاينة" };
 
 export default function CollectionsModule() {
+  const { session } = useLocalAuth();
+  const canManageFinancials = ["manager", "admin", "admin_sales"].includes(session?.role ?? "");
+  const canCreateFinancialContracts = ["manager", "admin"].includes(session?.role ?? "");
   const [filterStatus, setFilterStatus] = useState("all");
   const [showAddContract, setShowAddContract] = useState(false);
   const [showAddPayment, setShowAddPayment] = useState<number | null>(null);
@@ -51,8 +55,8 @@ export default function CollectionsModule() {
 
   const utils = trpc.useUtils();
   const { data: contracts = [], isLoading } = trpc.financial.allContracts.useQuery({});
-  const { data: followUp } = trpc.financial.dailyFollowUp.useQuery();
-  const { data: engCommission = [] } = trpc.financial.engineersCommission.useQuery();
+  const { data: followUp } = trpc.financial.dailyFollowUp.useQuery(undefined, { enabled: canManageFinancials });
+  const { data: engCommission = [] } = trpc.financial.engineersCommission.useQuery(undefined, { enabled: canManageFinancials });
   const { data: engineers = [] } = trpc.engineers.list.useQuery();
 
   const now = new Date();
@@ -64,9 +68,9 @@ export default function CollectionsModule() {
   const [newPaymentNextDate, setNewPaymentNextDate] = useState("");
 
   // New endpoints
-  const { data: collectionDashboard } = trpc.financial.dashboard.useQuery({ month: currentMonth, year: currentYear });
-  const { data: collectionAlerts = [] } = trpc.financial.alerts.useQuery();
-  const { data: contractsWithComm = [] } = trpc.financial.contractsWithCommission.useQuery({});
+  const { data: collectionDashboard } = trpc.financial.dashboard.useQuery({ month: currentMonth, year: currentYear }, { enabled: canManageFinancials });
+  const { data: collectionAlerts = [] } = trpc.financial.alerts.useQuery(undefined, { enabled: canManageFinancials });
+  const { data: contractsWithComm = [] } = trpc.financial.contractsWithCommission.useQuery({}, { enabled: canManageFinancials });
   // Period Analysis
   const periodStart = dateFilter.mode === 'month'
     ? formatLocalDate(new Date(dateFilter.year, dateFilter.month - 1, 1))
@@ -74,9 +78,9 @@ export default function CollectionsModule() {
   const periodEnd = dateFilter.mode === 'month'
     ? formatLocalDate(new Date(dateFilter.year, dateFilter.month, 0))
     : formatLocalDate(dateFilter.endDate);
-  const { data: periodAnalysis } = trpc.financial.periodAnalysis.useQuery({ startDate: periodStart, endDate: periodEnd });
-  const { data: liquidityDashboard } = trpc.financial.liquidityDashboard.useQuery({ startDate: periodStart, endDate: periodEnd });
-  const { data: commitments = [] } = trpc.financial.commitments.useQuery({ startDate: periodStart, endDate: periodEnd });
+  const { data: periodAnalysis } = trpc.financial.periodAnalysis.useQuery({ startDate: periodStart, endDate: periodEnd }, { enabled: canManageFinancials });
+  const { data: liquidityDashboard } = trpc.financial.liquidityDashboard.useQuery({ startDate: periodStart, endDate: periodEnd }, { enabled: canManageFinancials });
+  const { data: commitments = [] } = trpc.financial.commitments.useQuery({ startDate: periodStart, endDate: periodEnd }, { enabled: canManageFinancials });
 
   // Filter: Sales Engineers + Sales Specialists + Admin Sales only
   const SALES_DEPTS = ["sales_engineer", "sales_specialist", "admin_sales"];
@@ -180,13 +184,13 @@ export default function CollectionsModule() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <DateRangePicker value={dateFilter} onChange={setDateFilter} />
-          <Button onClick={() => setShowAddContract(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2">
+          {canCreateFinancialContracts && <Button onClick={() => setShowAddContract(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2">
             <Plus className="w-4 h-4" /> إضافة عقد
-          </Button>
+          </Button>}
         </div>
       </div>
 
-      <section className="space-y-4" aria-label="السيولة والتوقعات المالية">
+      {canManageFinancials && <section className="space-y-4" aria-label="السيولة والتوقعات المالية">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
             <h2 className="text-lg font-bold text-foreground">السيولة والحجز</h2>
@@ -223,7 +227,7 @@ export default function CollectionsModule() {
           </Card>
         </div>
         {commitments.length > 0 && <Card className="border-amber-200"><CardHeader className="pb-2"><CardTitle className="text-sm">الحجوزات والالتزامات خلال الفترة</CardTitle></CardHeader><CardContent className="space-y-2">{commitments.map((commitment) => <div key={commitment.id} className="flex items-center justify-between gap-3 rounded-lg bg-amber-50/70 p-3 dark:bg-amber-950/20"><div><div className="font-medium text-sm">{commitment.description}</div><div className="text-xs text-muted-foreground">مستحق: {fmtDate(commitment.dueDate)}</div></div><div className="flex items-center gap-2"><div className="font-bold text-amber-700">{fmt(parseFloat(commitment.amount as string))} ج.م</div>{commitment.status === "reserved" && <><Button size="sm" variant="outline" onClick={() => settleCommitmentMut.mutate({ id: commitment.id })}>تسجيل السداد</Button><Button size="sm" variant="ghost" className="text-red-600" onClick={() => cancelCommitmentMut.mutate({ id: commitment.id })}>إلغاء</Button></>}</div></div>)}</CardContent></Card>}
-      </section>
+      </section>}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

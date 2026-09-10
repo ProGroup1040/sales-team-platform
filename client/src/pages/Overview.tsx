@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
+import { useLocalAuth } from "@/hooks/useLocalAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -258,6 +259,8 @@ function ManagementFocusSection({ data }: { data: any }) {
 }
 
 export default function Overview() {
+  const { session } = useLocalAuth();
+  const canViewFinancialSummary = ["manager", "admin", "admin_sales"].includes(session?.role ?? "");
   const { data: managementFocus } = trpc.management.focus.useQuery({ year: YEAR, month: MONTH });
   const { data: evalDashboard } = trpc.promotion.getAllEngineersDashboard.useQuery();
   const { data: taskStats } = trpc.tasks.stats.useQuery({ date: TODAY });
@@ -266,7 +269,7 @@ export default function Overview() {
   const { data: visitsStats } = trpc.visits.stats.useQuery({ year: YEAR, month: MONTH });
   const { data: closingStats } = trpc.closing.stats.useQuery({ year: YEAR, month: MONTH });
   const { data: salesStats } = trpc.sales.monthlyStats.useQuery({ year: YEAR, month: MONTH });
-  const { data: collectionsStats } = trpc.collections.stats.useQuery();
+  const { data: collectionsStats } = trpc.collections.stats.useQuery(undefined, { enabled: canViewFinancialSummary });
   const { data: salesTrend } = trpc.sales.trend.useQuery({ months: 6 });
   const { data: kpiData } = trpc.kpi.engineers.useQuery({ year: YEAR, month: MONTH });
   const { data: dealsList } = trpc.closing.list.useQuery({ limit: 5, year: YEAR, month: MONTH });

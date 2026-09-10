@@ -29,7 +29,7 @@ import {
   getCustomers, getCustomerById, createCustomer, updateCustomer, deleteCustomer,
   getProducts, getProductById, createProduct, updateProduct, deleteProduct, getProductCategories,
   getSales, getSaleById, createSale, updateSaleStatus, deleteSale,
-  getAllCollectionsWithSummary, addPayment, addPaymentPromise, updatePromiseStatus,
+  getAllCollectionsWithSummary, getCollectionAccessById, getPaymentPromiseAccessById, addPayment, addPaymentPromise, updatePromiseStatus,
   setPaymentPromiseConfirmation, setFinancialCashBalance, addFinancialCommitment,
   settleFinancialCommitment, cancelFinancialCommitment, getFinancialCommitments,
   getFinancialLiquidityDashboard,
@@ -124,7 +124,7 @@ import {
   addProjectDelay, updateProjectReview, setProjectHold, updateProjectStageConfig, updateProjectPreExecution, startProjectExecution, closeProject,
 } from "./db";
 import { ACTIVITY_KEYS, ACTIVITY_LABELS as ACT_LABELS_EN, ACTIVITY_LABELS_AR, ACTIVITY_WEIGHTS, ACTIVITY_ICONS, ACTIVITY_COLORS } from '../shared/activityTypes';
-import { canAssignUserRole, canManageEngineerAccount, canManagePrivilegedRoles, canManageUsers, MIN_ACCOUNT_PASSWORD_LENGTH } from '../shared/authorization';
+import { canAccessAssignedCollection, canAssignUserRole, canManageEngineerAccount, canManageFinancials, canManagePrivilegedRoles, canManageUsers, MIN_ACCOUNT_PASSWORD_LENGTH } from '../shared/authorization';
 
 // ─── Seed Data ────────────────────────────────────────────────────────────────
 async function seedData() {
@@ -309,12 +309,12 @@ async function seedData() {
 
 // ─── App Router ───────────────────────────────────────────────────────────────
 // ─── Helper: get admin/manager caller from either local_session or app_user_token ─
-export async function getAdminCallerFromRequest(req: any): Promise<{ id: number; role: string; name: string } | null> {
+export async function getAdminCallerFromRequest(req: any): Promise<{ id: number; role: string; name: string; engineerId: number | null } | null> {
   // Try app_user_token first
   const appToken = req ? getRequestCookie(req, "app_user_token") : undefined;
   if (appToken) {
     const caller = await verifyAppUserToken(appToken);
-    if (caller) return { id: caller.id, role: caller.role, name: caller.name };
+    if (caller) return { id: caller.id, role: caller.role, name: caller.name, engineerId: caller.engineerId };
   }
   // Fallback to local_session (engineers table)
   const localSession = await getLocalSessionFromRequest(req);
@@ -332,15 +332,16 @@ export async function getAdminCallerFromRequest(req: any): Promise<{ id: number;
       id: localSession.engineerId,
       role: roleMap[localSession.role] ?? localSession.role,
       name: localSession.name,
+      engineerId: localSession.engineerId,
     };
   }
   return null;
 }
 
-async function getCallerFromContext(ctx: any): Promise<{ id: number; role: string; name: string } | null> {
-  if (ctx?.actor) return { id: ctx.actor.id, role: ctx.actor.role, name: ctx.actor.name };
+async function getCallerFromContext(ctx: any): Promise<{ id: number; role: string; name: string; engineerId: number | null } | null> {
+  if (ctx?.actor) return { id: ctx.actor.id, role: ctx.actor.role, name: ctx.actor.name, engineerId: ctx.actor.engineerId ?? null };
   if (ctx?.user?.role === "admin") {
-    return { id: ctx.user.id, role: "admin", name: ctx.user.name ?? ctx.user.email ?? "Admin" };
+    return { id: ctx.user.id, role: "admin", name: ctx.user.name ?? ctx.user.email ?? "Admin", engineerId: null };
   }
   return ctx?.req ? getAdminCallerFromRequest(ctx.req) : null;
 }
@@ -375,6 +376,30 @@ async function requireEngineerAccountManagementCaller(ctx: any, engineerId: numb
     throw new TRPCError({ code: "FORBIDDEN", message: "لا تملك صلاحية إدارة هذا الحساب" });
   }
   return { caller, target };
+}
+
+async function requireFinancialManager(ctx: any, message: string) {
+  const caller = await getCallerFromContext(ctx);
+  if (!caller) throw new TRPCError({ code: "UNAUTHORIZED", message: "يجب تسجيل الدخول أولاً" });
+  if (!canManageFinancials(caller.role)) throw new TRPCError({ code: "FORBIDDEN", message });
+  return caller;
+}
+
+async function requireCollectionFinancialAccess(ctx: any, collectionId: number, message: string) {
+  const caller = await getCallerFromContext(ctx);
+  if (!caller) throw new TRPCError({ code: "UNAUTHORIZED", message: "يجب تسجيل الدخول أولاً" });
+  const collection = await getCollectionAccessById(collectionId);
+  if (!collection) throw new TRPCError({ code: "NOT_FOUND", message: "العقد غير موجود" });
+  if (!canAccessAssignedCollection(caller.role, caller.engineerId, collection.engineerId)) {
+    throw new TRPCError({ code: "FORBIDDEN", message });
+  }
+  return { caller, collection, isFinancialManager: canManageFinancials(caller.role) };
+}
+
+async function requirePromiseFinancialAccess(ctx: any, promiseId: number, message: string) {
+  const promise = await getPaymentPromiseAccessById(promiseId);
+  if (!promise) throw new TRPCError({ code: "NOT_FOUND", message: "وعد الدفع غير موجود" });
+  return requireCollectionFinancialAccess(ctx, promise.collectionId, message);
 }
 
 const PROJECT_TIMELINE_MANAGER_ROLES = new Set(["manager", "admin", "admin_sales"]);
@@ -1289,17 +1314,37 @@ export const appRouter = router({
 
   // ── Collections ───────────────────────────────────────────────────────────
   collections: router({
-    stats: protectedProcedure.query(async () => getCollectionsStats()),
+    stats: protectedProcedure.query(async ({ ctx }) => {
+      const caller = await getCallerFromContext(ctx);
+      if (!caller) throw new TRPCError({ code: "UNAUTHORIZED", message: "يجب تسجيل الدخول أولاً" });
+      if (canManageFinancials(caller.role)) return getCollectionsStats();
+      if (!caller.engineerId) throw new TRPCError({ code: "FORBIDDEN", message: "لا تملك صلاحية الاطلاع على التحصيلات" });
+      return getCollectionsStats(caller.engineerId);
+    }),
     list: protectedProcedure.input(z.object({ limit: z.number().optional(), offset: z.number().optional(), status: z.string().optional() }))
-      .query(async ({ input }) => getCollectionsList(input.limit, input.offset, input.status)),
-    create: protectedProcedure.input(z.object({
+      .query(async ({ input, ctx }) => {
+        const caller = await getCallerFromContext(ctx);
+        if (!caller) throw new TRPCError({ code: "UNAUTHORIZED", message: "يجب تسجيل الدخول أولاً" });
+        if (canManageFinancials(caller.role)) return getCollectionsList(input.limit, input.offset, input.status);
+        if (!caller.engineerId) throw new TRPCError({ code: "FORBIDDEN", message: "لا تملك صلاحية الاطلاع على التحصيلات" });
+        return getCollectionsList(input.limit, input.offset, input.status, caller.engineerId);
+      }),
+    create: adminProcedure.input(z.object({
       clientName: z.string().min(1), contractAmount: z.number().positive(),
       collectedAmount: z.number().optional(), dueDate: z.string().optional(),
       dealId: z.number().optional(), notes: z.string().optional(),
-    })).mutation(async ({ input }) => { await createCollection(input); return { success: true }; }),
-    update: protectedProcedure.input(z.object({
+    })).mutation(async ({ input }) => {
+      if ((input.collectedAmount ?? 0) > 0) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "سجل الدفعات عبر financial.addPayment حتى يُحدّث دفتر السيولة" });
+      }
+      await createCollection(input);
+      return { success: true };
+    }),
+    update: adminProcedure.input(z.object({
       id: z.number(), collectedAmount: z.number(), status: z.string().optional(), notes: z.string().optional(),
-    })).mutation(async ({ input }) => { await updateCollection(input.id, input.collectedAmount, input.status, input.notes); return { success: true }; }),
+    })).mutation(async () => {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "تحديث المحصّل المباشر متوقف؛ استخدم financial.addPayment لتسجيل دفعة موثقة" });
+    }),
   }),
 
   // ── Planning ──────────────────────────────────────────────────────────────
@@ -1408,7 +1453,11 @@ export const appRouter = router({
         targetClosings: z.number().optional(),
         notes: z.string().optional(),
       }))
-      .mutation(async ({ input }) => { await manualOverrideEngineerTarget(input); return { success: true }; }),
+      .mutation(async ({ input, ctx }) => {
+        await requireUserManagementCaller(ctx, "تعديل أهداف المهندسين متاح للإدارة فقط");
+        await manualOverrideEngineerTarget(input);
+        return { success: true };
+      }),
     /** جلب هدف مهندس كامل (مالي + تشغيلي + شخصي) */
     getEngineerFullTarget: protectedProcedure
       .input(z.object({ engineerId: z.number(), year: z.number(), month: z.number() }))
@@ -1419,10 +1468,19 @@ export const appRouter = router({
   financial: router({
     // جلب كل العقود مع ملخص التحصيل
     allContracts: protectedProcedure.input(z.object({ engineerId: z.number().optional() }))
-      .query(async ({ input }) => getAllCollectionsWithSummary(input.engineerId)),
+      .query(async ({ input, ctx }) => {
+        const caller = await getCallerFromContext(ctx);
+        if (!caller) throw new TRPCError({ code: "UNAUTHORIZED", message: "يجب تسجيل الدخول أولاً" });
+        if (canManageFinancials(caller.role)) return getAllCollectionsWithSummary(input.engineerId);
+        if (!caller.engineerId) throw new TRPCError({ code: "FORBIDDEN", message: "لا تملك صلاحية الاطلاع على التحصيلات" });
+        return getAllCollectionsWithSummary(caller.engineerId);
+      }),
     // ملف عميل مالي كامل
     clientProfile: protectedProcedure.input(z.object({ collectionId: z.number() }))
-      .query(async ({ input }) => getClientFinancialProfile(input.collectionId)),
+      .query(async ({ input, ctx }) => {
+        await requireCollectionFinancialAccess(ctx, input.collectionId, "لا تملك صلاحية الاطلاع على هذا العقد");
+        return getClientFinancialProfile(input.collectionId);
+      }),
     // إضافة عقد جديد
     addContract: adminProcedure.input(z.object({
       clientName: z.string().min(1),
@@ -1443,8 +1501,16 @@ export const appRouter = router({
       receiptNumber: z.string().optional(),
       notes: z.string().optional(),
       promiseId: z.number().optional(),
-    })).mutation(async ({ input }) => {
-      const result = await addPayment({ ...input, amount: String(input.amount), paymentDate: input.paymentDate as unknown as Date });
+    })).mutation(async ({ input, ctx }) => {
+      const { caller, collection, isFinancialManager } = await requireCollectionFinancialAccess(ctx, input.collectionId, "لا تملك صلاحية تسجيل دفعة لهذا العقد");
+      const result = await addPayment({
+        ...input,
+        engineerId: isFinancialManager ? input.engineerId : caller.engineerId!,
+        clientName: collection.clientName,
+        addedBy: isFinancialManager ? "admin" : "engineer",
+        amount: String(input.amount),
+        paymentDate: input.paymentDate as unknown as Date,
+      });
       return { success: true };
     }),
     // إضافة وعد دفع
@@ -1456,21 +1522,46 @@ export const appRouter = router({
       promiseDate: z.string(),
       notes: z.string().optional(),
       isConfirmed: z.boolean().optional().default(false),
-    })).mutation(async ({ input }) => {
-      await addPaymentPromise({ ...input, promiseAmount: String(input.promiseAmount), promiseDate: input.promiseDate as unknown as Date, isConfirmed: input.isConfirmed ? 1 : 0 });
+    })).mutation(async ({ input, ctx }) => {
+      const { caller, collection, isFinancialManager } = await requireCollectionFinancialAccess(ctx, input.collectionId, "لا تملك صلاحية تسجيل وعد دفع لهذا العقد");
+      await addPaymentPromise({
+        ...input,
+        engineerId: isFinancialManager ? input.engineerId : caller.engineerId!,
+        clientName: collection.clientName,
+        promiseAmount: String(input.promiseAmount),
+        promiseDate: input.promiseDate as unknown as Date,
+        isConfirmed: isFinancialManager && input.isConfirmed ? 1 : 0,
+      });
       return { success: true };
     }),
     // تحديث حالة وعد الدفع
     updatePromise: protectedProcedure.input(z.object({
       id: z.number(),
       status: z.enum(["pending", "overdue"]),
-    })).mutation(async ({ input }) => { await updatePromiseStatus(input.id, input.status); return { success: true }; }),
+    })).mutation(async ({ input, ctx }) => {
+      await requirePromiseFinancialAccess(ctx, input.id, "لا تملك صلاحية تحديث وعد الدفع");
+      await updatePromiseStatus(input.id, input.status);
+      return { success: true };
+    }),
     confirmPromise: protectedProcedure.input(z.object({ id: z.number(), isConfirmed: z.boolean() }))
-      .mutation(async ({ input }) => { await setPaymentPromiseConfirmation(input.id, input.isConfirmed); return { success: true }; }),
+      .mutation(async ({ input, ctx }) => {
+        await requireFinancialManager(ctx, "اعتماد وعود الدفع محصور بالإدارة المالية");
+        await getPaymentPromiseAccessById(input.id).then((promise) => {
+          if (!promise) throw new TRPCError({ code: "NOT_FOUND", message: "وعد الدفع غير موجود" });
+        });
+        await setPaymentPromiseConfirmation(input.id, input.isConfirmed);
+        return { success: true };
+      }),
     // قائمة المتابعة اليومية
-    dailyFollowUp: protectedProcedure.query(async () => getDailyFollowUpList()),
+    dailyFollowUp: protectedProcedure.query(async ({ ctx }) => {
+      await requireFinancialManager(ctx, "قائمة المتابعة اليومية محصورة بالإدارة المالية");
+      return getDailyFollowUpList();
+    }),
     // كوميشن المهندسين من التحصيل
-    engineersCommission: protectedProcedure.query(async () => getEngineersCollectionCommission()),
+    engineersCommission: protectedProcedure.query(async ({ ctx }) => {
+      await requireFinancialManager(ctx, "بيانات الكوميشن محصورة بالإدارة المالية");
+      return getEngineersCollectionCommission();
+    }),
     // صرف كوميشن
     markCommissionPaid: adminProcedure.input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => { await markCommissionPaid(input.id); return { success: true }; }),
@@ -1487,7 +1578,10 @@ export const appRouter = router({
       })),
     // إنشاء Contract تلقائي من صفقة WON
     autoCreateContract: protectedProcedure.input(z.object({ dealId: z.number() }))
-      .mutation(async ({ input }) => autoCreateContractFromDeal(input.dealId)),
+      .mutation(async ({ input, ctx }) => {
+        await requireFinancialManager(ctx, "إنشاء العقود المالية محصور بالإدارة");
+        return autoCreateContractFromDeal(input.dealId);
+      }),
     // إضافة دفعة مع Follow-up Task
     addPaymentWithFollowUp: protectedProcedure.input(z.object({
       collectionId: z.number(),
@@ -1502,28 +1596,61 @@ export const appRouter = router({
       nextPaymentDate: z.string().optional(),
       notes: z.string().optional(),
       promiseId: z.number().optional(),
-    })).mutation(async ({ input }) => addPaymentWithFollowUp(input)),
+    })).mutation(async ({ input, ctx }) => {
+      const { caller, collection, isFinancialManager } = await requireCollectionFinancialAccess(ctx, input.collectionId, "لا تملك صلاحية تسجيل دفعة لهذا العقد");
+      return addPaymentWithFollowUp({
+        ...input,
+        engineerId: isFinancialManager ? input.engineerId : caller.engineerId!,
+        clientName: collection.clientName,
+        addedBy: isFinancialManager ? "admin" : "engineer",
+      });
+    }),
     // Commission على المحصّل فقط
     collectionCommission: protectedProcedure.input(z.object({
       engineerId: z.number(), month: z.number(), year: z.number(),
-    })).query(async ({ input }) => getCollectionBasedCommission(input.engineerId, input.month, input.year)),
+    })).query(async ({ input, ctx }) => {
+      const caller = await getCallerFromContext(ctx);
+      if (!caller) throw new TRPCError({ code: "UNAUTHORIZED", message: "يجب تسجيل الدخول أولاً" });
+      if (!canManageFinancials(caller.role) && caller.engineerId !== input.engineerId) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "لا تملك صلاحية الاطلاع على كوميشن مهندس آخر" });
+      }
+      return getCollectionBasedCommission(input.engineerId, input.month, input.year);
+    }),
     // Dashboard التحصيل
     dashboard: protectedProcedure.input(z.object({ month: z.number(), year: z.number() }))
-      .query(async ({ input }) => getCollectionDashboard(input.month, input.year)),
+      .query(async ({ input, ctx }) => {
+        await requireFinancialManager(ctx, "لوحة التحصيل العامة محصورة بالإدارة المالية");
+        return getCollectionDashboard(input.month, input.year);
+      }),
     // Alerts التحصيل
-    alerts: protectedProcedure.query(async () => getCollectionAlerts()),
+    alerts: protectedProcedure.query(async ({ ctx }) => {
+      await requireFinancialManager(ctx, "تنبيهات التحصيل العامة محصورة بالإدارة المالية");
+      return getCollectionAlerts();
+    }),
     // قائمة العقود مع الكومشن
     contractsWithCommission: protectedProcedure.input(z.object({ engineerId: z.number().optional() }))
-      .query(async ({ input }) => getCollectionsWithCommission(input.engineerId)),
+      .query(async ({ input, ctx }) => {
+        await requireFinancialManager(ctx, "بيانات الكوميشن العامة محصورة بالإدارة المالية");
+        return getCollectionsWithCommission(input.engineerId);
+      }),
     periodAnalysis: protectedProcedure.input(z.object({
       startDate: z.string(),
       endDate: z.string(),
-    })).query(async ({ input }) => getCollectionPeriodAnalysis(input.startDate, input.endDate)),
+    })).query(async ({ input, ctx }) => {
+      await requireFinancialManager(ctx, "تحليل التحصيل المالي محصور بالإدارة المالية");
+      return getCollectionPeriodAnalysis(input.startDate, input.endDate);
+    }),
     // السيولة والتوقعات: مصدران منفصلان بصورة صريحة.
     liquidityDashboard: protectedProcedure.input(z.object({ startDate: z.string(), endDate: z.string() }))
-      .query(async ({ input }) => getFinancialLiquidityDashboard(input.startDate, input.endDate)),
+      .query(async ({ input, ctx }) => {
+        await requireFinancialManager(ctx, "السيولة المتاحة محصورة بالإدارة المالية");
+        return getFinancialLiquidityDashboard(input.startDate, input.endDate);
+      }),
     commitments: protectedProcedure.input(z.object({ startDate: z.string(), endDate: z.string() }))
-      .query(async ({ input }) => getFinancialCommitments(input.startDate, input.endDate)),
+      .query(async ({ input, ctx }) => {
+        await requireFinancialManager(ctx, "الالتزامات المالية محصورة بالإدارة المالية");
+        return getFinancialCommitments(input.startDate, input.endDate);
+      }),
     setCashBalance: adminProcedure.input(z.object({
       asOfDate: z.string(), amount: z.number().min(0), notes: z.string().optional(), updatedBy: z.string().optional(),
     })).mutation(async ({ input }) => { await setFinancialCashBalance(input); return { success: true }; }),
@@ -2293,7 +2420,7 @@ export const appRouter = router({
       .input(z.object({
         name: z.string().min(2, 'الاسم يجب أن يكون حرفين على الأقل'),
         username: z.string().min(3, 'اسم المستخدم يجب أن يكون 3 أحرف على الأقل').regex(/^[a-zA-Z0-9._-]+$/, 'اسم المستخدم يجب أن يحتوي على حروف وأرقام فقط'),
-        password: z.string().min(6, 'كلمة المرور يجب أن تكون 6 أحرف على الأقل'),
+        password: z.string().min(MIN_ACCOUNT_PASSWORD_LENGTH, `كلمة المرور يجب أن تكون ${MIN_ACCOUNT_PASSWORD_LENGTH} حرفاً على الأقل`).max(128),
         role: z.enum(['sales_engineer', 'sales_specialist', 'admin_sales', 'manager']),
         engineerId: z.number().optional(),
         email: z.string().email('صيغة البريد الإلكتروني غير صحيحة').optional().or(z.literal('')).transform(v => v || undefined),
@@ -2324,7 +2451,7 @@ export const appRouter = router({
         role: z.enum(['sales_engineer', 'sales_specialist', 'admin_sales', 'manager']).optional(),
         engineerId: z.number().nullable().optional(),
         status: z.enum(['active', 'inactive']).optional(),
-        password: z.string().min(6).optional(),
+        password: z.string().min(MIN_ACCOUNT_PASSWORD_LENGTH).max(128).optional(),
       }))
       .mutation(async ({ input, ctx }) => {
         const caller = await requireUserManagementCaller(ctx, 'ليس لديك صلاحية تعديل المستخدمين');

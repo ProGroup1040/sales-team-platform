@@ -73,13 +73,24 @@ Every completed row must link to code, tests, or an environment verification rec
 - [x] Re-run final repository synchronization, liquidity integration, full test, TypeScript, build, and authenticated Collections visual checks before reconfirming the delivery.
 
 ## Backend hardening — verified implementation program
-- [ ] Build an evidence-backed map of authentication, session lifecycle, authorization helpers, sensitive API procedures, schema ownership fields, and frontend consumers.
-- [ ] Create a source-derived backend authorization matrix for sensitive reads and mutations, classifying role, permission, ownership, and data-scope enforcement.
+- [x] Build an evidence-backed map of authentication, session lifecycle, authorization helpers, sensitive API procedures, schema ownership fields, and frontend consumers.
+- [x] Create a source-derived backend authorization matrix for sensitive reads and mutations, classifying role, permission, ownership, and data-scope enforcement.
 - [ ] Verify and remediate confirmed server-side authorization, privileged user-management, password-reset, and session-lifecycle weaknesses with regression tests.
-- [ ] Prevent Admin Sales from resetting credentials or changing the account state of Manager/Admin-level engineer accounts, while preserving authorized management of standard accounts.
-- [ ] Remove the insecure implicit bulk-account default password path and add regression coverage for privileged password operations.
-- [ ] Correct the OAuth session-cookie duration unit and add a regression test covering the shared cookie contract.
-- [ ] Add a deployment-compatible rate limit for local and app-user login attempts without exposing account-existence information.
+- [x] Prevent Admin Sales from resetting credentials or changing the account state of Manager/Admin-level engineer accounts, while preserving authorized management of standard accounts.
+- [x] Remove the insecure implicit bulk-account default password path and add regression coverage for privileged password operations.
+- [x] Add procedure-level regression coverage proving bulk account creation requires an explicit password, Admin Sales cannot manage Manager/Admin engineer accounts, and privileged managers retain authorized standard-account management.
+- [x] Add procedure-level success coverage for Manager/Admin reset, status, and account creation on a standard engineer target.
+- [x] Add procedure-level success coverage for the Admin role on reset, status, and account creation for a standard engineer target.
+- [x] Correct the OAuth session-cookie duration unit and add a regression test covering the shared cookie contract.
+- [x] Add a deployment-compatible rate limit for local and app-user login attempts without exposing account-existence information.
+- [x] Resolve app-user JWT signing through the application session-secret fallback used by production local authentication.
+- [x] Raise the password policy for newly created or reset app-user accounts while preserving login compatibility for existing accounts.
+- [x] Add server-side session-version invalidation for local and app-user sessions after credential, role, or account-status changes.
 - [ ] Audit database failure behavior, transaction boundaries, numeric financial representations, input validation, and HTML rendering; fix only confirmed defects without changing valid business rules.
+- [x] Make manual engineer-target overrides fail explicitly when the database is unavailable and restrict the mutation to authorized management roles.
+- [x] Add a regression test proving manual target override reports database unavailability rather than silent success.
+- [x] Add procedure-level success coverage for Manager and Admin roles on manual engineer-target override.
+- [x] Add and test compatible production security headers without introducing an unverified CSP that could break the dashboard.
+- [x] Retire or safely route the legacy collection amount-update path so it cannot bypass payment records, cash-ledger movements, promise settlement, and commission triggers.
 - [ ] Add focused unit and integration regression coverage, run the relevant suite and production build, and document residual risks that need an explicit product or infrastructure decision.
-- [ ] Diagnose and repair the missing TasksModule import introduced in the synchronized code so TypeScript and the production build remain valid.
+- [x] Diagnose and repair the missing TasksModule import introduced in the synchronized code so TypeScript and the production build remain valid.

@@ -4,6 +4,7 @@ import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
+import { securityHeaders } from "./securityHeaders";
 import { appRouter } from "../routers";
 import { getAdminCallerFromRequest } from "../routers";
 import { createContext } from "./context";
@@ -48,6 +49,7 @@ async function startServer() {
   const server = createServer(app);
   // Trust proxy headers (needed for HTTPS detection behind reverse proxy)
   app.set("trust proxy", 1);
+  app.use(securityHeaders(process.env.NODE_ENV === "production"));
 
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));

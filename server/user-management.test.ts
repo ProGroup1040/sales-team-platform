@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import bcrypt from 'bcryptjs';
-import { canAssignUserRole, canManageEngineerAccount, canManagePrivilegedRoles, canManageUsers, MIN_ACCOUNT_PASSWORD_LENGTH } from '../shared/authorization';
+import { canAccessAssignedCollection, canAssignUserRole, canManageEngineerAccount, canManageFinancials, canManagePrivilegedRoles, canManageUsers, MIN_ACCOUNT_PASSWORD_LENGTH } from '../shared/authorization';
 
 // ─── Mock DB ──────────────────────────────────────────────────────────────────
 // Test the validation logic and business rules without hitting real DB
@@ -164,6 +164,16 @@ describe('User Management - Authorization Boundaries', () => {
 
   it('uses a non-trivial minimum length for newly issued internal-account passwords', () => {
     expect(MIN_ACCOUNT_PASSWORD_LENGTH).toBe(12);
+  });
+
+  it('limits non-management financial access to the assigned collection only', () => {
+    expect(canManageFinancials('manager')).toBe(true);
+    expect(canManageFinancials('admin_sales')).toBe(true);
+    expect(canManageFinancials('sales_engineer')).toBe(false);
+    expect(canAccessAssignedCollection('sales_engineer', 11, 11)).toBe(true);
+    expect(canAccessAssignedCollection('sales_engineer', 11, 12)).toBe(false);
+    expect(canAccessAssignedCollection('sales_engineer', null, 11)).toBe(false);
+    expect(canAccessAssignedCollection('manager', null, 11)).toBe(true);
   });
 });
 

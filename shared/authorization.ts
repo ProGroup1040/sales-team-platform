@@ -33,6 +33,13 @@ export const USER_MANAGEMENT_ROLES = [
   "admin",
 ] as const satisfies readonly AppRole[];
 
+/** Roles permitted to view organization-wide cash and reconcile financial records. */
+export const FINANCIAL_MANAGEMENT_ROLES = [
+  "manager",
+  "admin_sales",
+  "admin",
+] as const satisfies readonly AppRole[];
+
 /** Only these roles may create or promote an account to manager. */
 export const PRIVILEGED_ROLE_MANAGEMENT_ROLES = [
   "manager",
@@ -45,6 +52,12 @@ export const MIN_ACCOUNT_PASSWORD_LENGTH = 12;
 export function canManageUsers(role: string | null | undefined): boolean {
   return Boolean(
     role && (USER_MANAGEMENT_ROLES as readonly string[]).includes(role)
+  );
+}
+
+export function canManageFinancials(role: string | null | undefined): boolean {
+  return Boolean(
+    role && (FINANCIAL_MANAGEMENT_ROLES as readonly string[]).includes(role)
   );
 }
 
@@ -91,6 +104,23 @@ export function canManageEngineerAccount(
     return canManagePrivilegedRoles(actorRole);
   }
   return true;
+}
+
+/**
+ * A non-manager can only access a collection explicitly assigned to their own
+ * engineer identity. A null or missing identity always fails closed.
+ */
+export function canAccessAssignedCollection(
+  actorRole: string | null | undefined,
+  actorEngineerId: number | null | undefined,
+  collectionEngineerId: number | null | undefined,
+): boolean {
+  if (canManageFinancials(actorRole)) return true;
+  return Boolean(
+    Number.isInteger(actorEngineerId) &&
+      actorEngineerId! > 0 &&
+      actorEngineerId === collectionEngineerId,
+  );
 }
 
 export const SYSTEM_MODULES = [

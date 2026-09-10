@@ -208,7 +208,7 @@ function CreateUserForm({ onSuccess }: { onSuccess: () => void }) {
         <div className="relative">
           <Input
             type={showPassword ? "text" : "password"}
-            placeholder="6 أحرف على الأقل"
+            placeholder="12 حرفاً على الأقل"
             value={form.password}
             onChange={(e) => handleChange("password", e.target.value)}
             onBlur={() => handleBlur("password")}
@@ -236,7 +236,7 @@ function CreateUserForm({ onSuccess }: { onSuccess: () => void }) {
               ))}
             </div>
             <span className="text-xs text-muted-foreground">
-              {form.password.length >= 10 ? "قوية" : form.password.length >= 6 ? "متوسطة" : "ضعيفة"}
+              {form.password.length >= 12 ? "قوية" : "ضعيفة"}
             </span>
           </div>
         )}
@@ -445,7 +445,7 @@ function EditUserForm({ user, onSuccess }: { user: any; onSuccess: () => void })
     e.preventDefault();
     const newErrors: Record<string, string> = {};
     if (!form.name.trim()) newErrors.name = "الاسم مطلوب";
-    if (form.password && form.password.length < 6) newErrors.password = "كلمة المرور يجب أن تكون 6 أحرف على الأقل";
+    if (form.password && form.password.length < 12) newErrors.password = "كلمة المرور يجب أن تكون 12 حرفاً على الأقل";
     setErrors(newErrors);
     if (Object.values(newErrors).some(Boolean)) return;
 
@@ -498,7 +498,7 @@ function EditUserForm({ user, onSuccess }: { user: any; onSuccess: () => void })
         <div className="relative">
           <Input
             type={showPassword ? "text" : "password"}
-            placeholder="6 أحرف على الأقل"
+            placeholder="12 حرفاً على الأقل"
             value={form.password}
             onChange={(e) => { setForm(p => ({ ...p, password: e.target.value })); setErrors(p => ({ ...p, password: "" })); }}
             dir="ltr"
