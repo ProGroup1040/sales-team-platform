@@ -87,11 +87,11 @@ Every completed row must link to code, tests, or an environment verification rec
 - [x] Raise the password policy for newly created or reset app-user accounts while preserving login compatibility for existing accounts.
 - [x] Add server-side session-version invalidation for local and app-user sessions after credential, role, or account-status changes.
 - [ ] Audit database failure behavior, transaction boundaries, numeric financial representations, input validation, and HTML rendering; fix only confirmed defects without changing valid business rules.
-- [ ] Add transaction failure, duplicate-request, retry, and concurrency coverage for critical financial and target-write workflows.
-- [ ] Add and validate a unique engineer/month/year target constraint so concurrent manual overrides cannot create duplicate target records.
+- [x] Add transaction failure, duplicate-request, retry, and concurrency coverage for critical financial and target-write workflows.
+- [x] Add and validate a unique engineer/month/year target constraint so concurrent manual overrides cannot create duplicate target records.
 - [x] Document a staged numeric-money remediation plan for remaining non-reconciled `parseFloat` financial and KPI paths, separating display analytics from ledger values.
 - [x] Audit HTML rendering and exported-report paths for unsafe user-controlled HTML, then add targeted regression coverage for any confirmed sink.
-- [ ] Add database-unavailable regression coverage for additional critical mutation paths beyond manual target override.
+- [x] Add database-unavailable regression coverage for additional critical mutation paths beyond manual target override.
 - [x] Make payment-promise creation and status updates fail explicitly when persistence is unavailable, with regression coverage.
 - [x] Make manual engineer-target overrides fail explicitly when the database is unavailable and restrict the mutation to authorized management roles.
 - [x] Add a regression test proving manual target override reports database unavailability rather than silent success.

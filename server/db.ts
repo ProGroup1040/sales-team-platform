@@ -11788,13 +11788,6 @@ export async function manualOverrideEngineerTarget(data: {
 }) {
   const db = await requireDb();
 
-  const existing = await db.select().from(engineerTargets)
-    .where(and(
-      eq(engineerTargets.engineerId, data.engineerId),
-      eq(engineerTargets.year, data.year),
-      eq(engineerTargets.month, data.month)
-    )).limit(1);
-
   const updateData: Record<string, any> = { isAutoDistributed: 0 }; // Manual Override flag
   if (data.targetAmount    !== undefined) updateData.targetAmount    = data.targetAmount.toString();
   if (data.targetDeals     !== undefined) updateData.targetDeals     = data.targetDeals;
@@ -11808,16 +11801,12 @@ export async function manualOverrideEngineerTarget(data: {
   if (data.targetClosings  !== undefined) updateData.targetClosings  = data.targetClosings;
   if (data.notes           !== undefined) updateData.notes           = data.notes;
 
-  if (existing.length > 0) {
-    await db.update(engineerTargets).set(updateData).where(eq(engineerTargets.id, existing[0].id));
-  } else {
-    await db.insert(engineerTargets).values({
-      engineerId: data.engineerId, year: data.year, month: data.month,
-      targetAmount: (data.targetAmount ?? 0).toString(),
-      manpower: 1,
-      ...updateData,
-    });
-  }
+  await db.insert(engineerTargets).values({
+    engineerId: data.engineerId, year: data.year, month: data.month,
+    targetAmount: (data.targetAmount ?? 0).toString(),
+    manpower: 1,
+    ...updateData,
+  }).onDuplicateKeyUpdate({ set: updateData });
 }
 
 /** جلب هدف مهندس واحد مع كل التفاصيل */

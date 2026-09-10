@@ -442,6 +442,13 @@
       "when": 1789034244024,
       "tag": "0062_volatile_human_torch",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "5",
+      "when": 1789036505389,
+      "tag": "0063_dark_iron_lad",
+      "breakpoints": true
     }
   ]
 }

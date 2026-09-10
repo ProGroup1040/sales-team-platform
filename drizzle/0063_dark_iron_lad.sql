@@ -1,0 +1,1 @@
+ALTER TABLE `engineer_targets` ADD CONSTRAINT `engineer_targets_engineer_month_year_unique` UNIQUE(`engineerId`,`year`,`month`);
