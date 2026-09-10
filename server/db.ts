@@ -3133,7 +3133,9 @@ export async function softDeleteTask(id: number, reason: string, reasonCustom: s
     deleteReasonCustom: reasonCustom,
     deletedBy: performedBy,
   }).where(eq(dailyTasks.id, id));
-  const affectedRows = Number((result as { affectedRows?: number }).affectedRows ?? 0);
+  const affectedRows = Number(
+    (result as unknown as [{ affectedRows?: number }])[0]?.affectedRows ?? 0,
+  );
   if (affectedRows !== 1) throw new Error("Task deletion failed");
   await logAuditAction({ entityType: 'task', entityId: id, entityName: task.title, action: 'soft_delete', reason: reason as any, reasonCustom, performedBy });
   return { success: true, taskId: id };
