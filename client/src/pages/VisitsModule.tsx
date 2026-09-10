@@ -369,7 +369,7 @@ export default function VisitsModule() {
     if (activeTab === 'financial') return 'collection' as const;
     return 'booking' as const;
   }, [activeTab]);
-  const { data: visitsData } = trpc.visits.list.useQuery({
+  const { data: visitsData, isLoading: visitsLoading, isError: visitsError, refetch: refetchVisits } = trpc.visits.list.useQuery({
     limit: 100,
     status: filterStatus !== 'all' ? filterStatus : undefined,
     year: YEAR,
@@ -881,7 +881,18 @@ export default function VisitsModule() {
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
-            {activeVisits.length > 0 ? activeVisits.map((visit: any) => (
+            {visitsLoading ? (
+              <div className="text-center py-10 text-muted-foreground">
+                <RefreshCw className="w-8 h-8 mx-auto mb-2 opacity-50 animate-spin" />
+                <p className="text-sm">جاري تحميل معاينات الشهر...</p>
+              </div>
+            ) : visitsError ? (
+              <div className="text-center py-10 text-red-600">
+                <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-70" />
+                <p className="text-sm mb-3">تعذر تحميل قائمة المعاينات</p>
+                <Button size="sm" variant="outline" onClick={() => refetchVisits()}>إعادة المحاولة</Button>
+              </div>
+            ) : activeVisits.length > 0 ? activeVisits.map((visit: any) => (
               <div key={visit.id} className="flex items-start gap-3 p-3 rounded-xl border bg-card hover:bg-muted/30 transition-colors">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">

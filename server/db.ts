@@ -544,7 +544,14 @@ export async function getVisitsList(
   if (engineerId) conditions.push(eq(visits.engineerId, engineerId));
   if (year && month) {
     if (filterType === 'booking') {
-      conditions.push(eq(visits.bookingYear, year), eq(visits.bookingMonth, month));
+      const startDate = new Date(year, month - 1, 1);
+      const endDate = new Date(year, month, 0, 23, 59, 59);
+      // New rows store bookingMonth/bookingYear. The scheduledAt fallback keeps
+      // older rows visible until their derived fields are backfilled.
+      conditions.push(or(
+        and(eq(visits.bookingYear, year), eq(visits.bookingMonth, month)),
+        between(visits.scheduledAt, startDate, endDate),
+      ));
     } else if (filterType === 'execution') {
       conditions.push(eq(visits.executionYear, year), eq(visits.executionMonth, month));
     } else if (filterType === 'upload') {
@@ -564,10 +571,30 @@ export async function getVisitsList(
 export async function createVisit(data: {
   engineerId: number; clientName: string; clientPhone?: string;
   address?: string; scheduledAt: Date; leadId?: number; notes?: string;
+  assignedDelay?: number; confirmationStatus?: string; confirmationDelayHours?: number;
+  feeAmount?: number; feeCollected?: boolean;
 }) {
   const db = await getDb();
-  if (!db) return;
-  await db.insert(visits).values({ ...data, status: 'scheduled' });
+  if (!db) throw new Error('Database not available');
+  const scheduledAt = new Date(data.scheduledAt);
+  if (Number.isNaN(scheduledAt.getTime())) throw new Error('Invalid scheduledAt');
+  await db.insert(visits).values({
+    engineerId: data.engineerId,
+    clientName: data.clientName,
+    clientPhone: data.clientPhone,
+    address: data.address,
+    scheduledAt,
+    leadId: data.leadId,
+    notes: data.notes,
+    assignedDelay: data.assignedDelay ?? 0,
+    confirmationStatus: (data.confirmationStatus as any) ?? 'not_confirmed',
+    confirmationDelayHours: data.confirmationDelayHours ?? 0,
+    feeAmount: data.feeAmount !== undefined ? String(data.feeAmount) : '0',
+    feeCollected: data.feeCollected ? 1 : 0,
+    bookingMonth: scheduledAt.getMonth() + 1,
+    bookingYear: scheduledAt.getFullYear(),
+    status: 'scheduled',
+  });
 }
 
 export async function updateVisitStatus(id: number, status: string, quality?: string, delayMinutes?: number, notes?: string) {
@@ -2808,7 +2835,15 @@ export async function getVisitsDebt(year?: number, month?: number) {
     eq(visits.feeCollected, 0),
     sql`${visits.feeAmount} > 0`,
   ];
-  if (year && month) conditions.push(eq(visits.executionYear, year), eq(visits.executionMonth, month));
+  if (year && month) {
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0, 23, 59, 59);
+    const periodCondition = or(
+      and(eq(visits.executionYear, year), eq(visits.executionMonth, month)),
+      between(visits.scheduledAt, startDate, endDate),
+    );
+    if (periodCondition) conditions.push(periodCondition);
+  }
   const debtVisits = await db.select().from(visits).where(
     and(...conditions)
   ).orderBy(desc(visits.scheduledAt));
@@ -2820,8 +2855,14 @@ export async function getVisitsAlerts(year?: number, month?: number) {
   const db = await getDb();
   if (!db) return { notConfirmed: [], notUploaded: [], debt: [] };
   const activeVisits = await db.select().from(visits).where(and(eq(visits.isDeleted, 0), ne(visits.status, 'cancelled')));
-  const bookingVisits = year && month ? activeVisits.filter((visit) => visit.bookingYear === year && visit.bookingMonth === month) : activeVisits;
-  const executionVisits = year && month ? activeVisits.filter((visit) => visit.executionYear === year && visit.executionMonth === month) : activeVisits;
+  const bookingVisits = year && month ? activeVisits.filter((visit) =>
+    (visit.bookingYear === year && visit.bookingMonth === month) ||
+    (visit.bookingYear == null && visit.scheduledAt.getFullYear() === year && visit.scheduledAt.getMonth() + 1 === month)
+  ) : activeVisits;
+  const executionVisits = year && month ? activeVisits.filter((visit) =>
+    (visit.executionYear === year && visit.executionMonth === month) ||
+    (visit.executionYear == null && visit.scheduledAt.getFullYear() === year && visit.scheduledAt.getMonth() + 1 === month)
+  ) : activeVisits;
   const notConfirmed = bookingVisits.filter(v =>
     v.status === 'completed' && v.confirmationStatus === 'not_confirmed'
   );
@@ -2987,7 +3028,13 @@ export async function updateVisitWithAdminTracking(id: number, data: {
   const db = await getDb();
   if (!db) return;
   const updateData: any = { lastUpdatedByAdminAt: new Date() };
-  if (data.scheduledAt) updateData.scheduledAt = data.scheduledAt;
+  if (data.scheduledAt) {
+    const scheduledAt = new Date(data.scheduledAt);
+    if (Number.isNaN(scheduledAt.getTime())) throw new Error('Invalid scheduledAt');
+    updateData.scheduledAt = scheduledAt;
+    updateData.bookingMonth = scheduledAt.getMonth() + 1;
+    updateData.bookingYear = scheduledAt.getFullYear();
+  }
   if (data.status) {
     updateData.status = data.status;
     if (['completed', 'delayed'].includes(data.status)) {
