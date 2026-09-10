@@ -444,6 +444,28 @@ async function assertProjectTimelineEditAccess(ctx: any, projectId?: number) {
   }
   return caller;
 }
+/**
+ * Accept the Date produced by the normal superjson path and an ISO string as
+ * a compatibility fallback. The fallback is intentional: if a deployment
+ * ever misses the tRPC transformer, a valid datetime-local value must not be
+ * converted to null before validation. Empty and invalid values still fail
+ * validation because the final schema remains z.date().
+ */
+export const visitScheduledAtSchema = z.preprocess((value) => {
+  if (value instanceof Date) return value;
+  if (typeof value === "string" && value.trim() !== "") return new Date(value);
+  return value;
+}, z.date());
+
+export const visitCreateInputSchema = z.object({
+  engineerId: z.number(), clientName: z.string().min(1), clientPhone: z.string().optional(),
+  address: z.string().optional(), scheduledAt: visitScheduledAtSchema, leadId: z.number().optional(), notes: z.string().optional(),
+  assignedDelay: z.number().optional(),
+  confirmationStatus: z.enum(['confirmed_same_day', 'confirmed_late', 'not_confirmed']).optional(),
+  confirmationDelayHours: z.number().optional(),
+  feeAmount: z.number().optional(), feeCollected: z.boolean().optional(),
+});
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -738,14 +760,8 @@ export const appRouter = router({
       input.filterType ?? 'booking',
       input.engineerId
     )),
-    create: protectedProcedure.input(z.object({
-      engineerId: z.number(), clientName: z.string().min(1), clientPhone: z.string().optional(),
-      address: z.string().optional(), scheduledAt: z.date(), leadId: z.number().optional(), notes: z.string().optional(),
-      assignedDelay: z.number().optional(),
-      confirmationStatus: z.enum(['confirmed_same_day', 'confirmed_late', 'not_confirmed']).optional(),
-      confirmationDelayHours: z.number().optional(),
-      feeAmount: z.number().optional(), feeCollected: z.boolean().optional(),
-    })).mutation(async ({ input }) => { await createVisit(input); return { success: true }; }),
+    create: protectedProcedure.input(visitCreateInputSchema)
+      .mutation(async ({ input }) => { await createVisit(input); return { success: true }; }),
     updateStatus: protectedProcedure.input(z.object({
       id: z.number(),
       status: z.enum(['scheduled', 'completed', 'delayed', 'cancelled', 'rescheduled']).optional(),
