@@ -38,6 +38,12 @@ The Express application now sends `X-Content-Type-Options: nosniff`, `X-Frame-Op
 
 The source audit found one `dangerouslySetInnerHTML` use in the shared chart component. It produces a local `<style>` block from developer-defined chart configuration and theme values; it does not render persisted customer, engineer, note, or report data. No other raw DOM insertion sink was found. PDF export captures the existing React report DOM through `html2canvas`; it does not parse an HTML string. No confirmed user-controlled HTML sink required a sanitization change in this phase.
 
+## Data integrity, inputs, and failure handling audit
+
+The sensitive tRPC routes audited in this phase use explicit Zod object schemas; no `z.any()` or `z.unknown()` input was found in `server/routers.ts`. The cash ledger, payment settlement, confirmed incoming flows, commitment settlement, and collection totals use minor-unit helpers (`toCents`, `fromCents`, and `sumCents`) at their calculation boundaries. Remaining decimal conversions in legacy KPI, pricing, commission, and report paths are documented in `docs/numeric-money-remediation-plan.md` and were not silently changed because their rounding policy needs finance-owner approval.
+
+Critical financial writes are transactional: a payment creates its ledger movement, settles a matching promise, updates the collection, and evaluates commissions within one transaction; commitment settlement creates one outflow and closes the reservation in one transaction. The financial integration suite covers duplicate settlement and two concurrent commitment-settlement requests. Manual target writes use a unique `(engineerId, year, month)` constraint and an atomic upsert, so concurrent overrides retain one record. Critical promise and manual-target writes now fail visibly when the database is unavailable rather than reporting success.
+
 ## Financial integrity boundaries
 
 | Source | Classification | Treatment in current cash calculation |

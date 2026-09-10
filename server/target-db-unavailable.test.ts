@@ -38,4 +38,29 @@ describe("manual target override persistence", () => {
     })).rejects.toThrow("Database unavailable");
     await expect(updatePromiseStatus(77, "overdue")).rejects.toThrow("Database unavailable");
   });
+
+  it("fails explicitly for every cash, commitment, and collection write when persistence is unavailable", async () => {
+    delete process.env.DATABASE_URL;
+    vi.resetModules();
+    const {
+      addFinancialCommitment,
+      addPayment,
+      cancelFinancialCommitment,
+      setFinancialCashBalance,
+      settleFinancialCommitment,
+    } = await import("./db");
+
+    await expect(setFinancialCashBalance({ asOfDate: "2026-09-01", amount: 1_000 })).rejects.toThrow("Database unavailable");
+    await expect(addFinancialCommitment({ description: "التزام اختبار", amount: 500, dueDate: "2026-09-02" })).rejects.toThrow("Database unavailable");
+    await expect(settleFinancialCommitment(77)).rejects.toThrow("Database unavailable");
+    await expect(cancelFinancialCommitment(77)).rejects.toThrow("Database unavailable");
+    await expect(addPayment({
+      collectionId: 77,
+      clientName: "عميل اختبار",
+      amount: "500.00",
+      paymentDate: new Date("2026-09-01T00:00:00Z"),
+      paymentType: "installment",
+      addedBy: "test",
+    })).rejects.toThrow("Database unavailable");
+  });
 });

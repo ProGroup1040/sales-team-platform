@@ -87,6 +87,10 @@ Every completed row must link to code, tests, or an environment verification rec
 - [x] Raise the password policy for newly created or reset app-user accounts while preserving login compatibility for existing accounts.
 - [x] Add server-side session-version invalidation for local and app-user sessions after credential, role, or account-status changes.
 - [ ] Audit database failure behavior, transaction boundaries, numeric financial representations, input validation, and HTML rendering; fix only confirmed defects without changing valid business rules.
+- [ ] Expand database-unavailable tests to every critical financial write operation in the current cash, commitment, and collection workflow.
+- [ ] Expand transaction failure, duplicate-request, retry, and concurrency coverage across the remaining critical payment and target-write paths.
+- [ ] Inventory legacy numeric conversion paths, obtain the required rounding-policy decision, and remediate decision-critical paths with regression tests.
+- [ ] Add explicit schema-validation coverage for sensitive route inputs in the audit scope.
 - [x] Add transaction failure, duplicate-request, retry, and concurrency coverage for critical financial and target-write workflows.
 - [x] Add and validate a unique engineer/month/year target constraint so concurrent manual overrides cannot create duplicate target records.
 - [x] Document a staged numeric-money remediation plan for remaining non-reconciled `parseFloat` financial and KPI paths, separating display analytics from ledger values.
