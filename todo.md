@@ -71,3 +71,12 @@ Every completed row must link to code, tests, or an environment verification rec
 - [x] Re-run the liquidity integration test, complete project test suite, TypeScript check, production build, and visual layout verification before final commit.
 - [x] Confirm the final Collections layout keeps Available Cash visually primary and Forecast independent, with no cross-source double counting in the verified workflow.
 - [x] Re-run final repository synchronization, liquidity integration, full test, TypeScript, build, and authenticated Collections visual checks before reconfirming the delivery.
+
+## Backend hardening — verified implementation program
+- [ ] Build an evidence-backed map of authentication, session lifecycle, authorization helpers, sensitive API procedures, schema ownership fields, and frontend consumers.
+- [ ] Create a source-derived backend authorization matrix for sensitive reads and mutations, classifying role, permission, ownership, and data-scope enforcement.
+- [ ] Verify and remediate confirmed server-side authorization, privileged user-management, password-reset, and session-lifecycle weaknesses with regression tests.
+- [ ] Prevent Admin Sales from resetting credentials or changing the account state of Manager/Admin-level engineer accounts, while preserving authorized management of standard accounts.
+- [ ] Remove the insecure implicit bulk-account default password path and add regression coverage for privileged password operations.
+- [ ] Audit database failure behavior, transaction boundaries, numeric financial representations, input validation, and HTML rendering; fix only confirmed defects without changing valid business rules.
+- [ ] Add focused unit and integration regression coverage, run the relevant suite and production build, and document residual risks that need an explicit product or infrastructure decision.
