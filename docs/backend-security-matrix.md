@@ -34,6 +34,10 @@ Both local-engineer and app-user tokens now contain a positive **session version
 
 The Express application now sends `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, a strict referrer policy, and a restrictive camera/geolocation/microphone policy on all responses. Production responses additionally send HSTS. A Content Security Policy was deliberately deferred until every dashboard asset and integration is inventoried; adding an untested CSP would create an avoidable availability risk.
 
+## HTML rendering audit
+
+The source audit found one `dangerouslySetInnerHTML` use in the shared chart component. It produces a local `<style>` block from developer-defined chart configuration and theme values; it does not render persisted customer, engineer, note, or report data. No other raw DOM insertion sink was found. PDF export captures the existing React report DOM through `html2canvas`; it does not parse an HTML string. No confirmed user-controlled HTML sink required a sanitization change in this phase.
+
 ## Financial integrity boundaries
 
 | Source | Classification | Treatment in current cash calculation |

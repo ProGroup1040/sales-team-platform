@@ -21,4 +21,21 @@ describe("manual target override persistence", () => {
       targetAmount: 100_000,
     })).rejects.toThrow("Database unavailable");
   });
+
+  it("fails explicitly for payment-promise writes when persistence is unavailable", async () => {
+    delete process.env.DATABASE_URL;
+    vi.resetModules();
+    const { addPaymentPromise, updatePromiseStatus } = await import("./db");
+
+    await expect(addPaymentPromise({
+      collectionId: 77,
+      engineerId: null,
+      clientName: "عميل اختبار",
+      promiseAmount: "1000.00",
+      promiseDate: new Date("2026-09-01T00:00:00Z"),
+      status: "pending",
+      isConfirmed: 0,
+    })).rejects.toThrow("Database unavailable");
+    await expect(updatePromiseStatus(77, "overdue")).rejects.toThrow("Database unavailable");
+  });
 });

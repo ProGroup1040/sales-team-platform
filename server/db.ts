@@ -1884,16 +1884,14 @@ async function checkAndCreateCommissionStage(collectionId: number, totalPaid: nu
 
 /** إضافة وعد دفع */
 export async function addPaymentPromise(data: InsertPaymentPromise) {
-  const db = await getDb();
-  if (!db) return null;
+  const db = await requireDb();
   const [result] = await db.insert(paymentPromises).values(data);
   return result;
 }
 
 /** تحديث حالة متابعة وعد الدفع. لا يجوز تحويله إلى مدفوع دون إنشاء دفعة فعلية. */
 export async function updatePromiseStatus(id: number, status: "pending" | "overdue") {
-  const db = await getDb();
-  if (!db) return;
+  const db = await requireDb();
   await db.update(paymentPromises).set({ status }).where(eq(paymentPromises.id, id));
 }
 

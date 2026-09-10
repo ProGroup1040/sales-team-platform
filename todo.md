@@ -75,7 +75,7 @@ Every completed row must link to code, tests, or an environment verification rec
 ## Backend hardening — verified implementation program
 - [x] Build an evidence-backed map of authentication, session lifecycle, authorization helpers, sensitive API procedures, schema ownership fields, and frontend consumers.
 - [x] Create a source-derived backend authorization matrix for sensitive reads and mutations, classifying role, permission, ownership, and data-scope enforcement.
-- [ ] Verify and remediate confirmed server-side authorization, privileged user-management, password-reset, and session-lifecycle weaknesses with regression tests.
+- [x] Verify and remediate confirmed server-side authorization, privileged user-management, password-reset, and session-lifecycle weaknesses with regression tests.
 - [x] Prevent Admin Sales from resetting credentials or changing the account state of Manager/Admin-level engineer accounts, while preserving authorized management of standard accounts.
 - [x] Remove the insecure implicit bulk-account default password path and add regression coverage for privileged password operations.
 - [x] Add procedure-level regression coverage proving bulk account creation requires an explicit password, Admin Sales cannot manage Manager/Admin engineer accounts, and privileged managers retain authorized standard-account management.
@@ -87,10 +87,16 @@ Every completed row must link to code, tests, or an environment verification rec
 - [x] Raise the password policy for newly created or reset app-user accounts while preserving login compatibility for existing accounts.
 - [x] Add server-side session-version invalidation for local and app-user sessions after credential, role, or account-status changes.
 - [ ] Audit database failure behavior, transaction boundaries, numeric financial representations, input validation, and HTML rendering; fix only confirmed defects without changing valid business rules.
+- [ ] Add transaction failure, duplicate-request, retry, and concurrency coverage for critical financial and target-write workflows.
+- [ ] Add and validate a unique engineer/month/year target constraint so concurrent manual overrides cannot create duplicate target records.
+- [x] Document a staged numeric-money remediation plan for remaining non-reconciled `parseFloat` financial and KPI paths, separating display analytics from ledger values.
+- [x] Audit HTML rendering and exported-report paths for unsafe user-controlled HTML, then add targeted regression coverage for any confirmed sink.
+- [ ] Add database-unavailable regression coverage for additional critical mutation paths beyond manual target override.
+- [x] Make payment-promise creation and status updates fail explicitly when persistence is unavailable, with regression coverage.
 - [x] Make manual engineer-target overrides fail explicitly when the database is unavailable and restrict the mutation to authorized management roles.
 - [x] Add a regression test proving manual target override reports database unavailability rather than silent success.
 - [x] Add procedure-level success coverage for Manager and Admin roles on manual engineer-target override.
 - [x] Add and test compatible production security headers without introducing an unverified CSP that could break the dashboard.
 - [x] Retire or safely route the legacy collection amount-update path so it cannot bypass payment records, cash-ledger movements, promise settlement, and commission triggers.
-- [ ] Add focused unit and integration regression coverage, run the relevant suite and production build, and document residual risks that need an explicit product or infrastructure decision.
+- [x] Add focused unit and integration regression coverage, run the relevant suite and production build, and document residual risks that need an explicit product or infrastructure decision.
 - [x] Diagnose and repair the missing TasksModule import introduced in the synchronized code so TypeScript and the production build remain valid.

@@ -25,6 +25,7 @@ describe("Financial liquidity database workflow", () => {
   let promiseId = 0;
   let paymentId = 0;
   let commitmentId = 0;
+  let concurrentCommitmentId = 0;
 
   beforeAll(async () => {
     const db = await getDb();
@@ -44,9 +45,11 @@ describe("Financial liquidity database workflow", () => {
     if (!db) return;
     if (paymentId) await db.delete(financialCashMovements).where(and(eq(financialCashMovements.sourceType, "payment"), eq(financialCashMovements.sourceId, paymentId)));
     if (commitmentId) await db.delete(financialCashMovements).where(and(eq(financialCashMovements.sourceType, "commitment"), eq(financialCashMovements.sourceId, commitmentId)));
+    if (concurrentCommitmentId) await db.delete(financialCashMovements).where(and(eq(financialCashMovements.sourceType, "commitment"), eq(financialCashMovements.sourceId, concurrentCommitmentId)));
     if (paymentId) await db.delete(payments).where(eq(payments.id, paymentId));
     if (promiseId) await db.delete(paymentPromises).where(eq(paymentPromises.id, promiseId));
     if (commitmentId) await db.delete(financialCommitments).where(eq(financialCommitments.id, commitmentId));
+    if (concurrentCommitmentId) await db.delete(financialCommitments).where(eq(financialCommitments.id, concurrentCommitmentId));
     await db.delete(financialCashBalances).where(eq(financialCashBalances.asOfDate, new Date(`${periodStart}T00:00:00`)));
     if (collectionId) await db.delete(collections).where(eq(collections.id, collectionId));
   });
@@ -89,5 +92,23 @@ describe("Financial liquidity database workflow", () => {
     expect(movements).toHaveLength(1);
     expect(movements[0].direction).toBe("outflow");
     await expect(settleFinancialCommitment(commitmentId, "integration-test")).rejects.toThrow("Commitment is not available for settlement");
+  }, 15_000);
+
+  it("يمنع طلبا سداد متزامنين من إنشاء حركتين خارجتين لنفس الالتزام", async () => {
+    concurrentCommitmentId = await addFinancialCommitment({
+      description: `${tag}-concurrent`, amount: 125, dueDate: periodEnd, notes: tag,
+    });
+
+    const results = await Promise.allSettled([
+      settleFinancialCommitment(concurrentCommitmentId, "concurrency-test-a"),
+      settleFinancialCommitment(concurrentCommitmentId, "concurrency-test-b"),
+    ]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+
+    const db = await getDb();
+    const movements = await db!.select().from(financialCashMovements)
+      .where(and(eq(financialCashMovements.sourceType, "commitment"), eq(financialCashMovements.sourceId, concurrentCommitmentId)));
+    expect(movements).toHaveLength(1);
   }, 15_000);
 });

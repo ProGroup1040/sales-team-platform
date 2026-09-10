@@ -325,7 +325,9 @@ export const engineerTargets = mysqlTable("engineer_targets", {
   targetLeads: int("targetLeads").default(0),          // هدف عدد العملاء المحتملين
   notes: text("notes"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => [
+  uniqueIndex("engineer_targets_engineer_month_year_unique").on(table.engineerId, table.year, table.month),
+]);
 export type EngineerTarget = typeof engineerTargets.$inferSelect;
 
 // ─── Discount Tiers (شرائح الخصم) ────────────────────────────────────────────
