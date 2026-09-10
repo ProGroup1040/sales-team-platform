@@ -163,7 +163,10 @@ export async function getDailyTasksStats(dateStr: string) {
   const db = await getDb();
   if (!db) return { planned: 0, completed: 0, delayed: 0, not_done: 0, client_delay: 0, critical: 0, byEngineer: [], topEngineers: [], bottomEngineers: [], alerts: [] };
   const taskDateObj = new Date(dateStr + 'T00:00:00');
-  const allTasks = await db.select().from(dailyTasks).where(eq(dailyTasks.taskDate, taskDateObj));
+  const allTasks = await db.select().from(dailyTasks).where(and(
+    eq(dailyTasks.taskDate, taskDateObj),
+    eq(dailyTasks.isDeleted, 0),
+  ));
 
   const planned = allTasks.filter(t => t.status === 'planned').length;
   const completed = allTasks.filter(t => t.status === 'completed').length;
@@ -224,7 +227,10 @@ export async function getDailyTasksStats(dateStr: string) {
 export async function getTasksList(dateStr: string, engineerId?: number) {
   const db = await getDb();
   if (!db) return [];
-  const conditions = [eq(dailyTasks.taskDate, new Date(dateStr + 'T00:00:00'))];
+  const conditions = [
+    eq(dailyTasks.taskDate, new Date(dateStr + 'T00:00:00')),
+    eq(dailyTasks.isDeleted, 0),
+  ];
   if (engineerId) conditions.push(eq(dailyTasks.engineerId, engineerId));
   return db.select().from(dailyTasks).where(and(...conditions)).orderBy(dailyTasks.priority);
 }
@@ -232,7 +238,10 @@ export async function getTasksList(dateStr: string, engineerId?: number) {
 export async function getCriticalTasks() {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(dailyTasks).where(eq(dailyTasks.isCritical, 1)).orderBy(desc(dailyTasks.createdAt)).limit(50);
+  return db.select().from(dailyTasks).where(and(
+    eq(dailyTasks.isCritical, 1),
+    eq(dailyTasks.isDeleted, 0),
+  )).orderBy(desc(dailyTasks.createdAt)).limit(50);
 }
 
 export async function createTask(data: {
