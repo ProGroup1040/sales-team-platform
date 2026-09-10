@@ -7,6 +7,7 @@ INNER JOIN `engineer_targets` t2
  AND t1.`year` = t2.`year`
  AND t1.`month` = t2.`month`
  AND t1.`id` < t2.`id`;
+--> statement-breakpoint
 
 ALTER TABLE `engineer_targets`
   ADD CONSTRAINT `engineer_targets_engineer_month_year_unique`
