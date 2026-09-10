@@ -1687,7 +1687,18 @@ export default function TasksModule() {
   const engineers = engineersQ.data ?? [];
   const criticalTasks = criticalQ.data ?? [];
   const deleteMut = trpc.softDelete.task.useMutation({
-    onSuccess: () => { utils.tasks.stats.invalidate(); utils.tasks.list.invalidate(); filteredQ.refetch(); toast.success("تم حذف المهمة"); setDeleteTaskTarget(null); },
+    onSuccess: async () => {
+      await Promise.all([
+        utils.tasks.stats.invalidate(),
+        utils.tasks.list.invalidate(),
+        utils.tasks.filtered.invalidate(),
+        utils.tasks.critical.invalidate(),
+        listQ.refetch(),
+        filteredQ.refetch(),
+      ]);
+      toast.success("تم حذف المهمة");
+      setDeleteTaskTarget(null);
+    },
     onError: () => toast.error("حدث خطأ"),
   });
   const autoCreateDealMut = trpc.closing.autoCreateFromTask.useMutation({

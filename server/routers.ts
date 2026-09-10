@@ -1716,15 +1716,14 @@ export const appRouter = router({
         await softDeleteEngineer(input.id, input.reason, input.reasonCustom, performedBy);
         return { success: true };
       }),
-    task: protectedProcedure
+    task: adminProcedure
       .input(z.object({ id: z.number(), reason: z.enum(['data_entry_error','duplicate','client_cancelled','other']), reasonCustom: z.string().optional() }))
       .mutation(async ({ input, ctx }) => {
         const req = (ctx as any).req;
         const session = await (await import('./localAuth')).getLocalSessionFromRequest(req);
         const performedBy = session?.username ?? ctx.user?.name ?? 'user';
         if (!session && !ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
-        await softDeleteTask(input.id, input.reason, input.reasonCustom, performedBy);
-        return { success: true };
+        return await softDeleteTask(input.id, input.reason, input.reasonCustom, performedBy);
       }),
     lead: protectedProcedure
       .input(z.object({ id: z.number(), reason: z.enum(['data_entry_error','duplicate','client_cancelled','other']), reasonCustom: z.string().optional() }))

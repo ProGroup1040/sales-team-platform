@@ -3123,17 +3123,20 @@ export async function softDeleteEngineer(id: number, reason: string, reasonCusto
 
 /** Soft Delete مهمة يومية (للمدير وAdmin Sales) */
 export async function softDeleteTask(id: number, reason: string, reasonCustom: string | undefined, performedBy: string) {
-  const db = await getDb();
-  if (!db) return;
+  const db = await requireDb();
   const [task] = await db.select({ title: dailyTasks.title }).from(dailyTasks).where(eq(dailyTasks.id, id));
-  await db.update(dailyTasks).set({
+  if (!task) throw new Error("Task not found");
+  const result = await db.update(dailyTasks).set({
     isDeleted: 1,
     deletedAt: new Date(),
     deleteReason: reason as any,
     deleteReasonCustom: reasonCustom,
     deletedBy: performedBy,
   }).where(eq(dailyTasks.id, id));
-  await logAuditAction({ entityType: 'task', entityId: id, entityName: task?.title, action: 'soft_delete', reason: reason as any, reasonCustom, performedBy });
+  const affectedRows = Number((result as { affectedRows?: number }).affectedRows ?? 0);
+  if (affectedRows !== 1) throw new Error("Task deletion failed");
+  await logAuditAction({ entityType: 'task', entityId: id, entityName: task.title, action: 'soft_delete', reason: reason as any, reasonCustom, performedBy });
+  return { success: true, taskId: id };
 }
 
 /** Soft Delete Lead (للمدير وAdmin Sales) */
