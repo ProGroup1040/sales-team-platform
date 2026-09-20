@@ -325,10 +325,14 @@ function FullUpdateDialog({ visit, onClose, onSuccess }: { visit: any; onClose: 
 function VisitDeleteConfirm({ deleteVisit, onClose, onSuccess }: {
   deleteVisit: { id: number; clientName: string } | null;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: () => void | Promise<void>;
 }) {
   const deleteMutation = trpc.softDelete.visit.useMutation({
-    onSuccess: () => { toast.success('تم حذف المعاينة'); onSuccess(); onClose(); },
+    onSuccess: async () => {
+      toast.success('تم حذف المعاينة');
+      await onSuccess();
+      onClose();
+    },
     onError: () => toast.error('حدث خطأ'),
   });
   return (
@@ -383,14 +387,16 @@ export default function VisitsModule() {
   const { data: adminKPI } = trpc.visits.adminSalesKPI.useQuery({ year: YEAR, month: MONTH });
   const { data: needingAction } = trpc.visits.needingAction.useQuery({ year: YEAR, month: MONTH });
 
-  const invalidateAll = () => {
-    utils.visits.list.invalidate();
-    utils.visits.stats.invalidate();
-    utils.visits.alerts.invalidate();
-    utils.visits.debt.invalidate();
-    utils.visits.dailyTracking.invalidate();
-    utils.visits.adminSalesKPI.invalidate();
-    utils.visits.needingAction.invalidate();
+  const invalidateAll = async () => {
+    await Promise.all([
+      utils.visits.list.invalidate(),
+      utils.visits.stats.invalidate(),
+      utils.visits.alerts.invalidate(),
+      utils.visits.debt.invalidate(),
+      utils.visits.dailyTracking.invalidate(),
+      utils.visits.adminSalesKPI.invalidate(),
+      utils.visits.needingAction.invalidate(),
+    ]);
   };
 
   const createMutation = trpc.visits.create.useMutation({

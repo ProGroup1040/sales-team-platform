@@ -207,7 +207,7 @@ export const visits = mysqlTable("visits", {
 
   // ── 8. Soft Delete ────────────────────────────────────────────────────────────────────────────────
   isDeleted: int("isDeleted").default(0).notNull(),                 // 1 = محذوف
-  deleteReason: mysqlEnum("deleteReason", ["client_cancelled", "postponed", "data_entry_error", "other"]),
+  deleteReason: mysqlEnum("deleteReason", ["client_cancelled", "postponed", "data_entry_error", "duplicate", "other"]),
   deleteReasonCustom: varchar("deleteReasonCustom", { length: 255 }),
   deletedBy: varchar("deletedBy", { length: 120 }),
   deletedAt: timestamp("deletedAt"),

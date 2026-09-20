@@ -1,0 +1,1 @@
+ALTER TABLE `visits` MODIFY COLUMN `deleteReason` enum('client_cancelled','postponed','data_entry_error','duplicate','other');

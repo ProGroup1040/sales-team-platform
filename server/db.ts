@@ -464,7 +464,13 @@ export async function getVisitsStats(year: number, month: number) {
   if (!db) return empty;
   const startDate = new Date(year, month - 1, 1);
   const endDate = new Date(year, month, 0, 23, 59, 59);
-  const allVisits = await db.select().from(visits).where(between(visits.scheduledAt, startDate, endDate));
+  const allVisits = await db.select().from(visits).where(and(
+    eq(visits.isDeleted, 0),
+    or(
+      and(eq(visits.bookingYear, year), eq(visits.bookingMonth, month)),
+      between(visits.scheduledAt, startDate, endDate),
+    ),
+  ));
   const total = allVisits.length;
   if (total === 0) return empty;
 
@@ -3249,17 +3255,22 @@ export async function softDeleteLead(id: number, reason: string, reasonCustom: s
 
 /** Soft Delete معاينة (للمدير وAdmin Sales) */
 export async function softDeleteVisitFull(id: number, reason: string, reasonCustom: string | undefined, performedBy: string) {
-  const db = await getDb();
-  if (!db) return;
+  const db = await requireDb();
   const [visit] = await db.select({ clientName: visits.clientName }).from(visits).where(eq(visits.id, id));
-  await db.update(visits).set({
+  if (!visit) throw new Error("Visit not found");
+  const result = await db.update(visits).set({
     isDeleted: 1,
     deletedAt: new Date(),
     deleteReason: reason as any,
     deleteReasonCustom: reasonCustom,
     deletedBy: performedBy,
   }).where(eq(visits.id, id));
-  await logAuditAction({ entityType: 'visit', entityId: id, entityName: visit?.clientName, action: 'soft_delete', reason: reason as any, reasonCustom, performedBy });
+  const affectedRows = Number(
+    (result as unknown as [{ affectedRows?: number }])[0]?.affectedRows ?? 0,
+  );
+  if (affectedRows !== 1) throw new Error("Visit deletion failed");
+  await logAuditAction({ entityType: 'visit', entityId: id, entityName: visit.clientName, action: 'soft_delete', reason: reason as any, reasonCustom, performedBy });
+  return { success: true, visitId: id };
 }
 
 /** Soft Delete صفقة (للمدير فقط) */

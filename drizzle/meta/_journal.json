@@ -456,6 +456,13 @@
       "when": 1789034244026,
       "tag": "0064_unique_engineer_monthly_target",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "5",
+      "when": 1789886845320,
+      "tag": "0065_rainy_squadron_supreme",
+      "breakpoints": true
     }
   ]
 }
