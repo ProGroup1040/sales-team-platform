@@ -328,10 +328,10 @@ export default function PermissionsPanel() {
           ) : (
             <Tabs value={activeRole} onValueChange={setActiveRole}>
               <TabsList className="mb-4 flex-wrap h-auto gap-1">
-                {roles.map(role => {
+                {roles.map((role, roleIdx) => {
                   const roleChanges = Object.keys(pendingChanges).filter(k => k.startsWith(`${role.key}::`)).length;
                   return (
-                    <TabsTrigger key={role.key} value={role.key} className="gap-1.5">
+                    <TabsTrigger key={`${role.key}-${roleIdx}`} value={role.key} className="gap-1.5">
                       {role.label}
                       {roleChanges > 0 && (
                         <Badge className="h-4 text-[10px] px-1 bg-yellow-500/20 text-yellow-400 border-yellow-400/30">
@@ -343,8 +343,8 @@ export default function PermissionsPanel() {
                 })}
               </TabsList>
 
-              {roles.map(role => (
-                <TabsContent key={role.key} value={role.key}>
+              {roles.map((role, roleIdx) => (
+                <TabsContent key={`${role.key}-${roleIdx}`} value={role.key}>
                   <Card>
                     <CardHeader className="pb-3">
                       <div className="flex items-center justify-between">
@@ -397,7 +397,7 @@ export default function PermissionsPanel() {
                               const isPending = !!pendingChanges[key];
                               const isHidden = perm?.canView === 0;
                               return (
-                                <tr key={mod.key}
+                                <tr key={`${role.key}::${mod.key}::${idx}`}
                                   className={`border-b border-border/20 transition-colors ${idx % 2 === 0 ? "bg-muted/5" : ""} ${isPending ? "bg-yellow-500/5 border-yellow-500/20" : ""}`}>
                                   <td className="py-2 px-3">
                                     <div className="flex items-center gap-2">
@@ -497,10 +497,10 @@ export default function PermissionsPanel() {
           ) : (
             <Tabs value={activeSectionRole} onValueChange={setActiveSectionRole}>
               <TabsList className="mb-4 flex-wrap h-auto gap-1">
-                {roles.map(role => {
+                {roles.map((role, roleIdx) => {
                   const roleChanges = Object.keys(pendingSectionChanges).filter(k => k.startsWith(`${role.key}::`)).length;
                   return (
-                    <TabsTrigger key={role.key} value={role.key} className="gap-1.5">
+                    <TabsTrigger key={`${role.key}-${roleIdx}`} value={role.key} className="gap-1.5">
                       {role.label}
                       {roleChanges > 0 && (
                         <Badge className="h-4 text-[10px] px-1 bg-yellow-500/20 text-yellow-400 border-yellow-400/30">
@@ -512,8 +512,8 @@ export default function PermissionsPanel() {
                 })}
               </TabsList>
 
-              {roles.map(role => (
-                <TabsContent key={role.key} value={role.key} className="space-y-4">
+              {roles.map((role, roleIdx) => (
+                <TabsContent key={`${role.key}-${roleIdx}`} value={role.key} className="space-y-4">
                   {Object.entries(sectionsByModule).map(([moduleKey, sections]) => {
                     const moduleLabel = modules.find(m => m.key === moduleKey)?.label ?? moduleKey;
                     return (
@@ -544,7 +544,7 @@ export default function PermissionsPanel() {
                                   const isPending = !!pendingSectionChanges[key];
                                   const visibility = perm?.visibility ?? 'all';
                                   return (
-                                    <tr key={sec.key}
+                                    <tr key={`${role.key}::${moduleKey}::${sec.key}::${idx}`}
                                       className={`border-b border-border/20 transition-colors ${idx % 2 === 0 ? "bg-muted/5" : ""} ${isPending ? "bg-yellow-500/5 border-yellow-500/20" : ""}`}>
                                       <td className="py-2.5 px-3">
                                         <div className="flex items-center gap-2">
