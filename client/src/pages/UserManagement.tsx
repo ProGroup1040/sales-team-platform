@@ -51,6 +51,28 @@ const MODULE_LABELS: Record<Module, string> = {
 
 const MODULES: Module[] = ["crm", "visits", "deals", "kpi", "planning", "discounts", "reports", "tasks", "collections", "users"];
 
+const ENGINEER_USERNAME_PATTERN = /^[a-zA-Z0-9._-]+$/;
+
+export function validateEngineerAccountUsername(username: string): string | undefined {
+  const value = username.trim();
+  if (!value) return "اسم المستخدم مطلوب";
+  if (value.length < 3) return "اسم المستخدم يجب أن يكون 3 أحرف على الأقل";
+  if (value.length > 64) return "اسم المستخدم يجب ألا يتجاوز 64 حرفاً";
+  if (!ENGINEER_USERNAME_PATTERN.test(value)) {
+    return "استخدم حروفاً إنجليزية وأرقاماً فقط، مع النقطة أو الشرطة أو الشرطة السفلية";
+  }
+  return undefined;
+}
+
+function suggestEngineerUsername(name: string, engineerId: number): string {
+  const slug = name
+    .toLowerCase()
+    .replace(/\s+/g, ".")
+    .replace(/[^a-z0-9._-]/g, "")
+    .replace(/^[._-]+|[._-]+$/g, "");
+  return slug.length >= 3 ? slug : `engineer.${engineerId}`;
+}
+
 // ─── Validation Helpers ───────────────────────────────────────────────────────
 function validateCreateForm(form: { name: string; username: string; password: string; email: string }): Record<string, string> {
   const errors: Record<string, string> = {};
@@ -729,7 +751,7 @@ function EngineersAccountsTab() {
                   {!eng.hasAccount ? (
                     <Dialog open={createOpen && selectedEng?.id === eng.id} onOpenChange={(open) => { setCreateOpen(open); if (!open) setSelectedEng(null); }}>
                       <DialogTrigger asChild>
-                        <Button size="sm" className="gap-1" onClick={() => { setSelectedEng(eng); setCreateForm({ username: eng.name?.toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '') || '', password: '', forceChange: true }); }}>
+                        <Button size="sm" className="gap-1" onClick={() => { setSelectedEng(eng); setCreateForm({ username: suggestEngineerUsername(eng.name ?? "", eng.id), password: '', forceChange: true }); }}>
                           <UserPlus className="h-3.5 w-3.5" />
                           إنشاء حساب
                         </Button>
@@ -742,7 +764,18 @@ function EngineersAccountsTab() {
                         <div className="space-y-3 py-2">
                           <div className="space-y-1">
                             <Label>اسم المستخدم</Label>
-                            <Input dir="ltr" value={createForm.username} onChange={(e) => setCreateForm(p => ({ ...p, username: e.target.value }))} placeholder="ahmed.ali" />
+                            <Input
+                              dir="ltr"
+                              value={createForm.username}
+                              onChange={(e) => setCreateForm(p => ({ ...p, username: e.target.value }))}
+                              placeholder="ahmed.ali"
+                              aria-invalid={Boolean(validateEngineerAccountUsername(createForm.username))}
+                              className={validateEngineerAccountUsername(createForm.username) ? "border-red-500 focus-visible:ring-red-500" : ""}
+                            />
+                            <p className="text-xs text-muted-foreground">حروف إنجليزية وأرقام فقط، ويمكن استخدام . أو - أو _</p>
+                            {validateEngineerAccountUsername(createForm.username) && (
+                              <p className="text-xs text-red-400">{validateEngineerAccountUsername(createForm.username)}</p>
+                            )}
                           </div>
                           <div className="space-y-1">
                             <Label>كلمة المرور</Label>
@@ -752,8 +785,18 @@ function EngineersAccountsTab() {
                             <Switch checked={createForm.forceChange} onCheckedChange={(v) => setCreateForm(p => ({ ...p, forceChange: v }))} />
                             <Label className="text-sm">إجبار تغيير كلمة المرور عند أول دخول</Label>
                           </div>
-                          <Button className="w-full" disabled={createMut.isPending || createForm.password.length < 12}
-                            onClick={() => createMut.mutate({ engineerId: eng.id, username: createForm.username, password: createForm.password, forceChange: createForm.forceChange })}>
+                          <Button
+                            className="w-full"
+                            disabled={createMut.isPending || createForm.password.length < 12 || Boolean(validateEngineerAccountUsername(createForm.username))}
+                            onClick={() => {
+                              const usernameError = validateEngineerAccountUsername(createForm.username);
+                              if (usernameError) {
+                                toast.error(usernameError);
+                                return;
+                              }
+                              createMut.mutate({ engineerId: eng.id, username: createForm.username.trim().toLowerCase(), password: createForm.password, forceChange: createForm.forceChange });
+                            }}
+                          >
                             {createMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'إنشاء الحساب'}
                           </Button>
                         </div>
