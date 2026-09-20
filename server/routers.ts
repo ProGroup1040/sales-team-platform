@@ -347,6 +347,14 @@ async function getCallerFromContext(ctx: any): Promise<{ id: number; role: strin
 }
 
 type TaskAction = "view" | "add" | "edit" | "delete";
+const TASK_ROLE_ALIASES: Record<string, string> = {
+  engineer: "sales_engineer",
+  sales_engineer: "sales_engineer",
+  sales_specialist: "sales_specialist",
+  admin_sales: "admin_sales",
+  manager: "manager",
+  admin: "admin",
+};
 type TaskAccess = {
   caller: { id: number; role: string; name: string; engineerId: number | null };
   canView: boolean;
@@ -362,18 +370,23 @@ async function getTaskAccess(ctx: any): Promise<TaskAccess> {
   if (caller.role === "admin") {
     return { caller, canView: true, canAdd: true, canEdit: true, canDelete: true, scope: "all" };
   }
+  const role = TASK_ROLE_ALIASES[caller.role] ?? caller.role;
   const direct = caller.id && ctx?.actor?.source === "app_user"
     ? (await getUserPermissions(caller.id)).find((p) => p.module === "tasks")
     : undefined;
-  const rolePermission = (await getRolePermissions(caller.role)).find((p) => p.module === "tasks");
-  const configured = direct ?? rolePermission ?? DEFAULT_ROLE_PERMISSIONS[caller.role]?.tasks;
+  const rolePermission = (await getRolePermissions(role)).find((p) => p.module === "tasks");
+  const configured = direct ?? rolePermission ?? DEFAULT_ROLE_PERMISSIONS[role]?.tasks;
+  // The role's data scope is authoritative for task visibility. This prevents
+  // an old per-user override from accidentally widening a role configured as
+  // own-only in the admin dashboard.
+  const configuredScope = rolePermission?.dataScope ?? direct?.dataScope ?? DEFAULT_ROLE_PERMISSIONS[role]?.tasks?.dataScope;
   return {
     caller,
     canView: configured?.canView === 1,
     canAdd: configured?.canAdd === 1,
     canEdit: configured?.canEdit === 1,
     canDelete: configured?.canDelete === 1,
-    scope: configured?.dataScope === "all" ? "all" : configured?.dataScope === "team" ? "team" : "own",
+    scope: configuredScope === "all" ? "all" : configuredScope === "team" ? "team" : "own",
   };
 }
 

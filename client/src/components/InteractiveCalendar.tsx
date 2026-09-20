@@ -1178,6 +1178,7 @@ function TimelineView({
 // ─── Main Component ─────────────────────────────────────────────────────────────
 export default function InteractiveCalendar({ engineers, currentUserRole, currentEngineerId }: Props) {
   const isAdmin = currentUserRole === 'admin';
+  const canBrowseAllTasks = ['admin', 'manager', 'admin_sales'].includes(currentUserRole ?? '');
   // State
   const [viewMode, setViewMode] = useState<ViewMode>('timeline');
   const [currentDate, setCurrentDate] = useState(() => new Date());
@@ -1192,7 +1193,9 @@ export default function InteractiveCalendar({ engineers, currentUserRole, curren
   const [activeTask, setActiveTask] = useState<CalendarTask | null>(null);
 
   // تحديد Role المهندس المختار لتحديد مصدر البيانات
-  const queryEngineerId = filterEngineerId === 'all' ? undefined : Number(filterEngineerId);
+  const queryEngineerId = canBrowseAllTasks
+    ? (filterEngineerId === 'all' ? undefined : Number(filterEngineerId))
+    : currentEngineerId;
   const selectedEngineerObj = filterEngineerId === 'all' ? null : engineers.find(e => e.id === queryEngineerId);
   const isAdminSalesMode = selectedEngineerObj?.role === 'admin_sales';
 

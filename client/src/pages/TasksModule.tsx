@@ -16,6 +16,7 @@ import {
   ClipboardList, BarChart2, CalendarDays, Video, Target
 } from "lucide-react";
 import InteractiveCalendar from "@/components/InteractiveCalendar";
+import { useLocalAuth } from "@/hooks/useLocalAuth";
 import TimeFilterBar, { type TimeFilterValue } from "@/components/TimeFilterBar";
 import DailyTimeline from "@/components/DailyTimeline";
 import { LayoutList, LayoutGrid, Filter, X, Pencil } from "lucide-react";
@@ -1648,8 +1649,10 @@ function LeadFollowupTab({ engineers }: { engineers: any[] }) {
 
 // ─── Main Component ────────────────────────────────────────────────────────────────────────────────
 export default function TasksModule() {
+  const { session } = useLocalAuth();
+  const isPrivilegedTaskViewer = ["admin", "manager", "admin_sales"].includes(session?.role ?? "");
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [viewMode, setViewMode] = useState<"admin" | "engineer">("admin");
+  const [viewMode, setViewMode] = useState<"admin" | "engineer">(isPrivilegedTaskViewer ? "admin" : "engineer");
   const [selectedEngineer, setSelectedEngineer] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"tasks" | "ranking" | "critical" | "admin_sales" | "calendar" | "distribution">("tasks");
   // ── New: list vs timeline toggle
@@ -1665,6 +1668,10 @@ export default function TasksModule() {
   const dateStr = toDateStr(currentDate);
   const isToday = toDateStr(new Date()) === dateStr;
   const utils = trpc.useUtils();
+  const effectiveViewMode = isPrivilegedTaskViewer ? viewMode : "engineer";
+  const effectiveSelectedEngineer = isPrivilegedTaskViewer
+    ? selectedEngineer
+    : (session?.engineerId ? String(session.engineerId) : "");
   const statsQ = trpc.tasks.stats.useQuery({ date: dateStr });
   // ── Use filtered query when time filter or advanced filters are active
   const useFilteredQuery = timeFilter.dateRange !== "today" || !!filterEngineer || !!filterTaskType || !!filterStatus;
@@ -1672,13 +1679,13 @@ export default function TasksModule() {
     dateRange: timeFilter.dateRange,
     dateFrom: timeFilter.dateFrom,
     dateTo: timeFilter.dateTo,
-    engineerId: filterEngineer ? Number(filterEngineer) : undefined,
+    engineerId: isPrivilegedTaskViewer && filterEngineer ? Number(filterEngineer) : undefined,
     taskType: filterTaskType || undefined,
     status: filterStatus || undefined,
   }, { enabled: useFilteredQuery });
   const listQ = trpc.tasks.list.useQuery({
     date: dateStr,
-    engineerId: viewMode === "engineer" && selectedEngineer ? Number(selectedEngineer) : undefined
+    engineerId: effectiveViewMode === "engineer" && effectiveSelectedEngineer ? Number(effectiveSelectedEngineer) : undefined
   }, { enabled: !useFilteredQuery });
   const criticalQ = trpc.tasks.criticalEnhanced.useQuery();
   const engineersQ = trpc.tasks.engineers.useQuery();
@@ -1712,10 +1719,10 @@ export default function TasksModule() {
   const [deleteTaskTarget, setDeleteTaskTarget] = useState<number | null>(null);
   const filteredTasks = useMemo(() => {
     let t = rawTasks;
-    if (!useFilteredQuery && viewMode === "engineer" && selectedEngineer)
-      t = t.filter((task: any) => task.engineerId === Number(selectedEngineer));
+    if (!useFilteredQuery && effectiveViewMode === "engineer" && effectiveSelectedEngineer)
+      t = t.filter((task: any) => task.engineerId === Number(effectiveSelectedEngineer));
     return t;
-  }, [rawTasks, viewMode, selectedEngineer, useFilteredQuery]);
+  }, [rawTasks, effectiveViewMode, effectiveSelectedEngineer, useFilteredQuery]);
   const hasActiveFilters = filterEngineer || filterTaskType || filterStatus || timeFilter.dateRange !== "today";
   return (
     <div className="p-6 space-y-6 min-h-screen" dir="rtl">
@@ -1728,22 +1735,22 @@ export default function TasksModule() {
         <div className="flex items-center gap-3 flex-wrap">
           {/* View Mode Toggle */}
           <div className="flex rounded-lg overflow-hidden border border-white/10">
-            <button onClick={() => setViewMode("admin")}
-              className={`px-4 py-2 text-sm font-medium transition-all ${viewMode === "admin" ? "bg-indigo-600 text-white" : "bg-white/5 text-white/60 hover:bg-white/10"}`}>
+              {isPrivilegedTaskViewer && <button onClick={() => setViewMode("admin")}
+                className={`px-4 py-2 text-sm font-medium transition-all ${viewMode === "admin" ? "bg-indigo-600 text-white" : "bg-white/5 text-white/60 hover:bg-white/10"}`}>
               عرض المدير
-            </button>
+              </button>}
             <button onClick={() => setViewMode("engineer")}
               className={`px-4 py-2 text-sm font-medium transition-all ${viewMode === "engineer" ? "bg-indigo-600 text-white" : "bg-white/5 text-white/60 hover:bg-white/10"}`}>
               عرض المهندس
             </button>
           </div>
-          {viewMode === "admin" && (
+          {effectiveViewMode === "admin" && (
             <>
               <ManageEngineersDialog engineers={engineers} onDone={() => engineersQ.refetch()} />
               <AddTaskDialog engineers={engineers} dateStr={dateStr} onDone={() => { statsQ.refetch(); listQ.refetch(); }} />
             </>
           )}
-          {viewMode === "engineer" && (
+          {effectiveViewMode === "engineer" && isPrivilegedTaskViewer && (
             <Select value={selectedEngineer} onValueChange={setSelectedEngineer}>
               <SelectTrigger className="bg-white/5 border-white/10 text-white w-48"><SelectValue placeholder="اختر المهندس" /></SelectTrigger>
               <SelectContent className="bg-slate-900 border-white/10">
@@ -1934,9 +1941,9 @@ export default function TasksModule() {
           {listViewMode === "timeline" ? (
             <DailyTimeline
               dateStr={dateStr}
-              engineerId={filterEngineer ? Number(filterEngineer) : (viewMode === "engineer" && selectedEngineer ? Number(selectedEngineer) : undefined)}
+              engineerId={isPrivilegedTaskViewer && filterEngineer ? Number(filterEngineer) : (effectiveViewMode === "engineer" && effectiveSelectedEngineer ? Number(effectiveSelectedEngineer) : undefined)}
               engineers={engineers}
-              viewMode={viewMode}
+              viewMode={effectiveViewMode}
               onTaskAdded={() => { statsQ.refetch(); listQ.refetch(); filteredQ.refetch(); }}
             />
           ) : (
@@ -1946,7 +1953,7 @@ export default function TasksModule() {
             <div className="text-center py-16 text-white/30">
               <Calendar className="h-12 w-12 mx-auto mb-3 opacity-30" />
               <p>لا توجد مهام في هذا النطاق</p>
-              {viewMode === "admin" && <p className="text-xs mt-2">اضغط "إضافة مهمة" أو غيّر الفلاتر</p>}
+              {effectiveViewMode === "admin" && <p className="text-xs mt-2">اضغط "إضافة مهمة" أو غيّر الفلاتر</p>}
             </div>
           ) : filteredTasks.map((task: any) => {
             const eng = engineers.find((e: any) => e.id === task.engineerId);
@@ -2033,7 +2040,7 @@ export default function TasksModule() {
                         recordingLink={task.meetingRecordingLink}
                       />
                     )}
-                    {viewMode === "admin" && (
+                    {effectiveViewMode === "admin" && (
                       <>
                         {/* Auto-create Deal button for deal-triggering task types */}
                         {['quotation','meeting_presentation','meeting_closing'].includes(task.taskType) && (
@@ -2218,7 +2225,7 @@ export default function TasksModule() {
                       <span className="text-white/30">{new Date(task.taskDate).toLocaleDateString("ar-EG")}</span>
                     </div>
                   </div>
-                  {viewMode === "admin" && (
+                  {effectiveViewMode === "admin" && (
                     <UpdateStatusDialog task={task} onDone={() => { statsQ.refetch(); listQ.refetch(); criticalQ.refetch(); }} />
                   )}
                 </div>
@@ -2233,8 +2240,8 @@ export default function TasksModule() {
         <div className="h-[calc(100vh-200px)] min-h-[600px]">
           <InteractiveCalendar
             engineers={engineers}
-            currentUserRole={viewMode === "admin" ? "admin" : "engineer"}
-            currentEngineerId={viewMode === "engineer" && selectedEngineer ? Number(selectedEngineer) : undefined}
+            currentUserRole={effectiveViewMode === "admin" ? (session?.role ?? "admin") : "engineer"}
+            currentEngineerId={effectiveViewMode === "engineer" && effectiveSelectedEngineer ? Number(effectiveSelectedEngineer) : undefined}
           />
         </div>
       )}
