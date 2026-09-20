@@ -160,14 +160,16 @@ export function calcTaskScore(status: string, delayDays: number): number {
   return -1; // planned = لا تحتسب
 }
 
-export async function getDailyTasksStats(dateStr: string) {
+export async function getDailyTasksStats(dateStr: string, engineerId?: number) {
   const db = await getDb();
   if (!db) return { planned: 0, completed: 0, delayed: 0, not_done: 0, client_delay: 0, critical: 0, byEngineer: [], topEngineers: [], bottomEngineers: [], alerts: [] };
   const taskDateObj = new Date(dateStr + 'T00:00:00');
-  const allTasks = await db.select().from(dailyTasks).where(and(
+  const conditions: any[] = [
     eq(dailyTasks.taskDate, taskDateObj),
     eq(dailyTasks.isDeleted, 0),
-  ));
+  ];
+  if (engineerId) conditions.push(eq(dailyTasks.engineerId, engineerId));
+  const allTasks = await db.select().from(dailyTasks).where(and(...conditions));
 
   const planned = allTasks.filter(t => t.status === 'planned').length;
   const completed = allTasks.filter(t => t.status === 'completed').length;
@@ -236,13 +238,15 @@ export async function getTasksList(dateStr: string, engineerId?: number) {
   return db.select().from(dailyTasks).where(and(...conditions)).orderBy(dailyTasks.priority);
 }
 
-export async function getCriticalTasks() {
+export async function getCriticalTasks(engineerId?: number) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(dailyTasks).where(and(
+  const conditions: any[] = [
     eq(dailyTasks.isCritical, 1),
     eq(dailyTasks.isDeleted, 0),
-  )).orderBy(desc(dailyTasks.createdAt)).limit(50);
+  ];
+  if (engineerId) conditions.push(eq(dailyTasks.engineerId, engineerId));
+  return db.select().from(dailyTasks).where(and(...conditions)).orderBy(desc(dailyTasks.createdAt)).limit(50);
 }
 
 export async function createTask(data: {
@@ -4615,7 +4619,7 @@ export async function checkTimeOverlap(params: {
  * - لم تُنفذ (not_done)
  * - مخططة ومر عليها أكثر من 24 ساعة بدون تحديث
  */
-export async function getCriticalTasksEnhanced() {
+export async function getCriticalTasksEnhanced(engineerId?: number) {
   const db = await getDb();
   if (!db) return [];
 
