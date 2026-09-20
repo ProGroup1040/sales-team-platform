@@ -628,6 +628,30 @@ export const appRouter = router({
       }
       await createTask({ ...input, engineerId }); return { success: true };
     }),
+    createMine: protectedProcedure.input(z.object({
+      taskDate: z.string(), title: z.string().min(1),
+      description: z.string().optional(), plannedHours: z.number().optional(),
+      priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
+      category: z.string().optional(),
+      meetingRecordingLink: z.string().optional(),
+      taskType: z.enum(['design_2d','design_3d','render','quotation','meeting_modeling','meeting_presentation','meeting_closing','contract','work_order','other']).optional(),
+    })).mutation(async ({ input, ctx }) => {
+      const access = await requireTaskAction(ctx, "add");
+      const engineerId = access.caller.engineerId;
+      if (!engineerId) throw new TRPCError({ code: "BAD_REQUEST", message: "لا يوجد مهندس مرتبط بهذا الحساب" });
+      if (input.taskType && input.taskType !== 'other') {
+        const eng = await getEngineerById(engineerId);
+        if (eng) {
+          const dept = eng.department ?? eng.role ?? 'sales_engineer';
+          const allowed = ALLOWED_TASK_TYPES_BY_DEPARTMENT[dept as keyof typeof ALLOWED_TASK_TYPES_BY_DEPARTMENT];
+          if (allowed && !allowed.includes(input.taskType)) {
+            throw new TRPCError({ code: 'BAD_REQUEST', message: `نوع المهمة غير مسموح لقسم ${dept}` });
+          }
+        }
+      }
+      await createTask({ ...input, engineerId });
+      return { success: true };
+    }),
     updateStatus: protectedProcedure.input(z.object({
       id: z.number(), status: z.enum(['planned', 'completed', 'delayed', 'not_done', 'client_delay']),
       delayDays: z.number().optional(), notes: z.string().optional(),

@@ -224,11 +224,13 @@ function UpdateStatusDialog({ task, onDone }: { task: any; onDone: () => void })
 }
 
 // ─── Add Task Dialog ──────────────────────────────────────────────────────────
-function AddTaskDialog({ engineers, dateStr, onDone }: { engineers: any[]; dateStr: string; onDone: () => void }) {
+function AddTaskDialog({ engineers, dateStr, onDone, selfEngineerId }: { engineers: any[]; dateStr: string; onDone: () => void; selfEngineerId?: number }) {
   const [open, setOpen] = useState(false);
   const EMPTY_FORM = { engineerId: "", title: "", description: "", priority: "", plannedHours: "", taskType: "", meetingRecordingLink: "" };
   const [form, setForm] = useState(EMPTY_FORM);
   const utils = trpc.useUtils();
+  const isSelfOnly = selfEngineerId !== undefined;
+  const effectiveEngineerId = isSelfOnly ? String(selfEngineerId) : form.engineerId;
 
   // الـ 9 Task Types الموحدة (مع Contract و Work Order)
   const ALL_TASK_TYPES = [
@@ -245,7 +247,7 @@ function AddTaskDialog({ engineers, dateStr, onDone }: { engineers: any[]; dateS
 
   // Department Enforcement: جلب قسم المهندس المختار
   const { data: allowedTypesMap } = trpc.kpi.allowedTaskTypes.useQuery();
-  const selectedEngineer = engineers.find(e => String(e.id) === form.engineerId);
+  const selectedEngineer = engineers.find(e => String(e.id) === effectiveEngineerId);
   const engineerDept = selectedEngineer?.department ?? selectedEngineer?.role ?? 'sales_engineer';
   const allowedTypes: string[] = allowedTypesMap?.[engineerDept] ?? ALL_TASK_TYPES.map(t => t.key);
   const availableTypes = ALL_TASK_TYPES.filter(t => allowedTypes.includes(t.key));
@@ -253,13 +255,18 @@ function AddTaskDialog({ engineers, dateStr, onDone }: { engineers: any[]; dateS
   const isMeetingType = ['meeting_modeling', 'meeting_presentation', 'meeting_closing'].includes(form.taskType);
   const needsRecording = isMeetingType;
 
-  const createMut = trpc.tasks.create.useMutation({
-    onSuccess: () => {
+  const handleSuccess = () => {
       utils.tasks.stats.invalidate(); utils.tasks.list.invalidate();
       toast.success("تمت إضافة المهمة"); setOpen(false);
       setForm(EMPTY_FORM); onDone();
-    },
-    onError: () => toast.error("حدث خطأ أثناء الإضافة"),
+  };
+  const createMut = trpc.tasks.create.useMutation({
+    onSuccess: handleSuccess,
+    onError: (error) => toast.error(error.message || "حدث خطأ أثناء الإضافة"),
+  });
+  const createMineMut = trpc.tasks.createMine.useMutation({
+    onSuccess: handleSuccess,
+    onError: (error) => toast.error(error.message || "حدث خطأ أثناء الإضافة"),
   });
 
   // عند تغيير المهندس: إعادة تعيين نوع المهمة إذا لم يكن مسموحاً
@@ -287,17 +294,24 @@ function AddTaskDialog({ engineers, dateStr, onDone }: { engineers: any[]; dateS
             {/* المهندس */}
             <div className="space-y-2">
               <Label className="text-white/70">المهندس *</Label>
-              <Select value={form.engineerId} onValueChange={handleEngineerChange}>
-                <SelectTrigger className="bg-white/5 border-white/10 text-white"><SelectValue placeholder="اختر المهندس" /></SelectTrigger>
-                <SelectContent className="bg-slate-900 border-white/10">
-                  {engineers.map(e => (
-                    <SelectItem key={e.id} value={String(e.id)} className="text-white hover:bg-white/10">
-                      {e.name}
-                      {e.department && <span className="text-white/40 text-xs ml-2">({e.department})</span>}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {isSelfOnly ? (
+                <div className="rounded-md border border-indigo-500/30 bg-indigo-500/10 px-3 py-2 text-sm text-indigo-200">
+                  {selectedEngineer?.name ?? "مهمتي الشخصية"}
+                  <span className="mr-2 text-xs text-indigo-300/70">(ستُضاف لحسابك تلقائياً)</span>
+                </div>
+              ) : (
+                <Select value={form.engineerId} onValueChange={handleEngineerChange}>
+                  <SelectTrigger className="bg-white/5 border-white/10 text-white"><SelectValue placeholder="اختر المهندس" /></SelectTrigger>
+                  <SelectContent className="bg-slate-900 border-white/10">
+                    {engineers.map(e => (
+                      <SelectItem key={e.id} value={String(e.id)} className="text-white hover:bg-white/10">
+                        {e.name}
+                        {e.department && <span className="text-white/40 text-xs ml-2">({e.department})</span>}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               {selectedEngineer && (
                 <p className="text-xs text-indigo-400/80">
                   قسم: {engineerDept} — الأنواع المتاحة: {availableTypes.length}
@@ -374,15 +388,19 @@ function AddTaskDialog({ engineers, dateStr, onDone }: { engineers: any[]; dateS
                 className="bg-white/5 border-white/10 text-white resize-none h-20" placeholder="تفاصيل المهمة..." />
             </div>
             <Button className="w-full bg-indigo-600 hover:bg-indigo-700"
-              disabled={createMut.isPending || !form.engineerId || !form.title || !form.taskType || (needsRecording && !form.meetingRecordingLink)}
-              onClick={() => createMut.mutate({
-                engineerId: Number(form.engineerId), taskDate: dateStr, title: form.title,
-                description: form.description || undefined, priority: form.priority as any,
-                plannedHours: Number(form.plannedHours),
-                taskType: form.taskType as any,
-                meetingRecordingLink: form.meetingRecordingLink || undefined,
-              })}>
-              {createMut.isPending ? "جاري الإضافة..." : "إضافة المهمة"}
+              disabled={createMut.isPending || createMineMut.isPending || !effectiveEngineerId || !form.title || !form.taskType || (needsRecording && !form.meetingRecordingLink)}
+              onClick={() => {
+                const payload = {
+                  taskDate: dateStr, title: form.title,
+                  description: form.description || undefined, priority: form.priority as any,
+                  plannedHours: Number(form.plannedHours),
+                  taskType: form.taskType as any,
+                  meetingRecordingLink: form.meetingRecordingLink || undefined,
+                };
+                if (isSelfOnly) createMineMut.mutate(payload);
+                else createMut.mutate({ ...payload, engineerId: Number(effectiveEngineerId) });
+              }}>
+              {createMut.isPending || createMineMut.isPending ? "جاري الإضافة..." : "إضافة المهمة"}
             </Button>
           </div>
         </DialogContent>
@@ -1749,6 +1767,14 @@ export default function TasksModule() {
               <ManageEngineersDialog engineers={engineers} onDone={() => engineersQ.refetch()} />
               <AddTaskDialog engineers={engineers} dateStr={dateStr} onDone={() => { statsQ.refetch(); listQ.refetch(); }} />
             </>
+          )}
+          {effectiveViewMode === "engineer" && !isPrivilegedTaskViewer && session?.engineerId && (
+            <AddTaskDialog
+              engineers={engineers}
+              dateStr={dateStr}
+              selfEngineerId={session.engineerId}
+              onDone={() => { statsQ.refetch(); listQ.refetch(); }}
+            />
           )}
           {effectiveViewMode === "engineer" && isPrivilegedTaskViewer && (
             <Select value={selectedEngineer} onValueChange={setSelectedEngineer}>
