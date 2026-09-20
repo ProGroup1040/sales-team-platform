@@ -1934,6 +1934,32 @@ export const appRouter = router({
           }
           throw error;
         }
+        // User Management creates login identities in app_users. Keep the
+        // legacy engineers lookup below so existing engineer accounts continue
+        // to work without creating duplicate identities.
+        const appUserResult = await loginAppUser(input.username, input.password);
+        if (appUserResult) {
+          await clearLoginAttempts(rateLimitKey);
+          const res = (ctx as any).res;
+          if (res) {
+            setResponseCookie(res, "app_user_token", appUserResult.token, {
+              httpOnly: true,
+              secure: process.env.NODE_ENV === "production",
+              sameSite: "lax",
+              maxAge: 7 * 24 * 60 * 60 * 1000,
+              path: "/",
+            });
+          }
+          await logActivity({ userId: appUserResult.user.id, action: 'login', details: 'تسجيل دخول ناجح' });
+          return {
+            ok: true,
+            role: appUserResult.user.role,
+            name: appUserResult.user.name,
+            engineerId: appUserResult.user.engineerId ?? 0,
+            forcePasswordChange: false,
+          };
+        }
+
         const result = await localLogin(input.username, input.password);
         if (!result) {
           await recordFailedLoginAttempt(rateLimitKey);
@@ -1977,6 +2003,7 @@ export const appRouter = router({
       .mutation(async ({ ctx }) => {
         const cookieOptions = getSessionCookieOptions(ctx.req);
         clearResponseCookie(ctx.res, LOCAL_AUTH_COOKIE, cookieOptions);
+        clearResponseCookie(ctx.res, "app_user_token", { httpOnly: true, sameSite: "lax", path: "/" });
         return { ok: true };
       }),
     // جلب صلاحيات الـ role الحالي (للـ DashboardLayout)
