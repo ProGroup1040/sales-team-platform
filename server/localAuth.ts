@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
 import type { Request, Response } from "express";
-import { and, eq } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import { getDb } from "./db";
 import { engineers } from "../drizzle/schema";
 import { ENV } from "./_core/env";
@@ -19,6 +19,10 @@ export type LocalSessionPayload = {
 
 function getSecretKey() {
   return new TextEncoder().encode(ENV.cookieSecret);
+}
+
+function normalizeLoginIdentifier(value: string): string {
+  return value.trim().toLowerCase();
 }
 
 export async function signLocalSession(payload: LocalSessionPayload): Promise<string> {
@@ -71,11 +75,13 @@ export async function verifyLocalSession(token: string | undefined | null): Prom
 export async function localLogin(username: string, password: string): Promise<{ token: string; session: LocalSessionPayload } | null> {
   const db = await getDb();
   if (!db) return null;
+  const identifier = normalizeLoginIdentifier(username);
+  if (!identifier || !password) return null;
 
   const [engineer] = await db
     .select()
     .from(engineers)
-    .where(eq(engineers.username, username))
+    .where(or(eq(engineers.username, identifier), eq(engineers.email, identifier)))
     .limit(1);
 
   if (!engineer || !engineer.passwordHash || engineer.isDeleted) return null;
@@ -86,7 +92,7 @@ export async function localLogin(username: string, password: string): Promise<{ 
 
   const session: LocalSessionPayload = {
     engineerId: engineer.id,
-    username: engineer.username!,
+    username: engineer.username!.trim().toLowerCase(),
     role: engineer.role,
     name: engineer.name,
     forcePasswordChange: !!((engineer as any).forcePasswordChange),
@@ -113,6 +119,8 @@ export async function createEngineerAccount(data: {
 }): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
+  const username = normalizeLoginIdentifier(data.username);
+  if (!username) throw new Error("Username is required");
 
   const passwordHash = await hashPassword(data.password);
 
@@ -120,18 +128,18 @@ export async function createEngineerAccount(data: {
   const [existing] = await db
     .select({ id: engineers.id, sessionVersion: engineers.sessionVersion })
     .from(engineers)
-    .where(eq(engineers.username, data.username))
+    .where(eq(engineers.username, username))
     .limit(1);
 
   if (existing) {
     // Update password if engineer already exists with this username
-    await db.update(engineers).set({ passwordHash, sessionVersion: (existing.sessionVersion ?? 1) + 1 }).where(eq(engineers.username, data.username));
+    await db.update(engineers).set({ passwordHash, sessionVersion: (existing.sessionVersion ?? 1) + 1 }).where(eq(engineers.username, username));
     return;
   }
 
   await db.insert(engineers).values({
     name: data.name,
-    username: data.username,
+    username,
     passwordHash,
     role: data.role,
     email: data.email || null,

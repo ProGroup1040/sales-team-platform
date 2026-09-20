@@ -11273,11 +11273,12 @@ export async function loginAppUser(
       candidate.username === username.toLowerCase().trim() && candidate.status === "active",
     );
   } else {
+    const identifier = username.toLowerCase().trim();
     [user] = await db
       .select()
       .from(appUsers)
       .where(and(
-        eq(appUsers.username, username.toLowerCase().trim()),
+        or(eq(appUsers.username, identifier), eq(appUsers.email, identifier)),
         eq(appUsers.status, "active"),
       ));
   }

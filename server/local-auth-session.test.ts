@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { jwtVerify } from "jose";
+import bcrypt from "bcryptjs";
 
 vi.mock("./db", () => ({ getDb: vi.fn() }));
 
 import { getDb } from "./db";
-import { signLocalSession, verifyLocalSession } from "./localAuth";
+import { localLogin, signLocalSession, verifyLocalSession } from "./localAuth";
 import { ENV } from "./_core/env";
 
 const mockedGetDb = vi.mocked(getDb);
@@ -52,5 +53,32 @@ describe("local-session token claims", () => {
     });
 
     await expect(verifyLocalSession(token)).resolves.toBeNull();
+  });
+
+  it("normalizes legacy engineer login identifiers and accepts the stored email", async () => {
+    const password = "Legacy-password-2026";
+    mockedGetDb.mockResolvedValue({
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: async () => [{
+              id: 10,
+              username: "legacy.user",
+              email: "legacy.user@example.com",
+              passwordHash: await bcrypt.hash(password, 4),
+              role: "sales_engineer",
+              name: "Legacy User",
+              status: "active",
+              isDeleted: 0,
+              forcePasswordChange: 0,
+              sessionVersion: 1,
+            }],
+          }),
+        }),
+      }),
+    } as never);
+
+    const result = await localLogin("  LEGACY.USER@EXAMPLE.COM  ", password);
+    expect(result?.session.username).toBe("legacy.user");
   });
 });
