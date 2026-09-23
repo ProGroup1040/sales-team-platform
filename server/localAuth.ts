@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
 import type { Request, Response } from "express";
 import { and, eq, or } from "drizzle-orm";
-import { getDb } from "./db";
+import { getDb, ensureAppUserForEngineerAccount } from "./db";
 import { engineers } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { ONE_YEAR_MS, LOCAL_AUTH_COOKIE } from "@shared/const";
@@ -89,6 +89,22 @@ export async function localLogin(username: string, password: string): Promise<{ 
 
   const valid = await bcrypt.compare(password, engineer.passwordHash);
   if (!valid) return null;
+
+  // Legacy engineer accounts must also participate in the internal user
+  // permission system. Keep the legacy session for compatibility, but create
+  // or repair the linked app_users record so per-user module permissions apply.
+  try {
+    await ensureAppUserForEngineerAccount({
+      engineerId: engineer.id,
+      name: engineer.name,
+      username: engineer.username!,
+      passwordHash: engineer.passwordHash,
+      role: engineer.role,
+      email: engineer.email,
+    });
+  } catch (error) {
+    console.error("[Auth] Failed to synchronize engineer app-user link:", error);
+  }
 
   const session: LocalSessionPayload = {
     engineerId: engineer.id,

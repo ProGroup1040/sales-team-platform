@@ -101,7 +101,7 @@ import {
   // Activity Types Integration
   getEngineerActualCounts, calcOperationalScoreFromTasks, getEngineerActivitySummary,
   // Internal App Users System
-  createAppUser, loginAppUser, verifyAppUserToken, getAppUsers, getAppUserById, getUserPermissions,
+  createAppUser, loginAppUser, verifyAppUserToken, getAppUsers, getAppUserById, getAppUserByEngineerId, getUserPermissions,
   updateUserPermissions, updateAppUser, logActivity, getActivityLogs,
   DEFAULT_ROLE_PERMISSIONS,
   getRolePermissions, getAllRolePermissions, updateRolePermission, updateAllRolePermissions,
@@ -372,8 +372,10 @@ async function getTaskAccess(ctx: any): Promise<TaskAccess> {
     return { caller, canView: true, canAdd: true, canEdit: true, canDelete: true, scope: "all" };
   }
   const role = TASK_ROLE_ALIASES[caller.role] ?? caller.role;
-  const direct = caller.id && ctx?.actor?.source === "app_user"
-    ? (await getUserPermissions(caller.id)).find((p) => p.module === "tasks")
+  const linkedAppUser = caller.engineerId ? await getAppUserByEngineerId(caller.engineerId) : null;
+  const permissionUserId = ctx?.actor?.source === "app_user" ? caller.id : linkedAppUser?.id;
+  const direct = permissionUserId
+    ? (await getUserPermissions(permissionUserId)).find((p) => p.module === "tasks")
     : undefined;
   const rolePermission = (await getRolePermissions(role)).find((p) => p.module === "tasks");
   const configured = direct ?? rolePermission ?? DEFAULT_ROLE_PERMISSIONS[role]?.tasks;
@@ -2187,8 +2189,11 @@ export const appRouter = router({
       .query(async ({ ctx }) => {
         // 1) Try local session (username/password login)
         const session = await getLocalSessionFromRequest(ctx.req);
-        if (session) return getRolePermissions(session.role);
-        if (ctx.actor?.source === "app_user") return getRolePermissions(ctx.actor.role);
+        if (session) {
+          const linkedUser = await getAppUserByEngineerId(session.engineerId);
+          return linkedUser ? getUserPermissions(linkedUser.id) : getRolePermissions(session.role);
+        }
+        if (ctx.actor?.source === "app_user") return getUserPermissions(ctx.actor.id);
         if (ctx.user?.role === "admin") return getRolePermissions("admin");
         return [];
       }),

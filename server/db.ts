@@ -11305,6 +11305,52 @@ export async function getAppUserById(userId: number): Promise<AppUser | null> {
   return useTestAppUserStore() ? testAppUsers.get(userId) ?? null : null;
 }
 
+export async function getAppUserByEngineerId(engineerId: number): Promise<AppUser | null> {
+  const db = await getDb();
+  if (db) {
+    const [user] = await db.select().from(appUsers).where(eq(appUsers.engineerId, engineerId)).limit(1);
+    return user ?? null;
+  }
+  if (!useTestAppUserStore()) return null;
+  return Array.from(testAppUsers.values()).find(user => user.engineerId === engineerId) ?? null;
+}
+
+/** Ensure legacy engineer logins also have an internal app-user identity. */
+export async function ensureAppUserForEngineerAccount(input: {
+  engineerId: number;
+  name: string;
+  username: string;
+  passwordHash: string;
+  role: string;
+  email?: string | null;
+}): Promise<AppUser> {
+  const db = await requireDb();
+  const username = input.username.trim().toLowerCase();
+  const role = input.role === "sales_specialist" ? "sales_specialist"
+    : input.role === "admin_sales" ? "admin_sales"
+      : input.role === "manager" ? "manager" : "sales_engineer";
+  const [linked] = await db.select().from(appUsers).where(eq(appUsers.engineerId, input.engineerId)).limit(1);
+  const [sameUsername] = await db.select().from(appUsers).where(eq(appUsers.username, username)).limit(1);
+  const existing = linked ?? (sameUsername?.engineerId == null ? sameUsername : undefined);
+  if (existing) {
+    await db.update(appUsers).set({
+      name: input.name.trim(), username, passwordHash: input.passwordHash, role: role as any,
+      engineerId: input.engineerId, email: input.email?.trim().toLowerCase() || existing.email,
+      status: "active",
+    }).where(eq(appUsers.id, existing.id));
+    const [updated] = await db.select().from(appUsers).where(eq(appUsers.id, existing.id)).limit(1);
+    return updated;
+  }
+  const [result] = await db.insert(appUsers).values({
+    name: input.name.trim(), username, passwordHash: input.passwordHash, role: role as any,
+    engineerId: input.engineerId, email: input.email?.trim().toLowerCase() || null, status: "active",
+  });
+  const userId = (result as any).insertId as number;
+  await createDefaultPermissions(userId, role);
+  const [created] = await db.select().from(appUsers).where(eq(appUsers.id, userId)).limit(1);
+  return created;
+}
+
 async function signAppUserToken(user: AppUser): Promise<string> {
   const { SignJWT } = await import("jose");
   return new SignJWT({
@@ -11993,6 +12039,10 @@ export async function bulkCreateEngineersAccounts(defaultPassword: string): Prom
       forcePasswordChange: 1,
       sessionVersion: sql`${engineers.sessionVersion} + 1`,
     } as any).where(eq(engineers.id, eng.id));
+    await ensureAppUserForEngineerAccount({
+      engineerId: eng.id, name: eng.name, username, passwordHash,
+      role: eng.role, email: eng.email,
+    });
     created.push({ id: eng.id, name: eng.name, username });
   }
   return { created, skipped };
@@ -12049,6 +12099,13 @@ export async function createEngineerAccount(engineerId: number, username: string
     forcePasswordChange: forceChange ? 1 : 0,
     sessionVersion: sql`${engineers.sessionVersion} + 1`,
   } as any).where(eq(engineers.id, engineerId));
+  const [engineer] = await db.select().from(engineers).where(eq(engineers.id, engineerId)).limit(1);
+  if (engineer) {
+    await ensureAppUserForEngineerAccount({
+      engineerId: engineer.id, name: engineer.name, username: engineer.username!,
+      passwordHash, role: engineer.role, email: engineer.email,
+    });
+  }
   return { success: true };
 }
 
