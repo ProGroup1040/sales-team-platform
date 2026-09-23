@@ -11238,9 +11238,14 @@ export async function createDefaultPermissions(
     }
     return;
   }
-  for (const module of modules) {
+
+  // Insert the role's complete permission set in one statement. Besides being
+  // atomic at the statement level, this prevents account creation from making
+  // many round-trips while parallel integration tests and real user creation
+  // contend for the same database connection.
+  await db.insert(userPermissions).values(modules.map((module) => {
     const perm = defaults[module];
-    await db.insert(userPermissions).values({
+    return {
       userId,
       module: module as any,
       canView: perm.canView,
@@ -11248,8 +11253,8 @@ export async function createDefaultPermissions(
       canEdit: perm.canEdit,
       canDelete: perm.canDelete,
       dataScope: perm.dataScope,
-    });
-  }
+    };
+  }));
 }
 // ─── App-user token security ───────────────────────────────────────────────────
 const TEST_APP_USER_JWT_SECRET = "sales-team-platform-test-only-secret";
