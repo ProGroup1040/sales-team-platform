@@ -11,6 +11,7 @@ import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { getSessionSecret } from "./env";
 import { getDealsStats, getDealsList, getEngineersKPI, getDb } from "../db";
+import { startDailyTaskReminderScheduler } from "../pushNotifications";
 import { deals, engineers } from "../../drizzle/schema";
 import { eq, sql } from "drizzle-orm";
 
@@ -221,6 +222,7 @@ async function startServer() {
 
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
+    startDailyTaskReminderScheduler();
   });
 }
 

@@ -15,7 +15,8 @@ import {
 import { useIsMobile } from "@/hooks/useMobile";
 import { useLocalAuth } from "@/hooks/useLocalAuth";
 import { useRoleAccess } from "@/hooks/useRoleAccess";
-import { LayoutDashboard, PanelLeft, BarChart2, CheckSquare, UserPlus, MapPin, Handshake, TrendingUp, Award, DollarSign, Target, LogOut, LogIn, Crown, Zap, FileBarChart, Users, Shield, GitBranch } from "lucide-react";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
+import { LayoutDashboard, PanelLeft, Bell, BellOff, BarChart2, CheckSquare, UserPlus, MapPin, Handshake, TrendingUp, Award, DollarSign, Target, LogOut, LogIn, Crown, Zap, FileBarChart, Users, Shield, GitBranch } from "lucide-react";
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
@@ -114,6 +115,7 @@ function DashboardLayoutContent({
   const { session, isLoading } = useLocalAuth();
   const access = useRoleAccess(session?.role);
   const utils = trpc.useUtils();
+  const push = usePushNotifications(Boolean(session));
   const logoutMut = trpc.localAuth.logout.useMutation({
     onSuccess: () => {
       utils.localAuth.me.invalidate();
@@ -293,6 +295,19 @@ function DashboardLayoutContent({
                 </button>
               )}
             </div>
+            {session && push.supported && (
+              <button
+                onClick={() => push.isSubscribed ? push.disable() : push.enable()}
+                disabled={push.isLoading}
+                className="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                title={push.isSubscribed ? "إيقاف تذكيرات المهام" : "تفعيل تذكيرات المهام"}
+              >
+                {push.isSubscribed ? <Bell className="h-4 w-4 text-primary" /> : <BellOff className="h-4 w-4" />}
+                <span className="group-data-[collapsible=icon]:hidden">
+                  {push.isSubscribed ? "تذكيرات المهام مفعلة" : "تفعيل تذكيرات المهام"}
+                </span>
+              </button>
+            )}
             {session && (
               <button
                 onClick={() => logoutMut.mutate()}

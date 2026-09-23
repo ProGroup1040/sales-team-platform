@@ -1,0 +1,11 @@
+{
+  "name": "منظومة المبيعات Pro Group",
+  "short_name": "منظومة المبيعات",
+  "start_url": "/",
+  "display": "standalone",
+  "dir": "rtl",
+  "lang": "ar",
+  "theme_color": "#0f172a",
+  "background_color": "#0f172a",
+  "icons": []
+}

@@ -7,6 +7,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { getRequestCookie, setResponseCookie, clearResponseCookie } from "./_core/httpCookies";
 import { TRPCError } from "@trpc/server";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { getWebPushPublicKey, savePushSubscription, removePushSubscription } from "./pushNotifications";
 import {
   getEngineers, getEngineerById, updateEngineerProfile, createEngineer,
   getDailyTasksStats, getTasksList, createTask, updateTaskStatus, deleteTask, rescheduleTask,
@@ -2076,6 +2077,22 @@ export const appRouter = router({
       .query(async ({ input }) => getAuditLogs(input)),
   }),
   // ─── Lead Daily Stats ─────────────────────────────────────────────────────────
+  pushNotifications: router({
+    publicKey: protectedProcedure.query(() => ({ publicKey: getWebPushPublicKey() })),
+    subscribe: protectedProcedure.input(z.object({
+      endpoint: z.string().url().max(2048),
+      keys: z.object({ p256dh: z.string().min(1).max(255), auth: z.string().min(1).max(255) }),
+    })).mutation(async ({ input, ctx }) => {
+      if (!ctx.actor) throw new TRPCError({ code: "UNAUTHORIZED", message: "يجب تسجيل الدخول أولاً" });
+      return savePushSubscription(ctx.actor.id, { ...input, userAgent: ctx.req.headers["user-agent"] });
+    }),
+    unsubscribe: protectedProcedure.input(z.object({ endpoint: z.string().url().max(2048) }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.actor) throw new TRPCError({ code: "UNAUTHORIZED", message: "يجب تسجيل الدخول أولاً" });
+        return removePushSubscription(ctx.actor.id, input.endpoint);
+      }),
+  }),
+
   localAuth: router({
     // تسجيل الدخول بيوزرنيم وباسورد
     login: publicProcedure

@@ -1024,6 +1024,38 @@ export type AppUser = typeof appUsers.$inferSelect;
 export type InsertAppUser = typeof appUsers.$inferInsert;
 
 // ═══════════════════════════════════════════════════════════════════════
+// Web Push subscriptions and idempotent reminder deliveries
+// ═══════════════════════════════════════════════════════════════════════
+export const pushSubscriptions = mysqlTable("push_subscriptions", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  endpoint: varchar("endpoint", { length: 2048 }).notNull(),
+  endpointHash: varchar("endpointHash", { length: 64 }).notNull(),
+  p256dh: varchar("p256dh", { length: 255 }).notNull(),
+  auth: varchar("auth", { length: 255 }).notNull(),
+  userAgent: varchar("userAgent", { length: 512 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  lastUsedAt: timestamp("lastUsedAt"),
+}, (table) => ({
+  userEndpointIdx: uniqueIndex("push_subscriptions_user_endpoint_idx").on(table.userId, table.endpointHash),
+}));
+export type PushSubscription = typeof pushSubscriptions.$inferSelect;
+export type InsertPushSubscription = typeof pushSubscriptions.$inferInsert;
+
+export const notificationDeliveries = mysqlTable("notification_deliveries", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  kind: varchar("kind", { length: 80 }).notNull(),
+  deliveryDate: date("deliveryDate").notNull(),
+  sentAt: timestamp("sentAt").defaultNow().notNull(),
+}, (table) => ({
+  userKindDayIdx: uniqueIndex("notification_deliveries_user_kind_day_idx").on(table.userId, table.kind, table.deliveryDate),
+}));
+export type NotificationDelivery = typeof notificationDeliveries.$inferSelect;
+export type InsertNotificationDelivery = typeof notificationDeliveries.$inferInsert;
+
+// ═══════════════════════════════════════════════════════════════════════
 // User Permissions (صلاحيات المستخدمين لكل Module)
 // ═══════════════════════════════════════════════════════════════════════
 export const userPermissions = mysqlTable("user_permissions", {
