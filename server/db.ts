@@ -163,9 +163,10 @@ export function calcTaskScore(status: string, delayDays: number): number {
 export async function getDailyTasksStats(dateStr: string, engineerId?: number) {
   const db = await getDb();
   if (!db) return { planned: 0, completed: 0, delayed: 0, not_done: 0, client_delay: 0, critical: 0, byEngineer: [], topEngineers: [], bottomEngineers: [], alerts: [] };
-  const taskDateObj = new Date(dateStr + 'T00:00:00');
   const conditions: any[] = [
-    eq(dailyTasks.taskDate, taskDateObj),
+    // Compare the MySQL DATE with the requested calendar day, avoiding a
+    // timezone-sensitive Date parameter at the read boundary.
+    eq(dailyTasks.taskDate, sql`${dateStr}`),
     eq(dailyTasks.isDeleted, 0),
   ];
   if (engineerId) conditions.push(eq(dailyTasks.engineerId, engineerId));
@@ -224,14 +225,14 @@ export async function getDailyTasksStats(dateStr: string, engineerId?: number) {
     }
   });
 
-  return { planned: total, completed, delayed, not_done, client_delay, critical, total, byEngineer, topEngineers, bottomEngineers, alerts };
+  return { planned, completed, delayed, not_done, client_delay, critical, total, byEngineer, topEngineers, bottomEngineers, alerts };
 }
 
 export async function getTasksList(dateStr: string, engineerId?: number) {
   const db = await getDb();
   if (!db) return [];
   const conditions = [
-    eq(dailyTasks.taskDate, new Date(dateStr + 'T00:00:00')),
+    eq(dailyTasks.taskDate, sql`${dateStr}`),
     eq(dailyTasks.isDeleted, 0),
   ];
   if (engineerId) conditions.push(eq(dailyTasks.engineerId, engineerId));
@@ -275,7 +276,7 @@ export async function createTask(data: {
     }
   }
   await db.insert(dailyTasks).values({
-    engineerId: data.engineerId, taskDate: new Date(data.taskDate + 'T00:00:00'), title: data.title,
+    engineerId: data.engineerId, taskDate: new Date(`${data.taskDate}T00:00:00.000Z`), title: data.title,
     description: data.description, plannedHours: data.plannedHours ?? 1,
     priority: (data.priority as any) ?? 'medium', status: 'planned',
     delayDays: 0, isClientDelay: 0, isRescheduled: 0, isCritical: 0,

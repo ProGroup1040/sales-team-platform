@@ -1179,6 +1179,7 @@ function TimelineView({
 export default function InteractiveCalendar({ engineers, currentUserRole, currentEngineerId }: Props) {
   const isAdmin = currentUserRole === 'admin';
   const canBrowseAllTasks = ['admin', 'manager', 'admin_sales'].includes(currentUserRole ?? '');
+  const utils = trpc.useUtils();
   // State
   const [viewMode, setViewMode] = useState<ViewMode>('timeline');
   const [currentDate, setCurrentDate] = useState(() => new Date());
@@ -1593,7 +1594,12 @@ export default function InteractiveCalendar({ engineers, currentUserRole, curren
         defaultDate={taskModal.defaultDate}
         defaultStartTime={taskModal.defaultStartTime}
         engineers={engineers}
-        onSaved={() => refetch()}
+        onSaved={() => {
+          refetch();
+          utils.tasks.stats.invalidate();
+          utils.tasks.list.invalidate();
+          utils.tasks.filtered.invalidate();
+        }}
         currentUserRole={currentUserRole}
         currentEngineerId={currentEngineerId}
         isAdminSalesMode={isAdminSalesMode}
