@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import webpush from "web-push";
 import { and, eq, sql } from "drizzle-orm";
-import { appUsers, dailyTasks, notificationDeliveries, pushSubscriptions } from "../drizzle/schema";
+import { appUsers, dailyTasks, notificationDeliveries, pushSubscriptions, webPushConfig } from "../drizzle/schema";
 import { getDb } from "./db";
 
 const REMINDER_KIND = "daily_tasks_missing";
@@ -10,15 +10,44 @@ const REMINDER_HOUR = 9;
 const REMINDER_MINUTE_START = 30;
 const REMINDER_MINUTE_END = 34;
 
-function vapidConfig() {
+function envVapidConfig() {
   const publicKey = process.env.VAPID_PUBLIC_KEY?.trim() ?? "";
   const privateKey = process.env.VAPID_PRIVATE_KEY?.trim() ?? "";
   const subject = process.env.VAPID_SUBJECT?.trim() || "mailto:admin@example.com";
   return publicKey && privateKey ? { publicKey, privateKey, subject } : null;
 }
 
-function configureWebPush() {
-  const config = vapidConfig();
+async function getVapidConfig() {
+  const fromEnvironment = envVapidConfig();
+  if (fromEnvironment) return fromEnvironment;
+
+  const db = await getDb();
+  if (!db) return null;
+  try {
+    const [saved] = await db.select().from(webPushConfig).where(eq(webPushConfig.id, 1)).limit(1);
+    if (saved) return { publicKey: saved.publicKey, privateKey: saved.privateKey, subject: saved.subject };
+
+    // Keep a stable key pair in the database so subscriptions survive restarts.
+    // Environment variables remain the preferred production override.
+    const generated = webpush.generateVAPIDKeys();
+    const subject = process.env.VAPID_SUBJECT?.trim() || "mailto:admin@example.com";
+    await db.insert(webPushConfig).values({ id: 1, publicKey: generated.publicKey, privateKey: generated.privateKey, subject });
+  } catch {
+    // Another instance may have initialized the singleton concurrently, or the
+    // deployment may still be applying migrations. Re-read below either way.
+  }
+  try {
+    const [persisted] = await db.select().from(webPushConfig).where(eq(webPushConfig.id, 1)).limit(1);
+    return persisted
+      ? { publicKey: persisted.publicKey, privateKey: persisted.privateKey, subject: persisted.subject }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+async function configureWebPush() {
+  const config = await getVapidConfig();
   if (!config) return null;
   webpush.setVapidDetails(config.subject, config.publicKey, config.privateKey);
   return config;
@@ -43,8 +72,8 @@ function cairoNow() {
   };
 }
 
-export function getWebPushPublicKey() {
-  return vapidConfig()?.publicKey ?? null;
+export async function getWebPushPublicKey() {
+  return (await getVapidConfig())?.publicKey ?? null;
 }
 
 export async function savePushSubscription(userId: number, input: {
@@ -119,7 +148,7 @@ async function sendToSubscription(subscription: typeof pushSubscriptions.$inferS
 }
 
 export async function sendDailyTaskRemindersNow() {
-  const config = configureWebPush();
+  const config = await configureWebPush();
   const db = await getDb();
   if (!config || !db) return { skipped: true, reason: !config ? "missing_vapid_config" : "database_unavailable", sent: 0 };
 
@@ -161,7 +190,9 @@ export function startDailyTaskReminderScheduler() {
   const tick = async () => {
     if (running) return;
     running = true;
-    try { await sendDailyTaskRemindersNow(); } finally { running = false; }
+    try { await sendDailyTaskRemindersNow(); }
+    catch (error) { console.error("[WebPush] reminder tick failed:", error); }
+    finally { running = false; }
   };
   void tick();
   const timer = setInterval(() => void tick(), 60_000);

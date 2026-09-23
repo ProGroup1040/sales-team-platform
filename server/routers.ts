@@ -2080,7 +2080,7 @@ export const appRouter = router({
   }),
   // ─── Lead Daily Stats ─────────────────────────────────────────────────────────
   pushNotifications: router({
-    publicKey: protectedProcedure.query(() => ({ publicKey: getWebPushPublicKey() })),
+    publicKey: protectedProcedure.query(async () => ({ publicKey: await getWebPushPublicKey() })),
     subscribe: protectedProcedure.input(z.object({
       endpoint: z.string().url().max(2048),
       keys: z.object({ p256dh: z.string().min(1).max(255), auth: z.string().min(1).max(255) }),

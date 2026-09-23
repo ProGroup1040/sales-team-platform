@@ -1024,8 +1024,19 @@ export type AppUser = typeof appUsers.$inferSelect;
 export type InsertAppUser = typeof appUsers.$inferInsert;
 
 // ═══════════════════════════════════════════════════════════════════════
-// Web Push subscriptions and idempotent reminder deliveries
+// Web Push configuration, subscriptions, and idempotent reminder deliveries
 // ═══════════════════════════════════════════════════════════════════════
+export const webPushConfig = mysqlTable("web_push_config", {
+  id: int("id").primaryKey(),
+  publicKey: varchar("publicKey", { length: 255 }).notNull(),
+  privateKey: varchar("privateKey", { length: 255 }).notNull(),
+  subject: varchar("subject", { length: 255 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type WebPushConfig = typeof webPushConfig.$inferSelect;
+export type InsertWebPushConfig = typeof webPushConfig.$inferInsert;
+
 export const pushSubscriptions = mysqlTable("push_subscriptions", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("userId").notNull(),
