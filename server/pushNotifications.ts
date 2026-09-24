@@ -8,7 +8,6 @@ const REMINDER_KIND = "daily_tasks_missing";
 const CAIRO_TIME_ZONE = "Africa/Cairo";
 const REMINDER_HOUR = 9;
 const REMINDER_MINUTE_START = 30;
-const REMINDER_MINUTE_END = 34;
 
 function envVapidConfig() {
   const publicKey = process.env.VAPID_PUBLIC_KEY?.trim() ?? "";
@@ -130,6 +129,15 @@ async function claimReminder(db: Awaited<ReturnType<typeof getDb>>, userId: numb
   }
 }
 
+async function releaseReminder(db: Awaited<ReturnType<typeof getDb>>, userId: number, date: string) {
+  if (!db) return;
+  await db.delete(notificationDeliveries).where(and(
+    eq(notificationDeliveries.userId, userId),
+    eq(notificationDeliveries.kind, REMINDER_KIND),
+    eq(notificationDeliveries.deliveryDate, new Date(`${date}T00:00:00.000Z`)),
+  ));
+}
+
 async function sendToSubscription(subscription: typeof pushSubscriptions.$inferSelect, payload: string) {
   try {
     await webpush.sendNotification({
@@ -155,7 +163,9 @@ export async function sendDailyTaskRemindersNow() {
   const now = cairoNow();
   // Sunday–Thursday and Saturday are workdays. Friday is the only weekend day.
   if (now.weekday === "Fri") return { skipped: true, reason: "friday", sent: 0 };
-  if (now.hour !== REMINDER_HOUR || now.minute < REMINDER_MINUTE_START || now.minute > REMINDER_MINUTE_END) {
+  // Keep checking after 09:30 so a restarted/asleep server can recover a
+  // missed tick later in the same Cairo day.
+  if (now.hour < REMINDER_HOUR || (now.hour === REMINDER_HOUR && now.minute < REMINDER_MINUTE_START)) {
     return { skipped: true, reason: "outside_reminder_window", sent: 0 };
   }
 
@@ -178,9 +188,15 @@ export async function sendDailyTaskRemindersNow() {
     )).limit(1);
     const subscriptions = await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.userId, user.id));
     if (tasks.length > 0 || subscriptions.length === 0 || !(await claimReminder(db, user.id, now.date))) continue;
+    let delivered = 0;
     for (const subscription of subscriptions) {
-      if (await sendToSubscription(subscription, payload)) sent += 1;
+      if (await sendToSubscription(subscription, payload)) {
+        delivered += 1;
+        sent += 1;
+      }
     }
+    // Do not permanently mark a delivery when every push endpoint failed.
+    if (delivered === 0) await releaseReminder(db, user.id, now.date);
   }
   return { skipped: false, sent, date: now.date };
 }
@@ -197,6 +213,6 @@ export function startDailyTaskReminderScheduler() {
   void tick();
   const timer = setInterval(() => void tick(), 60_000);
   timer.unref?.();
-  console.log("[WebPush] Daily task reminder scheduler started (Cairo, 09:30, Friday excluded)");
+  console.log("[WebPush] Daily task reminder scheduler started (Cairo, after 09:30, Friday excluded)");
   return timer;
 }
