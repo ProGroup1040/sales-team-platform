@@ -2191,9 +2191,14 @@ export const appRouter = router({
         const session = await getLocalSessionFromRequest(ctx.req);
         if (session) {
           const linkedUser = await getAppUserByEngineerId(session.engineerId);
-          return linkedUser ? getUserPermissions(linkedUser.id) : getRolePermissions(session.role);
+          if (!linkedUser) return getRolePermissions(session.role);
+          const userPermissions = await getUserPermissions(linkedUser.id);
+          return userPermissions.length > 0 ? userPermissions : getRolePermissions(linkedUser.role ?? session.role);
         }
-        if (ctx.actor?.source === "app_user") return getUserPermissions(ctx.actor.id);
+        if (ctx.actor?.source === "app_user") {
+          const userPermissions = await getUserPermissions(ctx.actor.id);
+          return userPermissions.length > 0 ? userPermissions : getRolePermissions(ctx.actor.role);
+        }
         if (ctx.user?.role === "admin") return getRolePermissions("admin");
         return [];
       }),

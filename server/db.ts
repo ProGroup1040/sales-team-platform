@@ -11100,7 +11100,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Record<string, {
   sales_engineer: {
     crm:         { canView: 1, canAdd: 1, canEdit: 1, canDelete: 0, dataScope: "own" },
     visits:      { canView: 1, canAdd: 1, canEdit: 1, canDelete: 0, dataScope: "own" },
-    deals:       { canView: 1, canAdd: 1, canEdit: 1, canDelete: 0, dataScope: "own" },
+    closing:     { canView: 1, canAdd: 1, canEdit: 1, canDelete: 0, dataScope: "own" },
     kpi:         { canView: 1, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "own" },
     planning:    { canView: 1, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "own" },
     discounts:   { canView: 1, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "own" },
@@ -11112,7 +11112,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Record<string, {
   sales_specialist: {
     crm:         { canView: 1, canAdd: 1, canEdit: 1, canDelete: 0, dataScope: "own" },
     visits:      { canView: 1, canAdd: 1, canEdit: 1, canDelete: 0, dataScope: "own" },
-    deals:       { canView: 1, canAdd: 1, canEdit: 1, canDelete: 0, dataScope: "own" },
+    closing:     { canView: 1, canAdd: 1, canEdit: 1, canDelete: 0, dataScope: "own" },
     kpi:         { canView: 1, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "own" },
     planning:    { canView: 1, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "own" },
     discounts:   { canView: 1, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "own" },
@@ -11124,7 +11124,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Record<string, {
   admin_sales: {
     crm:         { canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
     visits:      { canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
-    deals:       { canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
+    closing:     { canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
     kpi:         { canView: 0, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "all" }, // KPI مخفي لـ Admin Sales
     planning:    { canView: 1, canAdd: 1, canEdit: 1, canDelete: 0, dataScope: "all" },
     discounts:   { canView: 1, canAdd: 1, canEdit: 1, canDelete: 0, dataScope: "all" },
@@ -11136,7 +11136,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Record<string, {
   manager: {
     crm:         { canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
     visits:      { canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
-    deals:       { canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
+    closing:     { canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
     kpi:         { canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
     planning:    { canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
     discounts:   { canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
@@ -11425,17 +11425,26 @@ export async function getAppUsers(): Promise<AppUser[]> {
     .where(eq(appUsers.status, "active"))
     .orderBy(appUsers.createdAt);
 }
+function canonicalPermissionModule(module: string) {
+  return module === "deals" ? "closing" : module;
+}
+
+function normalizePermissionModules<T extends { module: string }>(rows: T[]): T[] {
+  return rows.map((row) => ({ ...row, module: canonicalPermissionModule(row.module) }) as T);
+}
+
 // ─── Get User Permissions ────────────────────────────────────────────────────────────────
 export async function getUserPermissions(userId: number): Promise<UserPermission[]> {
   const db = await getDb();
   if (!db) {
-    if (useTestAppUserStore()) return testUserPermissions.get(userId) ?? [];
+    if (useTestAppUserStore()) return normalizePermissionModules(testUserPermissions.get(userId) ?? []);
     throw new Error("Database not available");
   }
-  return db
+  const rows = await db
     .select()
     .from(userPermissions)
     .where(eq(userPermissions.userId, userId));
+  return normalizePermissionModules(rows);
 }
 // ─── Update User Permissions ──────────────────────────────────────────────────
 export async function updateUserPermissions(
@@ -11602,14 +11611,16 @@ export async function getActivityLogs(filters?: {
 export async function getRolePermissions(role: string): Promise<RolePermission[]> {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(rolePermissions).where(eq(rolePermissions.role, role));
+  const rows = await db.select().from(rolePermissions).where(eq(rolePermissions.role, role));
+  return normalizePermissionModules(rows);
 }
 
 /** جلب كل الصلاحيات لكل الـ Roles (للـ Matrix) */
 export async function getAllRolePermissions(): Promise<RolePermission[]> {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(rolePermissions).orderBy(rolePermissions.role, rolePermissions.module);
+  const rows = await db.select().from(rolePermissions).orderBy(rolePermissions.role, rolePermissions.module);
+  return normalizePermissionModules(rows);
 }
 
 /** تحديث صلاحية محددة لـ Role + Module */
@@ -11625,20 +11636,25 @@ export async function updateRolePermission(
   }
 ): Promise<void> {
   const db = await requireDb();
+  const canonicalModule = canonicalPermissionModule(module);
+  const legacyModule = canonicalModule === "closing" ? "deals" : canonicalModule;
   // Check if exists
   const [existing] = await db
     .select()
     .from(rolePermissions)
-    .where(and(eq(rolePermissions.role, role), eq(rolePermissions.module, module)));
+    .where(and(
+      eq(rolePermissions.role, role),
+      or(eq(rolePermissions.module, canonicalModule), eq(rolePermissions.module, legacyModule)),
+    ));
   if (existing) {
     await db
       .update(rolePermissions)
-      .set(data)
-      .where(and(eq(rolePermissions.role, role), eq(rolePermissions.module, module)));
+      .set({ ...data, module: canonicalModule })
+      .where(eq(rolePermissions.id, existing.id));
   } else {
     await db.insert(rolePermissions).values({
       role,
-      module,
+      module: canonicalModule,
       canView: data.canView ?? 0,
       canAdd: data.canAdd ?? 0,
       canEdit: data.canEdit ?? 0,

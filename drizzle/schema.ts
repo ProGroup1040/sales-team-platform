@@ -1076,7 +1076,8 @@ export const userPermissions = mysqlTable("user_permissions", {
   module: mysqlEnum("module", [
     "crm",        // العملاء المحتملون (CRM / Leads)
     "visits",     // المعاينات
-    "deals",      // الإغلاق والتفاوض
+    "closing",    // الإغلاق والتفاوض (canonical)
+    "deals",      // legacy alias kept for existing records
     "kpi",        // مؤشرات الأداء
     "planning",   // تخطيط الأهداف
     "discounts",  // الخصومات

@@ -477,6 +477,13 @@
       "when": 1789886845322,
       "tag": "0067_persistent_web_push_config",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "5",
+      "when": 1789886845323,
+      "tag": "0068_canonical_closing_permissions",
+      "breakpoints": true
     }
   ]
 }
