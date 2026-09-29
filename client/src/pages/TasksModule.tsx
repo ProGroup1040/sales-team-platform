@@ -103,7 +103,8 @@ function UpdateStatusDialog({ task, onDone }: { task: any; onDone: () => void })
 
   const submitLinkMut = trpc.meetingReview.submitLink.useMutation({
     onSuccess: () => {
-      utils.tasks.list.invalidate();
+      utils.tasks.list.invalidate(); utils.tasks.filtered.invalidate(); utils.tasks.stats.invalidate();
+      utils.tasks.timeline.invalidate(); utils.tasks.criticalEnhanced.invalidate();
       toast.success("تم حفظ رابط التسجيل وإرسال إشعار لـ Admin Sales");
     },
     onError: () => toast.error("رابط غير صحيح"),
@@ -115,7 +116,8 @@ function UpdateStatusDialog({ task, onDone }: { task: any; onDone: () => void })
         toast.error("يجب إدخال رابط تسجيل الميتينج أولاً");
         return;
       }
-      utils.tasks.stats.invalidate(); utils.tasks.list.invalidate(); utils.tasks.critical.invalidate();
+      utils.tasks.stats.invalidate(); utils.tasks.list.invalidate(); utils.tasks.filtered.invalidate();
+      utils.tasks.timeline.invalidate(); utils.tasks.critical.invalidate(); utils.tasks.criticalEnhanced.invalidate();
       toast.success("تم تحديث حالة المهمة"); setOpen(false); onDone();
     },
     onError: () => toast.error("حدث خطأ أثناء التحديث"),
@@ -1704,6 +1706,7 @@ export default function TasksModule() {
   const engineersQ = trpc.tasks.engineers.useQuery();
   const stats = statsQ.data;
   const rawTasks = useFilteredQuery ? (filteredQ.data ?? []) : (listQ.data ?? []);
+  const activeTasksQ = useFilteredQuery ? filteredQ : listQ;
   const engineers = engineersQ.data ?? [];
   const criticalTasks = criticalQ.data ?? [];
   const deleteMut = trpc.softDelete.task.useMutation({
@@ -1970,7 +1973,14 @@ export default function TasksModule() {
           ) : (
           // List View
           <>
-          {filteredTasks.length === 0 ? (
+          {activeTasksQ.isLoading ? (
+            <div className="text-center py-16 text-white/50">جارٍ تحميل المهام...</div>
+          ) : activeTasksQ.isError ? (
+            <div className="text-center py-16 text-red-300">
+              <p>تعذر تحميل المهام.</p>
+              <button className="mt-3 underline" onClick={() => activeTasksQ.refetch()}>إعادة المحاولة</button>
+            </div>
+          ) : filteredTasks.length === 0 ? (
             <div className="text-center py-16 text-white/30">
               <Calendar className="h-12 w-12 mx-auto mb-3 opacity-30" />
               <p>لا توجد مهام في هذا النطاق</p>

@@ -261,16 +261,20 @@ export async function createTask(data: {
   completionDate?: string;
   clientName?: string;
   dealId?: number;
+  startTime?: string;
+  endTime?: string;
+  notes?: string;
+  reminderMinutes?: number;
 }) {
   const db = await getDb();
   if (!db) return;
   // Auto-set category from taskType if not provided
   let category = data.category ?? null;
   if (!category && data.taskType) {
-    if (['meeting_modeling', 'meeting_presentation', 'meeting_closing'].includes(data.taskType)) {
-      category = 'meeting';
-    } else if (data.taskType === 'meeting_closing') {
+    if (data.taskType === 'meeting_closing' || data.taskType === 'closing' || data.taskType === 'negotiation') {
       category = 'closing';
+    } else if (['meeting_modeling', 'meeting_presentation', 'meeting_2d', 'meeting_3d', 'meeting_quotation'].includes(data.taskType)) {
+      category = 'meeting';
     } else {
       category = 'general';
     }
@@ -288,54 +292,63 @@ export async function createTask(data: {
     completionDate: data.completionDate ? new Date(data.completionDate + 'T00:00:00') : null,
     clientName: data.clientName ?? null,
     dealId: data.dealId ?? null,
+    startTime: data.startTime ?? null,
+    endTime: data.endTime ?? null,
+    notes: data.notes ?? null,
+    reminderMinutes: data.reminderMinutes ?? 0,
   });
 }
 
 export async function updateTaskStatus(id: number, status: string, delayDays?: number, notes?: string) {
   const db = await getDb();
   if (!db) return null;
-  // ─── شرط إغلاق Meeting Tasks (Recording Mandatory) ─────────────────────────────────────────────────────────────
-  if (status === 'completed') {
-    const [task] = await db.select().from(dailyTasks).where(eq(dailyTasks.id, id)).limit(1);
-    if (task) {
+  return db.transaction(async (tx) => {
+    const [task] = await tx.select().from(dailyTasks).where(and(eq(dailyTasks.id, id), eq(dailyTasks.isDeleted, 0))).limit(1);
+    if (!task) return { success: false, error: 'NOT_FOUND', message: 'المهمة غير موجودة' };
+    // ─── شرط إغلاق Meeting Tasks (Recording Mandatory) ────────────────────────
+    if (status === 'completed') {
       const meetingTypes = ['meeting_presentation', 'meeting_closing', 'meeting_2d', 'meeting_3d', 'meeting_quotation'];
       const isMeetingTask = meetingTypes.includes(task.taskType ?? '') || task.category === 'closing' || task.category === 'meeting';
       if (isMeetingTask && !task.meetingRecordingLink) {
         return { success: false, error: 'RECORDING_REQUIRED', message: 'يجب إدخال رابط تسجيل الاجتماع (Recording Link) قبل إغلاق هذه المهمة' };
       }
-    }
-  }
-  const updateData: any = { status };
-  if (notes !== undefined) updateData.notes = notes;
-  if (status === 'completed') { updateData.completedAt = new Date(); updateData.delayDays = 0; updateData.isCritical = 0; }
-  if (status === 'delayed') {
+      }
+    const updateData: any = { status };
+    if (notes !== undefined) updateData.notes = notes;
+    if (status === 'completed') { updateData.completedAt = new Date(); updateData.completionDate = new Date(); updateData.delayDays = 0; updateData.isCritical = 0; updateData.isClientDelay = 0; }
+    else updateData.completedAt = null;
+    if (status === 'delayed') {
     const days = delayDays ?? 1;
     updateData.delayDays = days;
     updateData.isCritical = days > 2 ? 1 : 0;
-  }
-  if (status === 'not_done') { updateData.isCritical = 0; }
-  if (status === 'client_delay') { updateData.isClientDelay = 1; updateData.isCritical = 0; }
-  await db.update(dailyTasks).set(updateData).where(eq(dailyTasks.id, id));
-  // إذا client_delay: أنشئ مهمة جديدة بتاريخ جديد
-  if (status === 'client_delay') {
-    const [original] = await db.select().from(dailyTasks).where(eq(dailyTasks.id, id)).limit(1);
-    if (original) {
-      const nextDate = new Date(original.taskDate);
+    }
+    if (status === 'not_done') { updateData.isCritical = 0; updateData.isClientDelay = 0; }
+    if (status === 'client_delay') { updateData.isClientDelay = 1; updateData.isCritical = 0; }
+    await tx.update(dailyTasks).set(updateData).where(and(eq(dailyTasks.id, id), eq(dailyTasks.isDeleted, 0)));
+    // إذا client_delay: أنشئ مهمة جديدة بتاريخ جديد داخل نفس المعاملة
+    if (status === 'client_delay') {
+      const nextDate = new Date(task.taskDate);
       nextDate.setDate(nextDate.getDate() + 1);
-      await db.insert(dailyTasks).values({
-        engineerId: original.engineerId,
+      await tx.insert(dailyTasks).values({
+        engineerId: task.engineerId,
         taskDate: nextDate,
-        title: original.title,
-        description: original.description,
-        plannedHours: original.plannedHours ?? 1,
-        priority: original.priority,
+        title: task.title,
+        description: task.description,
+        plannedHours: task.plannedHours ?? 1,
+        priority: task.priority,
         status: 'planned',
         delayDays: 0, isClientDelay: 0, isRescheduled: 1,
         rescheduledFromId: id, isCritical: 0,
+        startTime: task.startTime,
+        endTime: task.endTime,
+        taskType: task.taskType,
+        category: task.category,
+        clientName: task.clientName,
+        dealId: task.dealId,
       });
     }
-  }
-  return { success: true };
+    return { success: true };
+  });
 }
 
 export async function deleteTask(id: number) {
@@ -4628,22 +4641,19 @@ export async function getCriticalTasksEnhanced(engineerId?: number) {
   const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
 
   // المهام الحرجة القديمة + not_done + planned قديمة
+  const conditions: any[] = [
+    eq(dailyTasks.isDeleted, 0),
+    or(
+      eq(dailyTasks.isCritical, 1),
+      eq(dailyTasks.status, "not_done"),
+      and(eq(dailyTasks.status, "planned"), lte(dailyTasks.taskDate, yesterday)),
+    ),
+  ];
+  if (engineerId) conditions.push(eq(dailyTasks.engineerId, engineerId));
   const tasks = await db
     .select()
     .from(dailyTasks)
-    .where(
-      and(
-        eq(dailyTasks.isDeleted, 0),
-        or(
-          eq(dailyTasks.isCritical, 1),
-          eq(dailyTasks.status, "not_done"),
-          and(
-            eq(dailyTasks.status, "planned"),
-            lte(dailyTasks.taskDate, yesterday),
-          )
-        )
-      )
-    )
+    .where(and(...conditions))
     .orderBy(desc(dailyTasks.taskDate))
     .limit(100);
 

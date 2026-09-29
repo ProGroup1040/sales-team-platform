@@ -10,7 +10,7 @@ import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_
 import { getWebPushPublicKey, savePushSubscription, removePushSubscription } from "./pushNotifications";
 import {
   getEngineers, getEngineerById, updateEngineerProfile, createEngineer,
-  getDailyTasksStats, getTasksList, createTask, updateTaskStatus, deleteTask, rescheduleTask,
+  getDailyTasksStats, getTasksList, createTask, updateTaskStatus, rescheduleTask,
   getCriticalTasks, getEngineersWithRole, createEngineerWithRole, deleteEngineer,
   getLeadsStats, getLeadsList, createLead, updateLeadStatus,
   getVisitsStats, getVisitsList, createVisit, updateVisitStatus, updateVisitFull,
@@ -365,6 +365,18 @@ type TaskAccess = {
   scope: "own" | "team" | "all";
 };
 
+const taskTimeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "الوقت يجب أن يكون بصيغة HH:MM");
+function assertTaskTimeRange(startTime?: string, endTime?: string) {
+  if (startTime === undefined && endTime === undefined) return;
+  if (!startTime || !endTime || !/^([01]\d|2[0-3]):[0-5]\d$/.test(startTime) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(endTime)) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "يجب إدخال وقت بداية ونهاية صحيحين" });
+  }
+  const toMinutes = (value: string) => Number(value.slice(0, 2)) * 60 + Number(value.slice(3));
+  if (toMinutes(endTime) <= toMinutes(startTime)) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "وقت النهاية يجب أن يكون بعد وقت البداية" });
+  }
+}
+
 async function getTaskAccess(ctx: any): Promise<TaskAccess> {
   const caller = await getCallerFromContext(ctx);
   if (!caller) throw new TRPCError({ code: "UNAUTHORIZED", message: "يجب تسجيل الدخول أولاً" });
@@ -428,6 +440,53 @@ async function requirePrivilegedRoleManagementCaller(ctx: any, message: string) 
   const caller = await getCallerFromContext(ctx);
   if (!caller) throw new TRPCError({ code: "UNAUTHORIZED", message: "يجب تسجيل الدخول أولاً" });
   if (!canManagePrivilegedRoles(caller.role)) throw new TRPCError({ code: "FORBIDDEN", message });
+  return caller;
+}
+
+async function requireAdminSalesTaskCaller(ctx: any, engineerId?: number, taskId?: number) {
+  const caller = await getCallerFromContext(ctx);
+  if (!caller) throw new TRPCError({ code: "UNAUTHORIZED", message: "يجب تسجيل الدخول أولاً" });
+  const privileged = ["admin", "manager"].includes(caller.role);
+  if (privileged) return caller;
+  if (caller.role !== "admin_sales" || !caller.engineerId) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "مهام Admin Sales متاحة للإدارة أو حساب Admin Sales المرتبط فقط" });
+  }
+  let targetEngineerId = engineerId;
+  if (taskId !== undefined) {
+    const db = await getDb();
+    const { adminSalesTasks } = await import("../drizzle/schema");
+    const { eq } = await import("drizzle-orm");
+    const [task] = db ? await db.select({ engineerId: adminSalesTasks.engineerId }).from(adminSalesTasks).where(eq(adminSalesTasks.id, taskId)).limit(1) : [];
+    if (!task) throw new TRPCError({ code: "NOT_FOUND", message: "المهمة غير موجودة" });
+    targetEngineerId = task.engineerId;
+  }
+  if (targetEngineerId !== undefined && targetEngineerId !== caller.engineerId) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "لا يمكنك الوصول إلى مهام Admin Sales لمستخدم آخر" });
+  }
+  return caller;
+}
+
+async function requireAdminSalesMeetingCaller(ctx: any, meetingId: number) {
+  const caller = await getCallerFromContext(ctx);
+  if (!caller) throw new TRPCError({ code: "UNAUTHORIZED", message: "يجب تسجيل الدخول أولاً" });
+  if (["admin", "manager"].includes(caller.role)) return caller;
+  if (caller.role !== "admin_sales" || !caller.engineerId) throw new TRPCError({ code: "FORBIDDEN", message: "سجل الاجتماعات متاح للإدارة أو Admin Sales المرتبط فقط" });
+  const db = await getDb();
+  const { adminSalesMeetings } = await import("../drizzle/schema");
+  const { eq } = await import("drizzle-orm");
+  const [meeting] = db ? await db.select({ engineerId: adminSalesMeetings.engineerId }).from(adminSalesMeetings).where(eq(adminSalesMeetings.id, meetingId)).limit(1) : [];
+  if (!meeting) throw new TRPCError({ code: "NOT_FOUND", message: "سجل الاجتماع غير موجود" });
+  if (meeting.engineerId !== caller.engineerId) throw new TRPCError({ code: "FORBIDDEN", message: "لا يمكنك تعديل سجل مستخدم آخر" });
+  return caller;
+}
+
+async function requireMeetingReviewManager(ctx: any, taskId: number, action: TaskAction = "view") {
+  const caller = await getCallerFromContext(ctx);
+  if (!caller) throw new TRPCError({ code: "UNAUTHORIZED", message: "يجب تسجيل الدخول أولاً" });
+  if (!["admin", "manager", "admin_sales"].includes(caller.role)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "مراجعات الاجتماعات متاحة للإدارة فقط" });
+  }
+  await requireTaskAction(ctx, action, taskId);
   return caller;
 }
 
@@ -662,8 +721,11 @@ export const appRouter = router({
       await requireTaskAction(ctx, "edit", input.id);
       return await updateTaskStatus(input.id, input.status, input.delayDays, input.notes);
     }),
-    delete: protectedProcedure.input(z.object({ id: z.number() }))
-      .mutation(async ({ input, ctx }) => { await requireTaskAction(ctx, "delete", input.id); await deleteTask(input.id); return { success: true }; }),
+    delete: protectedProcedure.input(z.object({ id: z.number(), reason: z.enum(['data_entry_error','duplicate','client_cancelled','other']).optional(), reasonCustom: z.string().optional() }))
+      .mutation(async ({ input, ctx }) => {
+        const access = await requireTaskAction(ctx, "delete", input.id);
+        return await softDeleteTask(input.id, input.reason ?? "other", input.reasonCustom, access.caller.name || "user");
+      }),
     reschedule: protectedProcedure.input(z.object({ id: z.number(), newDate: z.string() }))
       .mutation(async ({ input, ctx }) => { await requireTaskAction(ctx, "edit", input.id); await rescheduleTask(input.id, input.newDate); return { success: true }; }),
     critical: protectedProcedure.query(async ({ ctx }) => {
@@ -763,15 +825,14 @@ export const appRouter = router({
       const db = await getDb();
       if (!db) return { success: false };
       const { dailyTasks: dt } = await import('../drizzle/schema.js');
-      const { eq: eqFn } = await import('drizzle-orm');
+      const { and: andFn, eq: eqFn } = await import('drizzle-orm');
       // Update the task with recording link
       await db.update(dt).set({
         meetingRecordingLink: input.recordingLink,
         recordingSubmittedAt: new Date(),
-        status: 'in_progress' as any,
-      }).where(eqFn(dt.id, input.taskId));
+      }).where(andFn(eqFn(dt.id, input.taskId), eqFn(dt.isDeleted, 0)));
       // Auto-create admin review task
-      const [task] = await db.select().from(dt).where(eqFn(dt.id, input.taskId)).limit(1);
+      const [task] = await db.select().from(dt).where(andFn(eqFn(dt.id, input.taskId), eqFn(dt.isDeleted, 0))).limit(1);
       if (task) {
         await autoCreateReviewTask({
           meetingTaskId: input.taskId,
@@ -804,8 +865,8 @@ export const appRouter = router({
       priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
       category: z.string().optional(),
       meetingRecordingLink: z.string().optional(),
-      startTime: z.string().optional(),
-      endTime: z.string().optional(),
+      startTime: taskTimeSchema.optional(),
+      endTime: taskTimeSchema.optional(),
       taskType: z.enum(['design_2d','design_3d','render','quotation','meeting_modeling','meeting_presentation','meeting_closing','contract','work_order','meeting_2d','meeting_3d','meeting_quotation','closing','negotiation','other']).optional(),
       clientName: z.string().optional(),
       notes: z.string().optional(),
@@ -815,6 +876,7 @@ export const appRouter = router({
       const engineerId = taskEngineerFilter(access, input.engineerId);
       if (!engineerId) throw new TRPCError({ code: "BAD_REQUEST", message: "يجب تحديد المهندس المسؤول عن المهمة" });
       const { startTime, endTime, taskType, clientName, notes, reminderMinutes, ...rest } = input;
+      assertTaskTimeRange(startTime, endTime);
       // Check overlap if times provided
       if (startTime && endTime) {
         const overlap = await checkTimeOverlap({ engineerId, taskDate: input.taskDate, startTime, endTime });
@@ -822,20 +884,25 @@ export const appRouter = router({
           throw new Error(`تداخل زمني مع مهمة: ${overlap.conflictingTask?.title} (${overlap.conflictingTask?.startTime} - ${overlap.conflictingTask?.endTime})`);
         }
       }
-      await createTask({ ...rest, engineerId, startTime, endTime, taskType, clientName, notes, reminderMinutes } as any);
+      await createTask({ ...rest, engineerId, startTime, endTime, taskType, clientName, notes, reminderMinutes });
       return { success: true };
     }),
     // ─── Move Task (Drag & Drop) ─────────────────────────────────────────────────────────────────
     moveTask: protectedProcedure.input(z.object({
       id: z.number(),
       newDate: z.string().optional(),
-      newStartTime: z.string().optional(),
-      newEndTime: z.string().optional(),
+      newStartTime: taskTimeSchema.optional(),
+      newEndTime: taskTimeSchema.optional(),
       newEngineerId: z.number().optional(),
     })).mutation(async ({ input, ctx }) => {
       const access = await requireTaskAction(ctx, "edit", input.id);
       const { id, newDate, newStartTime, newEndTime, newEngineerId } = input;
       const updates: Record<string, unknown> = {};
+      assertTaskTimeRange(newStartTime, newEndTime);
+      if (newStartTime && newEndTime) {
+        const overlap = await checkTimeOverlap({ engineerId: newEngineerId ?? access.caller.engineerId ?? 0, taskDate: newDate ?? new Date().toISOString().slice(0, 10), startTime: newStartTime, endTime: newEndTime, excludeTaskId: id });
+        if (overlap.hasOverlap) throw new TRPCError({ code: "CONFLICT", message: `تداخل زمني مع مهمة: ${overlap.conflictingTask?.title}` });
+      }
       if (newDate) updates.taskDate = newDate;
       if (newStartTime !== undefined) updates.startTime = newStartTime;
       if (newEndTime !== undefined) updates.endTime = newEndTime;
@@ -859,8 +926,8 @@ export const appRouter = router({
       title: z.string().min(1).optional(),
       description: z.string().optional(),
       taskDate: z.string().optional(),
-      startTime: z.string().optional(),
-      endTime: z.string().optional(),
+      startTime: taskTimeSchema.optional(),
+      endTime: taskTimeSchema.optional(),
       taskType: z.enum(['design_2d','design_3d','render','quotation','meeting_modeling','meeting_presentation','meeting_closing','contract','work_order','meeting_2d','meeting_3d','meeting_quotation','closing','negotiation','other']).optional(),
       priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
       status: z.enum(['planned', 'completed', 'delayed', 'not_done', 'client_delay']).optional(),
@@ -875,9 +942,25 @@ export const appRouter = router({
       if (updates.engineerId !== undefined && access.scope !== "all") {
         throw new TRPCError({ code: "FORBIDDEN", message: "لا يمكنك تغيير مالك المهمة" });
       }
+      assertTaskTimeRange(updates.startTime, updates.endTime);
+      if (updates.startTime && updates.endTime) {
+        const overlap = await checkTimeOverlap({
+          engineerId: updates.engineerId ?? access.caller.engineerId ?? 0,
+          taskDate: updates.taskDate ?? new Date().toISOString().slice(0, 10),
+          startTime: updates.startTime,
+          endTime: updates.endTime,
+          excludeTaskId: id,
+        });
+        if (overlap.hasOverlap) throw new TRPCError({ code: "CONFLICT", message: `تداخل زمني مع مهمة: ${overlap.conflictingTask?.title}` });
+      }
+      const { status: requestedStatus, ...fieldUpdates } = updates;
       const cleanUpdates: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(updates)) {
+      for (const [k, v] of Object.entries(fieldUpdates)) {
         if (v !== undefined) cleanUpdates[k] = v;
+      }
+      if (requestedStatus !== undefined) {
+        const statusResult = await updateTaskStatus(id, requestedStatus);
+        if (statusResult && statusResult.success === false) return statusResult;
       }
       if (Object.keys(cleanUpdates).length > 0) {
         const { getDb } = await import('./db');
@@ -1879,7 +1962,8 @@ export const appRouter = router({
     // تقديم رابط تسجيل الميتينج
     submitLink: protectedProcedure
       .input(z.object({ taskId: z.number(), link: z.string().url('رابط غير صحيح') }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        await requireMeetingReviewManager(ctx, input.taskId, "edit");
         const task = await submitMeetingRecordingLink(input.taskId, input.link);
         if (!task) throw new Error('المهمة غير موجودة');
         return { success: true, task };
@@ -1887,7 +1971,7 @@ export const appRouter = router({
     // جلب تقييم مهمة معينة
     getReview: protectedProcedure
       .input(z.object({ taskId: z.number() }))
-      .query(async ({ input }) => getMeetingReview(input.taskId)),
+      .query(async ({ input, ctx }) => { await requireMeetingReviewManager(ctx, input.taskId, "view"); return getMeetingReview(input.taskId); }),
     // إنشاء أو تحديث تقييم الميتينج
     upsertReview: protectedProcedure
       .input(z.object({
@@ -1901,20 +1985,28 @@ export const appRouter = router({
         closingScore: z.number().min(0).max(25),
         comments: z.string().optional(),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        await requireMeetingReviewManager(ctx, input.taskId, "edit");
         const review = await upsertMeetingReview(input);
         return { success: true, review };
       }),
     // جلب Closing Quality Score لمهندس
     getClosingQuality: protectedProcedure
       .input(z.object({ engineerId: z.number(), year: z.number(), month: z.number() }))
-      .query(async ({ input }) => getEngineerClosingQualityScore(input.engineerId, input.year, input.month)),
+      .query(async ({ input, ctx }) => {
+        const caller = await getCallerFromContext(ctx);
+        if (!caller) throw new TRPCError({ code: "UNAUTHORIZED", message: "يجب تسجيل الدخول أولاً" });
+        if (!["admin", "manager", "admin_sales"].includes(caller.role) || (caller.role === "admin_sales" && caller.engineerId !== input.engineerId)) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "لا يمكنك عرض تقييمات مهندس آخر" });
+        }
+        return getEngineerClosingQualityScore(input.engineerId, input.year, input.month);
+      }),
   }),
   adminSalesTasks: router({
     // جلب مهام يوم معين لـ Admin Sales
     getByDate: protectedProcedure
       .input(z.object({ engineerId: z.number(), date: z.string() }))
-      .query(async ({ input }) => getAdminSalesTasks(input.engineerId, input.date)),
+      .query(async ({ input, ctx }) => { await requireAdminSalesTaskCaller(ctx, input.engineerId); return getAdminSalesTasks(input.engineerId, input.date); }),
     // تحديث حالة مهمة
     updateStatus: protectedProcedure
       .input(z.object({
@@ -1922,14 +2014,15 @@ export const appRouter = router({
         status: z.enum(['pending', 'done', 'delayed', 'not_done']),
         notes: z.string().optional(),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        await requireAdminSalesTaskCaller(ctx, undefined, input.taskId);
         await updateAdminSalesTaskStatus(input.taskId, input.status, input.notes);
         return { success: true };
       }),
     // جلب أو إنشاء سجل الاجتماعات الأسبوعية
     getWeekMeeting: protectedProcedure
       .input(z.object({ engineerId: z.number(), weekStart: z.string() }))
-      .query(async ({ input }) => getOrCreateWeekMeeting(input.engineerId, input.weekStart)),
+      .query(async ({ input, ctx }) => { await requireAdminSalesTaskCaller(ctx, input.engineerId); return getOrCreateWeekMeeting(input.engineerId, input.weekStart); }),
     // تحديث سجل الاجتماعات
     updateWeekMeeting: protectedProcedure
       .input(z.object({
@@ -1939,7 +2032,8 @@ export const appRouter = router({
         reportSubmitted: z.enum(['yes', 'no', 'pending']).optional(),
         meetingNotes: z.string().optional(),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        await requireAdminSalesMeetingCaller(ctx, input.id);
         const { id, ...data } = input;
         await updateWeekMeeting(id, data);
         return { success: true };
@@ -1947,7 +2041,7 @@ export const appRouter = router({
      // إحصائيات للمدير
     getStats: protectedProcedure
       .input(z.object({ engineerId: z.number(), month: z.string() }))
-      .query(async ({ input }) => getAdminSalesStats(input.engineerId, input.month)),
+      .query(async ({ input, ctx }) => { await requireAdminSalesTaskCaller(ctx, input.engineerId); return getAdminSalesStats(input.engineerId, input.month); }),
     // إضافة مهمة يدوية لـ Admin Sales
     create: protectedProcedure
       .input(z.object({
@@ -1960,7 +2054,8 @@ export const appRouter = router({
         kpiWeight: z.number().optional(),
         kpiImpact: z.string().optional(),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        await requireAdminSalesTaskCaller(ctx, input.engineerId);
         await createAdminSalesTask(input);
         return { success: true };
       }),
@@ -1977,7 +2072,8 @@ export const appRouter = router({
         kpiImpact: z.string().optional(),
         status: z.enum(['pending', 'done', 'delayed', 'not_done']).optional(),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        await requireAdminSalesTaskCaller(ctx, undefined, input.id);
         const { id, ...data } = input;
         await updateAdminSalesTaskFull(id, data);
         return { success: true };

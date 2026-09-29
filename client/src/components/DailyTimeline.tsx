@@ -304,6 +304,8 @@ const END_HOUR    = 22; // 10pm
 
 export default function DailyTimeline({ dateStr, engineerId, engineers, viewMode, onTaskAdded }: DailyTimelineProps) {
   const timelineQ = trpc.tasks.timeline.useQuery({ date: dateStr, engineerId });
+  if (timelineQ.isLoading) return <div className="py-16 text-center text-white/50">جارٍ تحميل الجدول الزمني...</div>;
+  if (timelineQ.isError) return <div className="py-16 text-center text-red-300"><p>تعذر تحميل الجدول الزمني.</p><button className="mt-3 underline" onClick={() => timelineQ.refetch()}>إعادة المحاولة</button></div>;
   const tasks = timelineQ.data ?? [];
 
   // Hours array
