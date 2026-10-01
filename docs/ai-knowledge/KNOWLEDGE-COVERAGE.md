@@ -30,3 +30,8 @@ Production state, complete business policy, canonical financial/customer source 
 ## Critical gaps
 
 Add production-backed reconciliation tests, an authoritative KPI catalog, explicit identity/ownership constraints, universal idempotency for financial mutations, and a documented permission precedence model before treating this knowledge base as a complete operational specification.
+
+## Detailed references added
+
+- [Detailed KPI formulas](kpi-formulas-detailed.md) — main 55/20/25 KPI, operational score, planning score, visit scores, closing rate, commission and incentive gates.
+- [Detailed module guide](modules-detailed.md) — module routes, APIs, tables, workflows, and source-of-truth warnings.

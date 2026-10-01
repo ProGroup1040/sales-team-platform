@@ -13,9 +13,11 @@
 
 1. [Architecture](architecture.md)
 2. [Modules](modules.md)
+3. [Detailed Modules](modules-detailed.md)
 3. [Workflows](workflows.md)
 4. [Permissions](permissions.md)
-5. [KPIs](kpis.md)
+6. [KPIs](kpis.md)
+7. [Detailed KPI Formulas](kpi-formulas-detailed.md)
 6. [Data Dictionary](data-dictionary.md)
 7. [Known Issues](known-issues.md)
 8. [FAQ](FAQ.md)
