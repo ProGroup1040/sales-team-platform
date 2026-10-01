@@ -266,6 +266,10 @@ function AddTaskDialog({ engineers, dateStr, onDone, selfEngineerId }: { enginee
     onSuccess: handleSuccess,
     onError: (error) => toast.error(error.message || "حدث خطأ أثناء الإضافة"),
   });
+  const createMineMut = trpc.tasks.createMine.useMutation({
+    onSuccess: handleSuccess,
+    onError: (error) => toast.error(error.message || "حدث خطأ أثناء إضافة مهمتك"),
+  });
 
   // عند تغيير المهندس: إعادة تعيين نوع المهمة إذا لم يكن مسموحاً
   const handleEngineerChange = (v: string) => {
@@ -386,7 +390,7 @@ function AddTaskDialog({ engineers, dateStr, onDone, selfEngineerId }: { enginee
                 className="bg-white/5 border-white/10 text-white resize-none h-20" placeholder="تفاصيل المهمة..." />
             </div>
             <Button className="w-full bg-indigo-600 hover:bg-indigo-700"
-              disabled={createMut.isPending || !effectiveEngineerId || !form.title || !form.taskType || (needsRecording && !form.meetingRecordingLink)}
+              disabled={createMut.isPending || createMineMut.isPending || !effectiveEngineerId || !form.title || !form.taskType || (needsRecording && !form.meetingRecordingLink)}
               onClick={() => {
                 const payload = {
                   taskDate: dateStr, title: form.title,
@@ -395,9 +399,13 @@ function AddTaskDialog({ engineers, dateStr, onDone, selfEngineerId }: { enginee
                   taskType: form.taskType as any,
                   meetingRecordingLink: form.meetingRecordingLink || undefined,
                 };
-                createMut.mutate({ ...payload, engineerId: Number(effectiveEngineerId) });
+                if (isSelfOnly) {
+                  createMineMut.mutate(payload);
+                } else {
+                  createMut.mutate({ ...payload, engineerId: Number(effectiveEngineerId) });
+                }
               }}>
-              {createMut.isPending ? "جاري الإضافة..." : "إضافة المهمة"}
+              {createMut.isPending || createMineMut.isPending ? "جاري الإضافة..." : isSelfOnly ? "إضافة مهمتي" : "إضافة المهمة"}
             </Button>
           </div>
         </DialogContent>
