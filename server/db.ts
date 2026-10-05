@@ -683,11 +683,13 @@ export async function getDealsStats(year: number, month: number) {
       closedDealMonthMatch
     )
   );
-  // Pipeline: all open deals (not closed) regardless of creation date - they're still active
+  // Pipeline: open deals are attributed to the selected month by createdAt,
+  // matching getDealsList and the month selected in the Closing UI.
   const pipelineDeals = await db.select().from(deals).where(
     and(
       eq(deals.isDeleted, 0),
-      not(inArray(deals.stage, ['closed_won', 'closed_lost']))
+      not(inArray(deals.stage, ['closed_won', 'closed_lost'])),
+      between(deals.createdAt, startDate, endDate)
     )
   );
   const allDeals = [...closedDealsThisMonth, ...pipelineDeals];
