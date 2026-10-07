@@ -25,6 +25,7 @@ import {
   SYSTEM_MODULES,
   SYSTEM_ROLES,
   DEFAULT_ROLE_PERMISSIONS,
+  completeAdminPermissions,
   getRolePermissions,
   getAllRolePermissions,
   updateRolePermission,
@@ -92,6 +93,23 @@ describe("pricing system default permissions", () => {
     expect(DEFAULT_ROLE_PERMISSIONS.admin_sales.pricing_system).toMatchObject({ canView: 1, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "all" });
     expect(DEFAULT_ROLE_PERMISSIONS.sales_engineer.pricing_system).toMatchObject({ canView: 1, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "own" });
     expect(DEFAULT_ROLE_PERMISSIONS.sales_specialist.pricing_system).toMatchObject({ canView: 1, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "own" });
+  });
+});
+
+describe("admin permission completion", () => {
+  it("fills modules missing from legacy admin records while preserving an explicit record", () => {
+    const explicitPricing = {
+      id: 1, role: "admin", module: "pricing_system", canView: 1,
+      canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "all",
+      createdAt: new Date("2026-01-01"), updatedAt: new Date("2026-01-01"),
+    } as any;
+
+    const permissions = completeAdminPermissions([explicitPricing], new Date("2026-01-02"));
+    expect(permissions).toHaveLength(SYSTEM_MODULES.length);
+    expect(permissions.find((permission) => permission.module === "pricing_system")).toBe(explicitPricing);
+    expect(permissions.find((permission) => permission.module === "overview")).toMatchObject({
+      role: "admin", canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all",
+    });
   });
 });
 

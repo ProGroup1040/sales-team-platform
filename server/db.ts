@@ -11624,6 +11624,15 @@ export async function getActivityLogs(filters?: {
 // ═══════════════════════════════════════════════════════════════════════
 
 /** جلب كل صلاحيات Role معين */
+export function completeAdminPermissions(rows: RolePermission[], now = new Date()): RolePermission[] {
+  const byModule = new Map(rows.map((row) => [row.module, row]));
+  return SYSTEM_MODULES.map((module, index) => byModule.get(module.key) ?? ({
+    id: -(index + 1), role: "admin", module: module.key,
+    canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all",
+    createdAt: now, updatedAt: now,
+  } as RolePermission));
+}
+
 export async function getRolePermissions(role: string): Promise<RolePermission[]> {
   const db = await getDb();
   if (!db) return [];
@@ -11631,16 +11640,7 @@ export async function getRolePermissions(role: string): Promise<RolePermission[]
   // Admin is a platform superuser. Preserve an explicit database record when
   // present, but synthesize missing module rows so legacy admin accounts do not
   // lose access merely because they predate the dynamic permissions table.
-  if (role === "admin") {
-    const now = new Date();
-    const byModule = new Map(rows.map((row) => [row.module, row]));
-    return SYSTEM_MODULES.map((module, index) => byModule.get(module.key) ?? ({
-      id: -(index + 1), role, module: module.key,
-      canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all",
-      createdAt: now, updatedAt: now,
-    } as RolePermission));
-  }
-  return rows;
+  return role === "admin" ? completeAdminPermissions(rows) : rows;
 }
 
 /** جلب كل الصلاحيات لكل الـ Roles (للـ Matrix) */
