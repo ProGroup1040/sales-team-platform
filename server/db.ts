@@ -11120,6 +11120,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Record<string, {
     tasks:       { canView: 1, canAdd: 1, canEdit: 1, canDelete: 0, dataScope: "own" },
     collections: { canView: 1, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "own" },
     users:       { canView: 0, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "own" },
+    pricing_system: { canView: 1, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "own" },
   },
   sales_specialist: {
     crm:         { canView: 1, canAdd: 1, canEdit: 1, canDelete: 0, dataScope: "own" },
@@ -11132,6 +11133,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Record<string, {
     tasks:       { canView: 1, canAdd: 1, canEdit: 1, canDelete: 0, dataScope: "own" },
     collections: { canView: 1, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "own" },
     users:       { canView: 0, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "own" },
+    pricing_system: { canView: 1, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "own" },
   },
   admin_sales: {
     crm:         { canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
@@ -11144,6 +11146,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Record<string, {
     tasks:       { canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
     collections: { canView: 1, canAdd: 1, canEdit: 1, canDelete: 0, dataScope: "all" },
     users:       { canView: 0, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "own" },
+    pricing_system: { canView: 1, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "all" },
   },
   manager: {
     crm:         { canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
@@ -11156,6 +11159,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Record<string, {
     tasks:       { canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
     collections: { canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
     users:       { canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
+    pricing_system: { canView: 1, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "all" },
   },
 };
 

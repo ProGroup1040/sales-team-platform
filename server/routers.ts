@@ -8,6 +8,7 @@ import { getRequestCookie, setResponseCookie, clearResponseCookie } from "./_cor
 import { TRPCError } from "@trpc/server";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { getWebPushPublicKey, savePushSubscription, removePushSubscription } from "./pushNotifications";
+import { mergeRoleAndUserPermissions } from "./permissionResolution";
 import {
   getEngineers, getEngineerById, updateEngineerProfile, createEngineer,
   getDailyTasksStats, getTasksList, createTask, updateTaskStatus, rescheduleTask,
@@ -2289,11 +2290,13 @@ export const appRouter = router({
           const linkedUser = await getAppUserByEngineerId(session.engineerId);
           if (!linkedUser) return getRolePermissions(session.role);
           const userPermissions = await getUserPermissions(linkedUser.id);
-          return userPermissions.length > 0 ? userPermissions : getRolePermissions(linkedUser.role ?? session.role);
+          const rolePermissions = await getRolePermissions(linkedUser.role ?? session.role);
+          return mergeRoleAndUserPermissions(rolePermissions, userPermissions);
         }
         if (ctx.actor?.source === "app_user") {
           const userPermissions = await getUserPermissions(ctx.actor.id);
-          return userPermissions.length > 0 ? userPermissions : getRolePermissions(ctx.actor.role);
+          const rolePermissions = await getRolePermissions(ctx.actor.role);
+          return mergeRoleAndUserPermissions(rolePermissions, userPermissions);
         }
         if (ctx.user?.role === "admin") return getRolePermissions("admin");
         return [];

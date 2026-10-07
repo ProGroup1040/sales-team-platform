@@ -24,6 +24,7 @@ vi.mock("./db", async (importOriginal) => {
 import {
   SYSTEM_MODULES,
   SYSTEM_ROLES,
+  DEFAULT_ROLE_PERMISSIONS,
   getRolePermissions,
   getAllRolePermissions,
   updateRolePermission,
@@ -81,6 +82,15 @@ describe("SYSTEM_ROLES", () => {
       expect(role.key).toBeTruthy();
       expect(role.label).toBeTruthy();
     }
+  });
+});
+
+describe("pricing system default permissions", () => {
+  it("grants view-only pricing access for every supported internal role", () => {
+    expect(DEFAULT_ROLE_PERMISSIONS.manager.pricing_system).toMatchObject({ canView: 1, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "all" });
+    expect(DEFAULT_ROLE_PERMISSIONS.admin_sales.pricing_system).toMatchObject({ canView: 1, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "all" });
+    expect(DEFAULT_ROLE_PERMISSIONS.sales_engineer.pricing_system).toMatchObject({ canView: 1, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "own" });
+    expect(DEFAULT_ROLE_PERMISSIONS.sales_specialist.pricing_system).toMatchObject({ canView: 1, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "own" });
   });
 });
 

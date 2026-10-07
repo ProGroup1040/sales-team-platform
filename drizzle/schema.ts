@@ -1085,6 +1085,7 @@ export const userPermissions = mysqlTable("user_permissions", {
     "tasks",      // المهام اليومية
     "collections",// التحصيل المالي
     "users",      // إدارة المستخدمين (Admin only)
+    "pricing_system", // منظومة التسعير
   ]).notNull(),
   // صلاحيات CRUD
   canView: int("canView").default(1).notNull(),    // 1 = يمكن المشاهدة
