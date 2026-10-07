@@ -29,6 +29,7 @@ const MODULE_TO_ACCESS_KEY: Record<string, keyof RoleAccess> = {
   promotion:       "canSeePromotion",
   users:           "canSeePromotion",
   permissions:     "canSeePromotion",
+  pricing_system:  "canSeePricingSystem",
 };
 
 export interface RoleAccess {
@@ -46,6 +47,7 @@ export interface RoleAccess {
   canSeeReports: boolean;
   canSeeSalesExecution: boolean;
   canSeePromotion: boolean;
+  canSeePricingSystem: boolean;
   // Role info
   role: AppRole | null;
   isManager: boolean;
@@ -86,6 +88,7 @@ function buildDefaultAccess(role: AppRole | null, isLoading = false): RoleAccess
     canSeeReports: isLoading && (isManager || isSalesTeam || isAdminSales),
     canSeeSalesExecution: isLoading && (isManager || isSalesTeam),
     canSeePromotion: isLoading && isManager,
+    canSeePricingSystem: isLoading && (isManager || isSalesTeam || isAdminSales),
     role,
     isManager,
     isSalesTeam,
@@ -139,6 +142,7 @@ function buildDynamicAccess(
     canSeeReports:        getModuleView("reports"),
     canSeeSalesExecution: getModuleView("sales_execution"),
     canSeePromotion:      getModuleView("users") || getModuleView("permissions") || getModuleView("promotion"),
+    canSeePricingSystem:   getModuleView("pricing_system"),
     role,
     isManager,
     isSalesTeam,

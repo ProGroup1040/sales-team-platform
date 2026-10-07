@@ -24,6 +24,7 @@ const SalesExecutionSystem = lazy(() => import("./pages/SalesExecutionSystem"));
 const UserManagement = lazy(() => import("@/pages/UserManagement"));
 const PermissionsPanel = lazy(() => import("@/pages/PermissionsPanel"));
 const ProjectTimelineModule = lazy(() => import("@/pages/ProjectTimelineModule"));
+const PricingSystem = lazy(() => import("@/pages/PricingSystem"));
 
 function withLayout(Component: ComponentType) {
   return (
@@ -61,6 +62,7 @@ function Router() {
         <Route path={"/reports"}>{withLayout(ReportsModule)}</Route>
         <Route path={"/sales-execution"}>{withLayout(SalesExecutionSystem)}</Route>
         <Route path={"/project-timeline"}>{withLayout(ProjectTimelineModule)}</Route>
+        <Route path={"/pricing-system"}>{withLayout(PricingSystem)}</Route>
         <Route path={"/user-management"}>{withLayout(UserManagement)}</Route>
         <Route path={"/permissions"}>{withLayout(PermissionsPanel)}</Route>
 

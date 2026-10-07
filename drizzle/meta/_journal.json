@@ -484,6 +484,13 @@
       "when": 1789886845323,
       "tag": "0068_canonical_closing_permissions",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "5",
+      "when": 1791369052204,
+      "tag": "0069_pricing_system_permissions",
+      "breakpoints": true
     }
   ]
 }

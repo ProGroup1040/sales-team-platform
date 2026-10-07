@@ -48,10 +48,11 @@ describe("SYSTEM_MODULES", () => {
     expect(keys).toContain("promotion");
     expect(keys).toContain("users");
     expect(keys).toContain("permissions");
+    expect(keys).toContain("pricing_system");
   });
 
-  it("should have 14 modules", () => {
-    expect(SYSTEM_MODULES).toHaveLength(14);
+  it("should have 15 modules", () => {
+    expect(SYSTEM_MODULES).toHaveLength(15);
   });
 
   it("each module should have key and label", () => {

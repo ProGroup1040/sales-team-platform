@@ -138,6 +138,7 @@ export const SYSTEM_MODULES = [
   { key: "promotion", label: "التقييم والترقية" },
   { key: "users", label: "إدارة المستخدمين" },
   { key: "permissions", label: "لوحة الصلاحيات" },
+  { key: "pricing_system", label: "منظومة التسعير" },
 ] as const;
 
 export const SYSTEM_ROLES = [
