@@ -323,7 +323,7 @@ export async function getAdminCallerFromRequest(req: any): Promise<{ id: number;
   if (localSession) {
     // Map local session roles to app user roles
     const roleMap: Record<string, string> = {
-      admin: 'manager',
+      admin: 'admin',
       manager: 'manager',
       admin_sales: 'admin_sales',
       engineer: 'sales_engineer',
@@ -2753,7 +2753,7 @@ export const appRouter = router({
         name: z.string().trim().min(2, 'الاسم يجب أن يكون حرفين على الأقل').max(120),
         username: z.string().trim().min(3, 'اسم المستخدم يجب أن يكون 3 أحرف على الأقل').max(64).regex(/^[a-zA-Z0-9._-]+$/, 'اسم المستخدم يجب أن يحتوي على حروف وأرقام فقط'),
         password: z.string().min(MIN_ACCOUNT_PASSWORD_LENGTH, `كلمة المرور يجب أن تكون ${MIN_ACCOUNT_PASSWORD_LENGTH} حرفاً على الأقل`).max(128),
-        role: z.enum(['sales_engineer', 'sales_specialist', 'admin_sales', 'manager']),
+        role: z.enum(['sales_engineer', 'sales_specialist', 'admin_sales', 'manager', 'admin']),
         engineerId: z.number().int().positive().optional(),
         email: z.string().email('صيغة البريد الإلكتروني غير صحيحة').optional().or(z.literal('')).transform(v => v || undefined),
       }))
@@ -2780,7 +2780,7 @@ export const appRouter = router({
       .input(z.object({
         userId: z.number().int().positive(),
         name: z.string().trim().min(2).max(120).optional(),
-        role: z.enum(['sales_engineer', 'sales_specialist', 'admin_sales', 'manager']).optional(),
+        role: z.enum(['sales_engineer', 'sales_specialist', 'admin_sales', 'manager', 'admin']).optional(),
         engineerId: z.number().int().positive().nullable().optional(),
         status: z.enum(['active', 'inactive']).optional(),
         password: z.string().min(MIN_ACCOUNT_PASSWORD_LENGTH).max(128).optional(),

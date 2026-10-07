@@ -498,6 +498,13 @@
       "when": 1791369729724,
       "tag": "0070_pricing_system_user_permissions",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "5",
+      "when": 1791372113708,
+      "tag": "0071_admin_role_identity",
+      "breakpoints": true
     }
   ]
 }

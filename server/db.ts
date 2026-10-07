@@ -11109,6 +11109,7 @@ export async function getEngineerActivitySummary(
 export const DEFAULT_ROLE_PERMISSIONS: Record<string, Record<string, {
   canView: number; canAdd: number; canEdit: number; canDelete: number; dataScope: "own" | "all";
 }>> = {
+  admin: Object.fromEntries(SYSTEM_MODULES.map(({ key }) => [key, { canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" }])) as Record<string, { canView: number; canAdd: number; canEdit: number; canDelete: number; dataScope: "own" | "all" }>,
   sales_engineer: {
     crm:         { canView: 1, canAdd: 1, canEdit: 1, canDelete: 0, dataScope: "own" },
     visits:      { canView: 1, canAdd: 1, canEdit: 1, canDelete: 0, dataScope: "own" },
@@ -11168,7 +11169,7 @@ export async function createAppUser(data: {
   name: string;
   username: string;
   password: string;
-  role: "sales_engineer" | "sales_specialist" | "admin_sales" | "manager";
+  role: "sales_engineer" | "sales_specialist" | "admin_sales" | "manager" | "admin";
   engineerId?: number;
   email?: string;
 }): Promise<AppUser> {
@@ -11312,8 +11313,25 @@ export async function loginAppUser(
   const valid = await bcrypt.compare(password, user.passwordHash);
   if (!valid) return null;
   const now = new Date();
-  if (db) await db.update(appUsers).set({ lastLoginAt: now }).where(eq(appUsers.id, user.id));
-  else testAppUsers.set(user.id, { ...user, lastLoginAt: now, updatedAt: now });
+
+  // Legacy engineer accounts are mirrored into app_users. Reconcile the role
+  // before issuing the token so an old admin identity cannot be downgraded to
+  // sales_engineer by the historical fallback mapping.
+  if (db && user.engineerId) {
+    const [engineer] = await db.select({ role: engineers.role }).from(engineers).where(eq(engineers.id, user.engineerId)).limit(1);
+    if (engineer) {
+      const expectedRole = mapEngineerRoleToAppUserRole(engineer.role);
+      if (expectedRole !== user.role) {
+        await db.update(appUsers).set({ role: expectedRole as any, sessionVersion: sql`${appUsers.sessionVersion} + 1` }).where(eq(appUsers.id, user.id));
+        user = { ...user, role: expectedRole, sessionVersion: (user.sessionVersion ?? 1) + 1 };
+      }
+    }
+    await db.update(appUsers).set({ lastLoginAt: now }).where(eq(appUsers.id, user.id));
+  } else if (db) {
+    await db.update(appUsers).set({ lastLoginAt: now }).where(eq(appUsers.id, user.id));
+  } else {
+    testAppUsers.set(user.id, { ...user, lastLoginAt: now, updatedAt: now });
+  }
   return { user, token: await signAppUserToken(user) };
 }
 
@@ -11336,6 +11354,13 @@ export async function getAppUserByEngineerId(engineerId: number): Promise<AppUse
   return Array.from(testAppUsers.values()).find(user => user.engineerId === engineerId) ?? null;
 }
 
+export function mapEngineerRoleToAppUserRole(role: string): "sales_engineer" | "sales_specialist" | "admin_sales" | "manager" | "admin" {
+  return role === "admin" ? "admin"
+    : role === "sales_specialist" ? "sales_specialist"
+      : role === "admin_sales" ? "admin_sales"
+        : role === "manager" ? "manager" : "sales_engineer";
+}
+
 /** Ensure legacy engineer logins also have an internal app-user identity. */
 export async function ensureAppUserForEngineerAccount(input: {
   engineerId: number;
@@ -11347,9 +11372,7 @@ export async function ensureAppUserForEngineerAccount(input: {
 }): Promise<AppUser> {
   const db = await requireDb();
   const username = input.username.trim().toLowerCase();
-  const role = input.role === "sales_specialist" ? "sales_specialist"
-    : input.role === "admin_sales" ? "admin_sales"
-      : input.role === "manager" ? "manager" : "sales_engineer";
+  const role = mapEngineerRoleToAppUserRole(input.role);
   const [linked] = await db.select().from(appUsers).where(eq(appUsers.engineerId, input.engineerId)).limit(1);
   const [sameUsername] = await db.select().from(appUsers).where(eq(appUsers.username, username)).limit(1);
   const existing = linked ?? (sameUsername?.engineerId == null ? sameUsername : undefined);
@@ -11517,7 +11540,7 @@ export async function updateAppUser(
   userId: number,
   data: Partial<{
     name: string;
-    role: "sales_engineer" | "sales_specialist" | "admin_sales" | "manager";
+    role: "sales_engineer" | "sales_specialist" | "admin_sales" | "manager" | "admin";
     engineerId: number | null;
     status: "active" | "inactive";
     password: string;

@@ -68,6 +68,7 @@ export interface RoleAccess {
 
 /** Safe fallback: role defaults are used only while permissions are loading; after a failed or empty permission read, access is denied. */
 function buildDefaultAccess(role: AppRole | null, isLoading = false): RoleAccess {
+  const isAdmin = role === "admin";
   const isManager = (MANAGER_ROLES as readonly string[]).includes(role ?? "");
   const isSalesTeam = (SALES_ROLES as readonly string[]).includes(role ?? "");
   const isAdminSales = role === "admin_sales";
@@ -75,20 +76,20 @@ function buildDefaultAccess(role: AppRole | null, isLoading = false): RoleAccess
   const isInterior = role === "interior_designer";
 
   return {
-    canSeeOverview: isLoading,
-    canSeeTasks: isLoading,
-    canSeeLeads: isLoading,
-    canSeeVisits: isLoading,
-    canSeeClosing: isLoading && (isManager || isSalesTeam),
-    canSeeProjectTimeline: isLoading && (isManager || isSalesTeam),
-    canSeeSalesModule: isLoading && (isManager || isSalesTeam),
-    canSeeKPI: isLoading,
-    canSeeCollections: isLoading && (isManager || isSalesTeam || isAdminSales),
-    canSeePlanning: isLoading && (isManager || isSalesTeam),
-    canSeeReports: isLoading && (isManager || isSalesTeam || isAdminSales),
-    canSeeSalesExecution: isLoading && (isManager || isSalesTeam),
-    canSeePromotion: isLoading && isManager,
-    canSeePricingSystem: isLoading && (isManager || isSalesTeam || isAdminSales),
+    canSeeOverview: isLoading || isAdmin,
+    canSeeTasks: isLoading || isAdmin,
+    canSeeLeads: isLoading || isAdmin,
+    canSeeVisits: isLoading || isAdmin,
+    canSeeClosing: isLoading && (isManager || isSalesTeam) || isAdmin,
+    canSeeProjectTimeline: isLoading && (isManager || isSalesTeam) || isAdmin,
+    canSeeSalesModule: isLoading && (isManager || isSalesTeam) || isAdmin,
+    canSeeKPI: isLoading || isAdmin,
+    canSeeCollections: isLoading && (isManager || isSalesTeam || isAdminSales) || isAdmin,
+    canSeePlanning: isLoading && (isManager || isSalesTeam) || isAdmin,
+    canSeeReports: isLoading && (isManager || isSalesTeam || isAdminSales) || isAdmin,
+    canSeeSalesExecution: isLoading && (isManager || isSalesTeam) || isAdmin,
+    canSeePromotion: isLoading && isManager || isAdmin,
+    canSeePricingSystem: isLoading && (isManager || isSalesTeam || isAdminSales) || isAdmin,
     role,
     isManager,
     isSalesTeam,
@@ -105,6 +106,7 @@ function buildDynamicAccess(
   role: AppRole | null,
   dbPerms: Array<{ module: string; canView: number; canAdd: number; canEdit: number; canDelete: number; dataScope: string }>
 ): RoleAccess {
+  const isAdmin = role === "admin";
   const isManager = (MANAGER_ROLES as readonly string[]).includes(role ?? "");
   const isSalesTeam = (SALES_ROLES as readonly string[]).includes(role ?? "");
   const isAdminSales = role === "admin_sales";
@@ -125,6 +127,7 @@ function buildDynamicAccess(
 
   // Map module permissions to navigation access keys
   const getModuleView = (moduleKey: string): boolean => {
+    if (isAdmin) return true;
     return modulePerms[moduleKey]?.canView ?? false;
   };
 

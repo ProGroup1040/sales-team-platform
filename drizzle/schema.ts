@@ -1005,6 +1005,7 @@ export const appUsers = mysqlTable("app_users", {
     "sales_specialist",  // أخصائي مبيعات
     "admin_sales",       // مدير مبيعات إداري
     "manager",           // مدير / CEO
+    "admin",             // Super Admin
   ]).notNull().default("sales_engineer"),
   // ربط بجدول engineers (اختياري - لربط المستخدم بمهندس موجود)
   engineerId: int("engineerId"),
