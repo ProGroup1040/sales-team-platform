@@ -2287,6 +2287,7 @@ export const appRouter = router({
         // 1) Try local session (username/password login)
         const session = await getLocalSessionFromRequest(ctx.req);
         if (session) {
+          if (session.role === "admin") return getRolePermissions("admin");
           const linkedUser = await getAppUserByEngineerId(session.engineerId);
           if (!linkedUser) return getRolePermissions(session.role);
           const userPermissions = await getUserPermissions(linkedUser.id);
@@ -2294,6 +2295,7 @@ export const appRouter = router({
           return mergeRoleAndUserPermissions(rolePermissions, userPermissions);
         }
         if (ctx.actor?.source === "app_user") {
+          if (ctx.actor.role === "admin") return getRolePermissions("admin");
           const userPermissions = await getUserPermissions(ctx.actor.id);
           const rolePermissions = await getRolePermissions(ctx.actor.role);
           return mergeRoleAndUserPermissions(rolePermissions, userPermissions);

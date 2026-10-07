@@ -142,6 +142,7 @@ export const SYSTEM_MODULES = [
 ] as const;
 
 export const SYSTEM_ROLES = [
+  { key: "admin", label: "Admin" },
   { key: "manager", label: "مدير / CEO" },
   { key: "admin_sales", label: "Admin Sales" },
   { key: "sales_engineer", label: "مهندس مبيعات" },

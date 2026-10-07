@@ -67,14 +67,15 @@ describe("SYSTEM_MODULES", () => {
 describe("SYSTEM_ROLES", () => {
   it("should contain all required roles", () => {
     const keys = SYSTEM_ROLES.map((r) => r.key);
+    expect(keys).toContain("admin");
     expect(keys).toContain("manager");
     expect(keys).toContain("admin_sales");
     expect(keys).toContain("sales_engineer");
     expect(keys).toContain("sales_specialist");
   });
 
-  it("should have 4 roles", () => {
-    expect(SYSTEM_ROLES).toHaveLength(4);
+  it("should have 5 roles", () => {
+    expect(SYSTEM_ROLES).toHaveLength(5);
   });
 
   it("each role should have key and label", () => {
