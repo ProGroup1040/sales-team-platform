@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mergeRoleAndUserPermissions } from "./permissionResolution";
+import { resolveUserPermissions } from "./permissionResolution";
 
 type Permission = {
   module: string;
@@ -10,29 +10,53 @@ type Permission = {
   dataScope: "own" | "all";
 };
 
-describe("mergeRoleAndUserPermissions", () => {
-  const rolePermissions: Permission[] = [
-    { module: "tasks", canView: 1, canAdd: 1, canEdit: 1, canDelete: 0, dataScope: "own" },
-    { module: "pricing_system", canView: 1, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "own" },
-  ];
+describe("resolveUserPermissions", () => {
+  it("does not grant any module permission when the user has no rows", () => {
+    expect(resolveUserPermissions([])).toEqual([]);
+  });
 
-  it("adds a newly introduced role module to an existing individual permission set", () => {
+  it("uses only the explicitly stored user permission rows", () => {
     const userPermissions: Permission[] = [
       { module: "tasks", canView: 1, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "own" },
     ];
 
-    expect(mergeRoleAndUserPermissions(rolePermissions, userPermissions)).toEqual([
-      userPermissions[0],
-      rolePermissions[1],
-    ]);
+    expect(resolveUserPermissions(userPermissions)).toEqual(userPermissions);
+    expect(resolveUserPermissions(userPermissions).some(p => p.module === "crm")).toBe(false);
   });
 
-  it("preserves an explicit individual override for the same module", () => {
-    const userPermissions: Permission[] = [
-      { module: "pricing_system", canView: 0, canAdd: 0, canEdit: 0, canDelete: 0, dataScope: "own" },
-    ];
+  it("normalizes every CRUD flag to deny unless it is exactly 1", () => {
+    expect(resolveUserPermissions([{
+      module: "crm",
+      canView: 1,
+      canAdd: 2,
+      canEdit: -1,
+      canDelete: 0,
+      dataScope: "own",
+    }])).toEqual([{
+      module: "crm",
+      canView: 1,
+      canAdd: 0,
+      canEdit: 0,
+      canDelete: 0,
+      dataScope: "own",
+    }]);
+  });
 
-    const effective = mergeRoleAndUserPermissions(rolePermissions, userPermissions);
-    expect(effective.find((permission) => permission.module === "pricing_system")).toEqual(userPermissions[0]);
+  it("keeps explicit denials instead of inheriting a role grant", () => {
+    expect(resolveUserPermissions([{
+      module: "pricing_system",
+      canView: 0,
+      canAdd: 0,
+      canEdit: 0,
+      canDelete: 0,
+      dataScope: "own",
+    }])).toEqual([{
+      module: "pricing_system",
+      canView: 0,
+      canAdd: 0,
+      canEdit: 0,
+      canDelete: 0,
+      dataScope: "own",
+    }]);
   });
 });
