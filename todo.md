@@ -90,6 +90,7 @@ Every completed row must link to code, tests, or an environment verification rec
 - [x] Neutralize spreadsheet-formula prefixes in Project Timeline CSV exports and cover formula-like client values with regression tests.
 - [x] Enforce one collection contract per deal, make concurrent automatic contract requests converge on it, and fail explicitly when persistence is unavailable.
 - [x] Reject missing or already-settled commission payment IDs instead of returning a false successful settlement.
+- [x] Apply the existing non-negative net-value rule to discounted deal creation and reject a discount greater than the deal value on the server.
 - [x] Expand database-unavailable tests to every critical financial write operation in the current cash, commitment, and collection workflow.
 - [x] Expand transaction failure, duplicate-request, retry, and concurrency coverage across the remaining critical payment and target-write paths.
 - [x] Make promise settlement an atomic conditional claim before payment insertion so concurrent collection requests yield exactly one payment and one cash movement.

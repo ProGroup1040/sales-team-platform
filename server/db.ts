@@ -3588,7 +3588,19 @@ export async function createDealWithDiscount(data: {
   discountPercent?: number; discountValue?: number; discountNote?: string;
 }) {
   const db = await requireDb();
-  await db.insert(deals).values({
+  const discountValue = data.discountValue ?? 0;
+  const discountPercent = data.discountPercent ?? 0;
+  if (!Number.isInteger(data.engineerId) || data.engineerId < 0) throw new Error("Invalid engineer id");
+  if (!Number.isFinite(data.value) || data.value <= 0) throw new Error("Deal value must be positive");
+  if (!Number.isFinite(discountValue) || discountValue < 0) throw new Error("Discount value must be non-negative");
+  if (!Number.isFinite(discountPercent) || discountPercent < 0 || discountPercent > 100) throw new Error("Discount percent must be between 0 and 100");
+  let netValue: string;
+  try {
+    netValue = subtractMoney(data.value, discountValue);
+  } catch {
+    throw new Error("Discount cannot exceed deal value");
+  }
+  return db.insert(deals).values({
     engineerId: data.engineerId,
     clientName: data.clientName,
     value: data.value.toString(),
@@ -3598,11 +3610,11 @@ export async function createDealWithDiscount(data: {
     nextAction: data.nextAction,
     nextActionDate: data.nextActionDate ? new Date(data.nextActionDate + 'T00:00:00') : undefined,
     notes: data.notes,
-    discountPercent: (data.discountPercent ?? 0).toString(),
-    discountValue: (data.discountValue ?? 0).toString(),
+    discountPercent: discountPercent.toString(),
+    discountValue: discountValue.toString(),
     discountNote: data.discountNote,
     grossValue: data.value.toString(),
-    netValue: (data.value - (data.discountValue ?? 0)).toString(),
+    netValue,
   });
 }
 /** تحديث صفقة (stage + discount) */
