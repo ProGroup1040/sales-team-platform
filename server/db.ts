@@ -1951,7 +1951,15 @@ export async function addPaymentPromise(data: InsertPaymentPromise) {
 /** تحديث حالة متابعة وعد الدفع. لا يجوز تحويله إلى مدفوع دون إنشاء دفعة فعلية. */
 export async function updatePromiseStatus(id: number, status: "pending" | "overdue") {
   const db = await requireDb();
-  await db.update(paymentPromises).set({ status }).where(eq(paymentPromises.id, id));
+  const [result] = await db.update(paymentPromises)
+    .set({ status })
+    .where(and(
+      eq(paymentPromises.id, id),
+      inArray(paymentPromises.status, ["pending", "overdue"]),
+    ));
+  if (Number((result as { affectedRows?: number }).affectedRows) !== 1) {
+    throw new Error("Payment promise is not available for update");
+  }
 }
 
 /** اعتماد أو إلغاء اعتماد تدفق وارد محتمل. لا يصبح التحصيل نقداً إلا عبر دفعة فعلية. */
@@ -1961,7 +1969,12 @@ export async function setPaymentPromiseConfirmation(id: number, isConfirmed: boo
   const [promise] = await db.select().from(paymentPromises).where(eq(paymentPromises.id, id)).limit(1);
   if (!promise) throw new Error("Payment promise not found");
   if (promise.status !== "pending") throw new Error("Only pending payment promises can be confirmed");
-  await db.update(paymentPromises).set({ isConfirmed: isConfirmed ? 1 : 0 }).where(eq(paymentPromises.id, id));
+  const [result] = await db.update(paymentPromises)
+    .set({ isConfirmed: isConfirmed ? 1 : 0 })
+    .where(and(eq(paymentPromises.id, id), eq(paymentPromises.status, "pending")));
+  if (Number((result as { affectedRows?: number }).affectedRows) !== 1) {
+    throw new Error("Only pending payment promises can be confirmed");
+  }
 }
 
 /** حفظ رصيد نقدي مصادق عليه كنقطة أساس، بعيداً عن Forecast والتحصيل المتوقع. */
