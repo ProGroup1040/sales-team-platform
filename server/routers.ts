@@ -8,7 +8,7 @@ import { getRequestCookie, setResponseCookie, clearResponseCookie } from "./_cor
 import { TRPCError } from "@trpc/server";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { getWebPushPublicKey, savePushSubscription, removePushSubscription } from "./pushNotifications";
-import { mergeRoleAndUserPermissions } from "./permissionResolution";
+import { resolveUserPermissions } from "./permissionResolution";
 import {
   getEngineers, getEngineerById, updateEngineerProfile, createEngineer,
   getDailyTasksStats, getTasksList, createTask, updateTaskStatus, rescheduleTask,
@@ -381,28 +381,22 @@ function assertTaskTimeRange(startTime?: string, endTime?: string) {
 async function getTaskAccess(ctx: any): Promise<TaskAccess> {
   const caller = await getCallerFromContext(ctx);
   if (!caller) throw new TRPCError({ code: "UNAUTHORIZED", message: "يجب تسجيل الدخول أولاً" });
-  if (caller.role === "admin") {
-    return { caller, canView: true, canAdd: true, canEdit: true, canDelete: true, scope: "all" };
-  }
-  const role = TASK_ROLE_ALIASES[caller.role] ?? caller.role;
   const linkedAppUser = caller.engineerId ? await getAppUserByEngineerId(caller.engineerId) : null;
   const permissionUserId = ctx?.actor?.source === "app_user" ? caller.id : linkedAppUser?.id;
   const direct = permissionUserId
     ? (await getUserPermissions(permissionUserId)).find((p) => p.module === "tasks")
     : undefined;
-  const rolePermission = (await getRolePermissions(role)).find((p) => p.module === "tasks");
-  const configured = direct ?? rolePermission ?? DEFAULT_ROLE_PERMISSIONS[role]?.tasks;
-  // The role's data scope is authoritative for task visibility. This prevents
-  // an old per-user override from accidentally widening a role configured as
-  // own-only in the admin dashboard.
-  const configuredScope = rolePermission?.dataScope ?? direct?.dataScope ?? DEFAULT_ROLE_PERMISSIONS[role]?.tasks?.dataScope;
+  // Operational access comes only from the explicit user row. Role defaults
+  // remain configuration data and cannot grant task access at runtime.
+  const configured = direct;
+  const configuredScope = direct?.dataScope;
   return {
     caller,
     canView: configured?.canView === 1,
     canAdd: configured?.canAdd === 1,
     canEdit: configured?.canEdit === 1,
     canDelete: configured?.canDelete === 1,
-    scope: configuredScope === "all" ? "all" : configuredScope === "team" ? "team" : "own",
+    scope: configuredScope === "all" ? "all" : "own",
   };
 }
 
@@ -2284,23 +2278,19 @@ export const appRouter = router({
     // جلب صلاحيات الـ role الحالي (للـ DashboardLayout)
     myPermissions: publicProcedure
       .query(async ({ ctx }) => {
-        // 1) Try local session (username/password login)
+        // UI visibility is based only on explicit per-user grants. Role-based
+        // admin checks remain separate for security-sensitive management APIs.
         const session = await getLocalSessionFromRequest(ctx.req);
         if (session) {
-          if (session.role === "admin") return getRolePermissions("admin");
           const linkedUser = await getAppUserByEngineerId(session.engineerId);
-          if (!linkedUser) return getRolePermissions(session.role);
-          const userPermissions = await getUserPermissions(linkedUser.id);
-          const rolePermissions = await getRolePermissions(linkedUser.role ?? session.role);
-          return mergeRoleAndUserPermissions(rolePermissions, userPermissions);
+          if (!linkedUser) return [];
+          return resolveUserPermissions(await getUserPermissions(linkedUser.id));
         }
         if (ctx.actor?.source === "app_user") {
-          if (ctx.actor.role === "admin") return getRolePermissions("admin");
-          const userPermissions = await getUserPermissions(ctx.actor.id);
-          const rolePermissions = await getRolePermissions(ctx.actor.role);
-          return mergeRoleAndUserPermissions(rolePermissions, userPermissions);
+          return resolveUserPermissions(await getUserPermissions(ctx.actor.id));
         }
-        if (ctx.user?.role === "admin") return getRolePermissions("admin");
+        // OAuth identities without a matching app_users row have no direct
+        // operational grants; authentication alone never grants module access.
         return [];
       }),
   }),
@@ -2807,13 +2797,26 @@ export const appRouter = router({
       .input(z.object({
         userId: z.number().int().positive(),
         permissions: z.array(z.object({
-          module: z.string(),
-          canView: z.number(),
-          canAdd: z.number(),
-          canEdit: z.number(),
-          canDelete: z.number(),
+          module: z.enum([
+            'crm', 'visits', 'closing', 'deals', 'kpi', 'planning',
+            'discounts', 'reports', 'tasks', 'collections', 'users', 'pricing_system',
+          ]),
+          canView: z.union([z.literal(0), z.literal(1)]),
+          canAdd: z.union([z.literal(0), z.literal(1)]),
+          canEdit: z.union([z.literal(0), z.literal(1)]),
+          canDelete: z.union([z.literal(0), z.literal(1)]),
           dataScope: z.enum(['own', 'all']),
-        })),
+        })).superRefine((permissions, ctx) => {
+          const canonicalModules = permissions.map((permission) =>
+            permission.module === 'deals' ? 'closing' : permission.module
+          );
+          if (new Set(canonicalModules).size !== canonicalModules.length) {
+            ctx.addIssue({
+              code: "custom",
+              message: 'لا يمكن إرسال أكثر من سجل صلاحية لنفس الوحدة',
+            });
+          }
+        }),
       }))
       .mutation(async ({ input, ctx }) => {
         const caller = await requireUserManagementCaller(ctx, 'ليس لديك صلاحية تعديل الصلاحيات');

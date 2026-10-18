@@ -2,7 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { jwtVerify } from "jose";
 import bcrypt from "bcryptjs";
 
-vi.mock("./db", () => ({ getDb: vi.fn() }));
+vi.mock("./db", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./db")>()),
+  getDb: vi.fn(),
+  ensureAppUserForEngineerAccount: vi.fn(),
+}));
 
 import { getDb } from "./db";
 import { localLogin, signLocalSession, verifyLocalSession } from "./localAuth";

@@ -10,7 +10,9 @@ import { getAdminCallerFromRequest } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { getSessionSecret } from "./env";
-import { getDealsStats, getDealsList, getEngineersKPI, getDb } from "../db";
+import { getDealsStats, getDealsList, getEngineersKPI, getDb, getAppUserByEngineerId, getUserPermissions, verifyAppUserToken } from "../db";
+import { resolveUserPermissions } from "../permissionResolution";
+import { getRequestCookie } from "./httpCookies";
 import { startDailyTaskReminderScheduler } from "../pushNotifications";
 import { deals, engineers } from "../../drizzle/schema";
 import { eq, sql } from "drizzle-orm";
@@ -42,6 +44,32 @@ function validateRuntimeConfig() {
   if (getSessionSecret().length < 32) {
     throw new Error("A session secret with at least 32 characters is required in production");
   }
+}
+
+async function requireCompatibilityAccess(req: express.Request, res: express.Response, module: string) {
+  const caller = await getAdminCallerFromRequest(req);
+  if (!caller) {
+    res.status(401).json({ error: "Authentication required" });
+    return false;
+  }
+  const appToken = getRequestCookie(req, "app_user_token");
+  const appUser = appToken ? await verifyAppUserToken(appToken) : null;
+  const appUserId = appUser?.id ?? (caller.engineerId
+    ? (await getAppUserByEngineerId(caller.engineerId))?.id
+    : undefined);
+  if (!appUserId) {
+    res.status(403).json({ error: "Operational permissions are required" });
+    return false;
+  }
+  const permission = resolveUserPermissions(await getUserPermissions(appUserId))
+    .find(item => item.module === module);
+  // These legacy endpoints return cross-engineer aggregates/lists. Do not
+  // expose them to an own-scoped user until each response is owner-filtered.
+  if (permission?.canView !== 1 || permission.dataScope !== "all") {
+    res.status(403).json({ error: "All-scope permission is required" });
+    return false;
+  }
+  return true;
 }
 
 async function startServer() {
@@ -83,8 +111,8 @@ async function startServer() {
     if (req.method === "OPTIONS") {
       return origin && allowedOrigin === origin ? res.sendStatus(204) : res.sendStatus(403);
     }
-    const caller = await getAdminCallerFromRequest(req);
-    if (!caller) return res.status(401).json({ error: "Authentication required" });
+    const allowed = await requireCompatibilityAccess(req, res, "closing");
+    if (!allowed) return;
     next();
   });
 
