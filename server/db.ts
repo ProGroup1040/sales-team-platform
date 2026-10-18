@@ -9181,10 +9181,21 @@ export async function getLostDealsImpact(year: number, month: number) {
 // Collections Module - Full Financial Collection System
 // ═══════════════════════════════════════════════════════════════════════
 
+function isDuplicateKeyError(error: unknown): boolean {
+  let current: unknown = error;
+  const seen = new Set<unknown>();
+  while (current && typeof current === "object" && !seen.has(current)) {
+    seen.add(current);
+    const details = current as { code?: unknown; errno?: unknown; cause?: unknown };
+    if (details.code === "ER_DUP_ENTRY" || details.errno === 1062) return true;
+    current = details.cause;
+  }
+  return false;
+}
+
 /** إنشاء Contract تلقائي عند إغلاق صفقة (WON/CLOSED) */
-export async function autoCreateContractFromDeal(dealId: number): Promise<{ collectionId: number; isNew: boolean } | null> {
-  const db = await getDb();
-  if (!db) return null;
+export async function autoCreateContractFromDeal(dealId: number): Promise<{ collectionId: number; isNew: boolean }> {
+  const db = await requireDb();
 
   // التحقق من وجود contract مسبق لنفس الصفقة
   const existing = await db.select({ id: collections.id })
@@ -9198,24 +9209,33 @@ export async function autoCreateContractFromDeal(dealId: number): Promise<{ coll
 
   // جلب بيانات الصفقة
   const dealRows = await db.select().from(deals).where(eq(deals.id, dealId)).limit(1);
-  if (!dealRows.length) return null;
+  if (!dealRows.length) throw new Error("Deal not found");
   const deal = dealRows[0];
 
   // حساب قيمة العقد (Net Value أو Value)
   const contractValue = deal.netValue ?? deal.value ?? "0";
   const engineerId = deal.engineerId ?? undefined;
 
-  const [result] = await db.insert(collections).values({
-    dealId,
-    engineerId: engineerId ?? null,
-    clientName: deal.clientName || "عميل غير محدد",
-    contractAmount: contractValue.toString(),
-    collectedAmount: "0",
-    status: "on_track",
-    notes: `تم إنشاؤه تلقائياً من صفقة #${dealId}`,
-  });
-
-  return { collectionId: (result as any).insertId, isNew: true };
+  try {
+    const [result] = await db.insert(collections).values({
+      dealId,
+      engineerId: engineerId ?? null,
+      clientName: deal.clientName || "عميل غير محدد",
+      contractAmount: contractValue.toString(),
+      collectedAmount: "0",
+      status: "on_track",
+      notes: `تم إنشاؤه تلقائياً من صفقة #${dealId}`,
+    });
+    return { collectionId: Number((result as { insertId?: number }).insertId), isNew: true };
+  } catch (error) {
+    if (!isDuplicateKeyError(error)) throw error;
+    const [concurrentCollection] = await db.select({ id: collections.id })
+      .from(collections)
+      .where(eq(collections.dealId, dealId))
+      .limit(1);
+    if (!concurrentCollection) throw error;
+    return { collectionId: concurrentCollection.id, isNew: false };
+  }
 }
 
 /** إضافة دفعة مع تحديث المبلغ المحصّل + إنشاء Follow-up Task إذا كان nextPaymentDate محدداً */

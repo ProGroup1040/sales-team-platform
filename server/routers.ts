@@ -2319,7 +2319,7 @@ export const appRouter = router({
         amount: input.amount,
       })),
     // إنشاء Contract تلقائي من صفقة WON
-    autoCreateContract: protectedProcedure.input(z.object({ dealId: z.number() }))
+    autoCreateContract: protectedProcedure.input(z.object({ dealId: z.number().int().positive() }))
       .mutation(async ({ input, ctx }) => {
         await requireFinancialManager(ctx, "إنشاء العقود المالية محصور بالإدارة");
         await requireAllScope(ctx, "collections", "canAdd");

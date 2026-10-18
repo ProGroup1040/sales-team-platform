@@ -296,7 +296,10 @@ export const collections = mysqlTable("collections", {
   notes: text("notes"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+}, (table) => [
+  // A deal may have no collection yet, but its automatic financial contract is singular.
+  uniqueIndex("collections_deal_id_unique").on(table.dealId),
+]);
 export type Collection = typeof collections.$inferSelect;
 
 // ─── Engineer Monthly Targets (هدف كل مهندس شهرياً) ─────────────────────────────

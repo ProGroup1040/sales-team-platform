@@ -519,6 +519,13 @@
       "when": 1792310078338,
       "tag": "0073_user_permissions_unique_module",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "5",
+      "when": 1792326150421,
+      "tag": "0074_collections_one_contract_per_deal",
+      "breakpoints": true
     }
   ]
 }

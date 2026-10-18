@@ -48,6 +48,7 @@ describe("manual target override persistence", () => {
       addCollection,
       addPayment,
       addPaymentWithFollowUp,
+      autoCreateContractFromDeal,
       cancelFinancialCommitment,
       setFinancialCashBalance,
       settleFinancialCommitment,
@@ -56,6 +57,7 @@ describe("manual target override persistence", () => {
 
     await expect(setFinancialCashBalance({ asOfDate: "2026-09-01", amount: 1_000 })).rejects.toThrow("Database unavailable");
     await expect(addFinancialCommitment({ description: "التزام اختبار", amount: 500, dueDate: "2026-09-02" })).rejects.toThrow("Database unavailable");
+    await expect(autoCreateContractFromDeal(77)).rejects.toThrow("Database unavailable");
     await expect(settleFinancialCommitment(77)).rejects.toThrow("Database unavailable");
     await expect(cancelFinancialCommitment(77)).rejects.toThrow("Database unavailable");
     await expect(addCollection({ clientName: "عميل اختبار", contractAmount: 500 })).rejects.toThrow("Database unavailable");

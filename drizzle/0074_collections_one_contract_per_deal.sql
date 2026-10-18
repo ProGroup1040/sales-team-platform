@@ -1,0 +1,1 @@
+ALTER TABLE `collections` ADD CONSTRAINT `collections_deal_id_unique` UNIQUE(`dealId`);
