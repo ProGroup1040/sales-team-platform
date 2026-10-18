@@ -153,17 +153,14 @@ export const protectedProcedure = t.procedure.use(requireActor).use(
 );
 
 export const adminProcedure = t.procedure.use(
-  t.middleware(async ({ ctx, next }) => {
+  t.middleware(async ({ ctx, path, type, next }) => {
     const actor = actorFromContext(ctx);
     if (!actor || !["admin", "manager"].includes(actor.role)) {
       throw new TRPCError({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });
     }
 
-    return next({
-      ctx: {
-        ...ctx,
-        actor,
-      },
-    });
+    const actorContext = { ...ctx, actor };
+    await requireOperationalPermission(path, type, actorContext);
+    return next({ ctx: actorContext });
   }),
 );
