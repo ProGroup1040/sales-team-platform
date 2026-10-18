@@ -1,39 +1,8 @@
--- One-time backfill: materialize currently effective role grants into user_permissions.
--- Existing per-user rows always win. The "team" scope is intentionally narrowed
--- to "own" because user_permissions does not represent team scope; do not widen
--- data visibility during migration.
---
--- Admins previously received synthesized full module access even when role rows
--- were missing, so materialize that legacy effective access unless a direct row
--- already exists (including an explicit deny).
-INSERT INTO user_permissions
-  (userId, module, canView, canAdd, canEdit, canDelete, dataScope, createdAt, updatedAt)
-SELECT
-  au.id, modules.module, 1, 1, 1, 1, 'all', NOW(), NOW()
-FROM app_users au
-CROSS JOIN (
-  SELECT 'crm' AS module UNION ALL
-  SELECT 'visits' UNION ALL
-  SELECT 'closing' UNION ALL
-  SELECT 'kpi' UNION ALL
-  SELECT 'planning' UNION ALL
-  SELECT 'discounts' UNION ALL
-  SELECT 'reports' UNION ALL
-  SELECT 'tasks' UNION ALL
-  SELECT 'collections' UNION ALL
-  SELECT 'users' UNION ALL
-  SELECT 'pricing_system'
-) modules
-WHERE au.role = 'admin'
-  AND NOT EXISTS (
-    SELECT 1 FROM user_permissions up
-    WHERE up.userId = au.id
-      AND (up.module = modules.module
-        OR (modules.module = 'closing' AND up.module = 'deals'))
-  );
-
--- For non-admin accounts, copy role-level grants only where no explicit
--- user-level row exists. Normalize the legacy "deals" alias to "closing".
+-- One SQL statement so Drizzle's MySQL migration runner can execute it atomically.
+-- Preserve existing per-user rows. Narrow legacy "team" scope to "own" because
+-- user_permissions cannot represent team scope; never widen visibility here.
+-- Existing admins previously received synthesized full access, so materialize
+-- missing admin grants. Other roles are backfilled from role_permissions.
 INSERT INTO user_permissions
   (userId, module, canView, canAdd, canEdit, canDelete, dataScope, createdAt, updatedAt)
 SELECT
@@ -47,6 +16,32 @@ SELECT
   NOW(),
   NOW()
 FROM (
+  SELECT
+    au.id AS userId,
+    modules.module AS module,
+    1 AS canView,
+    1 AS canAdd,
+    1 AS canEdit,
+    1 AS canDelete,
+    'all' AS dataScope
+  FROM app_users au
+  CROSS JOIN (
+    SELECT 'crm' AS module UNION ALL
+    SELECT 'visits' UNION ALL
+    SELECT 'closing' UNION ALL
+    SELECT 'kpi' UNION ALL
+    SELECT 'planning' UNION ALL
+    SELECT 'discounts' UNION ALL
+    SELECT 'reports' UNION ALL
+    SELECT 'tasks' UNION ALL
+    SELECT 'collections' UNION ALL
+    SELECT 'users' UNION ALL
+    SELECT 'pricing_system'
+  ) modules
+  WHERE au.role = 'admin'
+
+  UNION ALL
+
   SELECT
     au.id AS userId,
     CASE WHEN rp.module = 'deals' THEN 'closing' ELSE rp.module END AS module,
@@ -65,8 +60,11 @@ FROM (
   GROUP BY au.id, CASE WHEN rp.module = 'deals' THEN 'closing' ELSE rp.module END
 ) grants
 WHERE NOT EXISTS (
-  SELECT 1 FROM user_permissions up
+  SELECT 1
+  FROM user_permissions up
   WHERE up.userId = grants.userId
-    AND (up.module = grants.module
-      OR (grants.module = 'closing' AND up.module = 'deals'))
-);
+    AND (
+      up.module = grants.module
+      OR (grants.module = 'closing' AND up.module = 'deals')
+    )
+)
