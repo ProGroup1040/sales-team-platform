@@ -82,40 +82,127 @@ const AUTHORIZATION_EXEMPT_NAMESPACES = new Set([
 ]);
 
 type OperationalPermission = "canView" | "canAdd" | "canEdit" | "canDelete";
+type PermissionRequirement = OperationalPermission | readonly OperationalPermission[];
 
-// Mutations whose names are ambiguous must be classified explicitly. Do not
-// infer destructive actions from an entity name or edits from `record` alone.
-const OPERATION_PERMISSION_OVERRIDES: Record<string, OperationalPermission> = {
+// Every mutation in an operational namespace must be classified explicitly.
+// Upsert/synchronization operations that may create OR modify a record require
+// both grants; a route name alone is not treated as an authorization contract.
+const OPERATION_PERMISSION_OVERRIDES: Record<string, PermissionRequirement> = {
+  "engineers.create": "canAdd",
+  "tasks.create": "canAdd",
+  "tasks.createMine": "canAdd",
+  "tasks.updateStatus": "canEdit",
+  "tasks.delete": "canDelete",
+  "tasks.reschedule": "canEdit",
+  "tasks.createEngineer": "canAdd",
+  "tasks.deleteEngineer": "canDelete",
+  "tasks.updateEngineerProfile": "canEdit",
+  "tasks.submitRecording": "canEdit",
+  "tasks.createWithTime": "canAdd",
+  "tasks.moveTask": "canEdit",
+  "tasks.updateFull": "canEdit",
+  "leads.create": "canAdd",
+  "leads.updateStatus": "canEdit",
+  "visits.create": "canAdd",
+  "visits.updateStatus": "canEdit",
+  "visits.updateFull": "canEdit",
+  "visits.softDelete": "canDelete",
+  "closing.create": "canAdd",
+  "closing.updateStage": "canEdit",
+  "closing.setDiscountCap": "canEdit",
+  "closing.updateDealStage": "canEdit",
+  "closing.updateEngineer": "canEdit",
+  "closing.reopen": "canEdit",
+  "closing.setAccountingMonth": "canEdit",
+  "closing.autoCreateFromTask": ["canAdd", "canEdit"],
+  "projectTimeline.syncFromDeals": ["canAdd", "canEdit"],
+  "projectTimeline.importHistorical": "canAdd",
+  "projectTimeline.updatePreExecution": "canEdit",
+  "projectTimeline.startExecution": "canEdit",
+  "projectTimeline.transition": "canEdit",
+  "projectTimeline.addDelay": "canAdd",
+  "projectTimeline.update": "canEdit",
+  "projectTimeline.close": "canEdit",
+  "projectTimeline.setHold": "canEdit",
+  "projectTimeline.updateStageConfig": "canEdit",
+  "sales.setEngineerTarget": ["canAdd", "canEdit"],
+  "sales.setOperationalTargets": ["canAdd", "canEdit"],
+  "sales.upsertDiscountTier": ["canAdd", "canEdit"],
+  "sales.deleteDiscountTier": "canDelete",
+  "sales.upsertCommissionTier": ["canAdd", "canEdit"],
+  "sales.deleteCommissionTier": "canDelete",
+  "collections.create": "canAdd",
+  "collections.update": "canEdit",
+  "planning.setTarget": ["canAdd", "canEdit"],
+  "planning.setCompanyGoal": ["canAdd", "canEdit"],
+  "planning.setPersonalGoal": ["canAdd", "canEdit"],
+  "planning.applyDistribution": ["canAdd", "canEdit"],
+  "planning.manualOverride": "canEdit",
+  "financial.addContract": "canAdd",
+  "financial.addPayment": "canAdd",
+  "financial.addPromise": "canAdd",
+  "financial.updatePromise": "canEdit",
+  "financial.confirmPromise": "canEdit",
+  "financial.markCommissionPaid": "canEdit",
+  "financial.updateContractStatus": "canEdit",
+  "financial.autoCreateContract": "canAdd",
+  "financial.addPaymentWithFollowUp": "canAdd",
+  "financial.setCashBalance": "canEdit",
+  "financial.addCommitment": "canAdd",
+  "financial.settleCommitment": "canEdit",
+  "financial.cancelCommitment": "canDelete",
+  "customers.create": "canAdd",
+  "customers.update": "canEdit",
+  "customers.delete": "canDelete",
+  "products.create": "canAdd",
+  "products.update": "canEdit",
+  "products.delete": "canDelete",
+  "meetingReview.submitLink": "canEdit",
+  "meetingReview.upsertReview": ["canAdd", "canEdit"],
+  "adminSalesTasks.updateStatus": "canEdit",
+  "adminSalesTasks.updateWeekMeeting": "canEdit",
+  "adminSalesTasks.create": "canAdd",
+  "adminSalesTasks.updateFull": "canEdit",
+  "leadFollowup.log": "canAdd",
   "softDelete.engineer": "canDelete",
   "softDelete.task": "canDelete",
   "softDelete.lead": "canDelete",
   "softDelete.visit": "canDelete",
   "softDelete.deal": "canDelete",
+  "leadDailyStats.upsert": ["canAdd", "canEdit"],
+  "workDist.log": "canAdd",
+  "pipeline.approveDiscount": "canEdit",
+  "pipeline.computeBonus": ["canAdd", "canEdit"],
+  "playbook.create": "canAdd",
+  "playbook.update": "canEdit",
+  "playbook.delete": "canDelete",
+  "playbook.import": "canAdd",
+  "playbook.createQuotation": "canAdd",
   "playbook.updateRecording": "canEdit",
+  "playbook.updateStatus": "canEdit",
+  "session.create": "canAdd",
+  "session.end": "canEdit",
+  "session.logAction": "canAdd",
   "session.updateRecording": "canEdit",
+  "promotion.createMeetingReview": ["canAdd", "canEdit"],
+  "promotion.createMonthlyEvaluation": ["canAdd", "canEdit"],
+  "promotion.promoteEngineer": "canEdit",
+  "dealTasks.create": "canAdd",
+  "dealTasks.markDone": "canEdit",
 };
 
-export function operationPermission(path: string, type: "query" | "mutation" | "subscription"): OperationalPermission {
+export function operationPermission(
+  path: string,
+  type: "query" | "mutation" | "subscription",
+): PermissionRequirement | null {
   if (type === "query" || type === "subscription") return "canView";
-  const explicitPermission = OPERATION_PERMISSION_OVERRIDES[path];
-  if (explicitPermission) return explicitPermission;
-  const leaf = path.split(".").at(-1)?.toLowerCase() ?? "";
-  if (/(delete|remove|purge|archive|cancel|softdelete)/.test(leaf)) return "canDelete";
-  if (/(create|add|insert|import|log|upload|submit|record|generate|clone)/.test(leaf)) return "canAdd";
-  return "canEdit";
+  return OPERATION_PERMISSION_OVERRIDES[path] ?? null;
 }
 
 async function requireOperationalPermission(path: string, type: "query" | "mutation" | "subscription", ctx: TrpcContext) {
   const namespace = path.split(".")[0] ?? "";
   const actor = actorFromContext(ctx);
   if (!actor) throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
-  // Legacy createCaller tests model OAuth admin identity without an app_users
-  // row. Keep that fixture compatible while preserving the production rule:
-  // OAuth authentication alone never grants operational access.
-  if (process.env.NODE_ENV === "test" && (
-    (actor.source === "oauth" && actor.role === "admin") ||
-    (actor.source === "local" && ["admin", "manager"].includes(actor.role))
-  )) return;
 
   if (ROLE_GATED_NAMESPACES.has(namespace)) {
     if (!["admin", "manager"].includes(actor.role)) {
@@ -164,7 +251,15 @@ async function requireOperationalPermission(path: string, type: "query" | "mutat
   const permissions = resolveUserPermissions(await getUserPermissions(appUserId));
   const permission = permissions.find((item) => item.module === module);
   const required = operationPermission(path, type);
-  if (permission?.[required] !== 1) {
+  if (!required) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: `لم يتم إعداد نوع صلاحية للعملية: ${path}`,
+    });
+  }
+  const requiredPermissions: readonly OperationalPermission[] =
+    Array.isArray(required) ? required : [required as OperationalPermission];
+  if (requiredPermissions.some((action) => permission?.[action] !== 1)) {
     throw new TRPCError({ code: "FORBIDDEN", message: "ليس لديك صلاحية لتنفيذ هذه العملية" });
   }
 }

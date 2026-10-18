@@ -1,11 +1,28 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { TrpcContext } from "./_core/context";
 import { appRouter } from "./routers";
+import { updateUserPermissions } from "./db";
+
+const testUserId = 1_000_000_000 + ((Date.now() + process.pid) % 900_000_000);
+const testPermissions = [
+  "crm", "visits", "closing", "kpi", "planning", "discounts",
+  "reports", "tasks", "collections", "users", "pricing_system",
+].map((module) => ({
+  module,
+  canView: 1,
+  canAdd: 1,
+  canEdit: 1,
+  canDelete: 1,
+  dataScope: "all" as const,
+}));
+
+beforeAll(async () => { await updateUserPermissions(testUserId, testPermissions); });
+afterAll(async () => { await updateUserPermissions(testUserId, []); });
 
 function callerFor(role: string) {
   const ctx = {
     user: null,
-    actor: { id: 31, source: "local", role, name: "Test Actor", engineerId: 31 },
+    actor: { id: testUserId, source: "app_user", role, name: "Test Actor", engineerId: null },
     req: { headers: {} },
     res: {},
   } as unknown as TrpcContext;
