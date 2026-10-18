@@ -1,11 +1,11 @@
 /**
- * Merges the role baseline with individual overrides.
+ * Effective operational permissions are stored per user.
  *
- * A user-specific record is an explicit override only for its own module.
- * Modules introduced after the account was created therefore retain their
- * role-level defaults until an administrator records an individual choice.
+ * Role and section permission tables may remain as legacy configuration data,
+ * but they must never grant module or CRUD access at runtime. Missing user
+ * permission rows are intentionally interpreted as denied.
  */
-type ModulePermission = {
+export type ModulePermission = {
   module: string;
   canView: number;
   canAdd: number;
@@ -14,18 +14,20 @@ type ModulePermission = {
   dataScope: string;
 };
 
-export function mergeRoleAndUserPermissions(
-  rolePermissions: ModulePermission[],
+export function resolveUserPermissions(
   userPermissions: ModulePermission[],
 ): ModulePermission[] {
-  const effectivePermissions = new Map<string, ModulePermission>();
-
-  for (const permission of rolePermissions) {
-    effectivePermissions.set(permission.module, permission);
-  }
+  const byModule = new Map<string, ModulePermission>();
   for (const permission of userPermissions) {
-    effectivePermissions.set(permission.module, permission);
+    // Fail closed for malformed or duplicate rows: the last canonical row is
+    // the value returned by the database ordering and never role-derived.
+    byModule.set(permission.module, {
+      ...permission,
+      canView: permission.canView === 1 ? 1 : 0,
+      canAdd: permission.canAdd === 1 ? 1 : 0,
+      canEdit: permission.canEdit === 1 ? 1 : 0,
+      canDelete: permission.canDelete === 1 ? 1 : 0,
+    });
   }
-
-  return Array.from(effectivePermissions.values());
+  return Array.from(byModule.values());
 }
