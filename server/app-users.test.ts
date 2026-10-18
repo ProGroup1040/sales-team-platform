@@ -83,11 +83,17 @@ describe("Internal App Users System", () => {
     expect(testUser).toBeDefined();
   });
 
-  it("should create default permissions for new user", async () => {
+  it("creates explicit deny-by-default permissions for a new user", async () => {
     const permissions = await getUserPermissions(testUserId);
     expect(Array.isArray(permissions)).toBe(true);
-    // sales_engineer should have default permissions
     expect(permissions.length).toBeGreaterThan(0);
+    expect(permissions.every(permission =>
+      permission.canView === 0 &&
+      permission.canAdd === 0 &&
+      permission.canEdit === 0 &&
+      permission.canDelete === 0 &&
+      permission.dataScope === "own"
+    )).toBe(true);
   });
 
   it("should update user permissions", async () => {
