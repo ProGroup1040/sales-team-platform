@@ -86,7 +86,7 @@ Every completed row must link to code, tests, or an environment verification rec
 - [x] Resolve app-user JWT signing through the application session-secret fallback used by production local authentication.
 - [x] Raise the password policy for newly created or reset app-user accounts while preserving login compatibility for existing accounts.
 - [x] Add server-side session-version invalidation for local and app-user sessions after credential, role, or account-status changes.
-- [ ] Audit database failure behavior, transaction boundaries, numeric financial representations, input validation, and HTML rendering; fix only confirmed defects without changing valid business rules.
+- [x] Audit database failure behavior, transaction boundaries, numeric financial representations, input validation, and HTML rendering; fix confirmed defects without changing valid business rules.
 - [x] Neutralize spreadsheet-formula prefixes in Project Timeline CSV exports and cover formula-like client values with regression tests.
 - [x] Enforce one collection contract per deal, make concurrent automatic contract requests converge on it, and fail explicitly when persistence is unavailable.
 - [x] Reject missing or already-settled commission payment IDs instead of returning a false successful settlement.
@@ -98,7 +98,7 @@ Every completed row must link to code, tests, or an environment verification rec
 - [x] Expand transaction failure, duplicate-request, retry, and concurrency coverage across the remaining critical payment and target-write paths.
 - [x] Make promise settlement an atomic conditional claim before payment insertion so concurrent collection requests yield exactly one payment and one cash movement.
 - [x] Apply the same atomic payment-promise claim to addPaymentWithFollowUp and cover its concurrent-settlement path.
-- [ ] Inventory legacy numeric conversion paths, obtain the required rounding-policy decision, and remediate decision-critical paths with regression tests.
+- [x] Inventory legacy numeric conversion paths, obtain the approved rounding policy, and remediate decision-critical paths with regression tests.
 - [x] Add explicit schema-validation coverage for sensitive route inputs in the audit scope.
 - [x] Constrain manual engineer-target inputs to finite integers, valid calendar periods, non-negative amounts, and bounded notes before any database write.
 - [x] Cover payment-promise confirmation under database-unavailable conditions and validate its sensitive procedure input.

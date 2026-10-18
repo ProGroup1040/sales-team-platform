@@ -88,8 +88,10 @@ describe("manual target override persistence", () => {
       createEngineerWithRole,
       createSale,
       createTask,
+      computeAndSaveDealBonus,
       deleteEngineer,
       rescheduleTask,
+      updateDiscountApproval,
       updateEngineerProfile,
     } = await import("./db");
 
@@ -100,5 +102,7 @@ describe("manual target override persistence", () => {
     await expect(createTask({ engineerId: 77, taskDate: "2026-10-18", title: "مهمة اختبار" })).rejects.toThrow("Database unavailable");
     await expect(rescheduleTask(77, "2026-10-19")).rejects.toThrow("Database unavailable");
     await expect(createSale({ customerId: 77, totalAmount: "100.00" })).rejects.toThrow("Database unavailable");
+    await expect(updateDiscountApproval(77, "approved", "test-admin")).rejects.toThrow("Database unavailable");
+    await expect(computeAndSaveDealBonus(77)).rejects.toThrow("Database unavailable");
   });
 });

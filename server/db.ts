@@ -1078,11 +1078,11 @@ export async function getEngineersKPI(year: number, month: number) {
        incentiveStatusReason = 'الحافز متوقف — KPI أقل من 75%';
      }
      const effectiveCommissionPct = baseCommissionPct * commissionMultiplier;
-     const commissionValue = Math.round(totalDealValue * (effectiveCommissionPct / 100));
+     const commissionValue = centsToNumber(Math.round(totalDealValueCents * (effectiveCommissionPct / 100)));
      const incentiveValue = incentiveStatus === 'available' ? baseIncentiveAmount : 0;
      // KPI Bonus = 5% من قيمة الكوميشن الأساسي عند الاستحقاق
-     const kpiBonusValue = kpiBonusStatus === 'available' ? Math.round(commissionValue * 0.05) : 0;
-     const totalPayout = commissionValue + incentiveValue + kpiBonusValue;
+     const kpiBonusValue = kpiBonusStatus === 'available' ? centsToNumber(Math.round(toCents(commissionValue) * 0.05)) : 0;
+     const totalPayout = centsToNumber(toCents(commissionValue) + toCents(incentiveValue) + toCents(kpiBonusValue));
 
     // ── KPI Alerts ────────────────────────────────────────────────
     const kpiAlerts: string[] = [];
@@ -1374,7 +1374,7 @@ export function calcCommission(achievementPct: number, salesAmount: number, tier
   for (const tier of sorted.reverse()) {
     if (achievementPct >= tier.minAchievementPct) {
       if (tier.maxAchievementPct === null || achievementPct <= tier.maxAchievementPct) {
-        return Math.round((salesAmount * tier.commissionPct) / 100);
+        return centsToNumber(Math.round(toCents(salesAmount) * tier.commissionPct / 100));
       }
     }
   }
@@ -1383,15 +1383,45 @@ export function calcCommission(achievementPct: number, salesAmount: number, tier
 
 /** تحديد شريحة الخصم بناءً على إجمالي المبيعات */
 export function getDiscountTier(salesAmount: number, tiers: Array<{ minSales: string; maxSales: string | null; maxDiscountPct: number; label: string | null }>): { maxDiscountPct: number; label: string } | null {
-  const sorted = [...tiers].sort((a, b) => parseFloat(b.minSales) - parseFloat(a.minSales));
+  const salesAmountCents = toCents(salesAmount);
+  const sorted = [...tiers].sort((a, b) => toCents(b.minSales) - toCents(a.minSales));
   for (const tier of sorted) {
-    const min = parseFloat(tier.minSales);
-    const max = tier.maxSales ? parseFloat(tier.maxSales) : Infinity;
-    if (salesAmount >= min && salesAmount < max) {
+    const minCents = toCents(tier.minSales);
+    const maxCents = tier.maxSales ? toCents(tier.maxSales) : Infinity;
+    if (salesAmountCents >= minCents && salesAmountCents < maxCents) {
       return { maxDiscountPct: tier.maxDiscountPct, label: tier.label ?? '' };
     }
   }
   return null;
+}
+
+/** Computes discount-budget figures in cents, returning numbers only at the API boundary. */
+export function calculateDiscountBudget(
+  actualSales: readonly unknown[],
+  pipelineSales: readonly unknown[],
+  usedDiscounts: readonly unknown[],
+  potentialDiscounts: readonly unknown[],
+  lostSales: readonly unknown[],
+  discountPct: number,
+) {
+  const actualSalesCents = sumCents(actualSales);
+  const pipelineCents = sumCents(pipelineSales);
+  const usedDiscountCents = sumCents(usedDiscounts);
+  const potentialDiscountCents = sumCents(potentialDiscounts);
+  const lostValueCents = sumCents(lostSales);
+  const allowedDiscountCents = Math.round(actualSalesCents * discountPct / 100);
+  const remainingDiscountCents = Math.max(0, allowedDiscountCents - usedDiscountCents);
+
+  return {
+    actualSales: centsToNumber(actualSalesCents),
+    pipeline: centsToNumber(pipelineCents),
+    totalVolume: centsToNumber(actualSalesCents + pipelineCents),
+    allowedDiscount: centsToNumber(allowedDiscountCents),
+    usedDiscount: centsToNumber(usedDiscountCents),
+    remainingDiscount: centsToNumber(remainingDiscountCents),
+    potentialDiscount: centsToNumber(potentialDiscountCents),
+    lostValue: centsToNumber(lostValueCents),
+  };
 }
 
 /** جلب أهداف المهندسين للشهر مع حساب الأداء الفعلي */
@@ -1919,6 +1949,17 @@ export async function addPayment(data: InsertPayment & { promiseId?: number }) {
   });
 }
 
+/** Split a commission across its two payment stages without losing a cent. */
+export function splitCommissionStages(totalCommission: number) {
+  const totalCommissionCents = Math.max(0, toCents(totalCommission));
+  const stage1CommissionCents = Math.ceil(totalCommissionCents / 2);
+  const stage2CommissionCents = totalCommissionCents - stage1CommissionCents;
+  return {
+    stage1: centsToNumber(stage1CommissionCents),
+    stage2: centsToNumber(stage2CommissionCents),
+  };
+}
+
 /** تحقق وإنشاء كوميشن Stage 1 أو Stage 2 تلقائياً */
 async function checkAndCreateCommissionStage(collectionId: number, totalPaid: number, contractAmt: number, pct: number, executor?: any) {
   const db = executor ?? await getDb();
@@ -1930,13 +1971,15 @@ async function checkAndCreateCommissionStage(collectionId: number, totalPaid: nu
   const engineerId = firstPayment?.engineerId;
   if (!engineerId) return;
   const totalCommission = calcProgressiveCommission(totalPaid);
-  const halfCommission = totalCommission / 2;
+  // Keep the two stages equal to the cent where possible; when the total is odd,
+  // stage 1 receives the extra cent and stage 2 receives the exact remainder.
+  const commissionStages = splitCommissionStages(totalCommission);
   const existingComm = await db.select().from(commissionPayments).where(eq(commissionPayments.collectionId, collectionId));
   // Stage 1: عند 75% تحصيل
   if (pct >= 0.75 && !existingComm.find((c: any) => c.stage === "stage1")) {
     await db.insert(commissionPayments).values({
       collectionId, engineerId, stage: "stage1",
-      commissionAmount: halfCommission.toString(),
+      commissionAmount: fromCents(toCents(commissionStages.stage1)),
       status: "pending",
       triggerCondition: `تم تحصيل ${Math.round(pct * 100)}% من قيمة العقد (≥75%) — يستحق صرف 50% من الكوميشن`,
     });
@@ -1945,7 +1988,7 @@ async function checkAndCreateCommissionStage(collectionId: number, totalPaid: nu
   if (pct >= 1 && !existingComm.find((c: any) => c.stage === "stage2")) {
     await db.insert(commissionPayments).values({
       collectionId, engineerId, stage: "stage2",
-      commissionAmount: halfCommission.toString(),
+      commissionAmount: fromCents(toCents(commissionStages.stage2)),
       status: "pending",
       triggerCondition: `اكتمل التحصيل 100% — يستحق صرف 50% المتبقية من الكوميشن`,
     });
@@ -3535,38 +3578,30 @@ export async function getDiscountSummary(year?: number, month?: number, startDat
     lostDeals = allDeals.filter(d => d.stage === 'closed_lost');
   }
   // ─── الحسابات ─────────────────────────────────────────────────────────────────────────────
-  const actualSales = closedDeals.reduce((s, d) => s + parseFloat((d.netValue as string) || d.value || '0'), 0);
-  const pipeline = pipelineDeals.reduce((s, d) => s + parseFloat(d.value as string), 0);
-  const totalVolume = actualSales + pipeline;
-  // ─── Composite Score (Performance-Based) ────────────────────────────────
+  // ─── Composite Score (Performance-Based) ────────────────────────────────────────────────
   const nowForDiscount = new Date();
   const teamComposite = await getTeamCompositeDiscountScore(
     nowForDiscount.getFullYear(), nowForDiscount.getMonth() + 1
   );
   const discountPct = teamComposite?.activeDiscountPct ?? 0;
   const tierLabel = teamComposite?.tierBreakdown?.find((t: any) => t.isActive)?.label ?? 'لا توجد شريحة مفعّلة';
-  // الخصم المسموح يُحسب على المبيعات الفعلية فقط (ليس totalVolume)
-  const allowedDiscount = actualSales * (discountPct / 100);
-  const usedDiscount = closedDeals.reduce((s, d) => s + parseFloat(d.discountValue as string || '0'), 0);
-  const remainingDiscount = Math.max(0, allowedDiscount - usedDiscount);
-  const realizedDiscount = usedDiscount;
-  const potentialDiscount = pipelineDeals.reduce((s, d) => s + parseFloat(d.discountValue as string || '0'), 0);
-  const lostValue = lostDeals.reduce((s, d) => s + parseFloat(d.value as string || '0'), 0);
+  // الخصم المسموح يُحسب على المبيعات الفعلية فقط (ليس totalVolume).
+  const money = calculateDiscountBudget(
+    closedDeals.map(d => d.netValue ?? d.value),
+    pipelineDeals.map(d => d.value),
+    closedDeals.map(d => d.discountValue),
+    pipelineDeals.map(d => d.discountValue),
+    lostDeals.map(d => d.value),
+    discountPct,
+  );
   const closingRate = (closedDeals.length + lostDeals.length) > 0
     ? Math.round((closedDeals.length / (closedDeals.length + lostDeals.length)) * 100)
     : 0;
   return {
-    actualSales,
-    pipeline,
-    totalVolume,
+    ...money,
     tierLabel,
     discountPct,
-    allowedDiscount,
-    usedDiscount,
-    remainingDiscount,
-    realizedDiscount,
-    potentialDiscount,
-    lostValue,
+    realizedDiscount: money.usedDiscount,
     closingRate,
     closedCount: closedDeals.length,
     lostCount: lostDeals.length,
@@ -3579,17 +3614,19 @@ export async function validateDealDiscount(dealId: number | undefined, discountV
   if (!summary) return { valid: false, remaining: 0, message: 'خطأ في جلب بيانات الخصم' };
 
   // إذا كنا نعدّل صفقة موجودة، نستثني خصمها القديم من الحساب
-  let currentDealDiscount = 0;
+  let currentDealDiscountCents = 0;
   if (dealId) {
     const db = await getDb();
     if (db) {
       const [existing] = await db.select().from(deals).where(eq(deals.id, dealId));
-      if (existing) currentDealDiscount = parseFloat(existing.discountValue as string || '0');
+      if (existing) currentDealDiscountCents = toCentsOrZero(existing.discountValue);
     }
   }
 
-  const effectiveRemaining = summary.remainingDiscount + currentDealDiscount;
-  if (discountValue > effectiveRemaining) {
+  const effectiveRemainingCents = toCents(summary.remainingDiscount) + currentDealDiscountCents;
+  const requestedDiscountCents = toCents(discountValue);
+  const effectiveRemaining = centsToNumber(effectiveRemainingCents);
+  if (requestedDiscountCents > effectiveRemainingCents) {
     return {
       valid: false,
       remaining: effectiveRemaining,
@@ -5200,152 +5237,126 @@ export function calcSavedDiscountBonus(dealValue: number, maxDiscountPct: number
   engineerBonus: number;
   companyProfit: number;
 } {
-  const maxDiscountValue = dealValue * (maxDiscountPct / 100);
-  const usedDiscountValue = dealValue * (usedDiscountPct / 100);
-  const savedDiscountValue = Math.max(0, maxDiscountValue - usedDiscountValue);
-  const engineerBonus = savedDiscountValue * 0.5;  // 50% للمهندس
-  const companyProfit = savedDiscountValue * 0.5;  // 50% للشركة
-  return { maxDiscountValue, usedDiscountValue, savedDiscountValue, engineerBonus, companyProfit };
+  if (!Number.isFinite(maxDiscountPct) || !Number.isFinite(usedDiscountPct)) {
+    throw new Error("Invalid discount percentage");
+  }
+  const dealValueCents = Math.max(0, toCents(dealValue));
+  const maxDiscountCents = Math.round(dealValueCents * maxDiscountPct / 100);
+  const usedDiscountCents = Math.round(dealValueCents * usedDiscountPct / 100);
+  const savedDiscountCents = Math.max(0, maxDiscountCents - usedDiscountCents);
+  const engineerBonusCents = Math.round(savedDiscountCents / 2); // 50% للمهندس
+  const companyProfitCents = savedDiscountCents - engineerBonusCents; // الباقي للشركة
+  return {
+    maxDiscountValue: centsToNumber(maxDiscountCents),
+    usedDiscountValue: centsToNumber(usedDiscountCents),
+    savedDiscountValue: centsToNumber(savedDiscountCents),
+    engineerBonus: centsToNumber(engineerBonusCents),
+    companyProfit: centsToNumber(companyProfitCents),
+  };
 }
 
 /** Pipeline Stats لكل مهندس (آخر 60 يوم) */
 export async function getEngineerPipelineStats(engineerId?: number) {
   const db = await getDb();
   if (!db) return [];
-
   const since60 = new Date();
   since60.setDate(since60.getDate() - 60);
-
   const engList = await db.select({ id: engineers.id, name: engineers.name, role: engineers.role })
-    .from(engineers)
-    .where(and(eq(engineers.isDeleted, 0)));
-
+    .from(engineers).where(and(eq(engineers.isDeleted, 0)));
   const allDeals = await db.select().from(deals)
     .where(and(eq(deals.isDeleted, 0), gte(deals.createdAt, since60)));
-
   const targetEngineers = engineerId
     ? engList.filter(e => e.id === engineerId)
     : engList.filter(e => !['admin_sales', 'group_admin'].includes(e.role ?? ''));
 
   return targetEngineers.map(eng => {
     const engDeals = allDeals.filter(d => d.engineerId === eng.id);
-
     const closedWon = engDeals.filter(d => d.stage === 'closed_won');
     const negotiation = engDeals.filter(d => d.stage === 'negotiation');
     const proposal = engDeals.filter(d => d.stage === 'proposal' || d.stage === 'contract_sent');
     const closedLost = engDeals.filter(d => d.stage === 'closed_lost');
-
-    const closedWonValue = closedWon.reduce((s, d) => s + parseFloat((d.netValue as string) || (d.value as string) || '0'), 0);
-    const negotiationValue = negotiation.reduce((s, d) => s + parseFloat(d.value as string), 0);
-    const proposalValue = proposal.reduce((s, d) => s + parseFloat(d.value as string), 0);
-    const closedLostValue = closedLost.reduce((s, d) => s + parseFloat(d.value as string), 0);
-
+    const closedWonCents = sumCents(closedWon.map(d => d.netValue ?? d.value));
+    const negotiationCents = sumCents(negotiation.map(d => d.value));
+    const proposalCents = sumCents(proposal.map(d => d.value));
+    const closedLostCents = sumCents(closedLost.map(d => d.value));
     const totalDeals = engDeals.length;
     const closingRate = totalDeals > 0 ? closedWon.length / totalDeals : 0;
-
-    // Pipeline Value = Negotiation + Proposal
-    const pipelineValue = negotiationValue + proposalValue;
-
-    // Discount Pool = (Actual Sales × base%) + (Negotiation × bonus%)
-    const { tierLabel, discountPct } = getDiscountTierInfo(closedWonValue + negotiationValue);
+    const pipelineCents = negotiationCents + proposalCents;
+    const { tierLabel, discountPct } = getDiscountTierInfo(centsToNumber(closedWonCents + negotiationCents));
     const performancePct = getPerformanceBasedDiscountPct(closingRate, discountPct);
-    const discountPool = (closedWonValue * (performancePct / 100)) + (negotiationValue * (performancePct / 2 / 100));
-
-    // Used Discount
-    const usedDiscount = closedWon.reduce((s, d) => s + parseFloat(d.discountValue as string || '0'), 0);
-    const savedDiscount = Math.max(0, discountPool - usedDiscount);
-
-    // Saved Bonus = 50% of saved discount
-    const engineerBonus = savedDiscount * 0.5;
-
-    // Pending Approval
+    const discountPoolCents = Math.round(closedWonCents * performancePct / 100)
+      + Math.round(negotiationCents * performancePct / 200);
+    const usedDiscountCents = sumCents(closedWon.map(d => d.discountValue));
+    const savedDiscountCents = Math.max(0, discountPoolCents - usedDiscountCents);
+    const engineerBonusCents = Math.round(savedDiscountCents / 2);
+    const companyProfitCents = savedDiscountCents - engineerBonusCents;
     const pendingApproval = engDeals.filter(d => d.discountApprovalStatus === 'pending');
-
     return {
       engineerId: eng.id,
       engineerName: eng.name,
       role: eng.role,
-      // Pipeline breakdown
-      closedWon: { count: closedWon.length, value: closedWonValue },
-      negotiation: { count: negotiation.length, value: negotiationValue },
-      proposal: { count: proposal.length, value: proposalValue },
-      closedLost: { count: closedLost.length, value: closedLostValue },
-      // KPIs
+      closedWon: { count: closedWon.length, value: centsToNumber(closedWonCents) },
+      negotiation: { count: negotiation.length, value: centsToNumber(negotiationCents) },
+      proposal: { count: proposal.length, value: centsToNumber(proposalCents) },
+      closedLost: { count: closedLost.length, value: centsToNumber(closedLostCents) },
       totalDeals,
       closingRate,
       closingRatePct: Math.round(closingRate * 100),
-      pipelineValue,
-      // Discount System
+      pipelineValue: centsToNumber(pipelineCents),
       discountPct: performancePct,
       tierLabel,
-      discountPool,
-      usedDiscount,
-      remainingDiscount: Math.max(0, discountPool - usedDiscount),
-      savedDiscount,
-      engineerBonus,
-      companyProfit: savedDiscount * 0.5,
-      // Pending approvals
+      discountPool: centsToNumber(discountPoolCents),
+      usedDiscount: centsToNumber(usedDiscountCents),
+      remainingDiscount: centsToNumber(Math.max(0, discountPoolCents - usedDiscountCents)),
+      savedDiscount: centsToNumber(savedDiscountCents),
+      engineerBonus: centsToNumber(engineerBonusCents),
+      companyProfit: centsToNumber(companyProfitCents),
       pendingApprovalCount: pendingApproval.length,
     };
   });
 }
-
 /** نظرة عامة على الـ Pipeline الكلي */
 export async function getPipelineOverview() {
   const db = await getDb();
   if (!db) return null;
-
   const since60 = new Date();
   since60.setDate(since60.getDate() - 60);
-
   const allDeals = await db.select().from(deals)
     .where(and(eq(deals.isDeleted, 0), gte(deals.createdAt, since60)));
-
-  const closedWonValue = allDeals.filter(d => d.stage === 'closed_won')
-    .reduce((s, d) => s + parseFloat(d.value as string), 0);
-  const negotiationValue = allDeals.filter(d => d.stage === 'negotiation')
-    .reduce((s, d) => s + parseFloat(d.value as string), 0);
-  const proposalValue = allDeals.filter(d => d.stage === 'proposal' || d.stage === 'contract_sent')
-    .reduce((s, d) => s + parseFloat(d.value as string), 0);
-  const closedLostValue = allDeals.filter(d => d.stage === 'closed_lost')
-    .reduce((s, d) => s + parseFloat(d.value as string), 0);
-
-  const totalPipeline = negotiationValue + proposalValue;
-  const { tierLabel, discountPct } = getDiscountTierInfo(closedWonValue + totalPipeline);
-  const totalDiscountPool = (closedWonValue + totalPipeline) * (discountPct / 100);
-  const totalUsedDiscount = allDeals.filter(d => d.stage === 'closed_won')
-    .reduce((s, d) => s + parseFloat(d.discountValue as string || '0'), 0);
-  const totalSavedBonus = allDeals.filter(d => d.stage === 'closed_won')
-    .reduce((s, d) => s + parseFloat(d.savedDiscountBonus as string || '0'), 0);
-
+  const closedWonCents = sumCents(allDeals.filter(d => d.stage === 'closed_won').map(d => d.value));
+  const negotiationCents = sumCents(allDeals.filter(d => d.stage === 'negotiation').map(d => d.value));
+  const proposalCents = sumCents(allDeals.filter(d => d.stage === 'proposal' || d.stage === 'contract_sent').map(d => d.value));
+  const closedLostCents = sumCents(allDeals.filter(d => d.stage === 'closed_lost').map(d => d.value));
+  const totalPipelineCents = negotiationCents + proposalCents;
+  const { tierLabel, discountPct } = getDiscountTierInfo(centsToNumber(closedWonCents + totalPipelineCents));
+  const totalDiscountPoolCents = Math.round((closedWonCents + totalPipelineCents) * discountPct / 100);
+  const totalUsedDiscountCents = sumCents(allDeals.filter(d => d.stage === 'closed_won').map(d => d.discountValue));
+  const totalSavedBonusCents = sumCents(allDeals.filter(d => d.stage === 'closed_won').map(d => d.savedDiscountBonus));
   const pendingApprovals = allDeals.filter(d => d.discountApprovalStatus === 'pending');
-
   return {
-    closedWonValue,
-    negotiationValue,
-    proposalValue,
-    closedLostValue,
-    totalPipeline,
+    closedWonValue: centsToNumber(closedWonCents),
+    negotiationValue: centsToNumber(negotiationCents),
+    proposalValue: centsToNumber(proposalCents),
+    closedLostValue: centsToNumber(closedLostCents),
+    totalPipeline: centsToNumber(totalPipelineCents),
     tierLabel,
     discountPct,
-    totalDiscountPool,
-    totalUsedDiscount,
-    remainingDiscount: Math.max(0, totalDiscountPool - totalUsedDiscount),
-    totalSavedBonus,
+    totalDiscountPool: centsToNumber(totalDiscountPoolCents),
+    totalUsedDiscount: centsToNumber(totalUsedDiscountCents),
+    remainingDiscount: centsToNumber(Math.max(0, totalDiscountPoolCents - totalUsedDiscountCents)),
+    totalSavedBonus: centsToNumber(totalSavedBonusCents),
     pendingApprovals: pendingApprovals.map(d => ({
       id: d.id,
       clientName: d.clientName,
-      value: parseFloat(d.value as string),
-      discountValue: parseFloat(d.discountValue as string || '0'),
+      value: centsToNumber(toCentsOrZero(d.value)),
+      discountValue: centsToNumber(toCentsOrZero(d.discountValue)),
       discountPercent: parseFloat(d.discountPercent as string || '0'),
     })),
   };
 }
-
 /** تحديث حالة موافقة الخصم */
 export async function updateDiscountApproval(dealId: number, status: 'approved' | 'rejected', approvedBy?: string) {
-  const db = await getDb();
-  if (!db) return;
+  const db = await requireDb();
   await db.update(deals).set({
     discountApprovalStatus: status,
     discountApprovedBy: approvedBy,
@@ -5354,17 +5365,16 @@ export async function updateDiscountApproval(dealId: number, status: 'approved' 
 
 /** حساب وحفظ Saved Discount Bonus عند إغلاق صفقة */
 export async function computeAndSaveDealBonus(dealId: number) {
-  const db = await getDb();
-  if (!db) return;
+  const db = await requireDb();
   const [deal] = await db.select().from(deals).where(eq(deals.id, dealId));
   if (!deal || deal.stage !== 'closed_won') return;
 
-  const dealValue = parseFloat(deal.value as string);
+  const dealValue = centsToNumber(toCentsOrZero(deal.value));
   const maxPct = parseFloat(deal.maxDiscountPct as string || '0');
   const usedPct = parseFloat(deal.discountPercent as string || '0');
 
   const { engineerBonus } = calcSavedDiscountBonus(dealValue, maxPct, usedPct);
-  await db.update(deals).set({ savedDiscountBonus: String(engineerBonus) }).where(eq(deals.id, dealId));
+  await db.update(deals).set({ savedDiscountBonus: fromCents(toCents(engineerBonus)) }).where(eq(deals.id, dealId));
   return engineerBonus;
 }
 
@@ -8399,6 +8409,35 @@ export async function updateDealEngineer(params: {
 }
 
 // ─── Advanced Discount System (v2) ───────────────────────────────────────────
+export function allocateCentsByWeights(totalCents: number, weights: readonly number[]): number[] {
+  const safeTotal = Math.max(0, totalCents);
+  const safeWeights = weights.map(weight => Number.isFinite(weight) && weight > 0 ? weight : 0);
+  const weightTotal = safeWeights.reduce((sum, weight) => sum + weight, 0);
+  if (safeTotal === 0 || weightTotal === 0) return safeWeights.map(() => 0);
+
+  let allocated = 0;
+  return safeWeights.map((weight, index) => {
+    const allocation = index === safeWeights.length - 1
+      ? safeTotal - allocated
+      : Math.min(safeTotal - allocated, Math.round(safeTotal * weight / weightTotal));
+    allocated += allocation;
+    return allocation;
+  });
+}
+
+export function splitAdvancedDiscountSaving(unusedDiscount: number) {
+  const unusedDiscountCents = Math.max(0, toCents(unusedDiscount));
+  const engineerBonusCents = Math.round(unusedDiscountCents * 0.50);
+  const adminSalesBonusCents = Math.round(unusedDiscountCents * 0.15);
+  const companySavingCents = unusedDiscountCents - engineerBonusCents - adminSalesBonusCents;
+  return {
+    unusedDiscount: centsToNumber(unusedDiscountCents),
+    engineerBonus: centsToNumber(engineerBonusCents),
+    adminSalesBonus: centsToNumber(adminSalesBonusCents),
+    companySaving: centsToNumber(companySavingCents),
+  };
+}
+
 /**
  * نظام الخصومات المتقدم:
  * 1. شريحة الخصم = Actual Sales + Pipeline
@@ -8418,194 +8457,131 @@ export async function getAdvancedDiscountSummary() {
 
   const now = new Date();
   const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
-
   const allDeals = await db.select().from(deals).where(eq(deals.isDeleted, 0));
   const allEngineers = await getEngineers();
-  const salesEngineers = allEngineers.filter(e =>
-    SALES_ENGINEER_ROLES.includes(e.role as any)
-  );
-
-  // ── 1. حساب Actual Sales + Pipeline ──────────────────────────────────────
+  const salesEngineers = allEngineers.filter(e => SALES_ENGINEER_ROLES.includes(e.role as any));
   const wonDeals = allDeals.filter(d => d.stage === 'closed_won');
-  const pipelineDeals = allDeals.filter(d =>
-    !['closed_won', 'closed_lost'].includes(d.stage)
-  );
+  const pipelineDeals = allDeals.filter(d => !['closed_won', 'closed_lost'].includes(d.stage));
 
-  const actualSales = wonDeals.reduce((s, d) => {
-    const v = parseFloat((d.netValue ?? d.value) as string || '0');
-    return s + (isNaN(v) ? 0 : v);
-  }, 0);
+  // Monetary totals, discount pools, and allocations remain in cents until returned.
+  const actualSalesCents = sumCents(wonDeals.map(d => d.netValue ?? d.value));
+  const pipelineValueCents = sumCents(pipelineDeals.map(d => d.value));
+  const totalVolumeCents = actualSalesCents + pipelineValueCents;
+  const { tierLabel, discountPct } = getDiscountTierInfo(centsToNumber(totalVolumeCents));
+  const realizedDiscountCents = Math.round(actualSalesCents * discountPct / 100);
+  const potentialDiscountCents = Math.round(pipelineValueCents * discountPct / 100);
+  const allowedDiscountCents = realizedDiscountCents + potentialDiscountCents;
+  const usedDiscountCents = sumCents(wonDeals.map(d => d.discountValue));
 
-  const pipelineValue = pipelineDeals.reduce((s, d) => {
-    const v = parseFloat(d.value as string || '0');
-    return s + (isNaN(v) ? 0 : v);
-  }, 0);
-
-  const totalVolume = actualSales + pipelineValue;
-  const { tierLabel, discountPct } = getDiscountTierInfo(totalVolume);
-
-  // ── 2. Realized vs Potential Discount ────────────────────────────────────
-  const realizedDiscount = actualSales * (discountPct / 100);
-  const potentialDiscount = pipelineValue * (discountPct / 100);
-  const allowedDiscount = totalVolume * (discountPct / 100);
-
-  // الخصم المستخدم فعلياً على الصفقات المغلقة
-  const usedDiscount = wonDeals.reduce((s, d) => {
-    const v = parseFloat(d.discountValue as string || '0');
-    return s + (isNaN(v) ? 0 : v);
-  }, 0);
-
-  // ── 3. حساب وزن كل مهندس ─────────────────────────────────────────────────
-  // مبيعات آخر 60 يوم
   const recentWonDeals = wonDeals.filter(d => {
     const updatedAt = d.updatedAt ? new Date(d.updatedAt) : null;
     return updatedAt && updatedAt >= sixtyDaysAgo;
   });
 
+  // The score retains its existing relative weighting, expressed in cents so no
+  // money total is converted through floating-point parsing.
   const engWeights = salesEngineers.map(eng => {
-    const engRecentSales = recentWonDeals
-      .filter(d => d.engineerId === eng.id)
-      .reduce((s, d) => {
-        const v = parseFloat((d.netValue ?? d.value) as string || '0');
-        return s + (isNaN(v) ? 0 : v);
-      }, 0);
-
-    const engPipeline = pipelineDeals
-      .filter(d => d.engineerId === eng.id)
-      .reduce((s, d) => {
-        const v = parseFloat(d.value as string || '0');
-        return s + (isNaN(v) ? 0 : v);
-      }, 0);
-
+    const recentSalesCents = sumCents(recentWonDeals.filter(d => d.engineerId === eng.id).map(d => d.netValue ?? d.value));
+    const pipelineCents = sumCents(pipelineDeals.filter(d => d.engineerId === eng.id).map(d => d.value));
     const engAllDeals = allDeals.filter(d => d.engineerId === eng.id);
     const engWon = engAllDeals.filter(d => d.stage === 'closed_won').length;
-    const engClosed = engAllDeals.filter(d =>
-      ['closed_won', 'closed_lost'].includes(d.stage)
-    ).length;
+    const engClosed = engAllDeals.filter(d => ['closed_won', 'closed_lost'].includes(d.stage)).length;
     const closingRate = engClosed > 0 ? engWon / engClosed : 0;
-
     return {
       engineerId: eng.id,
       engineerName: eng.name,
       role: eng.role,
-      recentSales: engRecentSales,
-      pipeline: engPipeline,
+      recentSalesCents,
+      pipelineCents,
       closingRate,
-      // وزن مركب: 40% مبيعات + 40% pipeline + 20% closing rate
-      rawWeight: engRecentSales * 0.4 + engPipeline * 0.4 + closingRate * 100000 * 0.2,
+      rawWeight: recentSalesCents * 0.4 + pipelineCents * 0.4 + closingRate * 10_000_000 * 0.2,
     };
   });
 
-  const totalRawWeight = engWeights.reduce((s, e) => s + e.rawWeight, 0);
+  const engineerAllocationCents = allocateCentsByWeights(
+    potentialDiscountCents,
+    engWeights.map(eng => eng.rawWeight),
+  );
 
-  // ── 4. توزيع Potential Discount على المهندسين ────────────────────────────
-  const engineerAllocations = engWeights.map(eng => {
-    const shareRatio = totalRawWeight > 0 ? eng.rawWeight / totalRawWeight : 0;
-    const allocatedDiscount = potentialDiscount * shareRatio;
-
-    // صفقات المهندس في التفاوض
+  const engineerAllocations = engWeights.map((eng, engineerIndex) => {
+    const allocatedDiscountCents = engineerAllocationCents[engineerIndex];
     const engPipelineDeals = pipelineDeals.filter(d => d.engineerId === eng.engineerId);
-    const engPipelineTotal = eng.pipeline;
-
-    // ── 5. توزيع نصيب المهندس على صفقاته بالوزن ─────────────────────────
-    const dealAllocations = engPipelineDeals.map(deal => {
-      const dealValue = parseFloat(deal.value as string || '0');
-      const dealWeight = engPipelineTotal > 0 ? dealValue / engPipelineTotal : 0;
-      const dealAllocated = allocatedDiscount * dealWeight;
-      const dealUsed = parseFloat(deal.discountValue as string || '0');
-      const dealUnused = Math.max(0, dealAllocated - dealUsed);
-
+    const dealValueCents = engPipelineDeals.map(deal => toCentsOrZero(deal.value));
+    const dealAllocationCents = allocateCentsByWeights(allocatedDiscountCents, dealValueCents);
+    const dealAllocations = engPipelineDeals.map((deal, dealIndex) => {
+      const dealCents = dealValueCents[dealIndex];
+      const allocatedCents = dealAllocationCents[dealIndex];
+      const usedCents = toCentsOrZero(deal.discountValue);
       return {
         dealId: deal.id,
         clientName: deal.clientName,
-        dealValue,
+        dealValue: centsToNumber(dealCents),
         stage: deal.stage,
-        allocatedDiscount: Math.round(dealAllocated),
-        usedDiscount: Math.round(dealUsed),
-        unusedDiscount: Math.round(dealUnused),
+        allocatedDiscount: centsToNumber(allocatedCents),
+        usedDiscount: centsToNumber(usedCents),
+        unusedDiscount: centsToNumber(Math.max(0, allocatedCents - usedCents)),
         isLocked: deal.isLocked ?? false,
       };
     });
 
-    // صفقات مغلقة (won) لحساب الـ Bonus
     const engWonDeals = wonDeals.filter(d => d.engineerId === eng.engineerId);
-    const totalSavingBonus = engWonDeals.reduce((s, d) => {
-      const allocated = parseFloat((d as any).allocatedDiscount as string || '0');
-      const used = parseFloat(d.discountValue as string || '0');
-      const unused = Math.max(0, allocated - used);
-      return s + unused;
+    const totalSavingCents = engWonDeals.reduce((sum, deal) => {
+      const allocatedCents = toCentsOrZero((deal as any).allocatedDiscount);
+      return sum + Math.max(0, allocatedCents - toCentsOrZero(deal.discountValue));
     }, 0);
-
-    const engineerBonus = Math.round(totalSavingBonus * 0.50);
-    const adminSalesBonus = Math.round(totalSavingBonus * 0.15);
-    const companySaving = Math.round(totalSavingBonus * 0.35);
-
-    const engUsedDiscount = engWonDeals.reduce((s, d) => {
-      const v = parseFloat(d.discountValue as string || '0');
-      return s + (isNaN(v) ? 0 : v);
-    }, 0);
+    const savingSplit = splitAdvancedDiscountSaving(centsToNumber(totalSavingCents));
+    const engUsedDiscountCents = sumCents(engWonDeals.map(d => d.discountValue));
 
     return {
       engineerId: eng.engineerId,
       engineerName: eng.engineerName,
       role: eng.role,
-      recentSales: Math.round(eng.recentSales),
-      pipeline: Math.round(eng.pipeline),
+      recentSales: centsToNumber(eng.recentSalesCents),
+      pipeline: centsToNumber(eng.pipelineCents),
       closingRate: Math.round(eng.closingRate * 100),
-      shareRatio: Math.round(shareRatio * 100),
-      allocatedDiscount: Math.round(allocatedDiscount),
-      usedDiscount: Math.round(engUsedDiscount),
-      unusedDiscount: Math.round(Math.max(0, allocatedDiscount - engUsedDiscount)),
-      engineerBonus,
-      adminSalesBonus,
-      companySaving,
+      shareRatio: potentialDiscountCents > 0 ? Math.round((allocatedDiscountCents / potentialDiscountCents) * 100) : 0,
+      allocatedDiscount: centsToNumber(allocatedDiscountCents),
+      usedDiscount: centsToNumber(engUsedDiscountCents),
+      unusedDiscount: centsToNumber(Math.max(0, allocatedDiscountCents - engUsedDiscountCents)),
+      engineerBonus: savingSplit.engineerBonus,
+      adminSalesBonus: savingSplit.adminSalesBonus,
+      companySaving: savingSplit.companySaving,
       dealAllocations,
     };
   });
 
-  // ── 6. Admin Sales Dashboard ──────────────────────────────────────────────
   const adminSalesEngineers = allEngineers.filter(e => e.role === 'admin_sales');
-  const totalAdminBonus = engineerAllocations.reduce((s, e) => s + e.adminSalesBonus, 0);
-
-  // صفقات أُغلقت بدون استخدام كامل الخصم
-  const dealsWithSaving = wonDeals.filter(d => {
-    const used = parseFloat(d.discountValue as string || '0');
-    const allocated = parseFloat((d as any).allocatedDiscount as string || '0');
-    return allocated > 0 && used < allocated;
+  const totalAdminBonusCents = sumCents(engineerAllocations.map(e => e.adminSalesBonus));
+  const dealsWithSaving = wonDeals.filter(deal => {
+    const usedCents = toCentsOrZero(deal.discountValue);
+    const allocatedCents = toCentsOrZero((deal as any).allocatedDiscount);
+    return allocatedCents > 0 && usedCents < allocatedCents;
   });
-
-  const adminSalesDashboard = {
-    totalAdminBonus,
-    dealsWithSavingCount: dealsWithSaving.length,
-    dealsWithSavingValue: dealsWithSaving.reduce((s, d) => {
-      const v = parseFloat((d.netValue ?? d.value) as string || '0');
-      return s + (isNaN(v) ? 0 : v);
-    }, 0),
-    savingRate: allowedDiscount > 0
-      ? Math.round(((allowedDiscount - usedDiscount) / allowedDiscount) * 100)
-      : 0,
-    adminSalesNames: adminSalesEngineers.map(e => e.name),
-  };
+  const dealsWithSavingValueCents = sumCents(dealsWithSaving.map(d => d.netValue ?? d.value));
 
   return {
-    // ملخص عام
-    actualSales: Math.round(actualSales),
-    pipelineValue: Math.round(pipelineValue),
-    totalVolume: Math.round(totalVolume),
+    actualSales: centsToNumber(actualSalesCents),
+    pipelineValue: centsToNumber(pipelineValueCents),
+    totalVolume: centsToNumber(totalVolumeCents),
     tierLabel,
     discountPct,
-    allowedDiscount: Math.round(allowedDiscount),
-    realizedDiscount: Math.round(realizedDiscount),
-    potentialDiscount: Math.round(potentialDiscount),
-    usedDiscount: Math.round(usedDiscount),
-    remainingDiscount: Math.round(Math.max(0, allowedDiscount - usedDiscount)),
-    // توزيع على المهندسين
+    allowedDiscount: centsToNumber(allowedDiscountCents),
+    realizedDiscount: centsToNumber(realizedDiscountCents),
+    potentialDiscount: centsToNumber(potentialDiscountCents),
+    usedDiscount: centsToNumber(usedDiscountCents),
+    remainingDiscount: centsToNumber(Math.max(0, allowedDiscountCents - usedDiscountCents)),
     engineerAllocations,
-    // Admin Sales Dashboard
-    adminSalesDashboard,
+    adminSalesDashboard: {
+      totalAdminBonus: centsToNumber(totalAdminBonusCents),
+      dealsWithSavingCount: dealsWithSaving.length,
+      dealsWithSavingValue: centsToNumber(dealsWithSavingValueCents),
+      savingRate: allowedDiscountCents > 0
+        ? Math.round(((allowedDiscountCents - usedDiscountCents) / allowedDiscountCents) * 100)
+        : 0,
+      adminSalesNames: adminSalesEngineers.map(e => e.name),
+    },
   };
 }
-
 /**
  * التحقق من صحة خصم صفقة بناءً على النظام الجديد
  */
@@ -8633,8 +8609,10 @@ export async function validateAdvancedDealDiscount(
 
   const dealAllocation = engAllocation.dealAllocations.find(d => d.dealId === dealId);
   const maxAllowed = dealAllocation ? dealAllocation.allocatedDiscount : 0;
+  const requestedDiscountCents = toCents(newDiscountValue);
+  const maxAllowedCents = toCents(maxAllowed);
 
-  if (newDiscountValue > maxAllowed) {
+  if (requestedDiscountCents > maxAllowedCents) {
     return {
       valid: false,
       maxAllowed,
@@ -8669,13 +8647,7 @@ export async function calcDealSavingBonus(dealId: number): Promise<{
   const dealAllocation = engAllocation.dealAllocations.find(d => d.dealId === dealId);
   if (!dealAllocation) return null;
 
-  const unusedDiscount = dealAllocation.unusedDiscount;
-  return {
-    unusedDiscount,
-    engineerBonus: Math.round(unusedDiscount * 0.50),
-    adminSalesBonus: Math.round(unusedDiscount * 0.15),
-    companySaving: Math.round(unusedDiscount * 0.35),
-  };
+  return splitAdvancedDiscountSaving(dealAllocation.unusedDiscount);
 }
 
 // ─── Score-Based Discount Distribution System ─────────────────────────────────
@@ -8727,38 +8699,26 @@ export async function calcScoreBasedDiscountDistribution(
   const pipelineDeals = allDeals.filter(d => !['closed_won', 'closed_lost'].includes(d.stage));
 
   // ── حساب إجمالي الحجم لتحديد شريحة الخصم ────────────────────────────────
-  const actualSales = wonDeals.reduce((s, d) => {
-    const v = parseFloat((d.netValue ?? d.value) as string || '0');
-    return s + (isNaN(v) ? 0 : v);
-  }, 0);
-  const pipelineValue = pipelineDeals.reduce((s, d) => {
-    const v = parseFloat(d.value as string || '0');
-    return s + (isNaN(v) ? 0 : v);
-  }, 0);
-  const totalVolume = actualSales + pipelineValue;
-  const { tierLabel, discountPct } = getDiscountTierInfo(totalVolume);
-  const totalDiscountPool = pipelineValue * (discountPct / 100);
+  const actualSalesCents = sumCents(wonDeals.map(d => d.netValue ?? d.value));
+  const pipelineValueCents = sumCents(pipelineDeals.map(d => d.value));
+  const totalVolumeCents = actualSalesCents + pipelineValueCents;
+  const { tierLabel, discountPct } = getDiscountTierInfo(centsToNumber(totalVolumeCents));
+  const totalDiscountPoolCents = Math.round(pipelineValueCents * discountPct / 100);
 
   // ── حساب أقصى مبيعات ومحفظة لـ Normalization ─────────────────────────────
   const engStats = salesEngineers.map(eng => {
     // Performance: مبيعات آخر 60 يوم
-    const recentSales = wonDeals
+    const recentSalesCents = sumCents(wonDeals
       .filter(d => {
         const updatedAt = d.updatedAt ? new Date(d.updatedAt) : null;
         return d.engineerId === eng.id && updatedAt && updatedAt >= sixtyDaysAgo;
       })
-      .reduce((s, d) => {
-        const v = parseFloat((d.netValue ?? d.value) as string || '0');
-        return s + (isNaN(v) ? 0 : v);
-      }, 0);
+      .map(d => d.netValue ?? d.value));
 
     // Pipeline Score
-    const engPipeline = pipelineDeals
+    const engPipelineCents = sumCents(pipelineDeals
       .filter(d => d.engineerId === eng.id)
-      .reduce((s, d) => {
-        const v = parseFloat(d.value as string || '0');
-        return s + (isNaN(v) ? 0 : v);
-      }, 0);
+      .map(d => d.value));
 
     // Closing Skill: closing rate × 100 + عدد صفقات مغلقة × 5
     const engAllDeals = allDeals.filter(d => d.engineerId === eng.id);
@@ -8769,8 +8729,8 @@ export async function calcScoreBasedDiscountDistribution(
 
     return {
       eng,
-      recentSales,
-      engPipeline,
+      recentSalesCents,
+      engPipelineCents,
       closingSkillRaw,
       closingRate,
       engWon,
@@ -8779,15 +8739,15 @@ export async function calcScoreBasedDiscountDistribution(
   });
 
   // Normalize
-  const maxSales = Math.max(...engStats.map(e => e.recentSales), 1);
-  const maxPipeline = Math.max(...engStats.map(e => e.engPipeline), 1);
+  const maxSales = Math.max(...engStats.map(e => e.recentSalesCents), 1);
+  const maxPipeline = Math.max(...engStats.map(e => e.engPipelineCents), 1);
   const maxClosing = Math.max(...engStats.map(e => e.closingSkillRaw), 1);
 
   // ── حساب الـ Score لكل مهندس ─────────────────────────────────────────────
   const PERFORMANCE_THRESHOLD = 20; // أقل من 20% = لا خصم
   const scored = engStats.map(e => {
-    const performanceScore = (e.recentSales / maxSales) * 100;
-    const pipelineScore = (e.engPipeline / maxPipeline) * 100;
+    const performanceScore = (e.recentSalesCents / maxSales) * 100;
+    const pipelineScore = (e.engPipelineCents / maxPipeline) * 100;
     const closingSkillScore = (e.closingSkillRaw / maxClosing) * 100;
     const rawScore = performanceScore * 0.4 + pipelineScore * 0.3 + closingSkillScore * 0.3;
     const meetsThreshold = performanceScore >= PERFORMANCE_THRESHOLD;
@@ -8799,7 +8759,7 @@ export async function calcScoreBasedDiscountDistribution(
       rawScore,
       meetsThreshold,
       dealsCount: e.dealsCount,
-      engPipeline: e.engPipeline,
+      engPipelineCents: e.engPipelineCents,
     };
   });
 
@@ -8829,11 +8789,15 @@ export async function calcScoreBasedDiscountDistribution(
 
   // ── توزيع الـ Discount Pool ───────────────────────────────────────────────
   const totalFinalScore = withBoost.reduce((s, e) => s + e.finalScore, 0);
+  const discountShareCents = allocateCentsByWeights(
+    totalDiscountPoolCents,
+    withBoost.map(e => e.finalScore),
+  );
 
-  const result = withBoost.map(e => {
+  const result = withBoost.map((e, index) => {
     const shareRatio = totalFinalScore > 0 ? e.finalScore / totalFinalScore : 0;
-    const discountShare = Math.round(totalDiscountPool * shareRatio);
-    const avgDiscountPerDeal = e.dealsCount > 0 ? Math.round(discountShare / e.dealsCount) : 0;
+    const shareCents = discountShareCents[index];
+    const avgDiscountPerDealCents = e.dealsCount > 0 ? Math.round(shareCents / e.dealsCount) : 0;
     return {
       engineerId: e.eng.id,
       engineerName: e.eng.name,
@@ -8846,16 +8810,16 @@ export async function calcScoreBasedDiscountDistribution(
       finalScore: Math.round(e.finalScore),
       boostApplied: e.boostApplied,
       meetsThreshold: e.meetsThreshold,
-      discountShare,
+      discountShare: centsToNumber(shareCents),
       sharePercent: Math.round(shareRatio * 100),
       dealsCount: e.dealsCount,
-      avgDiscountPerDeal,
+      avgDiscountPerDeal: centsToNumber(avgDiscountPerDealCents),
       rank: e.rank,
     };
   }).sort((a, b) => a.rank - b.rank);
 
   return {
-    totalDiscountPool: Math.round(totalDiscountPool),
+    totalDiscountPool: centsToNumber(totalDiscountPoolCents),
     discountPct,
     tierLabel,
     engineers: result,
@@ -9624,6 +9588,56 @@ export async function getCollectionsWithCommission(engineerId?: number) {
   });
 }
 
+export function calculateTeamDiscountShares(
+  engineers: Array<{ engineerId: number; totalScore: number; wonDeals: number; qualifies: boolean; rank: number }>,
+  totalDiscountPoolCents: number,
+  boostTopN: number,
+) {
+  const safePoolCents = Math.max(0, totalDiscountPoolCents);
+  const qualifying = engineers.filter(engineer => engineer.qualifies);
+  const totalScore = qualifying.reduce((sum, engineer) => sum + engineer.totalScore, 0);
+  const result = new Map<number, {
+    baseShareCents: number;
+    boostCents: number;
+    finalShareCents: number;
+    avgPerDealCents: number;
+  }>();
+
+  let allocatedCents = 0;
+  for (let index = 0; index < qualifying.length; index++) {
+    const engineer = qualifying[index];
+    const baseShareCents = totalScore <= 0
+      ? 0
+      : index === qualifying.length - 1
+        ? safePoolCents - allocatedCents
+        : Math.min(
+          safePoolCents - allocatedCents,
+          Math.round(safePoolCents * engineer.totalScore / totalScore),
+        );
+    allocatedCents += baseShareCents;
+    const boostCents = engineer.rank <= boostTopN ? Math.round(baseShareCents * 0.1) : 0;
+    const finalShareCents = baseShareCents + boostCents;
+    result.set(engineer.engineerId, {
+      baseShareCents,
+      boostCents,
+      finalShareCents,
+      avgPerDealCents: engineer.wonDeals > 0 ? Math.round(finalShareCents / engineer.wonDeals) : 0,
+    });
+  }
+
+  for (const engineer of engineers) {
+    if (!result.has(engineer.engineerId)) {
+      result.set(engineer.engineerId, {
+        baseShareCents: 0,
+        boostCents: 0,
+        finalShareCents: 0,
+        avgPerDealCents: 0,
+      });
+    }
+  }
+  return result;
+}
+
 // ── Advanced Discount Distribution (Score-Based) ──────────────────────────
 export async function getAdvancedDiscountDistribution(month: number, year: number) {
   const db = await getDb();
@@ -9731,35 +9745,40 @@ export async function getAdvancedDiscountDistribution(month: number, year: numbe
   // Get total discount pool from discount tiers
   const { discountTiers } = await import("../drizzle/schema");
   const tiers = await db.select().from(discountTiers).orderBy(discountTiers.minSales);
-  const totalSales = wonDeals.reduce((s: number, d: any) => s + parseFloat(d.totalValue ?? "0"), 0);
-  const totalPipeline = pipelineDeals.reduce((s: number, d: any) => s + parseFloat(d.pipelineValue ?? "0"), 0);
-  const effectiveVolume = totalSales + totalPipeline;
-  const activeTier = tiers.filter((t: any) => effectiveVolume >= parseFloat(t.minSales ?? "0")).pop();
-  const discountRate = activeTier ? (activeTier.maxDiscountPct ?? 5) / 100 : 0.05;
-  const totalDiscountPool = effectiveVolume * discountRate;
+  const totalSalesCents = sumCents(wonDeals.map((d: any) => d.totalValue));
+  const totalPipelineCents = sumCents(pipelineDeals.map((d: any) => d.pipelineValue));
+  const effectiveVolumeCents = totalSalesCents + totalPipelineCents;
+  const activeTier = tiers.filter((t: any) => effectiveVolumeCents >= toCentsOrZero(t.minSales)).pop();
+  const discountRatePct = activeTier ? (activeTier.maxDiscountPct ?? 5) : 5;
+  const totalDiscountPoolCents = Math.round(effectiveVolumeCents * discountRatePct / 100);
 
   // Distribute discount only to qualifying engineers
-  const qualifying = engineerScores.filter(e => e.qualifies);
-  const totalQualifyingScore = qualifying.reduce((s, e) => s + e.totalScore, 0) || 1;
+  const allocation = calculateTeamDiscountShares(
+    engineerScores.map((e, index) => ({
+      engineerId: e.engineerId,
+      totalScore: e.totalScore,
+      wonDeals: e.wonDeals,
+      qualifies: e.qualifies,
+      rank: index + 1,
+    })),
+    totalDiscountPoolCents,
+    BOOST_TOP_N,
+  );
 
-  return engineerScores.map((e, i) => {
+  return engineerScores.map(e => {
+    const share = allocation.get(e.engineerId)!;
     if (!e.qualifies) {
-      return { ...e, discountShare: 0, discountBoost: 0, finalDiscountShare: 0, discountPool: totalDiscountPool, avgDiscountPerDeal: 0 };
+      return { ...e, discountShare: 0, discountBoost: 0, finalDiscountShare: 0, discountPool: centsToNumber(totalDiscountPoolCents), avgDiscountPerDeal: 0 };
     }
-    const baseShare = (e.totalScore / totalQualifyingScore) * totalDiscountPool;
-    const isTopN = i < BOOST_TOP_N;
-    const boost = isTopN ? baseShare * 0.1 : 0;
-    const finalShare = baseShare + boost;
-    const avgPerDeal = e.wonDeals > 0 ? finalShare / e.wonDeals : 0;
 
     return {
       ...e,
-      discountShare: Math.round(baseShare),
-      discountBoost: Math.round(boost),
-      finalDiscountShare: Math.round(finalShare),
-      discountPool: Math.round(totalDiscountPool),
-      avgDiscountPerDeal: Math.round(avgPerDeal),
-      discountRate: Math.round(discountRate * 100),
+      discountShare: centsToNumber(share.baseShareCents),
+      discountBoost: centsToNumber(share.boostCents),
+      finalDiscountShare: centsToNumber(share.finalShareCents),
+      discountPool: centsToNumber(totalDiscountPoolCents),
+      avgDiscountPerDeal: centsToNumber(share.avgPerDealCents),
+      discountRate: discountRatePct,
     };
   });
 }
@@ -9785,7 +9804,7 @@ export async function distributeDiscountToDeals(engineerId: number): Promise<{
   const summary = await getDiscountSummaryForEngineer(engineerId);
   if (!summary) return [];
 
-  const totalAllowedDiscount = summary.allowedDiscount;
+  const totalAllowedDiscountCents = toCents(summary.allowedDiscount);
 
   // جلب كل الصفقات النشطة (pipeline + closed_won فقط، ليس closed_lost)
   const activeDeals = await db.select().from(deals)
@@ -9801,8 +9820,8 @@ export async function distributeDiscountToDeals(engineerId: number): Promise<{
   if (activeDeals.length === 0) return [];
 
   // حساب إجمالي قيم الصفقات
-  const totalDealValue = activeDeals.reduce((s, d) => s + parseFloat(d.value as string || '0'), 0);
-  if (totalDealValue === 0) return [];
+  const totalDealValueCents = sumCents(activeDeals.map(d => d.grossValue ?? d.value));
+  if (totalDealValueCents === 0) return [];
 
   // جلب التخصيصات الحالية من قاعدة البيانات
   const existingAllocations = await db.select().from(dealDiscountAllocations)
@@ -9810,16 +9829,26 @@ export async function distributeDiscountToDeals(engineerId: number): Promise<{
   const allocationMap = new Map(existingAllocations.map(a => [a.dealId, a]));
 
   const result = [];
-  for (const deal of activeDeals) {
-    const grossVal = parseFloat(deal.grossValue as string || deal.value as string || '0');
-    const netVal = parseFloat(deal.netValue as string || deal.value as string || '0');
+  let allocatedCents = 0;
+  for (let index = 0; index < activeDeals.length; index++) {
+    const deal = activeDeals[index];
+    const grossValueCents = toCentsOrZero(deal.grossValue ?? deal.value);
+    const netValueCents = toCentsOrZero(deal.netValue ?? deal.value);
     // للصفقات المغلقة: استخدم netValue (بعد الخصم) كقيمة الصفقة المعروضة
     // للـ pipeline: استخدم grossValue (لأنها لم تُغلق بعد)
     const isClosed = deal.stage === 'closed_won';
-    const dealValue = isClosed ? netVal : grossVal;
-    const allocationPct = totalDealValue > 0 ? (grossVal / totalDealValue) * 100 : 0;
-    const allocatedMax = totalAllowedDiscount * (allocationPct / 100);
-    const usedDiscount = parseFloat(deal.discountValue as string || '0');
+    const dealValueCents = isClosed ? netValueCents : grossValueCents;
+    const allocationPct = (grossValueCents / totalDealValueCents) * 100;
+    // Preserve the pool exactly: the final deal receives the residual after the
+    // cent-rounded proportional allocations for the preceding deals.
+    const allocatedMaxCents = index === activeDeals.length - 1
+      ? totalAllowedDiscountCents - allocatedCents
+      : Math.min(
+        totalAllowedDiscountCents - allocatedCents,
+        Math.round(totalAllowedDiscountCents * grossValueCents / totalDealValueCents),
+      );
+    allocatedCents += allocatedMaxCents;
+    const usedDiscountCents = toCentsOrZero(deal.discountValue);
     const dealType: 'pipeline' | 'closed' = deal.stage === 'closed_won' ? 'closed' : 'pipeline';
     const lostDueToPricing = deal.lostReason === 'price_high';
 
@@ -9828,10 +9857,10 @@ export async function distributeDiscountToDeals(engineerId: number): Promise<{
     if (existing) {
       await db.update(dealDiscountAllocations)
         .set({
-          dealValue: dealValue.toString(),
-          allocatedDiscountMax: allocatedMax.toString(),
+          dealValue: fromCents(dealValueCents),
+          allocatedDiscountMax: fromCents(allocatedMaxCents),
           allocationPct: allocationPct.toFixed(2),
-          usedDiscount: usedDiscount.toString(),
+          usedDiscount: fromCents(usedDiscountCents),
           dealType,
           lostDueToPricing: lostDueToPricing ? 1 : 0,
         })
@@ -9840,10 +9869,10 @@ export async function distributeDiscountToDeals(engineerId: number): Promise<{
       await db.insert(dealDiscountAllocations).values({
         dealId: deal.id,
         engineerId,
-        dealValue: dealValue.toString(),
-        allocatedDiscountMax: allocatedMax.toString(),
+        dealValue: fromCents(dealValueCents),
+        allocatedDiscountMax: fromCents(allocatedMaxCents),
         allocationPct: allocationPct.toFixed(2),
-        usedDiscount: usedDiscount.toString(),
+        usedDiscount: fromCents(usedDiscountCents),
         dealType,
         lostDueToPricing: lostDueToPricing ? 1 : 0,
       });
@@ -9852,15 +9881,15 @@ export async function distributeDiscountToDeals(engineerId: number): Promise<{
     result.push({
       dealId: deal.id,
       clientName: deal.clientName,
-      dealValue,
+      dealValue: centsToNumber(dealValueCents),
       dealType,
-      allocatedDiscountMax: Math.round(allocatedMax),
+      allocatedDiscountMax: centsToNumber(allocatedMaxCents),
       allocationPct: Math.round(allocationPct * 10) / 10,
-      usedDiscount,
-      remainingDiscount: Math.max(0, Math.round(allocatedMax - usedDiscount)),
-      discountPct: dealValue > 0 ? Math.round((usedDiscount / dealValue) * 1000) / 10 : 0,
-      grossValue: parseFloat(deal.grossValue as string || dealValue.toString()),
-      netValue: parseFloat(deal.netValue as string || (dealValue - usedDiscount).toString()),
+      usedDiscount: centsToNumber(usedDiscountCents),
+      remainingDiscount: centsToNumber(Math.max(0, allocatedMaxCents - usedDiscountCents)),
+      discountPct: dealValueCents > 0 ? Math.round((usedDiscountCents / dealValueCents) * 1000) / 10 : 0,
+      grossValue: centsToNumber(grossValueCents),
+      netValue: centsToNumber(netValueCents),
       lostDueToPricing,
     });
   }
@@ -9885,8 +9914,6 @@ export async function getDiscountSummaryForEngineer(engineerId: number) {
       gte(deals.closedAt, since60)
     ));
 
-  const actualSales = closedDeals.reduce((s, d) => s + parseFloat(d.netValue as string || d.value as string || '0'), 0);
-
   // جلب الصفقات في Pipeline
   const pipelineDeals = await db.select().from(deals)
     .where(and(
@@ -9898,42 +9925,80 @@ export async function getDiscountSummaryForEngineer(engineerId: number) {
         eq(deals.stage, 'contract_sent'),
       )
     ));
-  const pipeline = pipelineDeals.reduce((s, d) => s + parseFloat(d.value as string || '0'), 0);
-
   // ─── Composite Score (Performance-Based) ────────────────────────────────
-  const now2 = new Date();
   const compositeResult = await getEngineerCompositeDiscountScore(engineerId);
   const discountPct = compositeResult?.activeDiscountPct ?? 0;
-  const totalVolume = actualSales + pipeline;
-  // الخصم المسموح يُحسب على المبيعات الفعلية فقط (ليس totalVolume)
-  const allowedDiscount = actualSales * (discountPct / 100);
-
-  // الخصم المستخدم على الصفقات المغلقة
-  const usedDiscount = closedDeals.reduce((s, d) => s + parseFloat(d.discountValue as string || '0'), 0);
-  // الخصم المحتمل على الـ Pipeline
-  const potentialDiscount = pipelineDeals.reduce((s, d) => s + parseFloat(d.discountValue as string || '0'), 0);
-  const remainingDiscount = Math.max(0, allowedDiscount - usedDiscount - potentialDiscount);
+  const money = calculateDiscountBudget(
+    closedDeals.map(d => d.netValue ?? d.value),
+    pipelineDeals.map(d => d.value),
+    closedDeals.map(d => d.discountValue),
+    pipelineDeals.map(d => d.discountValue),
+    [],
+    discountPct,
+  );
+  const remainingDiscount = centsToNumber(Math.max(
+    0,
+    toCents(money.allowedDiscount) - toCents(money.usedDiscount) - toCents(money.potentialDiscount),
+  ));
 
   return {
     engineerId,
-    actualSales,
-    pipeline,
-    totalVolume,
+    ...money,
     discountPct,
-    allowedDiscount: Math.round(allowedDiscount),
-    usedDiscount: Math.round(usedDiscount),
-    potentialDiscount: Math.round(potentialDiscount),
-    remainingDiscount: Math.round(remainingDiscount),
-    realizedDiscount: Math.round(usedDiscount),
+    remainingDiscount,
+    realizedDiscount: money.usedDiscount,
     closedDealsCount: closedDeals.length,
     pipelineDealsCount: pipelineDeals.length,
+  };
+}
+
+/** Calculates a discount bonus in cents, preserving exact two-decimal payout values. */
+export function calculateDiscountBonusMoney(input: {
+  discountUsed: unknown;
+  netValue: unknown;
+  commissionPct: number;
+  monthlyCap: unknown;
+  earnedThisMonth: unknown;
+}) {
+  if (!Number.isFinite(input.commissionPct) || input.commissionPct < 0) {
+    throw new Error("Invalid commission percentage");
+  }
+
+  const discountUsedCents = Math.max(0, toCentsOrZero(input.discountUsed));
+  const netValueCents = Math.max(0, toCentsOrZero(input.netValue));
+  const commissionCents = Math.round(netValueCents * input.commissionPct / 100);
+  const monthlyCapCents = Math.max(0, toCentsOrZero(input.monthlyCap));
+  const earnedThisMonthCents = Math.max(0, toCentsOrZero(input.earnedThisMonth));
+  const remainingCapCents = Math.max(0, monthlyCapCents - earnedThisMonthCents);
+
+  let bonusCents = 0;
+  let bonusCase: 1 | 2 | null = null;
+  if (discountUsedCents > 0) {
+    if (discountUsedCents <= commissionCents) {
+      bonusCents = Math.round(discountUsedCents / 2);
+      bonusCase = 1;
+    } else {
+      bonusCents = commissionCents;
+      bonusCase = 2;
+    }
+  }
+  bonusCents = Math.min(bonusCents, remainingCapCents);
+
+  return {
+    discountUsed: centsToNumber(discountUsedCents),
+    commissionAmount: centsToNumber(commissionCents),
+    bonusAmount: centsToNumber(bonusCents),
+    bonusCase,
+    monthlyCap: centsToNumber(monthlyCapCents),
+    earnedThisMonth: centsToNumber(earnedThisMonthCents),
+    remainingCap: centsToNumber(remainingCapCents),
   };
 }
 
 /**
  * حساب مكافأة الخصم لصفقة مغلقة (closed_won)
  * الحالة 1: خصم ≤ كومشن → مكافأة = 50% من الخصم
- * الحالة 2: خصم > كومشن → مكافأة = الكومشن فقط
+ * الحالة 2: خصم > كومشن → مكافأة = الكوميشن فقط
  * قيود: لا مكافأة إذا خسرت الصفقة بسبب السعر، ولا تتجاوز الـ Cap الشهري
  */
 export async function calculateDiscountBonus(dealId: number): Promise<{
@@ -9959,30 +10024,10 @@ export async function calculateDiscountBonus(dealId: number): Promise<{
     return { eligible: false, reason: 'الصفقة خُسرت بسبب السعر', discountUsed: 0, commissionAmount: 0, bonusAmount: 0, bonusCase: null, monthlyCap: 0, earnedThisMonth: 0, remainingCap: 0 };
   }
 
-  const discountUsed = parseFloat(deal.discountValue as string || '0');
-  const netValue = parseFloat(deal.netValue as string || deal.value as string || '0');
-
   // حساب الكومشن على هذه الصفقة
   const commissionTiersData = await db.select().from(commissionTiers).orderBy(commissionTiers.minAchievementPct);
   // نستخدم نسبة كومشن افتراضية 3% إذا لم تكن هناك شرائح
   const commissionPct = commissionTiersData.length > 0 ? commissionTiersData[0].commissionPct : 3;
-  const commissionAmount = netValue * (commissionPct / 100);
-
-  // حساب المكافأة
-  let bonusAmount = 0;
-  let bonusCase: 1 | 2 | null = null;
-
-  if (discountUsed > 0) {
-    if (discountUsed <= commissionAmount) {
-      // الحالة 1: خصم ≤ كومشن → مكافأة = 50% من الخصم
-      bonusAmount = discountUsed * 0.5;
-      bonusCase = 1;
-    } else {
-      // الحالة 2: خصم > كومشن → مكافأة = الكومشن فقط
-      bonusAmount = commissionAmount;
-      bonusCase = 2;
-    }
-  }
 
   // التحقق من الـ Cap الشهري
   const now = new Date();
@@ -9996,22 +10041,17 @@ export async function calculateDiscountBonus(dealId: number): Promise<{
       eq(discountBonusCaps.month, month),
     )).limit(1);
 
-  const monthlyCap = parseFloat(capRecord?.monthlyCap as string || '15000');
-  const earnedThisMonth = parseFloat(capRecord?.earnedBonus as string || '0');
-  const remainingCap = Math.max(0, monthlyCap - earnedThisMonth);
-
-  // تطبيق الـ Cap
-  bonusAmount = Math.min(bonusAmount, remainingCap);
+  const money = calculateDiscountBonusMoney({
+    discountUsed: deal.discountValue,
+    netValue: deal.netValue ?? deal.value,
+    commissionPct,
+    monthlyCap: capRecord?.monthlyCap ?? '15000',
+    earnedThisMonth: capRecord?.earnedBonus ?? '0',
+  });
 
   return {
-    eligible: bonusAmount > 0,
-    discountUsed: Math.round(discountUsed),
-    commissionAmount: Math.round(commissionAmount),
-    bonusAmount: Math.round(bonusAmount),
-    bonusCase,
-    monthlyCap,
-    earnedThisMonth: Math.round(earnedThisMonth),
-    remainingCap: Math.round(remainingCap),
+    eligible: money.bonusAmount > 0,
+    ...money,
   };
 }
 
@@ -10045,7 +10085,7 @@ export async function getDiscountBonusSummary(engineerId: number, year?: number,
     return {
       dealId: deal.id,
       clientName: deal.clientName,
-      dealValue: parseFloat(deal.value as string || '0'),
+      dealValue: centsToNumber(toCentsOrZero(deal.netValue ?? deal.value)),
       discountUsed: bonus.discountUsed,
       commissionAmount: bonus.commissionAmount,
       bonusAmount: bonus.bonusAmount,
@@ -10055,7 +10095,7 @@ export async function getDiscountBonusSummary(engineerId: number, year?: number,
     };
   }));
 
-  const totalBonus = dealBonuses.reduce((s, d) => s + (d.eligible ? d.bonusAmount : 0), 0);
+  const totalBonusCents = sumCents(dealBonuses.filter(d => d.eligible).map(d => d.bonusAmount));
 
   // جلب الـ Cap
   const [capRecord] = await db.select().from(discountBonusCaps)
@@ -10065,17 +10105,17 @@ export async function getDiscountBonusSummary(engineerId: number, year?: number,
       eq(discountBonusCaps.month, m),
     )).limit(1);
 
-  const monthlyCap = parseFloat(capRecord?.monthlyCap as string || '15000');
-  const cappedBonus = Math.min(totalBonus, monthlyCap);
+  const monthlyCapCents = toCentsOrZero(capRecord?.monthlyCap ?? '15000');
+  const cappedBonusCents = Math.min(totalBonusCents, monthlyCapCents);
 
   return {
     engineerId,
     year: y,
     month: m,
     dealBonuses,
-    totalBonusBeforeCap: Math.round(totalBonus),
-    monthlyCap,
-    cappedBonus: Math.round(cappedBonus),
+    totalBonusBeforeCap: centsToNumber(totalBonusCents),
+    monthlyCap: centsToNumber(monthlyCapCents),
+    cappedBonus: centsToNumber(cappedBonusCents),
     isPaid: capRecord?.isPaid === 1,
     eligibleDealsCount: dealBonuses.filter(d => d.eligible).length,
     ineligibleDealsCount: dealBonuses.filter(d => !d.eligible).length,

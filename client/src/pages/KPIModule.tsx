@@ -19,9 +19,12 @@ import {
 const now = new Date();
 const MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
 
-const fmt = (n: number) =>
-  n >= 1_000_000 ? `${(n/1_000_000).toFixed(2)}م` : n >= 1_000 ? `${(n/1_000).toFixed(0)}ك` : n.toLocaleString('ar-EG');
-const fmtFull = (n: number) => `${n.toLocaleString('ar-EG')} ج.م`;
+const roundKpiMoney = (n: number) => Math.round(Number.isFinite(n) ? n : 0);
+const fmt = (n: number) => {
+  const wholeEgp = roundKpiMoney(n);
+  return wholeEgp >= 1_000_000 ? `${(wholeEgp / 1_000_000).toFixed(2)}م` : wholeEgp >= 1_000 ? `${(wholeEgp / 1_000).toFixed(0)}ك` : wholeEgp.toLocaleString('ar-EG');
+};
+const fmtFull = (n: number) => `${roundKpiMoney(n).toLocaleString('ar-EG')} ج.م`;
 
 function getScoreColor(s: number) {
   if (s >= 90) return '#10b981';
