@@ -2803,13 +2803,26 @@ export const appRouter = router({
       .input(z.object({
         userId: z.number().int().positive(),
         permissions: z.array(z.object({
-          module: z.string(),
-          canView: z.number(),
-          canAdd: z.number(),
-          canEdit: z.number(),
-          canDelete: z.number(),
+          module: z.enum([
+            'crm', 'visits', 'closing', 'deals', 'kpi', 'planning',
+            'discounts', 'reports', 'tasks', 'collections', 'users', 'pricing_system',
+          ]),
+          canView: z.union([z.literal(0), z.literal(1)]),
+          canAdd: z.union([z.literal(0), z.literal(1)]),
+          canEdit: z.union([z.literal(0), z.literal(1)]),
+          canDelete: z.union([z.literal(0), z.literal(1)]),
           dataScope: z.enum(['own', 'all']),
-        })),
+        })).superRefine((permissions, ctx) => {
+          const canonicalModules = permissions.map((permission) =>
+            permission.module === 'deals' ? 'closing' : permission.module
+          );
+          if (new Set(canonicalModules).size !== canonicalModules.length) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: 'لا يمكن إرسال أكثر من سجل صلاحية لنفس الوحدة',
+            });
+          }
+        }),
       }))
       .mutation(async ({ input, ctx }) => {
         const caller = await requireUserManagementCaller(ctx, 'ليس لديك صلاحية تعديل الصلاحيات');
