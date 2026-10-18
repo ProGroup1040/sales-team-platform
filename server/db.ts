@@ -1307,12 +1307,23 @@ export async function getSales(opts: any) {
 }
 
 export async function createSale(data: any) {
-  const db = await getDb();
-  if (!db) return { id: 0, invoiceNumber: 'INV-000' };
+  const db = await requireDb();
   const invoiceNumber = `INV-${Date.now()}`;
-  const finalAmount = (parseFloat(data.totalAmount ?? '0') - parseFloat(data.discount ?? '0') + parseFloat(data.tax ?? '0')).toString();
-  await db.insert(sales).values({ ...data, invoiceNumber, finalAmount });
-  return { id: 0, invoiceNumber };
+  const totalCents = toCents(data.totalAmount ?? 0);
+  const discountCents = toCents(data.discount ?? 0);
+  const taxCents = toCents(data.tax ?? 0);
+  if (totalCents < 0 || discountCents < 0 || taxCents < 0) throw new Error("Sale money values must be non-negative");
+  const finalCents = totalCents - discountCents + taxCents;
+  if (finalCents < 0) throw new Error("Sale discount cannot exceed total plus tax");
+  const [result] = await db.insert(sales).values({
+    ...data,
+    invoiceNumber,
+    totalAmount: fromCents(totalCents),
+    discount: fromCents(discountCents),
+    tax: fromCents(taxCents),
+    finalAmount: fromCents(finalCents),
+  });
+  return { id: Number((result as { insertId?: number }).insertId), invoiceNumber };
 }
 
 export async function updateSaleStatus(id: number, status: string) {

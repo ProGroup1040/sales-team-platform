@@ -86,6 +86,7 @@ describe("manual target override persistence", () => {
     const {
       createEngineer,
       createEngineerWithRole,
+      createSale,
       createTask,
       deleteEngineer,
       rescheduleTask,
@@ -98,5 +99,6 @@ describe("manual target override persistence", () => {
     await expect(deleteEngineer(77)).rejects.toThrow("Database unavailable");
     await expect(createTask({ engineerId: 77, taskDate: "2026-10-18", title: "مهمة اختبار" })).rejects.toThrow("Database unavailable");
     await expect(rescheduleTask(77, "2026-10-19")).rejects.toThrow("Database unavailable");
+    await expect(createSale({ customerId: 77, totalAmount: "100.00" })).rejects.toThrow("Database unavailable");
   });
 });

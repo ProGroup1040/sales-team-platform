@@ -416,7 +416,8 @@ export const sales = mysqlTable("sales", {
   totalAmount: decimal("totalAmount", { precision: 12, scale: 2 }).notNull(),
   discount: decimal("discount", { precision: 12, scale: 2 }).default("0"),
   tax: decimal("tax", { precision: 12, scale: 2 }).default("0"),
-  finalAmount: decimal("finalAmount", { precision: 12, scale: 2 }).notNull(),
+  // The deployed legacy table stores the final invoice value as `netAmount`.
+  finalAmount: decimal("netAmount", { precision: 12, scale: 2 }).notNull(),
   status: mysqlEnum("status", ["pending", "processing", "delivered", "cancelled", "returned"]).default("pending").notNull(),
   paymentStatus: mysqlEnum("paymentStatus", ["unpaid", "partial", "paid"]).default("unpaid").notNull(),
   notes: text("notes"),

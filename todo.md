@@ -93,6 +93,7 @@ Every completed row must link to code, tests, or an environment verification rec
 - [x] Apply the existing non-negative net-value rule to discounted deal creation and reject a discount greater than the deal value on the server.
 - [x] Make engineer and daily-task create/update/reschedule lifecycle writes fail explicitly when the database is unavailable.
 - [x] Make payment-promise status and confirmation updates conditional, rejecting missing or already-settled promises instead of silently reporting success.
+- [x] Reconcile legacy sales/customer schema drift, use cents arithmetic for invoice final amounts, and fail explicitly when sale persistence is unavailable.
 - [x] Expand database-unavailable tests to every critical financial write operation in the current cash, commitment, and collection workflow.
 - [x] Expand transaction failure, duplicate-request, retry, and concurrency coverage across the remaining critical payment and target-write paths.
 - [x] Make promise settlement an atomic conditional claim before payment insertion so concurrent collection requests yield exactly one payment and one cash movement.
