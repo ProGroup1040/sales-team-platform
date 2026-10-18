@@ -20,7 +20,7 @@ import {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Role = "sales_engineer" | "sales_specialist" | "admin_sales" | "manager";
-type Module = "crm" | "visits" | "deals" | "kpi" | "planning" | "discounts" | "reports" | "tasks" | "collections" | "users";
+type Module = "crm" | "visits" | "closing" | "deals" | "kpi" | "planning" | "discounts" | "reports" | "tasks" | "collections" | "users" | "pricing_system";
 
 const ROLE_LABELS: Record<Role, string> = {
   sales_engineer: "مهندس مبيعات",
@@ -39,6 +39,7 @@ const ROLE_COLORS: Record<Role, string> = {
 const MODULE_LABELS: Record<Module, string> = {
   crm: "إدارة العملاء",
   visits: "المعاينات",
+  closing: "التفاوض والإغلاق",
   deals: "الصفقات",
   kpi: "مؤشرات الأداء",
   planning: "تخطيط الأهداف",
@@ -47,9 +48,10 @@ const MODULE_LABELS: Record<Module, string> = {
   tasks: "المهام",
   collections: "التحصيل",
   users: "إدارة المستخدمين",
+  pricing_system: "منظومة التسعير",
 };
 
-const MODULES: Module[] = ["crm", "visits", "deals", "kpi", "planning", "discounts", "reports", "tasks", "collections", "users"];
+const MODULES: Module[] = ["crm", "visits", "closing", "kpi", "planning", "discounts", "reports", "tasks", "collections", "users", "pricing_system"];
 
 const ENGINEER_USERNAME_PATTERN = /^[a-zA-Z0-9._-]+$/;
 
@@ -366,10 +368,10 @@ function PermissionsEditor({ userId, userName, onClose }: { userId: number; user
   const handleSave = () => {
     const permissions = MODULES.map(mod => ({
       module: mod,
-      canView: perms[mod]?.canView ?? 0,
-      canAdd: perms[mod]?.canAdd ?? 0,
-      canEdit: perms[mod]?.canEdit ?? 0,
-      canDelete: perms[mod]?.canDelete ?? 0,
+      canView: (perms[mod]?.canView ?? 0) as 0 | 1,
+      canAdd: (perms[mod]?.canAdd ?? 0) as 0 | 1,
+      canEdit: (perms[mod]?.canEdit ?? 0) as 0 | 1,
+      canDelete: (perms[mod]?.canDelete ?? 0) as 0 | 1,
       dataScope: perms[mod]?.dataScope ?? "own",
     }));
     updateMut.mutate({ userId, permissions });

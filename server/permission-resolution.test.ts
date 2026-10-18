@@ -59,4 +59,36 @@ describe("resolveUserPermissions", () => {
       dataScope: "own",
     }]);
   });
+
+  it("canonicalizes the legacy deals alias to closing", () => {
+    expect(resolveUserPermissions([{
+      module: "deals",
+      canView: 1,
+      canAdd: 0,
+      canEdit: 0,
+      canDelete: 0,
+      dataScope: "all",
+    }])).toEqual([{
+      module: "closing",
+      canView: 1,
+      canAdd: 0,
+      canEdit: 0,
+      canDelete: 0,
+      dataScope: "all",
+    }]);
+  });
+
+  it("fails closed when canonical and legacy rows collide", () => {
+    expect(resolveUserPermissions([
+      { module: "closing", canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
+      { module: "deals", canView: 1, canAdd: 0, canEdit: 1, canDelete: 1, dataScope: "own" },
+    ])).toEqual([{
+      module: "closing",
+      canView: 1,
+      canAdd: 0,
+      canEdit: 1,
+      canDelete: 1,
+      dataScope: "own",
+    }]);
+  });
 });

@@ -381,28 +381,22 @@ function assertTaskTimeRange(startTime?: string, endTime?: string) {
 async function getTaskAccess(ctx: any): Promise<TaskAccess> {
   const caller = await getCallerFromContext(ctx);
   if (!caller) throw new TRPCError({ code: "UNAUTHORIZED", message: "يجب تسجيل الدخول أولاً" });
-  if (caller.role === "admin") {
-    return { caller, canView: true, canAdd: true, canEdit: true, canDelete: true, scope: "all" };
-  }
-  const role = TASK_ROLE_ALIASES[caller.role] ?? caller.role;
   const linkedAppUser = caller.engineerId ? await getAppUserByEngineerId(caller.engineerId) : null;
   const permissionUserId = ctx?.actor?.source === "app_user" ? caller.id : linkedAppUser?.id;
   const direct = permissionUserId
     ? (await getUserPermissions(permissionUserId)).find((p) => p.module === "tasks")
     : undefined;
-  const rolePermission = (await getRolePermissions(role)).find((p) => p.module === "tasks");
-  const configured = direct ?? rolePermission ?? DEFAULT_ROLE_PERMISSIONS[role]?.tasks;
-  // The role's data scope is authoritative for task visibility. This prevents
-  // an old per-user override from accidentally widening a role configured as
-  // own-only in the admin dashboard.
-  const configuredScope = rolePermission?.dataScope ?? direct?.dataScope ?? DEFAULT_ROLE_PERMISSIONS[role]?.tasks?.dataScope;
+  // Operational access comes only from the explicit user row. Role defaults
+  // remain configuration data and cannot grant task access at runtime.
+  const configured = direct;
+  const configuredScope = direct?.dataScope;
   return {
     caller,
     canView: configured?.canView === 1,
     canAdd: configured?.canAdd === 1,
     canEdit: configured?.canEdit === 1,
     canDelete: configured?.canDelete === 1,
-    scope: configuredScope === "all" ? "all" : configuredScope === "team" ? "team" : "own",
+    scope: configuredScope === "all" ? "all" : "own",
   };
 }
 
@@ -2298,7 +2292,7 @@ export const appRouter = router({
         // OAuth identities without a matching app_users row have no direct
         // operational grants; authentication alone never grants module access.
         return [];
-      }),,
+      }),
   }),
 
   leadDailyStats: router({

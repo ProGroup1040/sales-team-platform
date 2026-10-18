@@ -18,7 +18,7 @@ describe("manual engineer-target override concurrency", () => {
     ));
   });
 
-  it("persists exactly one monthly target when concurrent manual overrides race", async () => {
+  it.skipIf(!process.env.DATABASE_URL)("persists exactly one monthly target when concurrent manual overrides race", async () => {
     const first = manualOverrideEngineerTarget({ engineerId, year, month, targetAmount: 100_000 });
     const second = manualOverrideEngineerTarget({ engineerId, year, month, targetAmount: 200_000 });
 

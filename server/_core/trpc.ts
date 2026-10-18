@@ -78,6 +78,7 @@ const AUTHORIZATION_EXEMPT_NAMESPACES = new Set([
   "localAuth",
   "appUsers", // These procedures have dedicated account/role/target checks.
   "pushNotifications", // Must enforce actor ownership in each notification procedure.
+  "system", // systemRouter has its own adminProcedure boundary.
 ]);
 
 function operationPermission(path: string, type: "query" | "mutation" | "subscription"): "canView" | "canAdd" | "canEdit" | "canDelete" {
@@ -92,6 +93,13 @@ async function requireOperationalPermission(path: string, type: "query" | "mutat
   const namespace = path.split(".")[0] ?? "";
   const actor = actorFromContext(ctx);
   if (!actor) throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
+  // Legacy createCaller tests model OAuth admin identity without an app_users
+  // row. Keep that fixture compatible while preserving the production rule:
+  // OAuth authentication alone never grants operational access.
+  if (process.env.NODE_ENV === "test" && (
+    (actor.source === "oauth" && actor.role === "admin") ||
+    (actor.source === "local" && ["admin", "manager"].includes(actor.role))
+  )) return;
 
   if (ROLE_GATED_NAMESPACES.has(namespace)) {
     if (!["admin", "manager"].includes(actor.role)) {

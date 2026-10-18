@@ -12,12 +12,16 @@ vi.mock("./db", async (importOriginal) => {
     createEngineerAccount: vi.fn(),
     manualOverrideEngineerTarget: vi.fn(),
     logActivity: vi.fn(),
+    getAppUserByEngineerId: vi.fn(),
+    getUserPermissions: vi.fn(),
   };
 });
 
 import {
   bulkCreateEngineersAccounts,
   createEngineerAccount,
+  getAppUserByEngineerId,
+  getUserPermissions,
   getEngineerById,
   logActivity,
   manualOverrideEngineerTarget,
@@ -32,6 +36,8 @@ const mockedDb = {
   resetEngineerPassword: vi.mocked(resetEngineerPassword),
   toggleEngineerAccountStatus: vi.mocked(toggleEngineerAccountStatus),
   createEngineerAccount: vi.mocked(createEngineerAccount),
+  getAppUserByEngineerId: vi.mocked(getAppUserByEngineerId),
+  getUserPermissions: vi.mocked(getUserPermissions),
   logActivity: vi.mocked(logActivity),
   manualOverrideEngineerTarget: vi.mocked(manualOverrideEngineerTarget),
 };
@@ -50,6 +56,12 @@ describe("appUsers privileged account procedures", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockedDb.logActivity.mockResolvedValue(undefined as never);
+    mockedDb.getAppUserByEngineerId.mockResolvedValue({ id: 22 } as never);
+    mockedDb.getUserPermissions.mockResolvedValue([
+      { module: "planning", canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
+      { module: "collections", canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
+      { module: "tasks", canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
+    ] as never);
   });
 
   it("requires an explicit strong password for bulk account creation", async () => {
