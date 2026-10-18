@@ -127,6 +127,7 @@ import {
 } from "./db";
 import { ACTIVITY_KEYS, ACTIVITY_LABELS as ACT_LABELS_EN, ACTIVITY_LABELS_AR, ACTIVITY_WEIGHTS, ACTIVITY_ICONS, ACTIVITY_COLORS } from '../shared/activityTypes';
 import { canAccessAssignedCollection, canAssignUserRole, canManageEngineerAccount, canManageFinancials, canManagePrivilegedRoles, canManageUsers, MIN_ACCOUNT_PASSWORD_LENGTH } from '../shared/authorization';
+import { assertTaskEngineerMatch, getEngineersForScope, scopedEngineerId, type OperationalScopeAccess } from "./dataScope";
 
 // ─── Seed Data ────────────────────────────────────────────────────────────────
 async function seedData() {
@@ -366,10 +367,10 @@ type TaskAccess = {
   scope: "own" | "team" | "all";
 };
 
-const taskTimeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "الوقت يجب أن يكون بصيغة HH:MM");
+const taskTimeSchema = z.string().regex(/^([01]\\d|2[0-3]):[0-5]\\d$/, "الوقت يجب أن يكون بصيغة HH:MM");
 function assertTaskTimeRange(startTime?: string, endTime?: string) {
   if (startTime === undefined && endTime === undefined) return;
-  if (!startTime || !endTime || !/^([01]\d|2[0-3]):[0-5]\d$/.test(startTime) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(endTime)) {
+  if (!startTime || !endTime || !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(startTime) || !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(endTime)) {
     throw new TRPCError({ code: "BAD_REQUEST", message: "يجب إدخال وقت بداية ونهاية صحيحين" });
   }
   const toMinutes = (value: string) => Number(value.slice(0, 2)) * 60 + Number(value.slice(3));
@@ -377,6 +378,196 @@ function assertTaskTimeRange(startTime?: string, endTime?: string) {
     throw new TRPCError({ code: "BAD_REQUEST", message: "وقت النهاية يجب أن يكون بعد وقت البداية" });
   }
 }
+
+
+type ScopePermissionAction = "canView" | "canAdd" | "canEdit" | "canDelete";
+
+async function getOperationalScopeAccess(
+  ctx: any,
+  module: string,
+  requiredAction: ScopePermissionAction = "canView",
+): Promise<OperationalScopeAccess> {
+  const caller = await getCallerFromContext(ctx);
+  if (!caller) throw new TRPCError({ code: "UNAUTHORIZED", message: "يجب تسجيل الدخول أولاً" });
+
+  const linkedAppUser = caller.engineerId ? await getAppUserByEngineerId(caller.engineerId) : null;
+  const permissionUserId = ctx?.actor?.source === "app_user" ? caller.id : linkedAppUser?.id;
+  const permission = permissionUserId
+    ? (await getUserPermissions(permissionUserId)).find((item) => item.module === module)
+    : undefined;
+  if (!permission || permission[requiredAction] !== 1) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "لا توجد صلاحية مخصصة لهذه العملية في الوحدة" });
+  }
+
+  return {
+    caller,
+    scope: permission.dataScope === "all" ? "all" : "own",
+  };
+}
+
+async function requireAllScope(
+  ctx: any,
+  module: string,
+  action: ScopePermissionAction = "canView",
+) {
+  const access = await getOperationalScopeAccess(ctx, module, action);
+  if (access.scope !== "all") {
+    throw new TRPCError({ code: "FORBIDDEN", message: "هذه البيانات تتطلب نطاق الصلاحية all" });
+  }
+  return access;
+}
+
+async function requireVisitRecordScope(
+  ctx: any,
+  visitId: number,
+  action: ScopePermissionAction,
+) {
+  const access = await getOperationalScopeAccess(ctx, "visits", action);
+  if (access.scope === "all") return access;
+  if (!access.caller.engineerId) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "لا يوجد مهندس مرتبط بهذا الحساب" });
+  }
+  const db = await getDb();
+  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "قاعدة البيانات غير متاحة" });
+  const { visits } = await import("../drizzle/schema");
+  const { and, eq } = await import("drizzle-orm");
+  const [visit] = await db.select({ engineerId: visits.engineerId }).from(visits).where(and(
+    eq(visits.id, visitId),
+    eq(visits.isDeleted, 0),
+  )).limit(1);
+  if (!visit) throw new TRPCError({ code: "NOT_FOUND", message: "المعاينة غير موجودة" });
+  if (visit.engineerId !== access.caller.engineerId) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "لا يمكنك الوصول إلى معاينة مستخدم آخر" });
+  }
+  return access;
+}
+
+async function requireLeadRecordScope(
+  ctx: any,
+  leadId: number,
+  action: ScopePermissionAction,
+) {
+  const access = await getOperationalScopeAccess(ctx, "crm", action);
+  if (access.scope === "all") return access;
+  if (!access.caller.engineerId) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "لا يوجد مهندس مرتبط بهذا الحساب" });
+  }
+  const db = await getDb();
+  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "قاعدة البيانات غير متاحة" });
+  const { leads } = await import("../drizzle/schema");
+  const { and, eq } = await import("drizzle-orm");
+  const [lead] = await db.select({ assignedEngineerId: leads.assignedEngineerId }).from(leads).where(and(
+    eq(leads.id, leadId),
+    eq(leads.isDeleted, 0),
+  )).limit(1);
+  if (!lead) throw new TRPCError({ code: "NOT_FOUND", message: "العميل المحتمل غير موجود" });
+  if (lead.assignedEngineerId !== access.caller.engineerId) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "لا يمكنك الوصول إلى عميل محتمل غير مخصص لك" });
+  }
+  return access;
+}
+
+async function requireDealRecordScope(
+  ctx: any,
+  dealId: number,
+  action: "canView" | "canEdit" | "canDelete",
+) {
+  const access = await getOperationalScopeAccess(ctx, "closing", action);
+  if (access.scope === "all") return access;
+  if (!access.caller.engineerId) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "لا يوجد مهندس مرتبط بهذا الحساب" });
+  }
+  const db = await getDb();
+  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "قاعدة البيانات غير متاحة" });
+  const { deals } = await import("../drizzle/schema");
+  const { and, eq } = await import("drizzle-orm");
+  const [deal] = await db.select({ engineerId: deals.engineerId }).from(deals).where(and(
+    eq(deals.id, dealId),
+    eq(deals.isDeleted, 0),
+  )).limit(1);
+  if (!deal) throw new TRPCError({ code: "NOT_FOUND", message: "الصفقة غير موجودة" });
+  if (deal.engineerId !== access.caller.engineerId) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "لا يمكنك الوصول إلى صفقة مستخدم آخر" });
+  }
+  return access;
+}
+
+async function requireDealTaskRecordScope(
+  ctx: any,
+  taskId: number,
+  action: "canView" | "canEdit" | "canDelete",
+) {
+  const access = await getOperationalScopeAccess(ctx, "closing", action);
+  if (access.scope === "all") return access;
+  if (!access.caller.engineerId) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "لا يوجد مهندس مرتبط بهذا الحساب" });
+  }
+  const db = await getDb();
+  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "قاعدة البيانات غير متاحة" });
+  const { dealTasks } = await import("../drizzle/schema");
+  const { eq } = await import("drizzle-orm");
+  const [task] = await db.select({ engineerId: dealTasks.engineerId, dealId: dealTasks.dealId })
+    .from(dealTasks).where(eq(dealTasks.id, taskId)).limit(1);
+  if (!task) throw new TRPCError({ code: "NOT_FOUND", message: "مهمة الصفقة غير موجودة" });
+  if (task.engineerId !== access.caller.engineerId) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "لا يمكنك الوصول إلى مهمة صفقة مستخدم آخر" });
+  }
+  await requireDealRecordScope(ctx, task.dealId, action);
+  return access;
+}
+
+async function requireMeetingSessionScope(
+  ctx: any,
+  sessionId: number,
+  action: ScopePermissionAction,
+) {
+  const access = await getOperationalScopeAccess(ctx, "tasks", action);
+  if (access.scope === "all") return access;
+  if (!access.caller.engineerId) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "لا يوجد مهندس مرتبط بهذا الحساب" });
+  }
+  const db = await getDb();
+  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "قاعدة البيانات غير متاحة" });
+  const { meetingSessions } = await import("../drizzle/schema");
+  const { eq } = await import("drizzle-orm");
+  const [session] = await db.select({ engineerId: meetingSessions.engineerId })
+    .from(meetingSessions).where(eq(meetingSessions.id, sessionId)).limit(1);
+  if (!session) throw new TRPCError({ code: "NOT_FOUND", message: "الجلسة غير موجودة" });
+  if (session.engineerId !== access.caller.engineerId) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "لا يمكنك الوصول إلى جلسة مستخدم آخر" });
+  }
+  return access;
+}
+
+async function requirePlaybookQuotationScope(
+  ctx: any,
+  quotationId: number,
+  action: "canView" | "canEdit" | "canDelete",
+) {
+  const access = await getOperationalScopeAccess(ctx, "pricing_system", action);
+  if (access.scope === "all") return access;
+  if (!access.caller.engineerId) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "لا يوجد مهندس مرتبط بهذا الحساب" });
+  }
+  const db = await getDb();
+  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "قاعدة البيانات غير متاحة" });
+  const { playbookQuotations } = await import("../drizzle/schema");
+  const { eq } = await import("drizzle-orm");
+  const [quotation] = await db.select({ engineerId: playbookQuotations.engineerId })
+    .from(playbookQuotations).where(eq(playbookQuotations.id, quotationId)).limit(1);
+  if (!quotation) throw new TRPCError({ code: "NOT_FOUND", message: "عرض السعر غير موجود" });
+  if (quotation.engineerId !== access.caller.engineerId) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "لا يمكنك الوصول إلى عرض سعر مستخدم آخر" });
+  }
+  return access;
+}
+
+
+
+
+
+
+
 
 async function getTaskAccess(ctx: any): Promise<TaskAccess> {
   const caller = await getCallerFromContext(ctx);
@@ -438,13 +629,20 @@ async function requirePrivilegedRoleManagementCaller(ctx: any, message: string) 
   return caller;
 }
 
-async function requireAdminSalesTaskCaller(ctx: any, engineerId?: number, taskId?: number) {
+async function requireAdminSalesTaskCaller(
+  ctx: any,
+  engineerId?: number,
+  taskId?: number,
+  action: ScopePermissionAction = "canView",
+) {
   const caller = await getCallerFromContext(ctx);
   if (!caller) throw new TRPCError({ code: "UNAUTHORIZED", message: "يجب تسجيل الدخول أولاً" });
-  const privileged = ["admin", "manager"].includes(caller.role);
-  if (privileged) return caller;
-  if (caller.role !== "admin_sales" || !caller.engineerId) {
+  const scopeAccess = await getOperationalScopeAccess(ctx, "tasks", action);
+  if (!["admin", "manager", "admin_sales"].includes(caller.role)) {
     throw new TRPCError({ code: "FORBIDDEN", message: "مهام Admin Sales متاحة للإدارة أو حساب Admin Sales المرتبط فقط" });
+  }
+  if (caller.role === "admin_sales" && !caller.engineerId) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "حساب Admin Sales غير مرتبط بمهندس" });
   }
   let targetEngineerId = engineerId;
   if (taskId !== undefined) {
@@ -455,23 +653,38 @@ async function requireAdminSalesTaskCaller(ctx: any, engineerId?: number, taskId
     if (!task) throw new TRPCError({ code: "NOT_FOUND", message: "المهمة غير موجودة" });
     targetEngineerId = task.engineerId;
   }
-  if (targetEngineerId !== undefined && targetEngineerId !== caller.engineerId) {
+  if (scopeAccess.scope === "own" && (!caller.engineerId || targetEngineerId !== caller.engineerId)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "لا يمكنك الوصول إلى مهام خارج نطاقك" });
+  }
+  if (caller.role === "admin_sales" && targetEngineerId !== undefined && targetEngineerId !== caller.engineerId) {
     throw new TRPCError({ code: "FORBIDDEN", message: "لا يمكنك الوصول إلى مهام Admin Sales لمستخدم آخر" });
   }
   return caller;
 }
 
-async function requireAdminSalesMeetingCaller(ctx: any, meetingId: number) {
+async function requireAdminSalesMeetingCaller(
+  ctx: any,
+  meetingId: number,
+  action: ScopePermissionAction = "canEdit",
+) {
   const caller = await getCallerFromContext(ctx);
   if (!caller) throw new TRPCError({ code: "UNAUTHORIZED", message: "يجب تسجيل الدخول أولاً" });
-  if (["admin", "manager"].includes(caller.role)) return caller;
-  if (caller.role !== "admin_sales" || !caller.engineerId) throw new TRPCError({ code: "FORBIDDEN", message: "سجل الاجتماعات متاح للإدارة أو Admin Sales المرتبط فقط" });
+  const scopeAccess = await getOperationalScopeAccess(ctx, "tasks", action);
+  if (!["admin", "manager", "admin_sales"].includes(caller.role)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "سجل الاجتماعات متاح للإدارة أو Admin Sales المرتبط فقط" });
+  }
+  if (caller.role === "admin_sales" && !caller.engineerId) throw new TRPCError({ code: "FORBIDDEN", message: "حساب Admin Sales غير مرتبط بمهندس" });
   const db = await getDb();
   const { adminSalesMeetings } = await import("../drizzle/schema");
   const { eq } = await import("drizzle-orm");
   const [meeting] = db ? await db.select({ engineerId: adminSalesMeetings.engineerId }).from(adminSalesMeetings).where(eq(adminSalesMeetings.id, meetingId)).limit(1) : [];
   if (!meeting) throw new TRPCError({ code: "NOT_FOUND", message: "سجل الاجتماع غير موجود" });
-  if (meeting.engineerId !== caller.engineerId) throw new TRPCError({ code: "FORBIDDEN", message: "لا يمكنك تعديل سجل مستخدم آخر" });
+  if (scopeAccess.scope === "own" && (!caller.engineerId || meeting.engineerId !== caller.engineerId)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "لا يمكنك تعديل سجل خارج نطاقك" });
+  }
+  if (caller.role === "admin_sales" && meeting.engineerId !== caller.engineerId) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "لا يمكنك تعديل سجل مستخدم آخر" });
+  }
   return caller;
 }
 
@@ -510,21 +723,40 @@ async function requireFinancialManager(ctx: any, message: string) {
   return caller;
 }
 
-async function requireCollectionFinancialAccess(ctx: any, collectionId: number, message: string) {
+async function requireCollectionFinancialAccess(
+  ctx: any,
+  collectionId: number,
+  message: string,
+  action: ScopePermissionAction = "canView",
+) {
   const caller = await getCallerFromContext(ctx);
   if (!caller) throw new TRPCError({ code: "UNAUTHORIZED", message: "يجب تسجيل الدخول أولاً" });
+  const scopeAccess = await getOperationalScopeAccess(ctx, "collections", action);
   const collection = await getCollectionAccessById(collectionId);
   if (!collection) throw new TRPCError({ code: "NOT_FOUND", message: "العقد غير موجود" });
+  if (scopeAccess.scope === "own" && (!caller.engineerId || collection.engineerId !== caller.engineerId)) {
+    throw new TRPCError({ code: "FORBIDDEN", message });
+  }
   if (!canAccessAssignedCollection(caller.role, caller.engineerId, collection.engineerId)) {
     throw new TRPCError({ code: "FORBIDDEN", message });
   }
-  return { caller, collection, isFinancialManager: canManageFinancials(caller.role) };
+  return {
+    caller,
+    collection,
+    isFinancialManager: canManageFinancials(caller.role),
+    scope: scopeAccess.scope,
+  };
 }
 
-async function requirePromiseFinancialAccess(ctx: any, promiseId: number, message: string) {
+async function requirePromiseFinancialAccess(
+  ctx: any,
+  promiseId: number,
+  message: string,
+  action: ScopePermissionAction = "canView",
+) {
   const promise = await getPaymentPromiseAccessById(promiseId);
   if (!promise) throw new TRPCError({ code: "NOT_FOUND", message: "وعد الدفع غير موجود" });
-  return requireCollectionFinancialAccess(ctx, promise.collectionId, message);
+  return requireCollectionFinancialAccess(ctx, promise.collectionId, message, action);
 }
 
 const PROJECT_TIMELINE_MANAGER_ROLES = new Set(["manager", "admin", "admin_sales"]);
@@ -541,7 +773,12 @@ export function canManageProjectTimeline(role: string | null | undefined) {
 
 async function getProjectTimelineCaller(ctx: any): Promise<{ id: number; role: string; name: string } | null> {
   const caller = await getCallerFromContext(ctx);
-  if (caller) return caller;
+  if (caller) {
+    // App-user IDs and engineer IDs are different domains. Project ownership
+    // is stored against engineer IDs, so normalize the ID before comparing.
+    const engineerId = ctx?.actor?.source === "app_user" ? caller.engineerId : (caller.engineerId ?? caller.id);
+    return { id: engineerId ?? 0, role: caller.role, name: caller.name };
+  }
   if (ctx.user) return { id: 0, role: "manager", name: ctx.user.name ?? ctx.user.email ?? "Admin" };
   return null;
 }
@@ -568,6 +805,25 @@ async function assertProjectTimelineEditAccess(ctx: any, projectId?: number) {
     throw new TRPCError({ code: "FORBIDDEN", message: "تعديل بيانات المشاريع متاح فقط لـ Admin وAdmin Sales" });
   }
   return caller;
+}
+
+async function requireProjectTimelineRecordScope(
+  ctx: any,
+  projectId: number,
+  action: ScopePermissionAction,
+) {
+  const access = await getOperationalScopeAccess(ctx, "tasks", action);
+  if (access.scope === "all") return access;
+  const caller = await getCallerFromContext(ctx);
+  const engineerId = ctx?.actor?.source === "app_user" ? caller?.engineerId : (caller?.engineerId ?? caller?.id);
+  if (!engineerId) throw new TRPCError({ code: "FORBIDDEN", message: "لا يوجد مهندس مرتبط بهذا الحساب" });
+  const detail = await getProjectTimelineDetail(projectId);
+  const project = detail?.project;
+  if (!project) throw new TRPCError({ code: "NOT_FOUND", message: "المشروع غير موجود" });
+  if (project.salesEngineerId !== engineerId && project.currentResponsibleId !== engineerId) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "لا يمكنك الوصول إلى مشروع خارج نطاقك" });
+  }
+  return access;
 }
 /**
  * Accept the Date produced by the normal superjson path and an ISO string as
@@ -642,11 +898,18 @@ export const appRouter = router({
 
   // ── Engineers ──────────────────────────────────────────────────────────────────────────────
   engineers: router({
-    list: protectedProcedure.query(async () => getEngineers()),
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const access = await getOperationalScopeAccess(ctx, "tasks");
+      return getEngineersForScope(access, getEngineers, getEngineerById);
+    }),
     create: protectedProcedure.input(z.object({
       name: z.string().min(1), email: z.string().email().optional(),
       phone: z.string().optional(), department: z.string().optional(),
-    })).mutation(async ({ input }) => { await createEngineer(input); return { success: true }; }),
+    })).mutation(async ({ input, ctx }) => {
+      await requireUserManagementCaller(ctx, "إنشاء المهندسين متاح للإدارة فقط");
+      await createEngineer(input);
+      return { success: true };
+    }),
   }),
 
   // ── Daily Tasks ───────────────────────────────────────────────────────────
@@ -972,36 +1235,61 @@ export const appRouter = router({
   // ── Leads ─────────────────────────────────────────────────────────────────
   leads: router({
     stats: protectedProcedure.input(z.object({ year: z.number(), month: z.number() }))
-      .query(async ({ input }) => getLeadsStats(input.year, input.month)),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "crm");
+        return getLeadsStats(input.year, input.month, scopedEngineerId(access));
+      }),
     list: protectedProcedure.input(z.object({ limit: z.number().optional(), offset: z.number().optional(), status: z.string().optional() }))
-      .query(async ({ input }) => getLeadsList(input.limit, input.offset, input.status)),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "crm");
+        return getLeadsList(input.limit, input.offset, input.status, scopedEngineerId(access));
+      }),
     create: protectedProcedure.input(z.object({
       name: z.string().min(1), phone: z.string().optional(), email: z.string().optional(),
       source: z.string().optional(), assignedEngineerId: z.number().optional(), notes: z.string().optional(),
-    })).mutation(async ({ input }) => { await createLead(input); return { success: true }; }),
+    })).mutation(async ({ input, ctx }) => {
+      const access = await getOperationalScopeAccess(ctx, "crm", "canAdd");
+      await createLead({ ...input, assignedEngineerId: scopedEngineerId(access, input.assignedEngineerId) });
+      return { success: true };
+    }),
     updateStatus: protectedProcedure.input(z.object({
       id: z.number(), status: z.enum(['new', 'contacted', 'qualified', 'unqualified', 'converted']),
       responseTimeMinutes: z.number().optional(),
-    })).mutation(async ({ input }) => { await updateLeadStatus(input.id, input.status, input.responseTimeMinutes); return { success: true }; }),
+    })).mutation(async ({ input, ctx }) => {
+      await requireLeadRecordScope(ctx, input.id, "canEdit");
+      await updateLeadStatus(input.id, input.status, input.responseTimeMinutes);
+      return { success: true };
+    }),
   }),
 
   // ── Visits ────────────────────────────────────────────────────────────────
   visits: router({
     stats: protectedProcedure.input(z.object({ year: z.number(), month: z.number() }))
-      .query(async ({ input }) => getVisitsStats(input.year, input.month)),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "visits");
+        return getVisitsStats(input.year, input.month, scopedEngineerId(access));
+      }),
     list: protectedProcedure.input(z.object({
       limit: z.number().optional(), offset: z.number().optional(), status: z.string().optional(),
       year: z.number().optional(), month: z.number().optional(),
       filterType: z.enum(['booking', 'execution', 'upload', 'collection']).optional(),
       engineerId: z.number().optional(),
-    })).query(async ({ input }) => getVisitsList(
-      input.limit, input.offset, input.status,
-      input.year, input.month,
-      input.filterType ?? 'booking',
-      input.engineerId
-    )),
+    })).query(async ({ input, ctx }) => {
+      const access = await getOperationalScopeAccess(ctx, "visits");
+      return getVisitsList(
+        input.limit, input.offset, input.status,
+        input.year, input.month,
+        input.filterType ?? 'booking',
+        scopedEngineerId(access, input.engineerId)
+      );
+    }),
     create: protectedProcedure.input(visitCreateInputSchema)
-      .mutation(async ({ input }) => { await createVisit(input); return { success: true }; }),
+      .mutation(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "visits", "canAdd");
+        const engineerId = scopedEngineerId(access, input.engineerId);
+        await createVisit({ ...input, engineerId });
+        return { success: true };
+      }),
     updateStatus: protectedProcedure.input(z.object({
       id: z.number(),
       status: z.enum(['scheduled', 'completed', 'delayed', 'cancelled', 'rescheduled']).optional(),
@@ -1016,7 +1304,11 @@ export const appRouter = router({
       assignedToDesigner: z.boolean().optional(),
       feeAmount: z.number().optional(),
       feeCollected: z.boolean().optional(),
-    })).mutation(async ({ input }) => { await updateVisitFull(input.id, input); return { success: true }; }),
+    })).mutation(async ({ input, ctx }) => {
+      await requireVisitRecordScope(ctx, input.id, "canEdit");
+      await updateVisitFull(input.id, input);
+      return { success: true };
+    }),
     // Extended endpoints
     updateFull: protectedProcedure.input(z.object({
       id: z.number(),
@@ -1038,31 +1330,64 @@ export const appRouter = router({
       adminSalesId: z.number().optional(),
       debtFollowedUp: z.boolean().optional(),
       scheduledAt: z.date().optional(),
-    })).mutation(async ({ input }) => { const { id, ...data } = input; await updateVisitWithAdminTracking(id, data); return { success: true }; }),
+    })).mutation(async ({ input, ctx }) => {
+      await requireVisitRecordScope(ctx, input.id, "canEdit");
+      const { id, ...data } = input;
+      await updateVisitWithAdminTracking(id, data);
+      return { success: true };
+    }),
     softDelete: protectedProcedure.input(z.object({
       id: z.number(),
       reason: z.enum(['client_cancelled', 'postponed', 'data_entry_error']),
-    })).mutation(async ({ input }) => { await softDeleteVisit(input.id, input.reason); return { success: true }; }),
+    })).mutation(async ({ input, ctx }) => {
+      await requireVisitRecordScope(ctx, input.id, "canDelete");
+      await softDeleteVisit(input.id, input.reason);
+      return { success: true };
+    }),
     debt: protectedProcedure.input(z.object({ year: z.number().optional(), month: z.number().optional() }).optional())
-      .query(async ({ input }) => getVisitsDebt(input?.year, input?.month)),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "visits");
+        return getVisitsDebt(input?.year, input?.month, scopedEngineerId(access));
+      }),
     alerts: protectedProcedure.input(z.object({ year: z.number().optional(), month: z.number().optional() }).optional())
-      .query(async ({ input }) => getVisitsAlerts(input?.year, input?.month)),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "visits");
+        return getVisitsAlerts(input?.year, input?.month, scopedEngineerId(access));
+      }),
     dailyTracking: protectedProcedure.input(z.object({ date: z.string() }))
-      .query(async ({ input }) => getVisitsDailyTracking(input.date)),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "visits");
+        return getVisitsDailyTracking(input.date, scopedEngineerId(access));
+      }),
     adminSalesKPI: protectedProcedure.input(z.object({ year: z.number(), month: z.number() }))
-      .query(async ({ input }) => getAdminSalesVisitsKPI(input.year, input.month)),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "visits");
+        return getAdminSalesVisitsKPI(input.year, input.month, scopedEngineerId(access));
+      }),
     engineerKPI: protectedProcedure.input(z.object({ engineerId: z.number(), year: z.number(), month: z.number() }))
-      .query(async ({ input }) => getEngineerVisitsKPI(input.engineerId, input.year, input.month)),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "visits");
+        return getEngineerVisitsKPI(scopedEngineerId(access, input.engineerId), input.year, input.month);
+      }),
     needingAction: protectedProcedure.input(z.object({ year: z.number().optional(), month: z.number().optional() }).optional())
-      .query(async ({ input }) => getVisitsNeedingAction(input?.year, input?.month)),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "visits");
+        return getVisitsNeedingAction(input?.year, input?.month, scopedEngineerId(access));
+      }),
   }),
 
   // ── Closing / Deals ───────────────────────────────────────────────────────
   closing: router({
     stats: protectedProcedure.input(z.object({ year: z.number(), month: z.number() }))
-      .query(async ({ input }) => getDealsStats(input.year, input.month)),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "closing");
+        return getDealsStats(input.year, input.month, scopedEngineerId(access));
+      }),
     list: protectedProcedure.input(z.object({ limit: z.number().optional(), offset: z.number().optional(), stage: z.string().optional(), year: z.number().optional(), month: z.number().optional(), engineerId: z.number().optional() }))
-      .query(async ({ input }) => getDealsList(input.limit, input.offset, input.stage, input.year, input.month, input.engineerId)),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "closing");
+        return getDealsList(input.limit, input.offset, input.stage, input.year, input.month, scopedEngineerId(access, input.engineerId));
+      }),
     create: protectedProcedure.input(z.object({
       engineerId: z.number(), clientName: z.string().min(1), value: z.number().positive(),
       visitId: z.number().optional(), leadId: z.number().optional(),
@@ -1070,7 +1395,14 @@ export const appRouter = router({
       discountPercent: z.number().min(0).max(100).optional(),
       discountValue: z.number().min(0).optional(),
       discountNote: z.string().optional(),
-    })).mutation(async ({ input }) => { await createDealWithDiscount(input); return { success: true }; }),
+    })).mutation(async ({ input, ctx }) => {
+      const access = await getOperationalScopeAccess(ctx, "closing", "canAdd");
+      const engineerId = scopedEngineerId(access, input.engineerId);
+      if (input.visitId !== undefined) await requireVisitRecordScope(ctx, input.visitId, "canView");
+      if (input.leadId !== undefined) await requireLeadRecordScope(ctx, input.leadId, "canView");
+      await createDealWithDiscount({ ...input, engineerId });
+      return { success: true };
+    }),
     updateStage: protectedProcedure.input(z.object({
       id: z.number(), stage: z.enum(['proposal', 'negotiation', 'contract_sent', 'closed_won', 'closed_lost']).optional(),
       nextAction: z.string().optional(), nextActionDate: z.string().optional(), notes: z.string().optional(),
@@ -1084,57 +1416,85 @@ export const appRouter = router({
       accountingYear: z.number().min(2020).max(2030).optional(),  // سنة احتساب الصفقة
       engineerId: z.string().optional(), // لإنشاء Task تلقائياً
       clientName: z.string().optional(), // لإنشاء Task تلقائياً
-    })).mutation(async ({ input }) => { await updateDealFull(input.id, input); return { success: true }; }),
+    })).mutation(async ({ input, ctx }) => {
+      await requireDealRecordScope(ctx, input.id, "canEdit");
+      await updateDealFull(input.id, input);
+      return { success: true };
+    }),
     // ─── Discount System ────────────────────────────────────────────────────────────────────────────────────────
     discountSummary: protectedProcedure.input(z.object({
       year: z.number().optional(),
       month: z.number().optional(),
       startDate: z.string().optional(), // ISO date string
       endDate: z.string().optional(),   // ISO date string
-    })).query(async ({ input }) => {
+    })).query(async ({ input, ctx }) => {
+      const access = await getOperationalScopeAccess(ctx, "closing");
       const start = input.startDate ? new Date(input.startDate) : undefined;
       const end = input.endDate ? new Date(input.endDate) : undefined;
-      return getDiscountSummary(input.year, input.month, start, end);
+      return getDiscountSummary(input.year, input.month, start, end, scopedEngineerId(access));
     }),
     validateDiscount: protectedProcedure.input(z.object({
       dealId: z.number().optional(),
       discountValue: z.number().min(0),
-    })).query(async ({ input }) => validateDealDiscount(input.dealId, input.discountValue)),
+    })).query(async ({ input, ctx }) => {
+      if (input.dealId !== undefined) await requireDealRecordScope(ctx, input.dealId, "canView");
+      return validateDealDiscount(input.dealId, input.discountValue);
+    }),
     engineerDiscountSummary: protectedProcedure.input(z.object({
       year: z.number().optional(),
       month: z.number().optional(),
       startDate: z.string().optional(),
       endDate: z.string().optional(),
-    })).query(async ({ input }) => {
+    })).query(async ({ input, ctx }) => {
+      const access = await getOperationalScopeAccess(ctx, "closing");
       const start = input.startDate ? new Date(input.startDate) : undefined;
       const end = input.endDate ? new Date(input.endDate) : undefined;
-      return getEngineerDiscountSummary(input.year, input.month, start, end);
+      return getEngineerDiscountSummary(input.year, input.month, start, end, scopedEngineerId(access));
     }),
     // ─── New Deal-Level Discount Distribution ──────────────────────────────────────
     dealAllocations: protectedProcedure.input(z.object({ engineerId: z.number() }))
-      .query(async ({ input }) => distributeDiscountToDeals(input.engineerId)),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "closing");
+        return distributeDiscountToDeals(scopedEngineerId(access, input.engineerId));
+      }),
     discountSummaryForEngineer: protectedProcedure.input(z.object({ engineerId: z.number() }))
-      .query(async ({ input }) => getDiscountSummaryForEngineer(input.engineerId)),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "closing");
+        return getDiscountSummaryForEngineer(scopedEngineerId(access, input.engineerId));
+      }),
     discountDashboard: protectedProcedure.input(z.object({ engineerId: z.number() }))
-      .query(async ({ input }) => getDiscountDashboard(input.engineerId)),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "closing");
+        return getDiscountDashboard(scopedEngineerId(access, input.engineerId));
+      }),
     discountBonusSummary: protectedProcedure.input(z.object({
       engineerId: z.number(),
       year: z.number().optional(),
       month: z.number().optional(),
-    })).query(async ({ input }) => getDiscountBonusSummary(input.engineerId, input.year, input.month)),
+    })).query(async ({ input, ctx }) => {
+      const access = await getOperationalScopeAccess(ctx, "closing");
+      return getDiscountBonusSummary(scopedEngineerId(access, input.engineerId), input.year, input.month);
+    }),
     calculateDealBonus: protectedProcedure.input(z.object({ dealId: z.number() }))
-      .query(async ({ input }) => calculateDiscountBonus(input.dealId)),
+      .query(async ({ input, ctx }) => {
+        await requireDealRecordScope(ctx, input.dealId, "canView");
+        return calculateDiscountBonus(input.dealId);
+      }),
     setDiscountCap: protectedProcedure.input(z.object({
       engineerId: z.number(),
       year: z.number(),
       month: z.number(),
       monthlyCap: z.number().positive(),
-    })).mutation(async ({ input }) => {
-      await setDiscountBonusCap(input.engineerId, input.year, input.month, input.monthlyCap);
+    })).mutation(async ({ input, ctx }) => {
+      const access = await getOperationalScopeAccess(ctx, "closing", "canEdit");
+      await setDiscountBonusCap(scopedEngineerId(access, input.engineerId), input.year, input.month, input.monthlyCap);
       return { success: true };
     }),
     // ─── Lost Deal Analysis ─────────────────────────────────────────────────────
-    lostDealsAnalysis: protectedProcedure.input(z.object({ year: z.number().optional(), month: z.number().optional() })).query(async ({ input }) => getLostDealsAnalysis(input.year, input.month)),
+    lostDealsAnalysis: protectedProcedure.input(z.object({ year: z.number().optional(), month: z.number().optional() })).query(async ({ input, ctx }) => {
+      const access = await getOperationalScopeAccess(ctx, "closing");
+      return getLostDealsAnalysis(input.year, input.month, scopedEngineerId(access));
+    }),
     lostReasonLabels: protectedProcedure.query(async () => LOST_REASON_LABELS),
     // ─── Update deal with lostReason ────────────────────────────────────────────
     updateDealStage: protectedProcedure.input(z.object({
@@ -1142,7 +1502,8 @@ export const appRouter = router({
       stage: z.enum(["proposal", "negotiation", "contract_sent", "closed_won", "closed_lost"]),
       lostReason: z.enum(["price_high", "competitor", "slow_response", "wrong_product", "not_serious", "budget_cut", "other"]).optional(),
       lostReasonNote: z.string().optional(),
-    })).mutation(async ({ input }) => {
+    })).mutation(async ({ input, ctx }) => {
+      await requireDealRecordScope(ctx, input.id, "canEdit");
       await updateDealFull(input.id, {
         stage: input.stage,
         lostReason: input.lostReason,
@@ -1152,16 +1513,29 @@ export const appRouter = router({
       return { success: true };
     }),
     // ─── Sales Engineers list (for Assign Engineer dropdown) ────────────────────────
-    salesEngineers: protectedProcedure.query(async () => getSalesEngineers()),
+    salesEngineers: protectedProcedure.query(async ({ ctx }) => {
+      const access = await getOperationalScopeAccess(ctx, "closing");
+      if (access.scope === "all") return getSalesEngineers();
+      const engineerId = scopedEngineerId(access);
+      return [{ id: engineerId, name: access.caller.name }];
+    }),
     // ─── Deal Timeline ───────────────────────────────────────────────────────────────
     timeline: protectedProcedure.input(z.object({ dealId: z.number() }))
-      .query(async ({ input }) => getDealTimeline(input.dealId)),
+      .query(async ({ input, ctx }) => {
+        await requireDealRecordScope(ctx, input.dealId, "canView");
+        return getDealTimeline(input.dealId);
+      }),
     // ─── Update Deal Engineer (Deal Ownership) ──────────────────────────────────────
     updateEngineer: protectedProcedure.input(z.object({
       dealId: z.number(),
       newEngineerId: z.number(),
       forceIfWon: z.boolean().optional(),
     })).mutation(async ({ input, ctx }) => {
+      const access = await getOperationalScopeAccess(ctx, "closing", "canEdit");
+      if (access.scope !== "all") {
+        throw new TRPCError({ code: "FORBIDDEN", message: "إعادة تعيين مالك الصفقة متاحة لنطاق الصلاحية all فقط" });
+      }
+      await requireDealRecordScope(ctx, input.dealId, "canEdit");
       const result = await updateDealEngineer({
         dealId: input.dealId,
         newEngineerId: input.newEngineerId,
@@ -1175,6 +1549,7 @@ export const appRouter = router({
       dealId: z.number(),
       reason: z.string().optional(),
     })).mutation(async ({ input, ctx }) => {
+      await requireDealRecordScope(ctx, input.dealId, "canEdit");
       const result = await reopenDeal({
         dealId: input.dealId,
         modifiedBy: ctx.actor?.name ?? ctx.user?.name ?? ctx.user?.openId ?? "system",
@@ -1194,6 +1569,11 @@ export const appRouter = router({
       if (!['admin', 'manager'].includes(session.role)) {
         throw new TRPCError({ code: 'FORBIDDEN', message: 'فقط المدير والمسؤول يمكنهم تغيير شهر الاحتساب' });
       }
+      const access = await getOperationalScopeAccess(ctx, "closing", "canEdit");
+      if (access.scope !== "all") {
+        throw new TRPCError({ code: "FORBIDDEN", message: "تغيير شهر الاحتساب يتطلب نطاق الصلاحية all" });
+      }
+      await requireDealRecordScope(ctx, input.dealId, "canEdit");
       const result = await setDealAccountingMonth({
         dealId: input.dealId,
         accountingMonth: input.accountingMonth,
@@ -1210,10 +1590,13 @@ export const appRouter = router({
       notes: z.string().optional(),
       grossValue: z.number().optional(),
       discountValue: z.number().optional(),
-    })).mutation(async ({ input }) => {
+    })).mutation(async ({ input, ctx }) => {
+      const access = await getOperationalScopeAccess(ctx, "closing", "canAdd");
+      const engineerId = scopedEngineerId(access, input.engineerId);
+      if (input.taskId !== undefined) await requireTaskAction(ctx, "view", input.taskId);
       const result = await autoCreateOrUpdateDealFromTask({
         id: input.taskId ?? 0,
-        engineerId: input.engineerId,
+        engineerId,
         clientName: input.clientName,
         taskType: input.taskType,
         notes: input.notes,
@@ -1249,9 +1632,10 @@ export const appRouter = router({
       missingUpdateOnly: z.boolean().optional(),
       preExecutionOnly: z.boolean().optional(),
     }).optional()).query(async ({ input, ctx }) => {
-      const caller = await assertProjectTimelineAccess(ctx);
+      await assertProjectTimelineAccess(ctx);
+      const access = await getOperationalScopeAccess(ctx, "tasks");
       const scopedInput = { ...(input ?? {}) } as any;
-      if (!PROJECT_TIMELINE_MANAGER_ROLES.has(caller.role)) scopedInput.engineerId = caller.id;
+      scopedInput.engineerId = scopedEngineerId(access, input?.engineerId);
       return getProjectTimelineList(scopedInput);
     }),
     dashboard: protectedProcedure.input(z.object({
@@ -1264,26 +1648,30 @@ export const appRouter = router({
       missingUpdateOnly: z.boolean().optional(),
       preExecutionOnly: z.boolean().optional(),
     }).optional()).query(async ({ input, ctx }) => {
-      const caller = await assertProjectTimelineAccess(ctx);
+      await assertProjectTimelineAccess(ctx);
+      const access = await getOperationalScopeAccess(ctx, "tasks");
       const scopedInput = { ...(input ?? {}) } as any;
-      if (!PROJECT_TIMELINE_MANAGER_ROLES.has(caller.role)) scopedInput.engineerId = caller.id;
+      scopedInput.engineerId = scopedEngineerId(access, input?.engineerId);
       return getProjectTimelineDashboard(scopedInput);
     }),
     analytics: protectedProcedure.input(z.object({
       engineerId: z.number().optional(), department: z.string().optional(), stageKey: z.string().optional(),
       status: z.string().optional(), delayedOnly: z.boolean().optional(), criticalOnly: z.boolean().optional(),
     }).optional()).query(async ({ input, ctx }) => {
-      const caller = await assertProjectTimelineAccess(ctx, undefined, true);
+      await assertProjectTimelineAccess(ctx, undefined, true);
+      await requireAllScope(ctx, "tasks");
       return getProjectTimelineAnalytics(input ?? {});
     }),
     detail: protectedProcedure.input(z.object({ projectId: z.number() }))
       .query(async ({ input, ctx }) => {
         await assertProjectTimelineAccess(ctx, input.projectId);
+        await requireProjectTimelineRecordScope(ctx, input.projectId, "canView");
         return getProjectTimelineDetail(input.projectId);
       }),
     syncFromDeals: protectedProcedure.input(z.object({ updatedBy: z.string().min(1).default("system") }).optional())
       .mutation(async ({ ctx }) => {
         const caller = await assertProjectTimelineAccess(ctx, undefined, true);
+        await requireAllScope(ctx, "tasks", "canAdd");
         return syncProjectsFromClosedDeals(caller.name);
       }),
     importHistorical: protectedProcedure.input(z.object({
@@ -1297,6 +1685,7 @@ export const appRouter = router({
       })).min(1).max(2000),
     })).mutation(async ({ input, ctx }) => {
       const caller = await assertProjectTimelineAccess(ctx, undefined, true);
+      await requireAllScope(ctx, "tasks", "canAdd");
       return importHistoricalProjectTimeline(input.rows, caller.name);
     }),
     updatePreExecution: protectedProcedure.input(z.object({
@@ -1318,6 +1707,7 @@ export const appRouter = router({
       updatedBy: z.string().min(1),
     })).mutation(async ({ input, ctx }) => {
       const caller = await assertProjectTimelineEditAccess(ctx, input.projectId);
+      await requireProjectTimelineRecordScope(ctx, input.projectId, "canEdit");
       return updateProjectPreExecution({ ...input, updatedBy: caller.name, actorRole: caller.role });
     }),
     startExecution: protectedProcedure.input(z.object({
@@ -1328,6 +1718,7 @@ export const appRouter = router({
       updatedBy: z.string().min(1),
     })).mutation(async ({ input, ctx }) => {
       const caller = await assertProjectTimelineEditAccess(ctx, input.projectId);
+      await requireProjectTimelineRecordScope(ctx, input.projectId, "canEdit");
       return startProjectExecution({ ...input, updatedBy: caller.name, actorRole: caller.role });
     }),
     transition: protectedProcedure.input(z.object({
@@ -1341,6 +1732,7 @@ export const appRouter = router({
       updatedBy: z.string().min(1),
     })).mutation(async ({ input, ctx }) => {
       const caller = await assertProjectTimelineEditAccess(ctx, input.projectId);
+      await requireProjectTimelineRecordScope(ctx, input.projectId, "canEdit");
       return transitionProjectStage({ ...input, updatedBy: caller.name, actorRole: caller.role });
     }),
     addDelay: protectedProcedure.input(z.object({
@@ -1356,6 +1748,7 @@ export const appRouter = router({
       createdBy: z.string().min(1),
     })).mutation(async ({ input, ctx }) => {
       const caller = await assertProjectTimelineEditAccess(ctx, input.projectId);
+      await requireProjectTimelineRecordScope(ctx, input.projectId, "canAdd");
       return addProjectDelay({ ...input, createdBy: caller.name, actorRole: caller.role });
     }),
     update: protectedProcedure.input(z.object({
@@ -1372,6 +1765,7 @@ export const appRouter = router({
       updatedBy: z.string().min(1),
     })).mutation(async ({ input, ctx }) => {
       const caller = await assertProjectTimelineEditAccess(ctx, input.projectId);
+      await requireProjectTimelineRecordScope(ctx, input.projectId, "canEdit");
       return updateProjectReview({ ...input, updatedBy: caller.name, actorRole: caller.role });
     }),
     close: protectedProcedure.input(z.object({
@@ -1383,6 +1777,7 @@ export const appRouter = router({
       updatedBy: z.string().min(1),
     })).mutation(async ({ input, ctx }) => {
       const caller = await assertProjectTimelineEditAccess(ctx, input.projectId);
+      await requireProjectTimelineRecordScope(ctx, input.projectId, "canEdit");
       return closeProject({ ...input, closedBy: caller.name, actorRole: caller.role });
     }),
     setHold: protectedProcedure.input(z.object({
@@ -1395,6 +1790,7 @@ export const appRouter = router({
       updatedBy: z.string().min(1),
     })).mutation(async ({ input, ctx }) => {
       const caller = await assertProjectTimelineEditAccess(ctx, input.projectId);
+      await requireProjectTimelineRecordScope(ctx, input.projectId, "canEdit");
       return setProjectHold({ ...input, updatedBy: caller.name, actorRole: caller.role });
     }),
     updateStageConfig: protectedProcedure.input(z.object({
@@ -1410,6 +1806,7 @@ export const appRouter = router({
       updatedBy: z.string().min(1),
     })).mutation(async ({ input, ctx }) => {
       const caller = await assertProjectTimelineAccess(ctx, undefined, true);
+      await requireAllScope(ctx, "tasks", "canEdit");
       const { id, updatedBy, ...data } = input;
       return updateProjectStageConfig(id, data, caller.name);
     }),
@@ -1419,25 +1816,41 @@ export const appRouter = router({
   sales: router({
     // الإحصاءات الشاملة للشهر
     controlStats: protectedProcedure.input(z.object({ year: z.number(), month: z.number() }))
-      .query(async ({ input }) => getSalesControlStats(input.year, input.month)),
+      .query(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "closing");
+        return getSalesControlStats(input.year, input.month);
+      }),
     // أداء كل مهندس مع الكوميشن
     engineersPerformance: protectedProcedure.input(z.object({ year: z.number(), month: z.number() }))
-      .query(async ({ input }) => getEngineersSalesPerformance(input.year, input.month)),
+      .query(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "closing");
+        return getEngineersSalesPerformance(input.year, input.month);
+      }),
     // الإحصاءات الشهرية (للتوافق مع الكود القديم)
     monthlyStats: protectedProcedure.input(z.object({
       year: z.number().int().min(2000).max(2100),
       month: z.number().int().min(1).max(12),
     }))
-      .query(async ({ input }) => getMonthlySalesStats(input.year, input.month)),
+      .query(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "closing");
+        return getMonthlySalesStats(input.year, input.month);
+      }),
     trend: protectedProcedure.input(z.object({
       months: z.number().int().min(1).max(24).optional(),
     }))
-      .query(async ({ input }) => getMonthlySalesTrend(input.months ?? 6)),
+      .query(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "closing");
+        return getMonthlySalesTrend(input.months ?? 6);
+      }),
     // إدارة أهداف المهندسين
     setEngineerTarget: protectedProcedure.input(z.object({
       engineerId: z.number(), year: z.number(), month: z.number(),
       targetAmount: z.number().positive(), manpower: z.number().optional(), notes: z.string().optional(),
-    })).mutation(async ({ input }) => { await upsertEngineerTarget(input); return { success: true }; }),
+    })).mutation(async ({ input, ctx }) => {
+      const access = await getOperationalScopeAccess(ctx, "closing", "canEdit");
+      await upsertEngineerTarget({ ...input, engineerId: scopedEngineerId(access, input.engineerId) });
+      return { success: true };
+    }),
     setOperationalTargets: protectedProcedure.input(z.object({
       engineerId: z.number(), year: z.number(), month: z.number(),
       targetMeetings: z.number().optional(), target2D: z.number().optional(),
@@ -1445,54 +1858,74 @@ export const appRouter = router({
       targetQuotations: z.number().optional(), targetPresentations: z.number().optional(),
       targetClosings: z.number().optional(), targetDeals: z.number().optional(),
       targetContract: z.number().optional(), targetWorkOrder: z.number().optional(),
-    })).mutation(async ({ input }) => { await upsertEngineerOperationalTargets(input); return { success: true }; }),
+    })).mutation(async ({ input, ctx }) => {
+      const access = await getOperationalScopeAccess(ctx, "closing", "canEdit");
+      await upsertEngineerOperationalTargets({ ...input, engineerId: scopedEngineerId(access, input.engineerId) });
+      return { success: true };
+    }),
     // شرائح الخصم
     discountTiers: protectedProcedure.query(async () => getDiscountTiers()),
     upsertDiscountTier: protectedProcedure.input(z.object({
       id: z.number().optional(), minSales: z.number(), maxSales: z.number().optional(),
       maxDiscountPct: z.number(), label: z.string().optional(),
-    })).mutation(async ({ input }) => { await upsertDiscountTier(input); return { success: true }; }),
+    })).mutation(async ({ input, ctx }) => {
+      await requireAllScope(ctx, "closing", "canAdd");
+      await upsertDiscountTier(input);
+      return { success: true };
+    }),
     deleteDiscountTier: protectedProcedure.input(z.object({ id: z.number() }))
-      .mutation(async ({ input }) => { await deleteDiscountTier(input.id); return { success: true }; }),
+      .mutation(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "closing", "canDelete");
+        await deleteDiscountTier(input.id);
+        return { success: true };
+      }),
     // شرائح الكوميشن
     commissionTiers: protectedProcedure.query(async () => getCommissionTiers()),
     upsertCommissionTier: protectedProcedure.input(z.object({
       id: z.number().optional(), minAchievementPct: z.number(), maxAchievementPct: z.number().optional(),
       commissionPct: z.number(), label: z.string().optional(),
-    })).mutation(async ({ input }) => { await upsertCommissionTier(input); return { success: true }; }),
+    })).mutation(async ({ input, ctx }) => {
+      await requireAllScope(ctx, "closing", "canAdd");
+      await upsertCommissionTier(input);
+      return { success: true };
+    }),
     deleteCommissionTier: protectedProcedure.input(z.object({ id: z.number() }))
-      .mutation(async ({ input }) => { await deleteCommissionTier(input.id); return { success: true }; }),
+      .mutation(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "closing", "canDelete");
+        await deleteCommissionTier(input.id);
+        return { success: true };
+      }),
   }),
 
   // ── KPI ───────────────────────────────────────────────────────────────────────────────────────
   kpi: router({
     engineers: protectedProcedure.input(z.object({ year: z.number(), month: z.number() }))
-      .query(async ({ input }) => getEngineersKPI(input.year, input.month)),
+      .query(async ({ input, ctx }) => { await requireAllScope(ctx, "kpi"); return getEngineersKPI(input.year, input.month); }),
     trend: protectedProcedure.input(z.object({ year: z.number(), month: z.number() }))
-      .query(async ({ input }) => getEngineersTrend(input.year, input.month)),
-    weeklyReport: protectedProcedure.query(async () => getWeeklyReport()),
+      .query(async ({ input, ctx }) => { await requireAllScope(ctx, "kpi"); return getEngineersTrend(input.year, input.month); }),
+    weeklyReport: protectedProcedure.query(async ({ ctx }) => { await requireAllScope(ctx, "kpi"); return getWeeklyReport(); }),
     // ─── Performance Analysis System ───────────────────────────────────────
-    weeklyPerformance: protectedProcedure.query(async () => getWeeklyPerformanceAnalysis()),
+    weeklyPerformance: protectedProcedure.query(async ({ ctx }) => { await requireAllScope(ctx, "kpi"); return getWeeklyPerformanceAnalysis(); }),
     engineerPerformance: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
-      .query(async ({ input }) => getEngineerPerformanceReport(input.year, input.month)),
+      .query(async ({ input, ctx }) => { await requireAllScope(ctx, "kpi"); return getEngineerPerformanceReport(input.year, input.month); }),
     standardDistribution: protectedProcedure.query(async () => STANDARD_DISTRIBUTION),
     taskTypeLabels: protectedProcedure.query(async () => TASK_TYPE_LABELS_V2),
     // تحليل الأداء التشغيلي من Tasks Module
     operationalPerformance: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
-      .query(async ({ input }) => getOperationalPerformance(input.year, input.month)),
+      .query(async ({ input, ctx }) => { await requireAllScope(ctx, "kpi"); return getOperationalPerformance(input.year, input.month); }),
     // Ranking بـ 4 معايير: Revenue + Closing Rate + Task Efficiency + Target Achievement
     enhancedRanking: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
-      .query(async ({ input }) => getEnhancedRanking(input.year, input.month)),
+      .query(async ({ input, ctx }) => { await requireAllScope(ctx, "kpi"); return getEnhancedRanking(input.year, input.month); }),
     // ─── Role-Based KPI Endpoints ──────────────────────────────────────────────
     teleSalesKPI: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
-      .query(async ({ input }) => getTeleSalesKPI(input.year, input.month)),
+      .query(async ({ input, ctx }) => { await requireAllScope(ctx, "kpi"); return getTeleSalesKPI(input.year, input.month); }),
     siteEngineersKPI: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
-      .query(async ({ input }) => getSiteEngineersKPI(input.year, input.month)),
+      .query(async ({ input, ctx }) => { await requireAllScope(ctx, "kpi"); return getSiteEngineersKPI(input.year, input.month); }),
     // ─── Department Labels ─────────────────────────────────────────────────────
     departmentLabels: protectedProcedure.query(async () => DEPARTMENT_LABELS),
     salesDepartments: protectedProcedure.query(async () => SALES_DEPARTMENTS),
@@ -1500,14 +1933,14 @@ export const appRouter = router({
     // ─── Company Closing KPI + Reward System ──────────────────────────────────
     companyClosingKPI: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
-      .query(async ({ input }) => getCompanyClosingKPI(input.year, input.month)),
+      .query(async ({ input, ctx }) => { await requireAllScope(ctx, "kpi"); return getCompanyClosingKPI(input.year, input.month); }),
     teamRewardStatus: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
-      .query(async ({ input }) => getTeamRewardStatus(input.year, input.month)),
+      .query(async ({ input, ctx }) => { await requireAllScope(ctx, "kpi"); return getTeamRewardStatus(input.year, input.month); }),
     // ─── Lost Deals Impact System ─────────────────────────────────────────────
     lostDealsImpact: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
-      .query(async ({ input }) => getLostDealsImpact(input.year, input.month)),
+      .query(async ({ input, ctx }) => { await requireAllScope(ctx, "kpi"); return getLostDealsImpact(input.year, input.month); }),
     // ─── Performance-Based Composite Discount Score (NEW) ──────────────────────
     // جلب الـ Composite Discount Score للفريق (شرائح مبنية على أداء فعلي)
     teamCompositeDiscountScore: protectedProcedure
@@ -1515,45 +1948,45 @@ export const appRouter = router({
         year: z.number().optional(),
         month: z.number().optional(),
       }))
-      .query(async ({ input }) => getTeamCompositeDiscountScore(input.year, input.month)),
+      .query(async ({ input, ctx }) => { await requireAllScope(ctx, "kpi"); return getTeamCompositeDiscountScore(input.year, input.month); }),
     // جلب الـ Composite Discount Score لمهندس محدد
     engineerCompositeDiscountScore: protectedProcedure
       .input(z.object({ engineerId: z.number() }))
-      .query(async ({ input }) => getEngineerCompositeDiscountScore(input.engineerId)),
+      .query(async ({ input, ctx }) => { const access = await getOperationalScopeAccess(ctx, "kpi"); return getEngineerCompositeDiscountScore(scopedEngineerId(access, input.engineerId)); }),
     // جلب تعريفات شرائح الخصوم الجديدة
     performanceDiscountTiers: protectedProcedure
       .query(async () => PERFORMANCE_DISCOUNT_TIERS),
     // ─── Score-Based Discount Distribution ────────────────────────────────────────────
     scoreBasedDiscountDistribution: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
-      .query(async ({ input }) => calcScoreBasedDiscountDistribution(input.year, input.month)),
+      .query(async ({ input, ctx }) => { await requireAllScope(ctx, "kpi"); return calcScoreBasedDiscountDistribution(input.year, input.month); }),
     // ─── Advanced Discount Distribution (Performance + Pipeline + Closing Skill) ──
     advancedDiscountDistribution: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
-      .query(async ({ input }) => getAdvancedDiscountDistribution(input.year, input.month)),
+      .query(async ({ input, ctx }) => { await requireAllScope(ctx, "kpi"); return getAdvancedDiscountDistribution(input.year, input.month); }),
       // ─── Admin Sales KPI ──────────────────────────────────────────
     adminSalesKPI: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
-      .query(async ({ input }) => getAdminSalesKPI(input.year, input.month)),
+      .query(async ({ input, ctx }) => { await requireAllScope(ctx, "kpi"); return getAdminSalesKPI(input.year, input.month); }),
     // ─── Admin Sales Category Analysis ──────────────────────────────
     adminSalesCategoryAnalysis: protectedProcedure
       .input(z.object({ engineerId: z.number(), year: z.number(), month: z.number() }))
-      .query(async ({ input }) => getAdminSalesCategoryAnalysis(input.engineerId, input.year, input.month)),
+      .query(async ({ input, ctx }) => { const access = await getOperationalScopeAccess(ctx, "kpi"); return getAdminSalesCategoryAnalysis(scopedEngineerId(access, input.engineerId), input.year, input.month); }),
     // الأهداف التشغيلية لمهندس محدد
     engineerOperationalTargets: protectedProcedure
       .input(z.object({ engineerId: z.number(), year: z.number(), month: z.number() }))
-      .query(async ({ input }) => getEngineerOperationalTargets(input.engineerId, input.year, input.month)),
+      .query(async ({ input, ctx }) => { const access = await getOperationalScopeAccess(ctx, "kpi"); return getEngineerOperationalTargets(scopedEngineerId(access, input.engineerId), input.year, input.month); }),
     // ترتيب الفريق (Sales Engineer + Sales Specialist فقط)
     teamPerformanceRanking: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
-      .query(async ({ input }) => getTeamPerformanceRanking(input.year, input.month)),
+      .query(async ({ input, ctx }) => { await requireAllScope(ctx, "kpi"); return getTeamPerformanceRanking(input.year, input.month); }),
     // Progressive Commission + KPI Share + Closing Rate Incentive
     engineerEarnings: protectedProcedure
       .input(z.object({ engineerId: z.number(), year: z.number(), month: z.number(), teamKPIPool: z.number().optional() }))
-      .query(async ({ input }) => getEngineerEarningsBreakdown(input.engineerId, input.year, input.month, input.teamKPIPool ?? 2_000)),
+      .query(async ({ input, ctx }) => { const access = await getOperationalScopeAccess(ctx, "kpi"); return getEngineerEarningsBreakdown(scopedEngineerId(access, input.engineerId), input.year, input.month, input.teamKPIPool ?? 2_000); }),
     allEngineersEarnings: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number(), teamKPIPool: z.number().optional() }))
-      .query(async ({ input }) => getAllEngineersEarningsBreakdown(input.year, input.month, input.teamKPIPool ?? 2_000)),
+      .query(async ({ input, ctx }) => { await requireAllScope(ctx, "kpi"); return getAllEngineersEarningsBreakdown(input.year, input.month, input.teamKPIPool ?? 2_000); }),
     commissionDetails: protectedProcedure
       .input(z.object({ salesAmount: z.number() }))
       .query(async ({ input }) => ({
@@ -1562,7 +1995,7 @@ export const appRouter = router({
       })),
     companyClosingBonus: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
-      .query(async ({ input }) => getCompanyClosingBonusForAllEngineers(input.year, input.month)),
+      .query(async ({ input, ctx }) => { await requireAllScope(ctx, "kpi"); return getCompanyClosingBonusForAllEngineers(input.year, input.month); }),
     closingBonusTiers: protectedProcedure
       .input(z.object({ rate: z.number() }))
       .query(async ({ input }) => calcCompanyClosingBonus(input.rate)),
@@ -1573,7 +2006,8 @@ export const appRouter = router({
     stats: protectedProcedure.query(async ({ ctx }) => {
       const caller = await getCallerFromContext(ctx);
       if (!caller) throw new TRPCError({ code: "UNAUTHORIZED", message: "يجب تسجيل الدخول أولاً" });
-      if (canManageFinancials(caller.role)) return getCollectionsStats();
+      const access = await getOperationalScopeAccess(ctx, "collections");
+      if (canManageFinancials(caller.role) && access.scope === "all") return getCollectionsStats();
       if (!caller.engineerId) throw new TRPCError({ code: "FORBIDDEN", message: "لا تملك صلاحية الاطلاع على التحصيلات" });
       return getCollectionsStats(caller.engineerId);
     }),
@@ -1581,7 +2015,8 @@ export const appRouter = router({
       .query(async ({ input, ctx }) => {
         const caller = await getCallerFromContext(ctx);
         if (!caller) throw new TRPCError({ code: "UNAUTHORIZED", message: "يجب تسجيل الدخول أولاً" });
-        if (canManageFinancials(caller.role)) return getCollectionsList(input.limit, input.offset, input.status);
+        const access = await getOperationalScopeAccess(ctx, "collections");
+        if (canManageFinancials(caller.role) && access.scope === "all") return getCollectionsList(input.limit, input.offset, input.status);
         if (!caller.engineerId) throw new TRPCError({ code: "FORBIDDEN", message: "لا تملك صلاحية الاطلاع على التحصيلات" });
         return getCollectionsList(input.limit, input.offset, input.status, caller.engineerId);
       }),
@@ -1589,7 +2024,8 @@ export const appRouter = router({
       clientName: z.string().min(1), contractAmount: z.number().positive(),
       collectedAmount: z.number().optional(), dueDate: z.string().optional(),
       dealId: z.number().optional(), notes: z.string().optional(),
-    })).mutation(async ({ input }) => {
+    })).mutation(async ({ input, ctx }) => {
+      await requireAllScope(ctx, "collections", "canAdd");
       if ((input.collectedAmount ?? 0) > 0) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "سجل الدفعات عبر financial.addPayment حتى يُحدّث دفتر السيولة" });
       }
@@ -1611,7 +2047,12 @@ export const appRouter = router({
       year: z.number(), month: z.number(), targetAmount: z.number().positive(),
       avgDealValue: z.number().optional(), closingRate: z.number().optional(),
       visitToClosingRate: z.number().optional(), notes: z.string().optional(),
-    })).mutation(async ({ input }) => { await upsertMonthlyTarget(input); return { success: true }; }),
+    })).mutation(async ({ input, ctx }) => {
+      await requireAllScope(ctx, "planning", "canAdd");
+      await requirePrivilegedRoleManagementCaller(ctx, "تعديل الهدف الشهري متاح للإدارة فقط");
+      await upsertMonthlyTarget(input);
+      return { success: true };
+    }),
     calculate: protectedProcedure.input(z.object({
       targetAmount: z.number(), avgDealValue: z.number(), closingRate: z.number(), visitToClosingRate: z.number(),
     })).query(async ({ input }) => {
@@ -1636,18 +2077,23 @@ export const appRouter = router({
         notes: z.string().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
-        const req = (ctx as any).req;
-        const session = await (await import('./localAuth')).getLocalSessionFromRequest(req);
-        if (!session && !ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'يجب تسجيل الدخول أولاً' });
+        await requireAllScope(ctx, "planning", "canEdit");
+        await requirePrivilegedRoleManagementCaller(ctx, "تعديل أهداف الشركة متاح للإدارة فقط");
         return setCompanyGoal(input);
       }),
     getCompanyGoalProgress: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
-      .query(async ({ input }) => getCompanyGoalProgress(input.year, input.month)),
+      .query(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "planning");
+        return getCompanyGoalProgress(input.year, input.month);
+      }),
     // ── Personal Goals ─────────────────────────────────────────────────────
     getPersonalGoals: protectedProcedure
       .input(z.object({ engineerId: z.number(), year: z.number(), month: z.number() }))
-      .query(async ({ input }) => getEngineerPersonalGoals(input.engineerId, input.year, input.month)),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "planning");
+        return getEngineerPersonalGoals(scopedEngineerId(access, input.engineerId), input.year, input.month);
+      }),
     setPersonalGoal: protectedProcedure
       .input(z.object({
         id: z.number().optional(),
@@ -1660,21 +2106,37 @@ export const appRouter = router({
         score: z.number().min(0).max(100).optional(),
         reviewNotes: z.string().optional(),
       }))
-      .mutation(async ({ input }) => setPersonalGoal(input)),
+      .mutation(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "planning", "canAdd");
+        await requirePrivilegedRoleManagementCaller(ctx, "إدارة الأهداف الشخصية متاحة للإدارة فقط");
+        return setPersonalGoal(input);
+      }),
     // ── Total Performance Score ────────────────────────────────────────────
     engineerPerformanceScore: protectedProcedure
       .input(z.object({ engineerId: z.number(), year: z.number(), month: z.number() }))
-      .query(async ({ input }) => calcTotalPerformanceScore(input.engineerId, input.year, input.month)),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "planning");
+        return calcTotalPerformanceScore(scopedEngineerId(access, input.engineerId), input.year, input.month);
+      }),
     allEngineersPerformanceScores: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
-      .query(async ({ input }) => getAllEngineersPerformanceScores(input.year, input.month)),
+      .query(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "planning");
+        return getAllEngineersPerformanceScores(input.year, input.month);
+      }),
     // ── Operational Breakdown (Tasks → Goals → KPI) ────────────────────────
     getOperationalBreakdown: protectedProcedure
       .input(z.object({ engineerId: z.number(), year: z.number(), month: z.number() }))
-      .query(async ({ input }) => calcOperationalScoreFromTasks(input.engineerId, input.year, input.month)),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "planning");
+        return calcOperationalScoreFromTasks(scopedEngineerId(access, input.engineerId), input.year, input.month);
+      }),
     getActivitySummary: protectedProcedure
       .input(z.object({ engineerId: z.number(), year: z.number(), month: z.number() }))
-      .query(async ({ input }) => getEngineerActivitySummary(input.engineerId, input.year, input.month)),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "planning");
+        return getEngineerActivitySummary(scopedEngineerId(access, input.engineerId), input.year, input.month);
+      }),
     getActivityTypes: protectedProcedure
       .query(() => ({
         keys: ACTIVITY_KEYS,
@@ -1688,11 +2150,18 @@ export const appRouter = router({
     /** معاينة التوزيع التلقائي قبل التطبيق */
     previewDistribution: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
-      .query(async ({ input }) => calcAutoDistribution(input.year, input.month)),
+      .query(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "planning");
+        return calcAutoDistribution(input.year, input.month);
+      }),
     /** تطبيق التوزيع التلقائي على جميع المهندسين */
     applyDistribution: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
-      .mutation(async ({ input }) => applyAutoDistribution(input.year, input.month)),
+      .mutation(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "planning", "canAdd");
+        await requirePrivilegedRoleManagementCaller(ctx, "تطبيق التوزيع التلقائي متاح للإدارة فقط");
+        return applyAutoDistribution(input.year, input.month);
+      }),
     /** تعديل يدوي (Manual Override) لمهندس */
     manualOverride: protectedProcedure
       .input(z.object({
@@ -1713,13 +2182,17 @@ export const appRouter = router({
       }))
       .mutation(async ({ input, ctx }) => {
         await requireUserManagementCaller(ctx, "تعديل أهداف المهندسين متاح للإدارة فقط");
+        await requireAllScope(ctx, "planning", "canEdit");
         await manualOverrideEngineerTarget(input);
         return { success: true };
       }),
     /** جلب هدف مهندس كامل (مالي + تشغيلي + شخصي) */
     getEngineerFullTarget: protectedProcedure
       .input(z.object({ engineerId: z.number(), year: z.number(), month: z.number() }))
-      .query(async ({ input }) => getEngineerFullTarget(input.engineerId, input.year, input.month)),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "planning");
+        return getEngineerFullTarget(scopedEngineerId(access, input.engineerId), input.year, input.month);
+      }),
   }),
 
   // ── Financial Module ───────────────────────────────────────────────────────────────────────────────
@@ -1729,7 +2202,8 @@ export const appRouter = router({
       .query(async ({ input, ctx }) => {
         const caller = await getCallerFromContext(ctx);
         if (!caller) throw new TRPCError({ code: "UNAUTHORIZED", message: "يجب تسجيل الدخول أولاً" });
-        if (canManageFinancials(caller.role)) return getAllCollectionsWithSummary(input.engineerId);
+        const access = await getOperationalScopeAccess(ctx, "collections");
+        if (canManageFinancials(caller.role) && access.scope === "all") return getAllCollectionsWithSummary(input.engineerId);
         if (!caller.engineerId) throw new TRPCError({ code: "FORBIDDEN", message: "لا تملك صلاحية الاطلاع على التحصيلات" });
         return getAllCollectionsWithSummary(caller.engineerId);
       }),
@@ -1746,7 +2220,11 @@ export const appRouter = router({
       dueDate: z.string().date().optional(),
       dealId: z.number().optional(),
       notes: z.string().trim().max(2_000).optional(),
-    })).mutation(async ({ input }) => { const result = await addCollection(input); return { success: true, id: (result as { insertId?: number })?.insertId }; }),
+    })).mutation(async ({ input, ctx }) => {
+      await requireAllScope(ctx, "collections", "canAdd");
+      const result = await addCollection(input);
+      return { success: true, id: (result as { insertId?: number })?.insertId };
+    }),
     // تسجيل دفعة
     addPayment: protectedProcedure.input(z.object({
       collectionId: z.number().int().positive(),
@@ -1760,12 +2238,12 @@ export const appRouter = router({
       notes: z.string().trim().max(2_000).optional(),
       promiseId: z.number().int().positive().optional(),
     })).mutation(async ({ input, ctx }) => {
-      const { caller, collection, isFinancialManager } = await requireCollectionFinancialAccess(ctx, input.collectionId, "لا تملك صلاحية تسجيل دفعة لهذا العقد");
+      const { caller, collection, isFinancialManager, scope } = await requireCollectionFinancialAccess(ctx, input.collectionId, "لا تملك صلاحية تسجيل دفعة لهذا العقد", "canAdd");
       const result = await addPayment({
         ...input,
-        engineerId: isFinancialManager ? input.engineerId : caller.engineerId!,
+        engineerId: isFinancialManager && scope === "all" ? input.engineerId : caller.engineerId!,
         clientName: collection.clientName,
-        addedBy: isFinancialManager ? "admin" : "engineer",
+        addedBy: isFinancialManager && scope === "all" ? "admin" : "engineer",
         amount: String(input.amount),
         paymentDate: input.paymentDate as unknown as Date,
       });
@@ -1781,14 +2259,14 @@ export const appRouter = router({
       notes: z.string().trim().max(2_000).optional(),
       isConfirmed: z.boolean().optional().default(false),
     })).mutation(async ({ input, ctx }) => {
-      const { caller, collection, isFinancialManager } = await requireCollectionFinancialAccess(ctx, input.collectionId, "لا تملك صلاحية تسجيل وعد دفع لهذا العقد");
+      const { caller, collection, isFinancialManager, scope } = await requireCollectionFinancialAccess(ctx, input.collectionId, "لا تملك صلاحية تسجيل وعد دفع لهذا العقد", "canAdd");
       await addPaymentPromise({
         ...input,
-        engineerId: isFinancialManager ? input.engineerId : caller.engineerId!,
+        engineerId: isFinancialManager && scope === "all" ? input.engineerId : caller.engineerId!,
         clientName: collection.clientName,
         promiseAmount: String(input.promiseAmount),
         promiseDate: input.promiseDate as unknown as Date,
-        isConfirmed: isFinancialManager && input.isConfirmed ? 1 : 0,
+        isConfirmed: isFinancialManager && scope === "all" && input.isConfirmed ? 1 : 0,
       });
       return { success: true };
     }),
@@ -1797,37 +2275,43 @@ export const appRouter = router({
       id: z.number().int().positive(),
       status: z.enum(["pending", "overdue"]),
     })).mutation(async ({ input, ctx }) => {
-      await requirePromiseFinancialAccess(ctx, input.id, "لا تملك صلاحية تحديث وعد الدفع");
+      await requirePromiseFinancialAccess(ctx, input.id, "لا تملك صلاحية تحديث وعد الدفع", "canEdit");
       await updatePromiseStatus(input.id, input.status);
       return { success: true };
     }),
     confirmPromise: protectedProcedure.input(z.object({ id: z.number().int().positive(), isConfirmed: z.boolean() }))
       .mutation(async ({ input, ctx }) => {
         await requireFinancialManager(ctx, "اعتماد وعود الدفع محصور بالإدارة المالية");
-        await getPaymentPromiseAccessById(input.id).then((promise) => {
-          if (!promise) throw new TRPCError({ code: "NOT_FOUND", message: "وعد الدفع غير موجود" });
-        });
+        await requirePromiseFinancialAccess(ctx, input.id, "لا تملك صلاحية اعتماد وعد الدفع", "canEdit");
         await setPaymentPromiseConfirmation(input.id, input.isConfirmed);
         return { success: true };
       }),
     // قائمة المتابعة اليومية
     dailyFollowUp: protectedProcedure.query(async ({ ctx }) => {
       await requireFinancialManager(ctx, "قائمة المتابعة اليومية محصورة بالإدارة المالية");
+      await requireAllScope(ctx, "collections");
       return getDailyFollowUpList();
     }),
     // كوميشن المهندسين من التحصيل
     engineersCommission: protectedProcedure.query(async ({ ctx }) => {
       await requireFinancialManager(ctx, "بيانات الكوميشن محصورة بالإدارة المالية");
+      await requireAllScope(ctx, "collections");
       return getEngineersCollectionCommission();
     }),
     // صرف كوميشن
     markCommissionPaid: adminProcedure.input(z.object({ id: z.number() }))
-      .mutation(async ({ input }) => { await markCommissionPaid(input.id); return { success: true }; }),
+      .mutation(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "collections", "canEdit");
+        await markCommissionPaid(input.id);
+        return { success: true };
+      }),
     // تحديث حالة العقد
     updateContractStatus: adminProcedure.input(z.object({
       id: z.number(),
       status: z.enum(["on_track", "due_soon", "overdue", "completed"]),
-    })).mutation(async ({ input }) => { await updateCollectionStatus(input.id, input.status); return { success: true }; }),
+    })).mutation(async ({ input, ctx }) => { await requireCollectionFinancialAccess(ctx, input.id, "لا تملك صلاحية تعديل حالة هذا العقد", "canEdit");
+        await updateCollectionStatus(input.id, input.status);
+        return { success: true }; }),
     // حساب الكوميشن التصاعدي
     calcCommission: protectedProcedure.input(z.object({ amount: z.number() }))
       .query(async ({ input }) => ({
@@ -1838,6 +2322,8 @@ export const appRouter = router({
     autoCreateContract: protectedProcedure.input(z.object({ dealId: z.number() }))
       .mutation(async ({ input, ctx }) => {
         await requireFinancialManager(ctx, "إنشاء العقود المالية محصور بالإدارة");
+        await requireAllScope(ctx, "collections", "canAdd");
+        await requireDealRecordScope(ctx, input.dealId, "canView");
         return autoCreateContractFromDeal(input.dealId);
       }),
     // إضافة دفعة مع Follow-up Task
@@ -1855,12 +2341,12 @@ export const appRouter = router({
       notes: z.string().optional(),
       promiseId: z.number().optional(),
     })).mutation(async ({ input, ctx }) => {
-      const { caller, collection, isFinancialManager } = await requireCollectionFinancialAccess(ctx, input.collectionId, "لا تملك صلاحية تسجيل دفعة لهذا العقد");
+      const { caller, collection, isFinancialManager, scope } = await requireCollectionFinancialAccess(ctx, input.collectionId, "لا تملك صلاحية تسجيل دفعة لهذا العقد", "canAdd");
       return addPaymentWithFollowUp({
         ...input,
-        engineerId: isFinancialManager ? input.engineerId : caller.engineerId!,
+        engineerId: isFinancialManager && scope === "all" ? input.engineerId : caller.engineerId!,
         clientName: collection.clientName,
-        addedBy: isFinancialManager ? "admin" : "engineer",
+        addedBy: isFinancialManager && scope === "all" ? "admin" : "engineer",
       });
     }),
     // Commission على المحصّل فقط
@@ -1869,6 +2355,10 @@ export const appRouter = router({
     })).query(async ({ input, ctx }) => {
       const caller = await getCallerFromContext(ctx);
       if (!caller) throw new TRPCError({ code: "UNAUTHORIZED", message: "يجب تسجيل الدخول أولاً" });
+      const access = await getOperationalScopeAccess(ctx, "collections");
+      if (access.scope === "own" && caller.engineerId !== input.engineerId) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "لا تملك صلاحية الاطلاع على كوميشن مهندس آخر" });
+      }
       if (!canManageFinancials(caller.role) && caller.engineerId !== input.engineerId) {
         throw new TRPCError({ code: "FORBIDDEN", message: "لا تملك صلاحية الاطلاع على كوميشن مهندس آخر" });
       }
@@ -1878,17 +2368,20 @@ export const appRouter = router({
     dashboard: protectedProcedure.input(z.object({ month: z.number(), year: z.number() }))
       .query(async ({ input, ctx }) => {
         await requireFinancialManager(ctx, "لوحة التحصيل العامة محصورة بالإدارة المالية");
+        await requireAllScope(ctx, "collections");
         return getCollectionDashboard(input.month, input.year);
       }),
     // Alerts التحصيل
     alerts: protectedProcedure.query(async ({ ctx }) => {
       await requireFinancialManager(ctx, "تنبيهات التحصيل العامة محصورة بالإدارة المالية");
+      await requireAllScope(ctx, "collections");
       return getCollectionAlerts();
     }),
     // قائمة العقود مع الكومشن
     contractsWithCommission: protectedProcedure.input(z.object({ engineerId: z.number().optional() }))
       .query(async ({ input, ctx }) => {
         await requireFinancialManager(ctx, "بيانات الكوميشن العامة محصورة بالإدارة المالية");
+        await requireAllScope(ctx, "collections");
         return getCollectionsWithCommission(input.engineerId);
       }),
     periodAnalysis: protectedProcedure.input(z.object({
@@ -1896,42 +2389,78 @@ export const appRouter = router({
       endDate: z.string(),
     })).query(async ({ input, ctx }) => {
       await requireFinancialManager(ctx, "تحليل التحصيل المالي محصور بالإدارة المالية");
+      await requireAllScope(ctx, "collections");
       return getCollectionPeriodAnalysis(input.startDate, input.endDate);
     }),
     // السيولة والتوقعات: مصدران منفصلان بصورة صريحة.
     liquidityDashboard: protectedProcedure.input(z.object({ startDate: z.string(), endDate: z.string() }))
       .query(async ({ input, ctx }) => {
         await requireFinancialManager(ctx, "السيولة المتاحة محصورة بالإدارة المالية");
+        await requireAllScope(ctx, "collections");
         return getFinancialLiquidityDashboard(input.startDate, input.endDate);
       }),
     commitments: protectedProcedure.input(z.object({ startDate: z.string(), endDate: z.string() }))
       .query(async ({ input, ctx }) => {
         await requireFinancialManager(ctx, "الالتزامات المالية محصورة بالإدارة المالية");
+        await requireAllScope(ctx, "collections");
         return getFinancialCommitments(input.startDate, input.endDate);
       }),
     setCashBalance: adminProcedure.input(z.object({
       asOfDate: z.string(), amount: z.number().min(0), notes: z.string().optional(), updatedBy: z.string().optional(),
-    })).mutation(async ({ input }) => { await setFinancialCashBalance(input); return { success: true }; }),
+    })).mutation(async ({ input, ctx }) => {
+      await requireAllScope(ctx, "collections", "canEdit");
+      await setFinancialCashBalance(input);
+      return { success: true };
+    }),
     addCommitment: adminProcedure.input(z.object({
       description: z.string().min(1).max(255), amount: z.number().positive(), dueDate: z.string(),
       projectId: z.number().int().positive().optional(), collectionId: z.number().int().positive().optional(),
       dealId: z.number().int().positive().optional(), notes: z.string().optional(), createdBy: z.string().optional(),
-    })).mutation(async ({ input }) => ({ id: await addFinancialCommitment(input) })),
+    })).mutation(async ({ input, ctx }) => {
+      await requireAllScope(ctx, "collections", "canAdd");
+      if (input.dealId !== undefined) await requireDealRecordScope(ctx, input.dealId, "canView");
+      if (input.collectionId !== undefined) await requireCollectionFinancialAccess(ctx, input.collectionId, "لا تملك صلاحية إضافة التزام لهذا العقد", "canView");
+      return { id: await addFinancialCommitment(input) };
+    }),
     settleCommitment: adminProcedure.input(z.object({ id: z.number().int().positive(), settledBy: z.string().optional() }))
-      .mutation(async ({ input }) => { await settleFinancialCommitment(input.id, input.settledBy); return { success: true }; }),
+      .mutation(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "collections", "canEdit");
+        await settleFinancialCommitment(input.id, input.settledBy);
+        return { success: true };
+      }),
     cancelCommitment: adminProcedure.input(z.object({ id: z.number().int().positive() }))
-      .mutation(async ({ input }) => { await cancelFinancialCommitment(input.id); return { success: true }; }),
+      .mutation(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "collections", "canDelete");
+        await cancelFinancialCommitment(input.id);
+        return { success: true };
+      }),
   }),
   // ── Legacy: Customers / Products ───────────────────────────────────────────────────────────────────────────────
   customers: router({
     list: protectedProcedure.input(z.object({ search: z.string().optional(), status: z.string().optional(), limit: z.number().optional(), offset: z.number().optional() }))
-      .query(async ({ input }) => getCustomers(input)),
+      .query(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "crm");
+        return getCustomers(input);
+      }),
     create: protectedProcedure.input(z.object({ name: z.string().min(1), email: z.string().optional(), phone: z.string().optional(), company: z.string().optional(), status: z.string().optional() }))
-      .mutation(async ({ input }) => { await createCustomer({ ...input, status: input.status ?? 'active' }); return { success: true }; }),
+      .mutation(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "crm", "canAdd");
+        await createCustomer({ ...input, status: input.status ?? 'active' });
+        return { success: true };
+      }),
     update: protectedProcedure.input(z.object({ id: z.number(), name: z.string().optional(), email: z.string().optional(), phone: z.string().optional(), company: z.string().optional(), status: z.string().optional() }))
-      .mutation(async ({ input }) => { const { id, ...data } = input; await updateCustomer(id, data); return { success: true }; }),
+      .mutation(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "crm", "canEdit");
+        const { id, ...data } = input;
+        await updateCustomer(id, data);
+        return { success: true };
+      }),
     delete: protectedProcedure.input(z.object({ id: z.number() }))
-      .mutation(async ({ input }) => { await deleteCustomer(input.id); return { success: true }; }),
+      .mutation(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "crm", "canDelete");
+        await deleteCustomer(input.id);
+        return { success: true };
+      }),
   }),
   products: router({
     list: protectedProcedure.input(z.object({ search: z.string().optional(), category: z.string().optional(), status: z.string().optional(), limit: z.number().optional(), offset: z.number().optional() }))
@@ -1950,7 +2479,10 @@ export const appRouter = router({
   management: router({
     focus: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
-      .query(async ({ input }) => getManagementFocus(input.year, input.month)),
+      .query(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "reports");
+        return getManagementFocus(input.year, input.month);
+      }),
   }),
   // ─── Meeting Recording & Review ────────────────────────────────────────────────────────────────────────────────
   meetingReview: router({
@@ -1982,7 +2514,15 @@ export const appRouter = router({
       }))
       .mutation(async ({ input, ctx }) => {
         await requireMeetingReviewManager(ctx, input.taskId, "edit");
-        const review = await upsertMeetingReview(input);
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "قاعدة البيانات غير متاحة" });
+        const { dailyTasks } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const [task] = await db.select({ engineerId: dailyTasks.engineerId })
+          .from(dailyTasks).where(eq(dailyTasks.id, input.taskId)).limit(1);
+        if (!task) throw new TRPCError({ code: "NOT_FOUND", message: "المهمة غير موجودة" });
+        assertTaskEngineerMatch(task.engineerId, input.engineerId);
+        const review = await upsertMeetingReview({ ...input, engineerId: task.engineerId });
         return { success: true, review };
       }),
     // جلب Closing Quality Score لمهندس
@@ -1991,17 +2531,19 @@ export const appRouter = router({
       .query(async ({ input, ctx }) => {
         const caller = await getCallerFromContext(ctx);
         if (!caller) throw new TRPCError({ code: "UNAUTHORIZED", message: "يجب تسجيل الدخول أولاً" });
-        if (!["admin", "manager", "admin_sales"].includes(caller.role) || (caller.role === "admin_sales" && caller.engineerId !== input.engineerId)) {
-          throw new TRPCError({ code: "FORBIDDEN", message: "لا يمكنك عرض تقييمات مهندس آخر" });
+        if (!["admin", "manager", "admin_sales"].includes(caller.role)) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "تقييمات الإغلاق متاحة للإدارة فقط" });
         }
-        return getEngineerClosingQualityScore(input.engineerId, input.year, input.month);
+        const access = await getOperationalScopeAccess(ctx, "kpi");
+        const engineerId = scopedEngineerId(access, input.engineerId);
+        return getEngineerClosingQualityScore(engineerId, input.year, input.month);
       }),
   }),
   adminSalesTasks: router({
     // جلب مهام يوم معين لـ Admin Sales
     getByDate: protectedProcedure
       .input(z.object({ engineerId: z.number(), date: z.string() }))
-      .query(async ({ input, ctx }) => { await requireAdminSalesTaskCaller(ctx, input.engineerId); return getAdminSalesTasks(input.engineerId, input.date); }),
+      .query(async ({ input, ctx }) => { await requireAdminSalesTaskCaller(ctx, input.engineerId, undefined, "canView"); return getAdminSalesTasks(input.engineerId, input.date); }),
     // تحديث حالة مهمة
     updateStatus: protectedProcedure
       .input(z.object({
@@ -2010,14 +2552,19 @@ export const appRouter = router({
         notes: z.string().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
-        await requireAdminSalesTaskCaller(ctx, undefined, input.taskId);
+        await requireAdminSalesTaskCaller(ctx, undefined, input.taskId, "canEdit");
         await updateAdminSalesTaskStatus(input.taskId, input.status, input.notes);
         return { success: true };
       }),
     // جلب أو إنشاء سجل الاجتماعات الأسبوعية
     getWeekMeeting: protectedProcedure
       .input(z.object({ engineerId: z.number(), weekStart: z.string() }))
-      .query(async ({ input, ctx }) => { await requireAdminSalesTaskCaller(ctx, input.engineerId); return getOrCreateWeekMeeting(input.engineerId, input.weekStart); }),
+      .query(async ({ input, ctx }) => {
+        await getOperationalScopeAccess(ctx, "tasks", "canAdd");
+        await getOperationalScopeAccess(ctx, "tasks", "canEdit");
+        await requireAdminSalesTaskCaller(ctx, input.engineerId, undefined, "canView");
+        return getOrCreateWeekMeeting(input.engineerId, input.weekStart);
+      }),
     // تحديث سجل الاجتماعات
     updateWeekMeeting: protectedProcedure
       .input(z.object({
@@ -2028,7 +2575,7 @@ export const appRouter = router({
         meetingNotes: z.string().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
-        await requireAdminSalesMeetingCaller(ctx, input.id);
+        await requireAdminSalesMeetingCaller(ctx, input.id, "canEdit");
         const { id, ...data } = input;
         await updateWeekMeeting(id, data);
         return { success: true };
@@ -2036,7 +2583,7 @@ export const appRouter = router({
      // إحصائيات للمدير
     getStats: protectedProcedure
       .input(z.object({ engineerId: z.number(), month: z.string() }))
-      .query(async ({ input, ctx }) => { await requireAdminSalesTaskCaller(ctx, input.engineerId); return getAdminSalesStats(input.engineerId, input.month); }),
+      .query(async ({ input, ctx }) => { await requireAdminSalesTaskCaller(ctx, input.engineerId, undefined, "canView"); return getAdminSalesStats(input.engineerId, input.month); }),
     // إضافة مهمة يدوية لـ Admin Sales
     create: protectedProcedure
       .input(z.object({
@@ -2050,7 +2597,7 @@ export const appRouter = router({
         kpiImpact: z.string().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
-        await requireAdminSalesTaskCaller(ctx, input.engineerId);
+        await requireAdminSalesTaskCaller(ctx, input.engineerId, undefined, "canAdd");
         await createAdminSalesTask(input);
         return { success: true };
       }),
@@ -2068,7 +2615,7 @@ export const appRouter = router({
         status: z.enum(['pending', 'done', 'delayed', 'not_done']).optional(),
       }))
       .mutation(async ({ input, ctx }) => {
-        await requireAdminSalesTaskCaller(ctx, undefined, input.id);
+        await requireAdminSalesTaskCaller(ctx, undefined, input.id, "canEdit");
         const { id, ...data } = input;
         await updateAdminSalesTaskFull(id, data);
         return { success: true };
@@ -2088,7 +2635,10 @@ export const appRouter = router({
         followupQuality: z.enum(['excellent', 'good', 'poor']).optional(),
         notes: z.string().optional(),
       }))
-      .mutation(async ({ input }) => logLeadFollowup(input)),
+      .mutation(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "crm", "canAdd");
+        return logLeadFollowup(input);
+      }),
 
     // جلب سجلات المتابعة
     getLogs: protectedProcedure
@@ -2098,76 +2648,78 @@ export const appRouter = router({
         adminSalesId: z.number().optional(),
         telesalesId: z.number().optional(),
       }))
-      .query(async ({ input }) => getLeadFollowupLogs(input)),
+      .query(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "crm");
+        return getLeadFollowupLogs(input);
+      }),
 
     // KPI لـ Admin Sales
     adminSalesKPI: protectedProcedure
       .input(z.object({ adminSalesId: z.number(), startDate: z.string(), endDate: z.string() }))
-      .query(async ({ input }) => getAdminSalesFollowupKPI(input.adminSalesId, input.startDate, input.endDate)),
+      .query(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "crm");
+        return getAdminSalesFollowupKPI(input.adminSalesId, input.startDate, input.endDate);
+      }),
 
     // KPI لـ Tele-sales
     telesalesKPI: protectedProcedure
       .input(z.object({ telesalesId: z.number(), startDate: z.string(), endDate: z.string() }))
-      .query(async ({ input }) => getTelesalesFollowupKPI(input.telesalesId, input.startDate, input.endDate)),
+      .query(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "crm");
+        return getTelesalesFollowupKPI(input.telesalesId, input.startDate, input.endDate);
+      }),
 
     // إحصائيات جميع Tele-sales
     allTelesalesStats: protectedProcedure
       .input(z.object({ startDate: z.string(), endDate: z.string() }))
-      .query(async ({ input }) => getAllTelesalesFollowupStats(input.startDate, input.endDate)),
+      .query(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "crm");
+        return getAllTelesalesFollowupStats(input.startDate, input.endDate);
+      }),
   }),
   // Soft Delete + Audit Log
   softDelete: router({
     engineer: protectedProcedure
       .input(z.object({ id: z.number(), reason: z.enum(['data_entry_error','duplicate','client_cancelled','other']), reasonCustom: z.string().optional() }))
       .mutation(async ({ input, ctx }) => {
-        const req = (ctx as any).req;
-        const session = await (await import('./localAuth')).getLocalSessionFromRequest(req);
-        const performedBy = session?.username ?? ctx.user?.name ?? 'admin';
-        if (!session && !ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
-        await softDeleteEngineer(input.id, input.reason, input.reasonCustom, performedBy);
+        const caller = await requireUserManagementCaller(ctx, "حذف المهندسين متاح للإدارة فقط");
+        await softDeleteEngineer(input.id, input.reason, input.reasonCustom, caller.name);
         return { success: true };
       }),
     task: adminProcedure
       .input(z.object({ id: z.number(), reason: z.enum(['data_entry_error','duplicate','client_cancelled','other']), reasonCustom: z.string().optional() }))
       .mutation(async ({ input, ctx }) => {
-        const req = (ctx as any).req;
-        const session = await (await import('./localAuth')).getLocalSessionFromRequest(req);
-        const performedBy = session?.username ?? ctx.user?.name ?? 'user';
-        if (!session && !ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
-        return await softDeleteTask(input.id, input.reason, input.reasonCustom, performedBy);
+        const access = await requireTaskAction(ctx, "delete", input.id);
+        return await softDeleteTask(input.id, input.reason, input.reasonCustom, access.caller.name);
       }),
     lead: protectedProcedure
       .input(z.object({ id: z.number(), reason: z.enum(['data_entry_error','duplicate','client_cancelled','other']), reasonCustom: z.string().optional() }))
       .mutation(async ({ input, ctx }) => {
-        const req = (ctx as any).req;
-        const session = await (await import('./localAuth')).getLocalSessionFromRequest(req);
-        const performedBy = session?.username ?? ctx.user?.name ?? 'user';
-        if (!session && !ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
-        await softDeleteLead(input.id, input.reason, input.reasonCustom, performedBy);
+        const access = await requireLeadRecordScope(ctx, input.id, "canDelete");
+        await softDeleteLead(input.id, input.reason, input.reasonCustom, access.caller.name);
         return { success: true };
       }),
     visit: protectedProcedure
       .input(z.object({ id: z.number(), reason: z.enum(['data_entry_error','duplicate','client_cancelled','other']), reasonCustom: z.string().optional() }))
       .mutation(async ({ input, ctx }) => {
-        const req = (ctx as any).req;
-        const session = await (await import('./localAuth')).getLocalSessionFromRequest(req);
-        const performedBy = session?.username ?? ctx.user?.name ?? 'user';
-        if (!session && !ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
-        await softDeleteVisitFull(input.id, input.reason, input.reasonCustom, performedBy);
+        const access = await requireVisitRecordScope(ctx, input.id, "canDelete");
+        await softDeleteVisitFull(input.id, input.reason, input.reasonCustom, access.caller.name);
         return { success: true };
       }),
     deal: protectedProcedure
       .input(z.object({ id: z.number(), reason: z.enum(['data_entry_error','duplicate','client_cancelled','other']), reasonCustom: z.string().optional() }))
       .mutation(async ({ input, ctx }) => {
-        const req = (ctx as any).req;
-        const session = await (await import('./localAuth')).getLocalSessionFromRequest(req);
-        const performedBy = session?.username ?? ctx.user?.name ?? 'system';
-        await softDeleteDeal(input.id, input.reason, input.reasonCustom, performedBy);
+        const access = await requireDealRecordScope(ctx, input.id, "canDelete");
+        await softDeleteDeal(input.id, input.reason, input.reasonCustom, access.caller.name);
         return { success: true };
       }),
     getAuditLogs: protectedProcedure
       .input(z.object({ entityType: z.enum(['engineer','task','lead','visit','deal']).optional(), limit: z.number().optional() }))
-      .query(async ({ input }) => getAuditLogs(input)),
+      .query(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "tasks");
+        await requirePrivilegedRoleManagementCaller(ctx, "سجل الحذف متاح للإدارة فقط");
+        return getAuditLogs(input);
+      }),
   }),
   // ─── Lead Daily Stats ─────────────────────────────────────────────────────────
   pushNotifications: router({
@@ -2310,7 +2862,10 @@ export const appRouter = router({
         notes: z.string().optional(),
         enteredBy: z.string().optional(),
       }))
-      .mutation(async ({ input }) => upsertLeadDailyStats(input)),
+      .mutation(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "crm", "canAdd");
+        return upsertLeadDailyStats(input);
+      }),
     // جلب سجلات الأيام
     list: protectedProcedure
       .input(z.object({
@@ -2318,14 +2873,20 @@ export const appRouter = router({
         to: z.string().optional(),
         limit: z.number().optional(),
       }))
-      .query(async ({ input }) => getLeadDailyStatsList(input)),
+      .query(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "crm");
+        return getLeadDailyStatsList(input);
+      }),
     // إحصائيات إجمالية للفترة
     summary: protectedProcedure
       .input(z.object({
         from: z.string(),
         to: z.string(),
       }))
-      .query(async ({ input }) => getLeadSummaryStats(input)),
+      .query(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "crm");
+        return getLeadSummaryStats(input);
+      }),
   }),
 
   // ── Work Distribution ─────────────────────────────────────────────────────────
@@ -2343,12 +2904,14 @@ export const appRouter = router({
         clientName: z.string().optional(),
         notes: z.string().optional(),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "tasks", "canAdd");
+        const engineerId = scopedEngineerId(access, input.engineerId);
         const d = new Date(input.logDate);
         const startOfYear = new Date(d.getFullYear(), 0, 1);
         const weekNumber = Math.ceil(((d.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
         await logWorkActivity({
-          engineerId: input.engineerId,
+          engineerId,
           logDate: d,
           activityType: input.activityType,
           durationMinutes: input.durationMinutes,
@@ -2368,12 +2931,18 @@ export const appRouter = router({
         year: z.number(),
         month: z.number(),
       }))
-      .query(async ({ input }) => getWorkDistribution(input.engineerId, input.year, input.month)),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "tasks");
+        return getWorkDistribution(scopedEngineerId(access, input.engineerId), input.year, input.month);
+      }),
 
     // توزيع كل المهندسين (admin فقط)
     allEngineers: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
-      .query(async ({ input }) => getAllEngineersDistribution(input.year, input.month)),
+      .query(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "tasks");
+        return getAllEngineersDistribution(input.year, input.month);
+      }),
 
     // تحليل أسبوعي
     weeklyAnalysis: protectedProcedure
@@ -2382,17 +2951,26 @@ export const appRouter = router({
         year: z.number(),
         weekNumber: z.number(),
       }))
-      .query(async ({ input }) => getWeeklyDistribution(input.engineerId, input.year, input.weekNumber)),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "tasks");
+        return getWeeklyDistribution(scopedEngineerId(access, input.engineerId), input.year, input.weekNumber);
+      }),
 
     // تحليل نقاط الضعف (Critical Insights)
     criticalInsights: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
-      .query(async ({ input }) => getCriticalInsights(input.year, input.month)),
+      .query(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "tasks");
+        return getCriticalInsights(input.year, input.month);
+      }),
 
     // ترتيب شامل (Sales + Closing + Distribution)
     fullRanking: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
-      .query(async ({ input }) => getEngineerRankingFull(input.year, input.month)),
+      .query(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "tasks");
+        return getEngineerRankingFull(input.year, input.month);
+      }),
 
     // ثوابت (labels + targets)
     config: protectedProcedure.query(() => ({
@@ -2403,15 +2981,22 @@ export const appRouter = router({
   // ── Reports Module ──────────────────────────────────────────────────────────
   reports: router({
     // تقرير أسبوعي كامل مع Distribution Score + Behavior Alerts + Insights
-    weeklyFull: protectedProcedure.query(async () => getWeeklyPerformanceFull()),
+    weeklyFull: protectedProcedure.query(async ({ ctx }) => {
+      await requireAllScope(ctx, "reports");
+      return getWeeklyPerformanceFull();
+    }),
     // تقرير شهري مبني على Output الفعلي
     monthlyKPI: protectedProcedure
       .input(z.object({ year: z.number(), month: z.number() }))
-      .query(async ({ input }) => getOutputBasedKPI(input.year, input.month)),
+      .query(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "reports");
+        return getOutputBasedKPI(input.year, input.month);
+      }),
     // تقرير ربع سنوي (مقارنة 3 أشهر)
     quarterly: protectedProcedure
       .input(z.object({ year: z.number(), quarter: z.number() }))
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "reports");
         const { year, quarter } = input;
         const months = [quarter * 3 - 2, quarter * 3 - 1, quarter * 3];
         const results = await Promise.all(months.map(m => getOutputBasedKPI(year, m)));
@@ -2422,15 +3007,32 @@ export const appRouter = router({
   pipeline: router({
     engineerStats: protectedProcedure
       .input(z.object({ engineerId: z.number().optional() }))
-      .query(async ({ input }) => getEngineerPipelineStats(input.engineerId)),
-    overview: protectedProcedure.query(async () => getPipelineOverview()),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "closing");
+        return getEngineerPipelineStats(scopedEngineerId(access, input.engineerId));
+      }),
+    overview: protectedProcedure.query(async ({ ctx }) => {
+      await requireAllScope(ctx, "closing");
+      return getPipelineOverview();
+    }),
     approveDiscount: protectedProcedure
       .input(z.object({ dealId: z.number(), status: z.enum(['approved', 'rejected']), approvedBy: z.string().optional() }))
-      .mutation(async ({ input }) => { await updateDiscountApproval(input.dealId, input.status, input.approvedBy); return { success: true }; }),
+      .mutation(async ({ input, ctx }) => {
+        await requireDealRecordScope(ctx, input.dealId, "canEdit");
+        await updateDiscountApproval(input.dealId, input.status, input.approvedBy);
+        return { success: true };
+      }),
     computeBonus: protectedProcedure
       .input(z.object({ dealId: z.number() }))
-      .mutation(async ({ input }) => { await computeAndSaveDealBonus(input.dealId); return { success: true }; }),
-    bonusSummary: protectedProcedure.query(async () => getEngineerBonusSummary()),
+      .mutation(async ({ input, ctx }) => {
+        await requireDealRecordScope(ctx, input.dealId, "canEdit");
+        await computeAndSaveDealBonus(input.dealId);
+        return { success: true };
+      }),
+    bonusSummary: protectedProcedure.query(async ({ ctx }) => {
+      await requireAllScope(ctx, "closing");
+      return getEngineerBonusSummary();
+    }),
   }),
   // ── Playbook & Sales Execution ───────────────────────────────────────────────
   playbook: router({
@@ -2521,27 +3123,53 @@ export const appRouter = router({
         totalValue: z.number(),
         notes: z.string().optional(),
       }))
-      .mutation(async ({ input }) => { await createPlaybookQuotation(input); return { success: true }; }),
+      .mutation(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "pricing_system", "canAdd");
+        const engineerId = scopedEngineerId(access, input.engineerId);
+        if (input.dealId !== undefined) await requireDealRecordScope(ctx, input.dealId, "canView");
+        await createPlaybookQuotation({ ...input, engineerId });
+        return { success: true };
+      }),
     listQuotations: protectedProcedure
       .input(z.object({ engineerId: z.number().optional(), dealId: z.number().optional() }))
-      .query(async ({ input }) => getPlaybookQuotations(input.engineerId, input.dealId)),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "pricing_system");
+        const engineerId = scopedEngineerId(access, input.engineerId);
+        if (input.dealId !== undefined) await requireDealRecordScope(ctx, input.dealId, "canView");
+        return getPlaybookQuotations(engineerId, input.dealId);
+      }),
     updateRecording: protectedProcedure
       .input(z.object({ quotationId: z.number(), recordingLink: z.string().url() }))
-      .mutation(async ({ input }) => updatePlaybookRecordingLink(input.quotationId, input.recordingLink)),
+      .mutation(async ({ input, ctx }) => {
+        await requirePlaybookQuotationScope(ctx, input.quotationId, "canEdit");
+        return updatePlaybookRecordingLink(input.quotationId, input.recordingLink);
+      }),
     updateStatus: protectedProcedure
       .input(z.object({ quotationId: z.number(), status: z.enum(['draft', 'presented', 'accepted', 'rejected']) }))
-      .mutation(async ({ input }) => updatePlaybookQuotationStatus(input.quotationId, input.status)),
+      .mutation(async ({ input, ctx }) => {
+        await requirePlaybookQuotationScope(ctx, input.quotationId, "canEdit");
+        return updatePlaybookQuotationStatus(input.quotationId, input.status);
+      }),
     // Funnel Analysis
     funnelAnalysis: protectedProcedure
       .input(z.object({ engineerId: z.number().optional() }))
-      .query(async ({ input }) => getFunnelAnalysis(input.engineerId)),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "reports");
+        return getFunnelAnalysis(scopedEngineerId(access, input.engineerId));
+      }),
     // Meeting Reviews
     reviewsList: protectedProcedure
       .input(z.object({ engineerId: z.number().optional(), limit: z.number().optional() }))
-      .query(async ({ input }) => getMeetingReviewsList(input.engineerId, input.limit)),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "kpi");
+        return getMeetingReviewsList(scopedEngineerId(access, input.engineerId), input.limit);
+      }),
     weeklyCoaching: protectedProcedure
       .input(z.object({ engineerId: z.number() }))
-      .query(async ({ input }) => getWeeklyCoachingSummary(input.engineerId)),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "kpi");
+        return getWeeklyCoachingSummary(scopedEngineerId(access, input.engineerId));
+      }),
   }),
   // ── Meeting Session Tracking ───────────────────────────────────────────────
   session: router({
@@ -2554,13 +3182,21 @@ export const appRouter = router({
         sessionType: z.enum(['presentation', 'closing', 'follow_up']).optional(),
         itemsTotal: z.number().optional(),
       }))
-      .mutation(async ({ input }) => {
-        const id = await createMeetingSession(input);
+      .mutation(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "tasks", "canAdd");
+        const engineerId = scopedEngineerId(access, input.engineerId);
+        if (input.dealId !== undefined) {
+          await requireDealRecordScope(ctx, input.dealId, "canView");
+        }
+        const id = await createMeetingSession({ ...input, engineerId });
         return { success: true, sessionId: id };
       }),
     end: protectedProcedure
       .input(z.object({ sessionId: z.number(), recordingLink: z.string().optional() }))
-      .mutation(async ({ input }) => endMeetingSession(input.sessionId, input.recordingLink)),
+      .mutation(async ({ input, ctx }) => {
+        await requireMeetingSessionScope(ctx, input.sessionId, "canEdit");
+        return endMeetingSession(input.sessionId, input.recordingLink);
+      }),
     logAction: protectedProcedure
       .input(z.object({
         sessionId: z.number(),
@@ -2570,22 +3206,43 @@ export const appRouter = router({
         durationSeconds: z.number().optional(),
         metadata: z.string().optional(),
       }))
-      .mutation(async ({ input }) => { await logSessionAction(input); return { success: true }; }),
+      .mutation(async ({ input, ctx }) => {
+        await requireMeetingSessionScope(ctx, input.sessionId, "canAdd");
+        await logSessionAction(input);
+        return { success: true };
+      }),
     details: protectedProcedure
       .input(z.object({ sessionId: z.number() }))
-      .query(async ({ input }) => getSessionDetails(input.sessionId)),
+      .query(async ({ input, ctx }) => {
+        await requireMeetingSessionScope(ctx, input.sessionId, "canView");
+        return getSessionDetails(input.sessionId);
+      }),
     engineerStats: protectedProcedure
       .input(z.object({ engineerId: z.number() }))
-      .query(async ({ input }) => getEngineerMeetingStats(input.engineerId)),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "tasks");
+        return getEngineerMeetingStats(scopedEngineerId(access, input.engineerId));
+      }),
     adminList: protectedProcedure
       .input(z.object({ limit: z.number().optional() }))
-      .query(async ({ input }) => getAllMeetingSessionsAdmin(input.limit)),
+      .query(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "tasks");
+        await requirePrivilegedRoleManagementCaller(ctx, "قائمة الجلسات متاحة للإدارة فقط");
+        return getAllMeetingSessionsAdmin(input.limit);
+      }),
     updateRecording: protectedProcedure
       .input(z.object({ sessionId: z.number(), recordingLink: z.string().url() }))
-      .mutation(async ({ input }) => { await updateSessionRecordingLink(input.sessionId, input.recordingLink); return { success: true }; }),
+      .mutation(async ({ input, ctx }) => {
+        await requireMeetingSessionScope(ctx, input.sessionId, "canEdit");
+        await updateSessionRecordingLink(input.sessionId, input.recordingLink);
+        return { success: true };
+      }),
     weeklyCoaching: protectedProcedure
       .input(z.object({ engineerId: z.number() }))
-      .query(async ({ input }) => getEngineerWeeklyCoaching(input.engineerId)),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "tasks");
+        return getEngineerWeeklyCoaching(scopedEngineerId(access, input.engineerId));
+      }),
   }),
   // ── Promotion & Evaluation System ─────────────────────────────────────────
   promotion: router({
@@ -2604,18 +3261,42 @@ export const appRouter = router({
         improvementPoint: z.string().min(1),
         comments: z.string().optional(),
       }))
-      .mutation(async ({ input }) => createOrUpdateMeetingReview(input)),
+      .mutation(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "kpi", "canAdd");
+        await requireMeetingReviewManager(ctx, input.taskId, "edit");
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "قاعدة البيانات غير متاحة" });
+        const { dailyTasks } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const [task] = await db.select({ engineerId: dailyTasks.engineerId }).from(dailyTasks).where(eq(dailyTasks.id, input.taskId)).limit(1);
+        if (!task) throw new TRPCError({ code: "NOT_FOUND", message: "المهمة غير موجودة" });
+        assertTaskEngineerMatch(task.engineerId, input.engineerId);
+        return createOrUpdateMeetingReview(input);
+      }),
 
     getMeetingReviewByTask: protectedProcedure
       .input(z.object({ taskId: z.number() }))
-      .query(async ({ input }) => getMeetingReviewByTask(input.taskId)),
+      .query(async ({ input, ctx }) => {
+        await requireMeetingReviewManager(ctx, input.taskId, "view");
+        return getMeetingReviewByTask(input.taskId);
+      }),
 
     getMeetingReviewSummary: protectedProcedure
       .input(z.object({ engineerId: z.number().optional() }))
-      .query(async ({ input }) => getEngineerMeetingReviewSummary(input.engineerId)),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "kpi");
+        return getEngineerMeetingReviewSummary(scopedEngineerId(access, input.engineerId));
+      }),
 
     getMeetingTasksPendingReview: protectedProcedure
-      .query(async () => getMeetingTasksPendingReview()),
+      .query(async ({ ctx }) => {
+        const caller = await getCallerFromContext(ctx);
+        if (!caller || !["admin", "manager", "admin_sales"].includes(caller.role)) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "مراجعات الاجتماعات متاحة للإدارة فقط" });
+        }
+        await requireAllScope(ctx, "kpi");
+        return getMeetingTasksPendingReview();
+      }),
 
     // Monthly Evaluation
     createMonthlyEvaluation: protectedProcedure
@@ -2632,31 +3313,60 @@ export const appRouter = router({
         coachingNotes: z.string().optional(),
         improvementPlan: z.string().optional(),
       }))
-      .mutation(async ({ input }) => createOrUpdateMonthlyEvaluation(input)),
+      .mutation(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "kpi", "canAdd");
+        await requirePrivilegedRoleManagementCaller(ctx, "التقييم الشهري متاح للإدارة فقط");
+        return createOrUpdateMonthlyEvaluation(input);
+      }),
 
     getEvaluationHistory: protectedProcedure
       .input(z.object({ engineerId: z.number() }))
-      .query(async ({ input }) => getEngineerEvaluationHistory(input.engineerId)),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "kpi");
+        return getEngineerEvaluationHistory(scopedEngineerId(access, input.engineerId));
+      }),
 
     getAllEngineersDashboard: protectedProcedure
-      .query(async () => getAllEngineersEvaluationDashboard()),
+      .query(async ({ ctx }) => {
+        await requireAllScope(ctx, "kpi");
+        await requirePrivilegedRoleManagementCaller(ctx, "لوحة تقييم جميع المهندسين متاحة للإدارة فقط");
+        return getAllEngineersEvaluationDashboard();
+      }),
 
     // Career Path
     promoteEngineer: protectedProcedure
       .input(z.object({ engineerId: z.number(), promotedBy: z.number().optional() }))
-      .mutation(async ({ input }) => promoteEngineer(input.engineerId, input.promotedBy)),
+      .mutation(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "kpi", "canEdit");
+        await requirePrivilegedRoleManagementCaller(ctx, "ترقية المهندسين متاحة للإدارة فقط");
+        return promoteEngineer(input.engineerId, input.promotedBy);
+      }),
 
     getCareerLevel: protectedProcedure
       .input(z.object({ engineerId: z.number() }))
-      .query(async ({ input }) => getOrCreateEngineerCareerLevel(input.engineerId)),
+      .query(async ({ input, ctx }) => {
+        // This legacy query may create the career-level row when missing, so it
+        // must not be authorized by canView alone.
+        await getOperationalScopeAccess(ctx, "kpi", "canAdd");
+        await getOperationalScopeAccess(ctx, "kpi", "canEdit");
+        const access = await getOperationalScopeAccess(ctx, "kpi");
+        return getOrCreateEngineerCareerLevel(scopedEngineerId(access, input.engineerId));
+      }),
 
     // Management Decision Dashboard
     getManagementDashboard: protectedProcedure
-      .query(async () => getManagementDecisionDashboard()),
+      .query(async ({ ctx }) => {
+        await requireAllScope(ctx, "kpi");
+        await requirePrivilegedRoleManagementCaller(ctx, "لوحة قرارات الإدارة متاحة للإدارة فقط");
+        return getManagementDecisionDashboard();
+      }),
     // Engineer Promotion Progress (تفاصيل الترقية لمهندس واحد)
     getEngineerPromotionProgress: protectedProcedure
       .input(z.object({ engineerId: z.number() }))
-      .query(async ({ input }) => getEngineerPromotionProgress(input.engineerId)),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "kpi");
+        return getEngineerPromotionProgress(scopedEngineerId(access, input.engineerId));
+      }),
   }),
 
   // ── Funnel Analysis ───────────────────────────────────────────────────────
@@ -2666,12 +3376,21 @@ export const appRouter = router({
         engineerId: z.number().optional(),
         period: z.enum(['week', 'month', 'quarter']).optional(),
       }))
-      .query(async ({ input }) => getFullFunnelAnalysis(input.engineerId, input.period)),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "reports");
+        return getFullFunnelAnalysis(scopedEngineerId(access, input.engineerId), input.period);
+      }),
     comparison: protectedProcedure
-      .query(async () => getEngineersFunnelComparison()),
+      .query(async ({ ctx }) => {
+        await requireAllScope(ctx, "reports");
+        return getEngineersFunnelComparison();
+      }),
     playbookInsights: protectedProcedure
       .input(z.object({ engineerId: z.number() }))
-      .query(async ({ input }) => getEngineerFunnelPlaybookInsights(input.engineerId)),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "reports");
+        return getEngineerFunnelPlaybookInsights(scopedEngineerId(access, input.engineerId));
+      }),
   }),
   // ── Internal Users System (نظام المستخدمين الداخلي) ───────────────────────
 
@@ -3150,22 +3869,32 @@ export const appRouter = router({
         clientName: z.string().optional(),
         dealStage: z.string().optional(),
       }))
-      .mutation(async ({ input }) => {
-        await createDealTask(input);
+      .mutation(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "closing", "canAdd");
+        const engineerId = scopedEngineerId(access, input.engineerId);
+        await requireDealRecordScope(ctx, input.dealId, "canView");
+        await createDealTask({ ...input, engineerId });
         return { success: true };
       }),
     // جلب المهام المتأخرة (overdue)
     listOverdue: protectedProcedure
       .input(z.object({ engineerId: z.number().optional() }))
-      .query(async ({ input }) => getOverdueDealTasks(input.engineerId)),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "closing");
+        return getOverdueDealTasks(scopedEngineerId(access, input.engineerId));
+      }),
     // جلب المهام المعلقة (pending)
     listPending: protectedProcedure
       .input(z.object({ engineerId: z.number().optional() }))
-      .query(async ({ input }) => getPendingDealTasks(input.engineerId)),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "closing");
+        return getPendingDealTasks(scopedEngineerId(access, input.engineerId));
+      }),
     // تحديد task كـ Done
     markDone: protectedProcedure
       .input(z.object({ taskId: z.number() }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        await requireDealTaskRecordScope(ctx, input.taskId, "canEdit");
         await markDealTaskDone(input.taskId);
         return { success: true };
       }),
@@ -3176,14 +3905,20 @@ export const appRouter = router({
         startDate: z.string().optional(),
         endDate: z.string().optional(),
       }))
-      .query(async ({ input }) => getFollowupKPI(input.engineerId, input.startDate, input.endDate)),
+      .query(async ({ input, ctx }) => {
+        const access = await getOperationalScopeAccess(ctx, "closing");
+        return getFollowupKPI(scopedEngineerId(access, input.engineerId), input.startDate, input.endDate);
+      }),
     // تقرير Follow-up Compliance لجميع المهندسين
     complianceReport: protectedProcedure
       .input(z.object({
         startDate: z.string().optional(),
         endDate: z.string().optional(),
       }))
-      .query(async ({ input }) => getFollowupComplianceReport(input.startDate, input.endDate)),
+      .query(async ({ input, ctx }) => {
+        await requireAllScope(ctx, "closing");
+        return getFollowupComplianceReport(input.startDate, input.endDate);
+      }),
   }),
 });
 export type AppRouter = typeof appRouter;

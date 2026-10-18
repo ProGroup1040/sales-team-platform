@@ -1,9 +1,27 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
+import { updateUserPermissions } from "./db";
+
+const testUserId = 1_000_000_000 + ((Date.now() + process.pid) % 900_000_000);
+const testPermissions = [
+  "crm", "visits", "closing", "kpi", "planning", "discounts",
+  "reports", "tasks", "collections", "users", "pricing_system",
+].map((module) => ({
+  module,
+  canView: 1,
+  canAdd: 1,
+  canEdit: 1,
+  canDelete: 1,
+  dataScope: "all" as const,
+}));
+
+beforeAll(async () => { await updateUserPermissions(testUserId, testPermissions); });
+afterAll(async () => { await updateUserPermissions(testUserId, []); });
 
 function createAdminContext(): TrpcContext {
   return {
+    actor: { id: testUserId, source: "app_user", role: "admin", name: "Admin User", engineerId: null },
     user: {
       id: 1,
       openId: "admin-user",
