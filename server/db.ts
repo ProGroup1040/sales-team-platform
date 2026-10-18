@@ -2151,7 +2151,15 @@ export async function getEngineersCollectionCommission() {
 /** تحديث حالة كوميشن (صرف) */
 export async function markCommissionPaid(id: number) {
   const db = await requireDb();
-  await db.update(commissionPayments).set({ status: "paid", paidAt: new Date() }).where(eq(commissionPayments.id, id));
+  const [result] = await db.update(commissionPayments)
+    .set({ status: "paid", paidAt: new Date() })
+    .where(and(
+      eq(commissionPayments.id, id),
+      eq(commissionPayments.status, "pending"),
+    ));
+  if (Number((result as { affectedRows?: number }).affectedRows) !== 1) {
+    throw new Error("Commission payment is not available for settlement");
+  }
 }
 
 /** إضافة عقد جديد */

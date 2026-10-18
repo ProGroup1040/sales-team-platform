@@ -2299,7 +2299,7 @@ export const appRouter = router({
       return getEngineersCollectionCommission();
     }),
     // صرف كوميشن
-    markCommissionPaid: adminProcedure.input(z.object({ id: z.number() }))
+    markCommissionPaid: adminProcedure.input(z.object({ id: z.number().int().positive() }))
       .mutation(async ({ input, ctx }) => {
         await requireAllScope(ctx, "collections", "canEdit");
         await markCommissionPaid(input.id);
