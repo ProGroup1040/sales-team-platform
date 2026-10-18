@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import * as XLSX from "xlsx";
 import { useLocalAuth } from "@/hooks/useLocalAuth";
+import { serializeCsv } from "@shared/csv";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -90,8 +91,7 @@ const spreadsheetDate = (value: unknown) => {
 };
 
 function downloadCsv(filename: string, rows: Array<Array<string | number | null | undefined>>) {
-  const escape = (value: string | number | null | undefined) => `"${String(value ?? "").replace(/"/g, '""')}"`;
-  const content = `\uFEFF${rows.map((row) => row.map(escape).join(",")).join("\n")}`;
+  const content = serializeCsv(rows);
   const url = URL.createObjectURL(new Blob([content], { type: "text/csv;charset=utf-8;" }));
   const anchor = document.createElement("a");
   anchor.href = url;

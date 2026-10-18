@@ -87,6 +87,7 @@ Every completed row must link to code, tests, or an environment verification rec
 - [x] Raise the password policy for newly created or reset app-user accounts while preserving login compatibility for existing accounts.
 - [x] Add server-side session-version invalidation for local and app-user sessions after credential, role, or account-status changes.
 - [ ] Audit database failure behavior, transaction boundaries, numeric financial representations, input validation, and HTML rendering; fix only confirmed defects without changing valid business rules.
+- [x] Neutralize spreadsheet-formula prefixes in Project Timeline CSV exports and cover formula-like client values with regression tests.
 - [x] Expand database-unavailable tests to every critical financial write operation in the current cash, commitment, and collection workflow.
 - [x] Expand transaction failure, duplicate-request, retry, and concurrency coverage across the remaining critical payment and target-write paths.
 - [x] Make promise settlement an atomic conditional claim before payment insertion so concurrent collection requests yield exactly one payment and one cash movement.
