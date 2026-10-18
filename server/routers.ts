@@ -8,7 +8,7 @@ import { getRequestCookie, setResponseCookie, clearResponseCookie } from "./_cor
 import { TRPCError } from "@trpc/server";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { getWebPushPublicKey, savePushSubscription, removePushSubscription } from "./pushNotifications";
-import { mergeRoleAndUserPermissions } from "./permissionResolution";
+import { resolveUserPermissions } from "./permissionResolution";
 import {
   getEngineers, getEngineerById, updateEngineerProfile, createEngineer,
   getDailyTasksStats, getTasksList, createTask, updateTaskStatus, rescheduleTask,
@@ -2284,25 +2284,21 @@ export const appRouter = router({
     // جلب صلاحيات الـ role الحالي (للـ DashboardLayout)
     myPermissions: publicProcedure
       .query(async ({ ctx }) => {
-        // 1) Try local session (username/password login)
+        // UI visibility is based only on explicit per-user grants. Role-based
+        // admin checks remain separate for security-sensitive management APIs.
         const session = await getLocalSessionFromRequest(ctx.req);
         if (session) {
-          if (session.role === "admin") return getRolePermissions("admin");
           const linkedUser = await getAppUserByEngineerId(session.engineerId);
-          if (!linkedUser) return getRolePermissions(session.role);
-          const userPermissions = await getUserPermissions(linkedUser.id);
-          const rolePermissions = await getRolePermissions(linkedUser.role ?? session.role);
-          return mergeRoleAndUserPermissions(rolePermissions, userPermissions);
+          if (!linkedUser) return [];
+          return resolveUserPermissions(await getUserPermissions(linkedUser.id));
         }
         if (ctx.actor?.source === "app_user") {
-          if (ctx.actor.role === "admin") return getRolePermissions("admin");
-          const userPermissions = await getUserPermissions(ctx.actor.id);
-          const rolePermissions = await getRolePermissions(ctx.actor.role);
-          return mergeRoleAndUserPermissions(rolePermissions, userPermissions);
+          return resolveUserPermissions(await getUserPermissions(ctx.actor.id));
         }
-        if (ctx.user?.role === "admin") return getRolePermissions("admin");
+        // OAuth identities without a matching app_users row have no direct
+        // operational grants; authentication alone never grants module access.
         return [];
-      }),
+      }),,
   }),
 
   leadDailyStats: router({
