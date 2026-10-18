@@ -79,4 +79,24 @@ describe("manual target override persistence", () => {
       addedBy: "admin",
     })).rejects.toThrow("Database unavailable");
   });
+
+  it("fails explicitly for engineer and daily-task writes when persistence is unavailable", async () => {
+    delete process.env.DATABASE_URL;
+    vi.resetModules();
+    const {
+      createEngineer,
+      createEngineerWithRole,
+      createTask,
+      deleteEngineer,
+      rescheduleTask,
+      updateEngineerProfile,
+    } = await import("./db");
+
+    await expect(createEngineer({ name: "مهندس اختبار" })).rejects.toThrow("Database unavailable");
+    await expect(createEngineerWithRole({ name: "مهندس اختبار" })).rejects.toThrow("Database unavailable");
+    await expect(updateEngineerProfile(77, { name: "اسم محدث" })).rejects.toThrow("Database unavailable");
+    await expect(deleteEngineer(77)).rejects.toThrow("Database unavailable");
+    await expect(createTask({ engineerId: 77, taskDate: "2026-10-18", title: "مهمة اختبار" })).rejects.toThrow("Database unavailable");
+    await expect(rescheduleTask(77, "2026-10-19")).rejects.toThrow("Database unavailable");
+  });
 });

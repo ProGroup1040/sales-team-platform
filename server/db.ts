@@ -124,8 +124,7 @@ export async function getEngineerById(id: number) {
   return eng ?? null;
 }
 export async function updateEngineerProfile(id: number, data: { name?: string; department?: string; role?: string; phone?: string; email?: string; seniority?: string }) {
-  const db = await getDb();
-  if (!db) return;
+  const db = await requireDb();
   const updates: Record<string, any> = {};
   if (data.name !== undefined) updates.name = data.name;
   if (data.department !== undefined) updates.department = data.department as any;
@@ -139,8 +138,7 @@ export async function updateEngineerProfile(id: number, data: { name?: string; d
   }
 }
 export async function createEngineer(data: { name: string; email?: string; phone?: string; department?: string; role?: string }) {
-  const db = await getDb();
-  if (!db) return;
+  const db = await requireDb();
   await db.insert(engineers).values({ ...data, department: (data.department as any) ?? 'sales_engineer', role: (data.role as any) ?? 'sales_engineer', status: 'active' });
 }
 
@@ -266,8 +264,7 @@ export async function createTask(data: {
   notes?: string;
   reminderMinutes?: number;
 }) {
-  const db = await getDb();
-  if (!db) return;
+  const db = await requireDb();
   // Auto-set category from taskType if not provided
   let category = data.category ?? null;
   if (!category && data.taskType) {
@@ -358,8 +355,7 @@ export async function deleteTask(id: number) {
 }
 
 export async function rescheduleTask(id: number, newDate: string) {
-  const db = await getDb();
-  if (!db) return;
+  const db = await requireDb();
   const [original] = await db.select().from(dailyTasks).where(eq(dailyTasks.id, id)).limit(1);
   if (!original) return;
   await db.insert(dailyTasks).values({
@@ -380,8 +376,7 @@ export async function getEngineersWithRole() {
 }
 
 export async function createEngineerWithRole(data: { name: string; email?: string; phone?: string; department?: string; role?: string; seniority?: string }) {
-  const db = await getDb();
-  if (!db) return;
+  const db = await requireDb();
   await db.insert(engineers).values({
     ...data,
     department: (data.department as any) ?? 'sales_engineer',
@@ -392,8 +387,7 @@ export async function createEngineerWithRole(data: { name: string; email?: strin
 }
 
 export async function deleteEngineer(id: number) {
-  const db = await getDb();
-  if (!db) return;
+  const db = await requireDb();
   await db.update(engineers).set({ status: 'inactive' }).where(eq(engineers.id, id));
 }
 
