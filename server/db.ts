@@ -11232,46 +11232,48 @@ export async function createAppUser(data: {
 // ─── Create Default Permissions ──────────────────────────────────────────────
 export async function createDefaultPermissions(
   userId: number,
-  role: string
+  _role: string
 ): Promise<void> {
+  // New accounts receive explicit deny rows for every supported module. Role
+  // templates remain available to admins as references, but never grant access.
+  const modules = Object.keys(DEFAULT_ROLE_PERMISSIONS.sales_engineer);
+  const denied = modules.map((module) => ({
+    module,
+    canView: 0,
+    canAdd: 0,
+    canEdit: 0,
+    canDelete: 0,
+    dataScope: "own" as const,
+  }));
   const db = await getDb();
-  const defaults = DEFAULT_ROLE_PERMISSIONS[role] ?? DEFAULT_ROLE_PERMISSIONS.sales_engineer;
-  const modules = Object.keys(defaults) as Array<keyof typeof defaults>;
   if (!db) {
     if (useTestAppUserStore()) {
       const now = new Date();
-      testUserPermissions.set(userId, modules.map((module, index) => ({
+      testUserPermissions.set(userId, denied.map((perm, index) => ({
         id: index + 1,
         userId,
-        module: module as UserPermission["module"],
-        canView: defaults[module].canView,
-        canAdd: defaults[module].canAdd,
-        canEdit: defaults[module].canEdit,
-        canDelete: defaults[module].canDelete,
-        dataScope: defaults[module].dataScope,
+        module: perm.module as UserPermission["module"],
+        canView: 0,
+        canAdd: 0,
+        canEdit: 0,
+        canDelete: 0,
+        dataScope: "own",
         createdAt: now,
         updatedAt: now,
       })));
+      return;
     }
-    return;
+    throw new Error("Database not available");
   }
-
-  // Insert the role's complete permission set in one statement. Besides being
-  // atomic at the statement level, this prevents account creation from making
-  // many round-trips while parallel integration tests and real user creation
-  // contend for the same database connection.
-  await db.insert(userPermissions).values(modules.map((module) => {
-    const perm = defaults[module];
-    return {
-      userId,
-      module: module as any,
-      canView: perm.canView,
-      canAdd: perm.canAdd,
-      canEdit: perm.canEdit,
-      canDelete: perm.canDelete,
-      dataScope: perm.dataScope,
-    };
-  }));
+  await db.insert(userPermissions).values(denied.map((perm) => ({
+    userId,
+    module: perm.module as any,
+    canView: 0,
+    canAdd: 0,
+    canEdit: 0,
+    canDelete: 0,
+    dataScope: "own" as const,
+  })));
 }
 // ─── App-user token security ───────────────────────────────────────────────────
 const TEST_APP_USER_JWT_SECRET = "sales-team-platform-test-only-secret";
