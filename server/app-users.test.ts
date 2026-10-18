@@ -109,6 +109,18 @@ describe("Internal App Users System", () => {
     expect(crmPerm?.canEdit).toBe(0);
   });
 
+  it("canonicalizes the legacy deals alias before persisting user permissions", async () => {
+    await updateUserPermissions(testUserId, [
+      { module: "deals", canView: 1, canAdd: 0, canEdit: 1, canDelete: 0, dataScope: "own" as const },
+    ]);
+
+    const permissions = await getUserPermissions(testUserId);
+    expect(permissions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ module: "closing", canView: 1, canEdit: 1 }),
+    ]));
+    expect(permissions.some((permission) => permission.module === "deals")).toBe(false);
+  });
+
   it("should log activity", async () => {
     await logActivity({ userId: testUserId, action: "login", details: "Test login" });
     const logs = await getActivityLogs({ userId: testUserId, limit: 5 });

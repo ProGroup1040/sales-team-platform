@@ -81,8 +81,24 @@ const AUTHORIZATION_EXEMPT_NAMESPACES = new Set([
   "system", // systemRouter has its own adminProcedure boundary.
 ]);
 
-function operationPermission(path: string, type: "query" | "mutation" | "subscription"): "canView" | "canAdd" | "canEdit" | "canDelete" {
+type OperationalPermission = "canView" | "canAdd" | "canEdit" | "canDelete";
+
+// Mutations whose names are ambiguous must be classified explicitly. Do not
+// infer destructive actions from an entity name or edits from `record` alone.
+const OPERATION_PERMISSION_OVERRIDES: Record<string, OperationalPermission> = {
+  "softDelete.engineer": "canDelete",
+  "softDelete.task": "canDelete",
+  "softDelete.lead": "canDelete",
+  "softDelete.visit": "canDelete",
+  "softDelete.deal": "canDelete",
+  "playbook.updateRecording": "canEdit",
+  "session.updateRecording": "canEdit",
+};
+
+export function operationPermission(path: string, type: "query" | "mutation" | "subscription"): OperationalPermission {
   if (type === "query" || type === "subscription") return "canView";
+  const explicitPermission = OPERATION_PERMISSION_OVERRIDES[path];
+  if (explicitPermission) return explicitPermission;
   const leaf = path.split(".").at(-1)?.toLowerCase() ?? "";
   if (/(delete|remove|purge|archive|cancel|softdelete)/.test(leaf)) return "canDelete";
   if (/(create|add|insert|import|log|upload|submit|record|generate|clone)/.test(leaf)) return "canAdd";

@@ -11273,7 +11273,10 @@ export async function createDefaultPermissions(
     canEdit: 0,
     canDelete: 0,
     dataScope: "own" as const,
-  })));
+  }))).onDuplicateKeyUpdate({
+    // Preserve an already assigned grant if creation races a backfill or retry.
+    set: { id: sql`${userPermissions.id}` },
+  });
 }
 // ─── App-user token security ───────────────────────────────────────────────────
 const TEST_APP_USER_JWT_SECRET = "sales-team-platform-test-only-secret";
@@ -11499,11 +11502,15 @@ export async function updateUserPermissions(
     dataScope: "own" | "all";
   }>
 ): Promise<void> {
+  const canonicalPermissions = permissions.map((permission) => ({
+    ...permission,
+    module: canonicalPermissionModule(permission.module),
+  }));
   const db = await getDb();
   if (!db) {
     if (useTestAppUserStore()) {
       const now = new Date();
-      testUserPermissions.set(userId, permissions.map((perm, index) => ({
+      testUserPermissions.set(userId, canonicalPermissions.map((perm, index) => ({
         id: index + 1,
         userId,
         module: perm.module as UserPermission["module"],
@@ -11523,7 +11530,7 @@ export async function updateUserPermissions(
   // leave the user with an empty or partially replaced permission set.
   await db.transaction(async tx => {
     await tx.delete(userPermissions).where(eq(userPermissions.userId, userId));
-    for (const perm of permissions) {
+    for (const perm of canonicalPermissions) {
       await tx.insert(userPermissions).values({
         userId,
         module: perm.module as any,

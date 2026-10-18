@@ -1100,7 +1100,9 @@ export const userPermissions = mysqlTable("user_permissions", {
   ]).notNull().default("own"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+}, (table) => ({
+  userModuleUnique: uniqueIndex("user_permissions_user_module_unique").on(table.userId, table.module),
+}));
 export type UserPermission = typeof userPermissions.$inferSelect;
 export type InsertUserPermission = typeof userPermissions.$inferInsert;
 
