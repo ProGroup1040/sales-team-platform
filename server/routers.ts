@@ -2818,7 +2818,7 @@ export const appRouter = router({
           );
           if (new Set(canonicalModules).size !== canonicalModules.length) {
             ctx.addIssue({
-              code: z.ZodIssueCode.custom,
+              code: "custom",
               message: 'لا يمكن إرسال أكثر من سجل صلاحية لنفس الوحدة',
             });
           }
