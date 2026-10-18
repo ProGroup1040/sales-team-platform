@@ -80,15 +80,15 @@ const AUTHORIZATION_EXEMPT_NAMESPACES = new Set([
   "pushNotifications", // Must enforce actor ownership in each notification procedure.
 ]);
 
-function operationPermission(path: string, type: "query" | "mutation"): "canView" | "canAdd" | "canEdit" | "canDelete" {
-  if (type === "query") return "canView";
+function operationPermission(path: string, type: "query" | "mutation" | "subscription"): "canView" | "canAdd" | "canEdit" | "canDelete" {
+  if (type === "query" || type === "subscription") return "canView";
   const leaf = path.split(".").at(-1)?.toLowerCase() ?? "";
   if (/(delete|remove|purge|archive|cancel|softdelete)/.test(leaf)) return "canDelete";
   if (/(create|add|insert|import|log|upload|submit|record|generate|clone)/.test(leaf)) return "canAdd";
   return "canEdit";
 }
 
-async function requireOperationalPermission(path: string, type: "query" | "mutation", ctx: TrpcContext) {
+async function requireOperationalPermission(path: string, type: "query" | "mutation" | "subscription", ctx: TrpcContext) {
   const namespace = path.split(".")[0] ?? "";
   const actor = actorFromContext(ctx);
   if (!actor) throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
@@ -111,13 +111,12 @@ async function requireOperationalPermission(path: string, type: "query" | "mutat
   let module = MODULE_BY_NAMESPACE[namespace];
   if (namespace === "softDelete") {
     const entity = path.split(".")[1] ?? "";
-    module = ({
-      lead: "crm",
-      visit: "visits",
-      deal: "closing",
-      task: "tasks",
-      engineer: "tasks",
-    } as Record<string, string>)[entity] ?? "";
+    module = entity.includes("lead") ? "crm"
+      : entity.includes("visit") ? "visits"
+      : entity.includes("deal") ? "closing"
+      : entity.includes("task") ? "tasks"
+      : entity.includes("engineer") ? "tasks"
+      : "";
   }
   if (!module) {
     // Fail closed: adding a new protected router requires an explicit module
