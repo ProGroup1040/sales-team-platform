@@ -12226,23 +12226,44 @@ export async function listEngineersWithAccountStatus(): Promise<Array<{
 }>> {
   const db = await getDb();
   if (!db) return [];
-  const all = await db.select({
-    id: engineers.id,
-    name: engineers.name,
-    role: engineers.role,
-    department: engineers.department,
-    status: engineers.status,
-    username: engineers.username,
-    forcePasswordChange: (engineers as any).forcePasswordChange,
-  }).from(engineers).where(eq(engineers.isDeleted, 0)).orderBy(engineers.name);
-  return all.map(e => ({
-    ...e,
-    hasAccount: !!e.username,
-    forcePasswordChange: e.forcePasswordChange ?? 0,
-  }));
+
+  const [all, linkedAppUsers] = await Promise.all([
+    db.select({
+      id: engineers.id,
+      name: engineers.name,
+      role: engineers.role,
+      department: engineers.department,
+      status: engineers.status,
+      username: engineers.username,
+      forcePasswordChange: (engineers as any).forcePasswordChange,
+    }).from(engineers).where(eq(engineers.isDeleted, 0)).orderBy(engineers.name),
+    db.select({
+      engineerId: appUsers.engineerId,
+      username: appUsers.username,
+    }).from(appUsers),
+  ]);
+
+  const appUserByEngineerId = new Map<number, { username: string }>();
+  for (const user of linkedAppUsers) {
+    if (user.engineerId != null && !appUserByEngineerId.has(user.engineerId)) {
+      appUserByEngineerId.set(user.engineerId, { username: user.username });
+    }
+  }
+
+  return all.map(e => {
+    const linkedUser = appUserByEngineerId.get(e.id);
+    return {
+      ...e,
+      // This screen manages identities used by the permission system, so a
+      // legacy username alone is not enough: the linked app_users row matters.
+      hasAccount: Boolean(linkedUser),
+      username: linkedUser?.username ?? e.username ?? null,
+      forcePasswordChange: e.forcePasswordChange ?? 0,
+    };
+  });
 }
 
-/** إنشاء حسابات تلقائياً لكل المهندسين الذين ليس لديهم username */
+/** إنشاء أو مزامنة حسابات المهندسين التي ينقصها ربط app_users */
 export async function bulkCreateEngineersAccounts(defaultPassword: string): Promise<{
   created: Array<{ id: number; name: string; username: string }>;
   skipped: Array<{ id: number; name: string; reason: string }>;
@@ -12253,30 +12274,80 @@ export async function bulkCreateEngineersAccounts(defaultPassword: string): Prom
   );
   const created: Array<{ id: number; name: string; username: string }> = [];
   const skipped: Array<{ id: number; name: string; reason: string }> = [];
-  const passwordHash = await bcrypt.hash(defaultPassword, 12);
+
   for (const eng of allEngineers) {
-    if (eng.username) {
-      skipped.push({ id: eng.id, name: eng.name, reason: "لديه حساب بالفعل" });
+    const [linkedUser] = await db.select({
+      id: appUsers.id,
+      username: appUsers.username,
+    }).from(appUsers).where(eq(appUsers.engineerId, eng.id)).limit(1);
+
+    if (linkedUser) {
+      skipped.push({ id: eng.id, name: eng.name, reason: "مرتبط بحساب مستخدم بالفعل" });
       continue;
     }
-    // توليد username فريد
-    let baseUsername = generateUsername(eng.name, eng.role);
+
+    // Legacy engineer logins can exist without the app_users identity required
+    // by per-user permissions. Synchronize them without changing their password.
+    if (eng.username) {
+      const normalizedUsername = eng.username.trim().toLowerCase();
+      const [usernameOwner] = await db.select({
+        id: appUsers.id,
+        engineerId: appUsers.engineerId,
+      }).from(appUsers).where(eq(appUsers.username, normalizedUsername)).limit(1);
+
+      if (usernameOwner) {
+        skipped.push({
+          id: eng.id,
+          name: eng.name,
+          reason: "اسم المستخدم مستخدم في حساب نظام آخر؛ يلزم حل التعارض يدوياً",
+        });
+        continue;
+      }
+
+      let passwordHash = eng.passwordHash;
+      if (!passwordHash) {
+        // Recover an incomplete legacy account with the explicitly supplied
+        // temporary password and force a password change at next login.
+        passwordHash = await bcrypt.hash(defaultPassword, 12);
+        await db.update(engineers).set({
+          passwordHash,
+          forcePasswordChange: 1,
+          sessionVersion: sql`${engineers.sessionVersion} + 1`,
+        } as any).where(eq(engineers.id, eng.id));
+      }
+
+      await ensureAppUserForEngineerAccount({
+        engineerId: eng.id, name: eng.name, username: normalizedUsername,
+        passwordHash, role: eng.role, email: eng.email,
+      });
+      created.push({ id: eng.id, name: eng.name, username: normalizedUsername });
+      continue;
+    }
+
+    // New account names must be unique across both account stores.
+    const baseUsername = generateUsername(eng.name, eng.role);
     let username = baseUsername;
     let counter = 1;
-    // التحقق من التكرار
     while (true) {
-      const [existing] = await db.select({ id: engineers.id }).from(engineers)
-        .where(eq(engineers.username, username)).limit(1);
-      if (!existing) break;
+      const [existingEngineer, existingAppUser] = await Promise.all([
+        db.select({ id: engineers.id }).from(engineers)
+          .where(eq(engineers.username, username)).limit(1),
+        db.select({ id: appUsers.id }).from(appUsers)
+          .where(eq(appUsers.username, username)).limit(1),
+      ]);
+      if (existingEngineer.length === 0 && existingAppUser.length === 0) break;
       username = `${baseUsername}${counter}`;
       counter++;
     }
+
+    const passwordHash = await bcrypt.hash(defaultPassword, 12);
     await db.update(engineers).set({
       username,
       passwordHash,
       forcePasswordChange: 1,
       sessionVersion: sql`${engineers.sessionVersion} + 1`,
     } as any).where(eq(engineers.id, eng.id));
+
     await ensureAppUserForEngineerAccount({
       engineerId: eng.id, name: eng.name, username, passwordHash,
       role: eng.role, email: eng.email,
