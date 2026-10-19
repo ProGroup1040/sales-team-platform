@@ -2518,11 +2518,27 @@ export const appRouter = router({
       .query(async ({ input }) => getProducts(input)),
     categories: protectedProcedure.query(async () => getProductCategories()),
     create: protectedProcedure.input(z.object({ name: z.string().min(1), sku: z.string().optional(), category: z.string().optional(), price: z.string(), cost: z.string().optional(), stock: z.number().optional(), minStock: z.number().optional(), unit: z.string().optional(), description: z.string().optional(), status: z.string().optional() }))
-      .mutation(async ({ input }) => { await createProduct({ ...input, status: input.status ?? 'active' }); return { success: true }; }),
+      .mutation(async ({ input, ctx }) => {
+        await requireFinancialManager(ctx, "إدارة كتالوج المنتجات متاحة للإدارة المالية فقط");
+        await requireAllScope(ctx, "pricing_system", "canAdd");
+        await createProduct({ ...input, status: input.status ?? 'active' });
+        return { success: true };
+      }),
     update: protectedProcedure.input(z.object({ id: z.number(), name: z.string().optional(), sku: z.string().optional(), category: z.string().optional(), price: z.string().optional(), cost: z.string().optional(), stock: z.number().optional(), minStock: z.number().optional(), unit: z.string().optional(), description: z.string().optional(), status: z.string().optional() }))
-      .mutation(async ({ input }) => { const { id, ...data } = input; await updateProduct(id, data); return { success: true }; }),
+      .mutation(async ({ input, ctx }) => {
+        await requireFinancialManager(ctx, "تعديل كتالوج المنتجات متاح للإدارة المالية فقط");
+        await requireAllScope(ctx, "pricing_system", "canEdit");
+        const { id, ...data } = input;
+        await updateProduct(id, data);
+        return { success: true };
+      }),
     delete: protectedProcedure.input(z.object({ id: z.number() }))
-      .mutation(async ({ input }) => { await deleteProduct(input.id); return { success: true }; }),
+      .mutation(async ({ input, ctx }) => {
+        await requireFinancialManager(ctx, "حذف منتجات الكتالوج متاح للإدارة المالية فقط");
+        await requireAllScope(ctx, "pricing_system", "canDelete");
+        await deleteProduct(input.id);
+        return { success: true };
+      }),
   }),
 
   // ─── Admin Sales Tasks ────────────────────────────────────────────────────
@@ -3113,7 +3129,9 @@ export const appRouter = router({
         renderUrl: z.string().optional(),
         sortOrder: z.number().optional(),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        await requireFinancialManager(ctx, "إدارة كتالوج الـ Playbook متاحة للإدارة المالية فقط");
+        await requireAllScope(ctx, "pricing_system", "canAdd");
         await createPlaybookItem({ ...input, price: input.price?.toString() });
         return { success: true };
       }),
@@ -3136,14 +3154,20 @@ export const appRouter = router({
         renderUrl: z.string().optional(),
         sortOrder: z.number().optional(),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        await requireFinancialManager(ctx, "تعديل كتالوج الـ Playbook متاح للإدارة المالية فقط");
+        await requireAllScope(ctx, "pricing_system", "canEdit");
         const { id, price, ...rest } = input;
         await updatePlaybookItem(id, { ...rest, price: price?.toString() });
         return { success: true };
       }),
     delete: protectedProcedure
       .input(z.object({ id: z.number() }))
-      .mutation(async ({ input }) => deletePlaybookItem(input.id)),
+      .mutation(async ({ input, ctx }) => {
+        await requireFinancialManager(ctx, "حذف عناصر الـ Playbook متاح للإدارة المالية فقط");
+        await requireAllScope(ctx, "pricing_system", "canDelete");
+        return deletePlaybookItem(input.id);
+      }),
     import: protectedProcedure
       .input(z.object({
         items: z.array(z.object({
@@ -3160,7 +3184,9 @@ export const appRouter = router({
           videoUrl: z.string().optional(),
         }))
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        await requireFinancialManager(ctx, "استيراد كتالوج الـ Playbook متاح للإدارة المالية فقط");
+        await requireAllScope(ctx, "pricing_system", "canAdd");
         const items = input.items.map(i => ({ ...i, price: i.price?.toString() }));
         return importPlaybookItems(items);
       }),

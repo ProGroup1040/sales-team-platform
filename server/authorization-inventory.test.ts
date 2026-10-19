@@ -113,12 +113,25 @@ describe("authorization router inventory", () => {
     // that always throws. They are not scoped CRM/task/financial records.
     expect(unguarded.sort()).toEqual([
       "collections.update",
-      "playbook.delete",
       "playbook.getById",
-      "playbook.update",
-      "products.delete",
-      "products.update",
     ]);
+  });
+
+  it("requires financial-management role and all-scope for shared catalog writes", () => {
+    const catalogWrites: Array<[string, string, string]> = [
+      ["products", "create", "canAdd"],
+      ["products", "update", "canEdit"],
+      ["products", "delete", "canDelete"],
+      ["playbook", "create", "canAdd"],
+      ["playbook", "update", "canEdit"],
+      ["playbook", "delete", "canDelete"],
+      ["playbook", "import", "canAdd"],
+    ];
+    for (const [namespace, name, action] of catalogWrites) {
+      const body = procedureSource(namespace, name);
+      expect(body, `${namespace}.${name} must enforce financial-management role`).toContain("requireFinancialManager");
+      expect(body, `${namespace}.${name} must enforce all-scope`).toContain(`requireAllScope(ctx, "pricing_system", "${action}"`);
+    }
   });
 
   it("requires user-management authorization for the top-level engineer creation route", () => {
