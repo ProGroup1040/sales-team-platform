@@ -157,27 +157,27 @@ describe.skipIf(!enabled)("deal direct-ID scope enforcement", () => {
       monthlyCap: 1000,
     })).rejects.toMatchObject({ code: "FORBIDDEN" });
 
-    await expect(caller().closing.setEngineerTarget({
+    await expect(caller().sales.setEngineerTarget({
       engineerId: ownEngineerId,
       year: 2026,
       month: 10,
       targetAmount: 10000,
     })).rejects.toMatchObject({ code: "FORBIDDEN" });
 
-    await expect(caller().closing.setOperationalTargets({
+    await expect(caller().sales.setOperationalTargets({
       engineerId: ownEngineerId,
       year: 2026,
       month: 10,
       targetClosings: 10,
     })).rejects.toMatchObject({ code: "FORBIDDEN" });
 
-    await expect(caller().closing.upsertDiscountTier({
+    await expect(caller().sales.upsertDiscountTier({
       minSales: 0,
       maxDiscountPct: 5,
       label: `${suffix}-unauthorized-tier`,
     })).rejects.toMatchObject({ code: "FORBIDDEN" });
 
-    await expect(caller().closing.upsertCommissionTier({
+    await expect(caller().sales.upsertCommissionTier({
       minAchievementPct: 0,
       commissionPct: 5,
       label: `${suffix}-unauthorized-tier`,
