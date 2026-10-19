@@ -82,3 +82,24 @@ Migration 0075 was changed to execute its conditional DDL through a temporary st
 ### Current release decision
 
 `BLOCKED`. PR #3 remains Draft and must not be merged or deployed. Production access is unavailable in this environment: no deployed server log, redacted `SHOW CREATE TABLE payments`, migration ledger, or deployed revision was provided. The exact production root cause of `financial.periodAnalysis` HTTP 500 is therefore still unconfirmed. The CI migration blocker is confirmed separately and has a narrowly scoped remediation pending CI verification. Full MySQL integration and cross-user own/all authorization evidence are still required before changing the decision to `READY FOR REVIEW`.
+
+### Final CI evidence for the current branch
+
+GitHub Actions run [39214263310](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39214263310) passed for commit `062f989` (`test: use valid engineer for commission fixture`). The run used MySQL 8.4 and passed database migrations, TypeScript check, runtime `/healthz` and `/readyz` readiness checks, the full Vitest suite, and the production build. This proves the repository fixture database and this exact SHA; it does not prove the production database or deployment revision.
+
+The earlier CI failures were resolved in sequence: migration 0075 parser failure (`39133558274`), invalid deal fixture (`39212703401`), invalid contract fixture (`39214025821`), and invalid commission fixture (the final run above). Foreign keys remained enabled throughout; the tests were corrected to create real engineer fixtures rather than weakening schema enforcement.
+
+### Updated release-gate table
+
+| Gate | Current status | Evidence |
+|---|---|---|
+| Migration 0075 on fresh MySQL 8.4 | PASSED | CI run `39214263310`, migration step passed |
+| Full CI on tested SHA `062f989` | PASSED | [GitHub Actions run](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39214263310) |
+| Exact production MySQL error for `financial.periodAnalysis` | BLOCKED | Production server log still required |
+| Production `SHOW CREATE TABLE payments` | BLOCKED | Redacted output from affected database still required |
+| Migration 0074 duplicate preflight on legacy clone | NOT VERIFIED | Sanitized legacy clone or query result still required |
+| Migration 0075 legacy/both/neither state matrix | NOT VERIFIED | Disposable MySQL state-matrix execution still required |
+| Cross-user `own/all` integration coverage for all sensitive reads/writes/reports/exports | NOT VERIFIED | Adversarial integration evidence still required |
+| Deployed revision and migration ledger | BLOCKED | Target environment metadata still required |
+
+The release decision remains **`BLOCKED`**. PR #3 is still Draft and must not be merged or deployed until the production evidence and remaining legacy/scope gates are supplied and verified.
