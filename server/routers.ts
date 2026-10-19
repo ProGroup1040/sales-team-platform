@@ -622,7 +622,12 @@ async function requireTaskAction(ctx: any, action: TaskAction, taskId?: number) 
 function taskEngineerFilter(access: TaskAccess, requestedEngineerId?: number) {
   // Team membership is not modeled yet; fail closed instead of exposing all rows.
   if (access.scope === "all") return requestedEngineerId;
-  if (!access.caller.engineerId) throw new TRPCError({ code: "FORBIDDEN", message: "لا يوجد مهندس مرتبط بهذا الحساب" });
+  if (!access.caller.engineerId) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "صلاحية المهام لهذا الحساب محددة على own لكن الحساب غير مرتبط بمهندس. اربط الحساب بمهندس أو غيّر نطاق صلاحية المهام إلى all إذا كان ذلك مصرحًا.",
+    });
+  }
   return access.caller.engineerId;
 }
 
@@ -3631,6 +3636,13 @@ export const appRouter = router({
         const target = await getAppUserById(input.userId);
         if (!target) throw new TRPCError({ code: 'NOT_FOUND', message: 'المستخدم غير موجود' });
         assertCanAssignRole(caller.role, target.role);
+        const taskPermission = input.permissions.find((permission) => permission.module === "tasks");
+        if (taskPermission?.dataScope === "own" && !target.engineerId) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "نطاق صلاحية المهام own يتطلب ربط المستخدم بمهندس. اربط الحساب بمهندس أو اختر all فقط إذا كانت صلاحية عرض بيانات الفريق معتمدة لهذا المستخدم.",
+          });
+        }
         await updateUserPermissions(input.userId, input.permissions);
         await logActivity({ userId: caller.id, action: 'permission_change', module: 'users', recordId: input.userId, details: `تحديث صلاحيات مستخدم #${input.userId}` });
         return { success: true };
