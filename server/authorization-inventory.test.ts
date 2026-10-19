@@ -102,7 +102,7 @@ describe("authorization router inventory", () => {
         const declaration = declarations[index];
         const procedureEnd = index + 1 < declarations.length ? declarations[index + 1].index! : segment.length;
         const body = segment.slice(declaration.index!, procedureEnd);
-        const hasRecordIdInput = /\b(?:id|taskId|dealId|visitId|leadId|engineerId|collectionId|sessionId|userId)\s*:\s*z\.number/.test(body);
+        const hasRecordIdInput = /\b(?:id|taskId|dealId|visitId|leadId|engineerId|collectionId|sessionId|userId|quotationId|promiseId|projectId|meetingId|commitmentId|paymentId|contractId|dealTaskId|reviewId|recordingId|weekMeetingId)\s*:\s*z\.number/.test(body);
         if (!hasRecordIdInput) continue;
         const hasScopeOrDedicatedGuard = /getOperationalScopeAccess|requireAllScope|scopedEngineerId|getEngineersForScope|taskEngineerFilter|require\w*(?:Scope|Access|Caller|Manager|Action)|assertCanAssignRole|assertTaskEngineerMatch|canManageFinancials/.test(body);
         if (!hasScopeOrDedicatedGuard) unguarded.push(`${namespace}.${declaration[1]}`);
