@@ -117,3 +117,9 @@ The following repository-side work was added on the current PR branch and is pen
 | Production error, production schema, deployed SHA, and production migration ledger | BLOCKED | Requires read-only evidence from the affected deployment; repository CI cannot establish this |
 
 No production data, credentials, financial records, access policy, or historical values were changed. The release decision remains **`BLOCKED`** until the new MySQL integration tests pass on the exact PR head and the production-only evidence plus required human approval are supplied.
+
+## Exact-head CI result — 2026-10-19
+
+GitHub Actions run [39216970706](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39216970706) passed for commit `2bde9c3a91d04c69a3a348748d0db64246ad9fa7`. The `validate` job completed successfully on MySQL 8.4, including database migrations, TypeScript checking, runtime readiness checks, the full Vitest suite, and the production build. This run verifies the repository-side migration state matrix, October financial period regression, and own/all financial authorization tests on the CI fixture database.
+
+PR #3 remains open and Draft. GitHub reports it as mergeable with a clean merge state and the required CI check green, but no approving review is recorded. The exact production error, redacted production `payments` schema, deployed revision, and production migration ledger remain unavailable; therefore the release decision remains **`BLOCKED`** and no merge was attempted.
