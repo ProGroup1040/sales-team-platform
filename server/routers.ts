@@ -2252,6 +2252,7 @@ export const appRouter = router({
       notes: z.string().trim().max(2_000).optional(),
     })).mutation(async ({ input, ctx }) => {
       await requireAllScope(ctx, "collections", "canAdd");
+      if (input.dealId !== undefined) await requireDealRecordScope(ctx, input.dealId, "canView");
       const result = await addCollection(input);
       return { success: true, id: (result as { insertId?: number })?.insertId };
     }),
