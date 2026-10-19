@@ -750,13 +750,16 @@ async function requireFinancialManager(ctx: any, message: string) {
 }
 
 async function requireAccountingMonthManager(ctx: any) {
-  const req = (ctx as any).req;
-  const session = await (await import("./localAuth")).getLocalSessionFromRequest(req);
-  if (!session) throw new TRPCError({ code: "UNAUTHORIZED" });
-  if (!["admin", "manager"].includes(session.role)) {
+  const caller = await getCallerFromContext(ctx);
+  if (!caller) throw new TRPCError({ code: "UNAUTHORIZED" });
+  if (!["admin", "manager"].includes(caller.role)) {
     throw new TRPCError({ code: "FORBIDDEN", message: "تعديل شهر احتساب الصفقة متاح للمدير والمسؤول فقط" });
   }
-  return session;
+  const access = await getOperationalScopeAccess(ctx, "closing", "canEdit");
+  if (access.scope !== "all") {
+    throw new TRPCError({ code: "FORBIDDEN", message: "تغيير شهر الاحتساب يتطلب نطاق الصلاحية all" });
+  }
+  return caller;
 }
 
 async function requireCollectionFinancialAccess(
@@ -1452,8 +1455,20 @@ export const appRouter = router({
       engineerId: z.string().optional(), // لإنشاء Task تلقائياً
       clientName: z.string().optional(), // لإنشاء Task تلقائياً
     })).mutation(async ({ input, ctx }) => {
-      if (input.accountingMonth !== undefined || input.accountingYear !== undefined) {
-        await requireAccountingMonthManager(ctx);
+      const changesAccountingPeriod = input.accountingMonth !== undefined || input.accountingYear !== undefined;
+      if (changesAccountingPeriod) {
+        if (input.accountingMonth === undefined || input.accountingYear === undefined) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "يجب تحديد شهر وسنة الاحتساب معاً" });
+        }
+        const caller = await requireAccountingMonthManager(ctx);
+        await requireDealRecordScope(ctx, input.id, "canEdit");
+        return setDealAccountingMonth({
+          dealId: input.id,
+          accountingMonth: input.accountingMonth,
+          accountingYear: input.accountingYear,
+          setBy: caller.name,
+          setByRole: caller.role,
+        });
       }
       await requireDealRecordScope(ctx, input.id, "canEdit");
       await updateDealFull(input.id, input);
@@ -1603,22 +1618,14 @@ export const appRouter = router({
       accountingMonth: z.number().min(1).max(12),
       accountingYear: z.number().min(2020).max(2100),
     })).mutation(async ({ input, ctx }) => {
-      const req = (ctx as any).req;
-      const session = await (await import('./localAuth')).getLocalSessionFromRequest(req);
-      if (!session) throw new TRPCError({ code: 'UNAUTHORIZED' });
-      if (!['admin', 'manager'].includes(session.role)) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'فقط المدير والمسؤول يمكنهم تغيير شهر الاحتساب' });
-      }
-      const access = await getOperationalScopeAccess(ctx, "closing", "canEdit");
-      if (access.scope !== "all") {
-        throw new TRPCError({ code: "FORBIDDEN", message: "تغيير شهر الاحتساب يتطلب نطاق الصلاحية all" });
-      }
+      const caller = await requireAccountingMonthManager(ctx);
       await requireDealRecordScope(ctx, input.dealId, "canEdit");
       const result = await setDealAccountingMonth({
         dealId: input.dealId,
         accountingMonth: input.accountingMonth,
         accountingYear: input.accountingYear,
-        setBy: session.username,
+        setBy: caller.name,
+        setByRole: caller.role,
       });
       return result;
     }),

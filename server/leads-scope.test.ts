@@ -5,7 +5,9 @@ import { inArray } from "drizzle-orm";
 import { getDb, getLeadsList, getLeadsStats, updateUserPermissions } from "./db";
 import { engineers, leads } from "../drizzle/schema";
 
-describe("lead ownership filtering", () => {
+const enabled = Boolean(process.env.DATABASE_URL);
+
+describe.skipIf(!enabled)("lead ownership filtering", () => {
   const suffix = Date.now().toString();
   const testUserId = 1_000_000_000 + ((Date.now() + process.pid + 41) % 900_000_000);
 
@@ -88,5 +90,7 @@ describe("lead ownership filtering", () => {
       .rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(caller(ownEngineerId).leads.updateStatus({ id: ownLeadId, status: "contacted" }))
       .resolves.toMatchObject({ success: true });
+    const [updatedOwnLead] = await db.select({ status: leads.status }).from(leads).where(inArray(leads.id, [ownLeadId]));
+    expect(updatedOwnLead?.status).toBe("contacted");
   }, 15_000);
 });

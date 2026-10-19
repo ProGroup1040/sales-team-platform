@@ -633,11 +633,14 @@ export const auditLogs = mysqlTable("audit_logs", {
   entityType: mysqlEnum("entityType", ["engineer", "task", "lead", "visit", "deal"]).notNull(),
   entityId: int("entityId").notNull(),
   entityName: varchar("entityName", { length: 255 }),         // اسم العنصر المحذوف
-  action: mysqlEnum("action", ["soft_delete", "restore"]).notNull(),
+  action: mysqlEnum("action", ["soft_delete", "restore", "accounting_month_changed"]).notNull(),
   reason: mysqlEnum("reason", ["data_entry_error", "duplicate", "client_cancelled", "other"]).notNull(),
   reasonCustom: varchar("reasonCustom", { length: 255 }),     // سبب مخصص عند اختيار "other"
   performedBy: varchar("performedBy", { length: 120 }),       // اسم المستخدم الذي نفّذ العملية
+  performedRole: varchar("performedRole", { length: 64 }),
   performedAt: timestamp("performedAt").defaultNow().notNull(),
+  oldValue: text("oldValue"),
+  newValue: text("newValue"),
   notes: text("notes"),
 });
 export type AuditLog = typeof auditLogs.$inferSelect;

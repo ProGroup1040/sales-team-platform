@@ -10,8 +10,10 @@ const migration0076 = readFileSync(new URL("../drizzle/0076_follow_up_task_type.
 const migration0077 = readFileSync(new URL("../drizzle/0077_reconcile_legacy_customers.sql", import.meta.url), "utf8");
 const migration0078 = readFileSync(new URL("../drizzle/0078_reconcile_legacy_sales_contract.sql", import.meta.url), "utf8");
 const migration0079 = readFileSync(new URL("../drizzle/0079_validate_reconciled_sales_schema.sql", import.meta.url), "utf8");
+const migration0080 = readFileSync(new URL("../drizzle/0080_audit_log_accounting_month_history.sql", import.meta.url), "utf8");
 const fixtureId = randomUUID().replace(/-/g, "").slice(0, 20);
 const fixtureTables = {
+  auditLogs: `release_gate_${fixtureId}_audit_logs`,
   collections: `release_gate_${fixtureId}_collections`,
   sales: `release_gate_${fixtureId}_sales`,
   customers: `release_gate_${fixtureId}_customers`,
@@ -20,10 +22,12 @@ const fixtureTables = {
 
 function fixtureSql(statement: string) {
   return statement
+    .replace(/TABLE_NAME = 'audit_logs'/g, `TABLE_NAME = '${fixtureTables.auditLogs}'`)
     .replace(/TABLE_NAME = 'collections'/g, `TABLE_NAME = '${fixtureTables.collections}'`)
     .replace(/TABLE_NAME = 'sales'/g, `TABLE_NAME = '${fixtureTables.sales}'`)
     .replace(/TABLE_NAME = 'customers'/g, `TABLE_NAME = '${fixtureTables.customers}'`)
     .replace(/TABLE_NAME = 'daily_tasks'/g, `TABLE_NAME = '${fixtureTables.dailyTasks}'`)
+    .replace(/`audit_logs`/g, `\`${fixtureTables.auditLogs}\``)
     .replace(/`collections`/g, `\`${fixtureTables.collections}\``)
     .replace(/`sales`/g, `\`${fixtureTables.sales}\``)
     .replace(/`customers`/g, `\`${fixtureTables.customers}\``)
@@ -31,6 +35,7 @@ function fixtureSql(statement: string) {
     .replace(/(?<!['`])\bcollections\b(?!['`])/g, `\`${fixtureTables.collections}\``)
     .replace(/(?<!['`])\bsales\b(?!['`])/g, `\`${fixtureTables.sales}\``)
     .replace(/(?<!['`])\bcustomers\b(?!['`])/g, `\`${fixtureTables.customers}\``)
+    .replace(/(?<!['`])\baudit_logs\b(?!['`])/g, `\`${fixtureTables.auditLogs}\``)
     .replace(/(?<!['`])\bdaily_tasks\b(?!['`])/g, `\`${fixtureTables.dailyTasks}\``);
 }
 
@@ -60,7 +65,7 @@ describe.skipIf(!databaseUrl)("release-gate MySQL migration verification", () =>
 
   afterAll(async () => {
     if (connection) {
-      await connection.query(`DROP TABLE IF EXISTS \`${fixtureTables.dailyTasks}\`, \`${fixtureTables.customers}\`, \`${fixtureTables.sales}\`, \`${fixtureTables.collections}\``);
+      await connection.query(`DROP TABLE IF EXISTS \`${fixtureTables.auditLogs}\`, \`${fixtureTables.dailyTasks}\`, \`${fixtureTables.customers}\`, \`${fixtureTables.sales}\`, \`${fixtureTables.collections}\``);
       await connection.end();
     }
   });
@@ -109,31 +114,31 @@ describe.skipIf(!databaseUrl)("release-gate MySQL migration verification", () =>
   }, 15_000);
 
 
-  it("0075 rejects both amount columns without rewriting either value", async () => {
+  it("0079 rejects both amount columns without rewriting either value", async () => {
     await query("DROP TABLE customers");
     await query("DROP TABLE sales");
     await query("CREATE TABLE sales (id INT PRIMARY KEY, finalAmount DECIMAL(14,2) NOT NULL, netAmount DECIMAL(14,2) NOT NULL)");
     await query("INSERT INTO sales VALUES (1, 123.45, 456.78)");
     await query("CREATE TABLE customers (id INT PRIMARY KEY, notes TEXT)");
 
-    await expect(applyMigration(migration0075)).rejects.toThrow();
+    await expect(applyMigration(migration0079)).rejects.toThrow();
     const [rows] = await query<any[]>("SELECT finalAmount, netAmount FROM sales WHERE id = 1");
     expect(String(rows[0]?.finalAmount)).toBe("123.45");
     expect(String(rows[0]?.netAmount)).toBe("456.78");
   }, 15_000);
 
-  it("0075 rejects neither amount column instead of silently accepting an invalid schema", async () => {
+  it("0079 rejects neither amount column instead of silently accepting an invalid schema", async () => {
     await query("DROP TABLE customers");
     await query("DROP TABLE sales");
     await query("CREATE TABLE sales (id INT PRIMARY KEY)");
     await query("CREATE TABLE customers (id INT PRIMARY KEY, notes TEXT)");
 
-    await expect(applyMigration(migration0075)).rejects.toThrow();
+    await expect(applyMigration(migration0079)).rejects.toThrow();
     const [columns] = await query<any[]>("SHOW COLUMNS FROM sales");
     expect(columns.map((column) => column.Field)).toEqual(["id"]);
   }, 15_000);
 
-  it("0075 rejects missing required tables before changing schema and can safely retry", async () => {
+  it("0075 keeps its issued partial-retry behavior when customers is missing", async () => {
     await query("DROP TABLE customers");
     await query("DROP TABLE sales");
     await query("CREATE TABLE sales (id INT PRIMARY KEY, finalAmount DECIMAL(14,2) NOT NULL)");
@@ -141,8 +146,8 @@ describe.skipIf(!databaseUrl)("release-gate MySQL migration verification", () =>
 
     await expect(applyMigration(migration0075)).rejects.toThrow();
     const [beforeRetry] = await query<any[]>("SHOW COLUMNS FROM sales");
-    expect(beforeRetry.map((column) => column.Field)).toContain("finalAmount");
-    expect(beforeRetry.map((column) => column.Field)).not.toContain("netAmount");
+    expect(beforeRetry.map((column) => column.Field)).not.toContain("finalAmount");
+    expect(beforeRetry.map((column) => column.Field)).toContain("netAmount");
 
     await query("CREATE TABLE customers (id INT PRIMARY KEY)");
     await applyMigration(migration0075);
@@ -215,4 +220,17 @@ describe.skipIf(!databaseUrl)("release-gate MySQL migration verification", () =>
     const [sales] = await query<any[]>("SELECT invoiceNumber, netAmount FROM sales WHERE id = 1");
     expect(sales[0]).toMatchObject({ invoiceNumber: "LEGACY-1", netAmount: "654.32" });
   }, 45_000);
+
+  it("0080 extends audit history without rewriting existing entries", async () => {
+    await query("CREATE TABLE audit_logs (id INT AUTO_INCREMENT PRIMARY KEY, entityType enum('engineer','task','lead','visit','deal') NOT NULL, entityId INT NOT NULL, entityName varchar(255), action enum('soft_delete','restore') NOT NULL, reason enum('data_entry_error','duplicate','client_cancelled','other') NOT NULL, reasonCustom varchar(255), performedBy varchar(120), performedAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP, notes text)");
+    await query("INSERT INTO audit_logs (entityType, entityId, action, reason, performedBy, notes) VALUES ('deal', 7, 'soft_delete', 'other', 'legacy user', 'preserve this')");
+
+    await applyMigration(migration0080);
+    const [columns] = await query<any[]>("SHOW COLUMNS FROM audit_logs");
+    const action = columns.find((column) => column.Field === "action");
+    expect(String(action?.Type)).toContain("'accounting_month_changed'");
+    expect(columns.map((column) => column.Field)).toEqual(expect.arrayContaining(["performedRole", "oldValue", "newValue"]));
+    const [rows] = await query<any[]>("SELECT action, notes FROM audit_logs WHERE id = 1");
+    expect(rows[0]).toMatchObject({ action: "soft_delete", notes: "preserve this" });
+  }, 30_000);
 });

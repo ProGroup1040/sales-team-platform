@@ -12486,34 +12486,41 @@ export async function setDealAccountingMonth(params: {
   accountingMonth: number;
   accountingYear: number;
   setBy: string;
+  setByRole: string;
 }) {
-  const db = await getDb();
-  if (!db) return { success: false, error: 'DB not available' };
-  const deal = await db.select().from(deals).where(eq(deals.id, params.dealId)).then(r => r[0]);
-  if (!deal) return { success: false, error: 'Deal not found' };
-  const oldAccounting = { accountingMonth: deal.accountingMonth, accountingYear: deal.accountingYear };
-  await db.update(deals).set({
-    accountingMonth: params.accountingMonth,
-    accountingYear: params.accountingYear,
-    accountingMonthSetBy: params.setBy,
-    accountingMonthSetAt: new Date(),
-  } as any).where(eq(deals.id, params.dealId));
-  // Log in deal_timeline
-  await addDealTimelineEntry({
-    dealId: params.dealId,
-    engineerId: deal.engineerId,
-    activityType: 'note_added',
-    description: `تغيير شهر الاحتساب المالي إلى ${params.accountingMonth}/${params.accountingYear} بواسطة ${params.setBy}`,
+  const db = await requireDb();
+  await db.transaction(async (tx) => {
+    const [deal] = await tx.select().from(deals).where(eq(deals.id, params.dealId)).limit(1);
+    if (!deal) throw new Error('Deal not found');
+    const oldAccounting = { accountingMonth: deal.accountingMonth, accountingYear: deal.accountingYear };
+    const newAccounting = { accountingMonth: params.accountingMonth, accountingYear: params.accountingYear };
+    const description = `تغيير شهر الاحتساب المالي إلى ${params.accountingMonth}/${params.accountingYear} بواسطة ${params.setBy}`;
+
+    await tx.update(deals).set({
+      accountingMonth: params.accountingMonth,
+      accountingYear: params.accountingYear,
+      accountingMonthSetBy: params.setBy,
+      accountingMonthSetAt: new Date(),
+    } as any).where(eq(deals.id, params.dealId));
+    await tx.insert(dealTimeline).values({
+      dealId: params.dealId,
+      engineerId: deal.engineerId,
+      activityType: 'note_added',
+      description,
+    });
+    await tx.insert(auditLogs).values({
+      action: 'accounting_month_changed',
+      entityType: 'deal',
+      entityId: params.dealId,
+      reason: 'other',
+      reasonCustom: 'accounting_month_changed',
+      performedBy: params.setBy,
+      performedRole: params.setByRole,
+      oldValue: JSON.stringify(oldAccounting),
+      newValue: JSON.stringify(newAccounting),
+      notes: description,
+    });
   });
-  // Log in audit_logs
-  await db.insert(auditLogs).values({
-    action: 'accounting_month_changed',
-    entityType: 'deal',
-    entityId: params.dealId,
-    oldValue: JSON.stringify(oldAccounting),
-    newValue: JSON.stringify({ accountingMonth: params.accountingMonth, accountingYear: params.accountingYear }),
-    performedBy: params.setBy,
-  } as any);
   return { success: true };
 }
 

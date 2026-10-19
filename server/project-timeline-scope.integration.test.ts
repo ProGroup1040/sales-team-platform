@@ -131,7 +131,7 @@ describe.skipIf(!enabled)("project timeline direct-ID scope enforcement", () => 
     const result = await caller().projectTimeline.detail({ projectId: ownProjectId });
     expect(JSON.stringify(result)).toContain(`${suffix}-own-project-client`);
     expect(JSON.stringify(result)).not.toContain(`${suffix}-other-project-client`);
-  });
+  }, 20_000);
 
   it("does not recalculate another engineer's project before denying direct-ID access", async () => {
     const db = await getDb();

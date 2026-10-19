@@ -8,7 +8,7 @@ This section supersedes stale branch-status statements below for the current `ma
 
 | PR | Outcome | CI evidence |
 |---|---|---|
-| #8 | Harden legacy sales-schema migration guards and add forward validation migration | [Run 39251429517](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39251429517) |
+| #8 | Preserve issued legacy sales migration text and add forward schema validation | [Run 39251429517](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39251429517) |
 | #9 | Direct-ID Lead ownership regression test | [Run 39252121282](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39252121282) |
 | #10 | Direct-ID meeting-session read/end scope tests | [Run 39252524302](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39252524302) |
 | #11 | Direct-ID deal timeline/stage mutation tests | [Run 39253025826](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39253025826) |
@@ -73,7 +73,7 @@ The 34 inline router namespaces are explicitly classified by the same static inv
 
 - **Visit-to-lead association:** `visits.create` now validates `leadId` ownership before linking a visit to a lead.
 - **Financial contract-to-deal association:** `financial.addContract` now validates `dealId` scope when a deal link is supplied.
-- **Sensitive closing configuration:** accounting-period fields passed through `closing.updateStage` now require the same admin/manager local session gate as the dedicated endpoint. Discount caps, engineer targets, operational targets, and discount/commission tier writes now require a financial-management role and `closing: all` scope.
+- **Sensitive closing configuration:** accounting-period fields passed through `closing.updateStage` and the dedicated endpoint now use the authenticated actor (local session or app-user token), require an admin/manager role and `closing: all` edit scope, and write an atomic timeline/audit record. Discount caps, engineer targets, operational targets, and discount/commission tier writes now require a financial-management role and `closing: all` scope.
 - **Shared catalog mutation:** `products` and Playbook catalog create/update/delete/import routes previously relied on module/action grants despite changing shared records. They now require a financial-management role and `pricing_system: all` scope.
 - **Discount aggregate exposure:** `closing.validateDiscount` previously returned a team-wide remaining discount budget even to `closing: own` callers. The handler now passes the authorized engineer scope into discount validation; team-wide calculation is retained only for `all` scope.
 - **Cross-engineer quotation association:** `session.create` previously validated an optional deal ID but not the optional quotation ID. It now checks quotation ownership before creating a session linked to that quotation.

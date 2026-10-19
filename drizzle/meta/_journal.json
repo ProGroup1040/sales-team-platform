@@ -561,6 +561,13 @@
       "when": 1792404000000,
       "tag": "0079_validate_reconciled_sales_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "5",
+      "when": 1792417144018,
+      "tag": "0080_audit_log_accounting_month_history",
+      "breakpoints": true
     }
   ]
 }

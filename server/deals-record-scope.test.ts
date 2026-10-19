@@ -1,12 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import type { TrpcContext } from "./_core/context";
 import { appRouter } from "./routers";
 import { getDb, updateUserPermissions } from "./db";
-import { deals, engineers } from "../drizzle/schema";
+import { auditLogs, deals, engineers } from "../drizzle/schema";
 
 const enabled = Boolean(process.env.DATABASE_URL);
 const testUserId = 1_000_000_000 + ((Date.now() + process.pid + 619) % 900_000_000);
+const managerUserId = testUserId + 1;
 const suffix = `deal-record-scope-${Date.now()}-${process.pid}`;
 const engineerIds: number[] = [];
 const dealIds: number[] = [];
@@ -24,6 +25,22 @@ function caller() {
       role: "sales_engineer",
       name: "Own-scope deal record test",
       engineerId: ownEngineerId,
+    },
+    req: { headers: {} } as TrpcContext["req"],
+    res: {} as TrpcContext["res"],
+  };
+  return appRouter.createCaller(ctx);
+}
+
+function managerCaller() {
+  const ctx: TrpcContext = {
+    user: null,
+    actor: {
+      id: managerUserId,
+      source: "app_user",
+      role: "manager",
+      name: "App user manager scope test",
+      engineerId: null,
     },
     req: { headers: {} } as TrpcContext["req"],
     res: {} as TrpcContext["res"],
@@ -94,8 +111,10 @@ describe.skipIf(!enabled)("deal direct-ID scope enforcement", () => {
   afterAll(async () => {
     const db = await getDb();
     if (db && dealIds.length) await db.delete(deals).where(inArray(deals.id, dealIds));
+    if (db && dealIds.length) await db.delete(auditLogs).where(inArray(auditLogs.entityId, dealIds));
     if (db && engineerIds.length) await db.delete(engineers).where(inArray(engineers.id, engineerIds));
     await updateUserPermissions(testUserId, []);
+    await updateUserPermissions(managerUserId, []);
   });
 
   it("scopes deal list and stats to the authenticated engineer despite a forged engineerId filter", async () => {
@@ -135,7 +154,7 @@ describe.skipIf(!enabled)("deal direct-ID scope enforcement", () => {
       id: ownDealId,
       accountingMonth: 1,
       accountingYear: 2026,
-    })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    })).rejects.toMatchObject({ code: "FORBIDDEN" });
 
     const db = await getDb();
     if (!db) throw new Error("Database is required for deal record scope integration tests");
@@ -189,4 +208,44 @@ describe.skipIf(!enabled)("deal direct-ID scope enforcement", () => {
     await expect(caller().closing.updateStage({ id: ownDealId, stage: "negotiation" }))
       .resolves.toMatchObject({ success: true });
   });
+
+  it("allows an app-user manager with all-scope closing access to set the accounting period", async () => {
+    await updateUserPermissions(managerUserId, [{
+      module: "closing", canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all",
+    }]);
+
+    await expect(managerCaller().closing.updateStage({
+      id: ownDealId,
+      accountingMonth: 2,
+      accountingYear: 2027,
+    })).resolves.toMatchObject({ success: true });
+    await expect(managerCaller().closing.setAccountingMonth({
+      dealId: ownDealId,
+      accountingMonth: 3,
+      accountingYear: 2027,
+    })).resolves.toMatchObject({ success: true });
+
+    const db = await getDb();
+    if (!db) throw new Error("Database is required for deal record scope integration tests");
+    const [saved] = await db.select({
+      accountingMonth: deals.accountingMonth,
+      accountingYear: deals.accountingYear,
+    }).from(deals).where(eq(deals.id, ownDealId)).limit(1);
+    expect(saved).toMatchObject({ accountingMonth: 3, accountingYear: 2027 });
+    const [audit] = await db.select({
+      action: auditLogs.action,
+      performedBy: auditLogs.performedBy,
+      performedRole: auditLogs.performedRole,
+      oldValue: auditLogs.oldValue,
+      newValue: auditLogs.newValue,
+    }).from(auditLogs).where(and(eq(auditLogs.entityId, ownDealId), eq(auditLogs.action, "accounting_month_changed")))
+      .orderBy(desc(auditLogs.id)).limit(1);
+    expect(audit).toMatchObject({
+      action: "accounting_month_changed",
+      performedBy: "App user manager scope test",
+      performedRole: "manager",
+      oldValue: JSON.stringify({ accountingMonth: 2, accountingYear: 2027 }),
+      newValue: JSON.stringify({ accountingMonth: 3, accountingYear: 2027 }),
+    });
+  }, 20_000);
 });
