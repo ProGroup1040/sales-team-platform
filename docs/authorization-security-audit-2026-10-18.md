@@ -1,5 +1,49 @@
 # Authorization Security Audit — 2026-10-18
 
+## Follow-up execution — 2026-10-19
+
+This section supersedes stale branch-status statements below for the current `main` follow-up. The audit is **substantially expanded but not certified production-ready**: representative cross-user routes now have MySQL-backed regression tests, and two confirmed scope gaps were fixed. Full endpoint-by-endpoint verification, product/security approval, production evidence, and deployment sign-off remain open.
+
+### Merged changes with successful CI
+
+| PR | Outcome | CI evidence |
+|---|---|---|
+| #8 | Harden legacy sales-schema migration guards and add forward validation migration | [Run 39251429517](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39251429517) |
+| #9 | Direct-ID Lead ownership regression test | [Run 39252121282](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39252121282) |
+| #10 | Direct-ID meeting-session read/end scope tests | [Run 39252524302](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39252524302) |
+| #11 | Direct-ID deal timeline/stage mutation tests | [Run 39253025826](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39253025826) |
+| #12 | Scoped task reads, deal list/stats, and team KPI/report aggregate tests | [Run 39253630425](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39253630425) |
+| #13 | Deal-task direct-ID completion and playbook quotation scope tests | [Run 39253788931](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39253788931) |
+| #14 | Scope discount validation budget to the caller's engineer for `own` scope | [Run 39254142420](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39254142420) |
+| #15 | Admin Sales task direct-ID and engineer-filter tests | [Run 39254286523](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39254286523) |
+| #16 | Project timeline direct-ID detail scope tests | [Run 39254564770](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39254564770) |
+| #17 | Admin Sales weekly-meeting direct-ID and engineer-filter tests | [Run 39254690485](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39254690485) |
+| #18 | Validate quotation ownership before linking it to a new meeting session | [Run 39254837554](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39254837554) |
+
+Each listed CI run completed successfully, including migrations, TypeScript validation, runtime readiness, tests, and production build. Each change was merged using Squash Merge.
+
+### Confirmed gaps fixed
+
+- **Discount aggregate exposure:** `closing.validateDiscount` previously returned a team-wide remaining discount budget even to `closing: own` callers. The handler now passes the authorized engineer scope into discount validation; team-wide calculation is retained only for `all` scope.
+- **Cross-engineer quotation association:** `session.create` previously validated an optional deal ID but not the optional quotation ID. It now checks quotation ownership before creating a session linked to that quotation.
+- **Unauthorized project-read side effect (pending validation):** `assertProjectTimelineAccess` used a detail helper that recalculates and persists project runtime fields before rejecting a foreign project ID. PR #19 changes the precheck to a read-only ownership query and adds a regression test proving denied access does not recalculate the other engineer's project. [PR #19](https://github.com/ProGroup1040/sales-team-platform/pull/19) is awaiting CI and is not yet merged.
+
+### Runtime coverage now present
+
+MySQL-backed regression coverage now exercises representative own/all boundaries for tasks (including forged engineer filters across list, filtered, calendar, timeline, and time summaries), leads, visits, deals, deal tasks, financial collections, meeting sessions, playbook quotations, Admin Sales tasks and meetings, and project timeline details. Runtime tests also deny own-scope access to team-wide KPI/report aggregates. The static inventory continues to check action classification and explicit all-scope guards.
+
+This is not proof that every one of the 302 declared procedures has been dynamically exercised. The remaining acceptance gate is a complete endpoint-by-endpoint ownership review, especially routes with linked record IDs, bulk/sync operations, and derived aggregates.
+
+### Production release gates still open
+
+- Review the explicit mutation/action matrix against business semantics with the product/security owner.
+- Approve the legacy administrator permission backfill policy and review a read-only production-snapshot impact report.
+- Resolve the reported production `financial.periodAnalysis` 500 using the deployed revision, redacted production server error, schema, and migration ledger. The root cause remains **unconfirmed**; passing disposable-MySQL CI does not prove the deployed production database is healthy.
+- Verify deployment revision, migration execution, and rollback/restore instructions in the target environment. No production deployment is claimed by this audit.
+
+---
+
+
 ## Status
 
 - **Scope:** static review of the user-permission source-of-truth implementation on the repository's `main` baseline at commit `2cd8564bc88101d455ae531aa3e35e4c4173c34c`.
