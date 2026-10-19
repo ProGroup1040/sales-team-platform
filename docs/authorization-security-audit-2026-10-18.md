@@ -2,7 +2,7 @@
 
 ## Follow-up execution — 2026-10-19
 
-This section supersedes stale branch-status statements below for the current `main` follow-up. The audit is **substantially expanded but not certified production-ready**: representative cross-user routes now have MySQL-backed regression tests, and two confirmed scope gaps were fixed. Full endpoint-by-endpoint verification, product/security approval, production evidence, and deployment sign-off remain open.
+This section supersedes stale branch-status statements below for the current `main` follow-up. The audit is **substantially expanded but not certified production-ready**: representative cross-user routes now have MySQL-backed regression tests, and multiple confirmed scope gaps and sensitive-write bypasses were fixed. Full endpoint-by-endpoint verification, product/security approval, production evidence, and deployment sign-off remain open.
 
 ### Merged changes with successful CI
 
@@ -19,20 +19,69 @@ This section supersedes stale branch-status statements below for the current `ma
 | #16 | Project timeline direct-ID detail scope tests | [Run 39254564770](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39254564770) |
 | #17 | Admin Sales weekly-meeting direct-ID and engineer-filter tests | [Run 39254690485](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39254690485) |
 | #18 | Validate quotation ownership before linking it to a new meeting session | [Run 39254837554](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39254837554) |
+| #19 | Read-only project ownership precheck; denied foreign project IDs no longer trigger runtime recalculation writes | [Run 39255402168](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39255402168) |
+| #20 | Validate lead ownership before creating a visit linked to that lead | [Run 39255556337](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39255556337) |
+| #21 | Restrict accounting-period overrides and sensitive sales/discount configuration writes | [Run 39256230276](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39256230276) |
+| #22 | Validate deal scope before creating a financial contract linked to that deal | [Run 39256607628](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39256607628) |
+| #24 | Expand the static scope-guard inventory to cover linked-record identifier fields | [Run 39257536747](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39257536747) |
 
 Each listed CI run completed successfully, including migrations, TypeScript validation, runtime readiness, tests, and production build. Each change was merged using Squash Merge.
 
+### Router namespace boundary inventory
+
+The 34 inline router namespaces are explicitly classified by the same static inventory test in `server/authorization-inventory.test.ts`. `systemRouter` is separately constructed and registered as `system`.
+
+| Namespace | Boundary |
+|---|---|
+| `auth` | Authentication/session endpoints; public endpoints are explicitly limited to login/session behavior |
+| `seed` | Dedicated admin gate; reset is development-only |
+| `engineers` | `tasks` module/action grants; creation also requires user-management authorization |
+| `tasks` | `tasks` module/action grants plus per-task own/all checks |
+| `leads` | `crm` module/action grants plus lead-record scope |
+| `leadDailyStats` | `crm` module/action grants plus engineer-scoped statistics |
+| `leadFollowup` | `crm` module/action grants; team logs/KPIs require all-scope |
+| `visits` | `visits` module/action grants plus visit/linked-lead scope |
+| `closing` | `closing` module/action grants plus deal scope and sensitive-write role gates |
+| `dealTasks` | `closing` module/action grants plus linked deal/task scope |
+| `pipeline` | `closing` module/action grants and scoped pipeline analysis |
+| `sales` | `closing` module/action grants; target and tier configuration requires financial-management role and all-scope |
+| `projectTimeline` | `tasks` module/action grants plus project owner/responsible-person scope |
+| `kpi` | `kpi` module/action grants; team aggregates require all-scope |
+| `promotion` | `kpi` module/action grants plus privileged-role/all-scope checks for evaluations and promotions |
+| `planning` | `planning` module/action grants; personal data is engineer-scoped and company-target writes are privileged/all-scope |
+| `collections` | `collections` module/action grants; legacy update mutation fails closed and collection records use scope checks |
+| `financial` | `collections` module/action grants plus financial-management/all-scope gates for sensitive aggregates |
+| `customers` | `crm` module/action grants for shared customer master records |
+| `products` | `pricing_system` module/action grants for shared catalog records |
+| `playbook` | `pricing_system` module/action grants plus quotation/deal scope for owned quotations |
+| `management` | `reports` module/action grants |
+| `reports` | `reports` module/action grants; organization-wide reports require all-scope |
+| `funnel` | `reports` module/action grants; engineer views are scoped and comparisons require all-scope |
+| `meetingReview` | `tasks` module/action grants plus meeting/task ownership checks |
+| `adminSalesTasks` | `tasks` module/action grants plus Admin Sales task/meeting ownership |
+| `workDist` | `tasks` module/action grants plus engineer-scoped activity/distribution data |
+| `session` | `tasks` module/action grants plus meeting-session and linked deal/quotation scope |
+| `localAuth` | Dedicated local authentication and session checks |
+| `appUsers` | Dedicated user-management caller and target-role checks |
+| `pushNotifications` | Dedicated actor-owned subscription reads/writes |
+| `rolePermissions` | Dedicated role-gated permission administration |
+| `sectionPermissions` | Dedicated section-permission authorization |
+| `softDelete` | Bespoke per-record scope and privileged delete checks |
+
 ### Confirmed gaps fixed
 
+- **Visit-to-lead association:** `visits.create` now validates `leadId` ownership before linking a visit to a lead.
+- **Financial contract-to-deal association:** `financial.addContract` now validates `dealId` scope when a deal link is supplied.
+- **Sensitive closing configuration:** accounting-period fields passed through `closing.updateStage` now require the same admin/manager local session gate as the dedicated endpoint. Discount caps, engineer targets, operational targets, and discount/commission tier writes now require a financial-management role and `closing: all` scope.
 - **Discount aggregate exposure:** `closing.validateDiscount` previously returned a team-wide remaining discount budget even to `closing: own` callers. The handler now passes the authorized engineer scope into discount validation; team-wide calculation is retained only for `all` scope.
 - **Cross-engineer quotation association:** `session.create` previously validated an optional deal ID but not the optional quotation ID. It now checks quotation ownership before creating a session linked to that quotation.
-- **Unauthorized project-read side effect (pending validation):** `assertProjectTimelineAccess` used a detail helper that recalculates and persists project runtime fields before rejecting a foreign project ID. PR #19 changes the precheck to a read-only ownership query and adds a regression test proving denied access does not recalculate the other engineer's project. [PR #19](https://github.com/ProGroup1040/sales-team-platform/pull/19) is awaiting CI and is not yet merged.
+- **Unauthorized project-read side effect:** `assertProjectTimelineAccess` now uses a read-only ownership query before denying a foreign project ID; the MySQL-backed regression test confirms the denied request does not recalculate the other engineer's project.
 
 ### Runtime coverage now present
 
 MySQL-backed regression coverage now exercises representative own/all boundaries for tasks (including forged engineer filters across list, filtered, calendar, timeline, and time summaries), leads, visits, deals, deal tasks, financial collections, meeting sessions, playbook quotations, Admin Sales tasks and meetings, and project timeline details. Runtime tests also deny own-scope access to team-wide KPI/report aggregates. The static inventory continues to check action classification and explicit all-scope guards.
 
-This is not proof that every one of the 302 declared procedures has been dynamically exercised. The remaining acceptance gate is a complete endpoint-by-endpoint ownership review, especially routes with linked record IDs, bulk/sync operations, and derived aggregates.
+This is not proof that every declared procedure has been dynamically exercised. The remaining acceptance gate is a complete endpoint-by-endpoint ownership review, especially routes with linked record IDs, bulk/sync operations, and derived aggregates.
 
 ### Production release gates still open
 
@@ -47,9 +96,9 @@ This is not proof that every one of the 302 declared procedures has been dynamic
 ## Status
 
 - **Scope:** static review of the user-permission source-of-truth implementation on the repository's `main` baseline at commit `2cd8564bc88101d455ae531aa3e35e4c4173c34c`.
-- **Working branch:** `feat/authorization-security-audit`.
+- **Historical working branch at the 2026-10-18 baseline:** `feat/authorization-security-audit`.
 - **Follow-up implementation on this branch:** the 101 operational mutations found in the mapped namespaces now have explicit action requirements; unclassified mutations fail closed. The source inventory test checks this coverage. See [mutation permission matrix](./authorization-mutation-matrix.md).
-- **Outcome:** CI run [39121582510](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39121582510) passed migrations, TypeScript, runtime readiness, **504 tests across 52 files**, and production build. The next consolidated revision adds direct-ID financial scope tests and requires final CI before merge. Authorization is not certified production-ready until remaining cross-user coverage and deployment sign-off gates are closed.
+- **Historical outcome on 2026-10-18:** CI run [39121582510](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39121582510) passed migrations, TypeScript, runtime readiness, tests, and production build. Current follow-up evidence and merged changes are summarized above.
 - **Execution evidence (2026-10-18):** the last code-changing consolidated revision `b9537b3037eb8cc2fbf14cc9d94651f517e0eaae` passed GitHub Actions [CI run 39119539820](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39119539820). The workflow applied the full migration chain to disposable MySQL 8.4, passed TypeScript validation, passed runtime readiness, passed **494 tests across 50 test files**, and completed the production build. This run includes the middleware tests for missing permission rows, read-only mutation attempts, edit-only delete attempts, combined add/edit grants, and the task-review ownership regression tests. An earlier run failed with 16 tests because legacy session-admin fixtures had no `user_permissions` rows and two integration fixtures read MySQL insert IDs incorrectly; those were corrected and the later runs passed. The CI log still emits a non-blocking `OAUTH_SERVER_URL is not configured` warning; confirm that the deployed environment sets this value if OAuth is enabled. No local shell run is claimed; the successful evidence is GitHub Actions.
 - **Additional adversarial middleware tests:** `server/authorization-middleware.test.ts` exercises the real tRPC permission middleware for missing grants, view-only mutation attempts, edit-only delete attempts, and operations requiring both `canAdd` and `canEdit`; these tests passed in CI run 39121582510.
 
@@ -217,13 +266,13 @@ These are static findings only, not runtime validation.
 
 ## Acceptance criteria before calling this production-ready
 
-- [ ] All 34 router namespaces have an explicit documented boundary: mapped module/action, public authentication, or dedicated exemption with tests.
+- [x] All 34 inline router namespaces have an explicit documented boundary; `systemRouter` is separately registered and the static inventory test verifies classification.
 - [x] Source mapping explicitly classifies all 101 operational mutations and denies unclassified operational mutations; static inventory test passed in CI.
 - [ ] Review each action requirement against handler behavior and business policy.
-- [ ] Every record-scoped endpoint is reviewed and tested for `own/all`; caller-supplied IDs cannot bypass ownership.
+- [ ] Every record-scoped endpoint is reviewed and tested for `own/all`; representative direct-ID and linked-record cases now pass, but exhaustive per-procedure runtime coverage remains open.
 - [x] The `engineers.list` scope filtering and `engineers.create` management guard pass CI run 39119539820.
 - [x] tRPC middleware tests pass for missing permission rows, read-only mutation attempts, edit-only delete attempts, and operations requiring both grants; task-linked review ownership regression tests pass in CI run 39119539820.
-- [ ] Add broader adversarial integration tests for cross-user task/session records and privileged account changes; direct-ID visit and financial record tests plus static aggregate guards are now present.
+- [x] Add representative adversarial integration tests for cross-user task/session, deal, lead, visit, financial, quotation, project timeline, and Admin Sales records, plus own-scope aggregate denials. Full endpoint-by-endpoint dynamic coverage remains open. PR #24 also expanded the static guard inventory to cover quotation, promise, project, meeting, commitment, payment, contract, deal-task, review, recording, and weekly-meeting identifiers; the expanded inventory passed CI run [39257536747](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39257536747).
 - [x] Migrations 0072 and 0073 pass on fresh MySQL and the disposable upgrade fixture without broadening duplicate/canonical grants; CI run 39121582510 passed both.
 - [x] TypeScript validation, `pnpm test` (**504 tests across 52 files**), `pnpm build`, migration step, and runtime readiness passed in GitHub Actions run 39121582510.
 - [ ] The administrator backfill policy has explicit product/security approval and a reviewed pre-deployment impact report.
