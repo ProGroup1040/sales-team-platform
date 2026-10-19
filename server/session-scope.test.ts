@@ -10,6 +10,7 @@ const testUserId = 1_000_000_000 + ((Date.now() + process.pid + 521) % 900_000_0
 const engineerIds: number[] = [];
 const sessionIds: number[] = [];
 let ownEngineerId = 0;
+let ownSessionId = 0;
 let otherSessionId = 0;
 
 function caller() {
@@ -34,7 +35,8 @@ describe.skipIf(!enabled)("meeting session scope", () => {
     engineerIds.push(ownEngineerId, otherEngineerId);
     const ownSession = await db.insert(meetingSessions).values({ engineerId: ownEngineerId, clientName: "own session", sessionType: "presentation" }).$returningId();
     const otherSession = await db.insert(meetingSessions).values({ engineerId: otherEngineerId, clientName: "other session", sessionType: "presentation" }).$returningId();
-    sessionIds.push(ownSession[0]?.id ?? 0, otherSession[0]?.id ?? 0);
+    ownSessionId = ownSession[0]?.id ?? 0;
+    sessionIds.push(ownSessionId, otherSession[0]?.id ?? 0);
     otherSessionId = otherSession[0]?.id ?? 0;
   });
   afterAll(async () => {
@@ -48,5 +50,9 @@ describe.skipIf(!enabled)("meeting session scope", () => {
   });
   it("denies ending another engineer's session", async () => {
     await expect(caller().session.end({ sessionId: otherSessionId })).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+  it("allows reading and ending the caller's own session", async () => {
+    await expect(caller().session.details({ sessionId: ownSessionId })).resolves.toBeDefined();
+    await expect(caller().session.end({ sessionId: ownSessionId })).resolves.toBeDefined();
   });
 });
