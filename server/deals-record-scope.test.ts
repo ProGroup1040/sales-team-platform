@@ -142,9 +142,11 @@ describe.skipIf(!enabled)("deal direct-ID scope enforcement", () => {
     const [saved] = await db.select({
       accountingMonth: deals.accountingMonth,
       accountingYear: deals.accountingYear,
+      stage: deals.stage,
     }).from(deals).where(eq(deals.id, ownDealId)).limit(1);
     expect(saved?.accountingMonth).toBeNull();
     expect(saved?.accountingYear).toBeNull();
+    expect(saved?.stage).toBe("proposal");
   });
 
   it("blocks own-scope sales engineers from changing discount caps and company-wide tier configuration", async () => {
