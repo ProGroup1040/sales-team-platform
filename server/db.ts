@@ -824,13 +824,15 @@ export async function updateDealStage(id: number, stage: string, nextAction?: st
 }
 
 // ─── Monthly Sales ────────────────────────────────────────────────────────────
-export async function getMonthlySalesStats(year: number, month: number) {
+export async function getMonthlySalesStats(year: number, month: number, engineerId?: number) {
   const db = await requireDb();
   const startDate = new Date(year, month - 1, 1);
   const endDate = new Date(year, month, 0, 23, 59, 59, 999);
-
-  const targetRow = await db.select().from(monthlyTargets)
-    .where(and(eq(monthlyTargets.year, year), eq(monthlyTargets.month, month))).limit(1);
+  const targetRow = engineerId === undefined
+    ? await db.select().from(monthlyTargets)
+      .where(and(eq(monthlyTargets.year, year), eq(monthlyTargets.month, month))).limit(1)
+    : await db.select().from(engineerTargets)
+      .where(and(eq(engineerTargets.engineerId, engineerId), eq(engineerTargets.year, year), eq(engineerTargets.month, month))).limit(1);
   const target = targetRow.length > 0 ? centsToNumber(toCentsOrZero(targetRow[0].targetAmount)) : 0;
 
   // Keep monthly sales aligned with KPI/reporting attribution: an explicit
@@ -847,6 +849,7 @@ export async function getMonthlySalesStats(year: number, month: number) {
   const wonDeals = await db.select().from(deals).where(and(
     eq(deals.isDeleted, 0),
     eq(deals.stage, "closed_won"),
+    ...(engineerId === undefined ? [] : [eq(deals.engineerId, engineerId)]),
     dealBelongsToMonth,
   ));
   const actual = centsToNumber(sumCents(wonDeals.map(deal => deal.netValue ?? deal.value)));
@@ -857,7 +860,7 @@ export async function getMonthlySalesStats(year: number, month: number) {
   return { target, actual, achievementRate, remaining };
 }
 
-export async function getMonthlySalesTrend(months: number = 6) {
+export async function getMonthlySalesTrend(months: number = 6, engineerId?: number) {
   // The response must describe the requested periods even when there is no
   // database yet; returning [] caused dashboards and callers to misread a
   // healthy zero-sales period as missing data.
@@ -867,7 +870,7 @@ export async function getMonthlySalesTrend(months: number = 6) {
     const date = new Date(now.getFullYear(), now.getMonth() - (count - 1 - index), 1);
     return { year: date.getFullYear(), month: date.getMonth() + 1 };
   });
-  const stats = await Promise.all(periods.map(({ year, month }) => getMonthlySalesStats(year, month)));
+  const stats = await Promise.all(periods.map(({ year, month }) => getMonthlySalesStats(year, month, engineerId)));
   return periods.map(({ year, month }, index) => ({
     year,
     month,

@@ -1840,8 +1840,12 @@ export const appRouter = router({
       months: z.number().int().min(1).max(24).optional(),
     }))
       .query(async ({ input, ctx }) => {
-        await requireAllScope(ctx, "closing");
-        return getMonthlySalesTrend(input.months ?? 6);
+        const access = await getOperationalScopeAccess(ctx, "closing");
+        if (access.scope === "all") return getMonthlySalesTrend(input.months ?? 6);
+        if (!access.caller.engineerId) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "لا يوجد مهندس مرتبط بهذا الحساب" });
+        }
+        return getMonthlySalesTrend(input.months ?? 6, access.caller.engineerId);
       }),
     // إدارة أهداف المهندسين
     setEngineerTarget: protectedProcedure.input(z.object({
@@ -3718,10 +3722,9 @@ export const appRouter = router({
     // جلب صلاحيات الـ Sections للـ Role الحالي (من local_session)
     myPermissions: protectedProcedure
       .query(async ({ ctx }) => {
-        const localSession = await (await import('./localAuth')).getLocalSessionFromRequest(ctx.req);
-        const role = ctx.actor?.role ?? localSession?.role;
-        if (!role && ctx.user?.role !== "admin") throw new TRPCError({ code: "UNAUTHORIZED" });
-        const perms = await getSectionPermissions(role ?? "admin");
+        const role = ctx.actor?.role;
+        if (!role) throw new TRPCError({ code: "UNAUTHORIZED" });
+        const perms = await getSectionPermissions(role);
         // Build map: module.section → { visibility, canEdit }
         const map: Record<string, { visibility: string; canEdit: boolean }> = {};
         for (const p of perms) {

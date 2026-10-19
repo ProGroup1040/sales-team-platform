@@ -35,9 +35,7 @@ function fixtureSql(statement: string) {
 
 function migrationStatements(sql: string) {
   return sql
-    .replace(/^--.*$/gm, "")
-    .replaceAll("--> statement-breakpoint", "")
-    .split(";")
+    .split(/-->\s*statement-breakpoint/)
     .map((statement) => statement.trim())
     .filter(Boolean);
 }
@@ -147,5 +145,14 @@ describe.skipIf(!databaseUrl)("release-gate MySQL migration verification", () =>
     ]));
     const [sales] = await query<any[]>("SELECT invoiceNumber, netAmount FROM sales WHERE id = 1");
     expect(sales[0]).toMatchObject({ invoiceNumber: "LEGACY-1", netAmount: "321.09" });
+  }, 45_000);
+
+  it("0078 repairs a finalAmount-only table when 0075 was already recorded", async () => {
+    await query("DROP TABLE sales");
+    await query("CREATE TABLE sales (id INT PRIMARY KEY, finalAmount DECIMAL(14,2) NOT NULL)");
+    await query("INSERT INTO sales (id, finalAmount) VALUES (1, 654.32)");
+    await applyMigration(migration0078);
+    const [sales] = await query<any[]>("SELECT invoiceNumber, netAmount FROM sales WHERE id = 1");
+    expect(sales[0]).toMatchObject({ invoiceNumber: "LEGACY-1", netAmount: "654.32" });
   }, 45_000);
 });

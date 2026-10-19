@@ -3,13 +3,14 @@ import { inArray } from "drizzle-orm";
 import type { TrpcContext } from "./_core/context";
 import { appRouter } from "./routers";
 import { getDb, updateUserPermissions } from "./db";
-import { collections, engineers } from "../drizzle/schema";
+import { collections, deals, engineers } from "../drizzle/schema";
 
 const enabled = Boolean(process.env.DATABASE_URL);
 const testUserId = 1_000_000_000 + ((Date.now() + process.pid + 173) % 900_000_000);
 const suffix = `financial-scope-${Date.now()}-${process.pid}`;
 const engineerIds: number[] = [];
 const collectionIds: number[] = [];
+const dealIds: number[] = [];
 let ownEngineerId = 0;
 let otherEngineerId = 0;
 let ownCollectionId = 0;
@@ -42,6 +43,13 @@ describe.skipIf(!enabled)("financial record scope enforcement", () => {
       canEdit: 1,
       canDelete: 1,
       dataScope: "own",
+    }, {
+      module: "closing",
+      canView: 1,
+      canAdd: 0,
+      canEdit: 0,
+      canDelete: 0,
+      dataScope: "own",
     }]);
 
     const ownEngineer = await db.insert(engineers).values({
@@ -73,11 +81,36 @@ describe.skipIf(!enabled)("financial record scope enforcement", () => {
     otherCollectionId = otherCollection[0]?.id ?? 0;
     if (!ownCollectionId || !otherCollectionId) throw new Error("Could not create financial scope collections");
     collectionIds.push(ownCollectionId, otherCollectionId);
+    const now = new Date();
+    const dealRows = await db.insert(deals).values([
+      {
+        engineerId: ownEngineerId,
+        clientName: `${suffix}-own-deal`,
+        value: "100.00",
+        grossValue: "100.00",
+        netValue: "100.00",
+        stage: "closed_won",
+        closingMonth: now.getMonth() + 1,
+        closingYear: now.getFullYear(),
+      },
+      {
+        engineerId: otherEngineerId,
+        clientName: `${suffix}-other-deal`,
+        value: "900.00",
+        grossValue: "900.00",
+        netValue: "900.00",
+        stage: "closed_won",
+        closingMonth: now.getMonth() + 1,
+        closingYear: now.getFullYear(),
+      },
+    ]).$returningId();
+    dealIds.push(...dealRows.map((row) => row.id));
   });
 
   afterAll(async () => {
     const db = await getDb();
     if (db && collectionIds.length) await db.delete(collections).where(inArray(collections.id, collectionIds));
+    if (db && dealIds.length) await db.delete(deals).where(inArray(deals.id, dealIds));
     if (db && engineerIds.length) await db.delete(engineers).where(inArray(engineers.id, engineerIds));
     await updateUserPermissions(testUserId, []);
   });
@@ -110,9 +143,22 @@ describe.skipIf(!enabled)("financial record scope enforcement", () => {
     expect(result.some((contract: { id: number }) => contract.id === otherCollectionId)).toBe(false);
   });
 
+  it("returns only the authenticated engineer's sales trend", async () => {
+    const result = await caller().sales.trend({ months: 1 });
+    expect(result).toHaveLength(1);
+    expect(result[0]?.actual).toBe(100);
+  });
+
   it("allows an all-scope manager to read both contracts and the period aggregate", async () => {
     await updateUserPermissions(testUserId, [{
       module: "collections",
+      canView: 1,
+      canAdd: 1,
+      canEdit: 1,
+      canDelete: 1,
+      dataScope: "all",
+    }, {
+      module: "closing",
       canView: 1,
       canAdd: 1,
       canEdit: 1,

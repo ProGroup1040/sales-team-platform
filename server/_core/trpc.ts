@@ -72,13 +72,17 @@ const MODULE_BY_NAMESPACE: Record<string, string> = {
   session: "tasks",
 };
 
-const ROLE_GATED_NAMESPACES = new Set(["rolePermissions", "sectionPermissions"]);
+const ROLE_GATED_NAMESPACES = new Set(["rolePermissions"]);
 const AUTHORIZATION_EXEMPT_NAMESPACES = new Set([
   "auth",
   "localAuth",
   "appUsers", // These procedures have dedicated account/role/target checks.
   "pushNotifications", // Must enforce actor ownership in each notification procedure.
   "system", // systemRouter has its own adminProcedure boundary.
+  // myPermissions is a self-read for every authenticated actor; the
+  // administrative section-permission procedures enforce manager/admin access
+  // inside their handlers.
+  "sectionPermissions",
 ]);
 
 type OperationalPermission = "canView" | "canAdd" | "canEdit" | "canDelete";
