@@ -35,7 +35,9 @@ function fixtureSql(statement: string) {
 
 function migrationStatements(sql: string) {
   return sql
-    .split(/-->\s*statement-breakpoint/)
+    .replace(/^--.*$/gm, "")
+    .replaceAll("--> statement-breakpoint", "")
+    .split(";")
     .map((statement) => statement.trim())
     .filter(Boolean);
 }
