@@ -930,7 +930,7 @@ export const appRouter = router({
       priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
       category: z.string().optional(), // 'closing' | 'meeting' | 'general'
       meetingRecordingLink: z.string().optional(),
-      taskType: z.enum(['design_2d','design_3d','render','quotation','meeting_modeling','meeting_presentation','meeting_closing','contract','work_order','other']).optional(),
+      taskType: z.enum(['design_2d','design_3d','render','quotation','meeting_modeling','meeting_presentation','meeting_closing','contract','work_order','follow_up','other']).optional(),
     })).mutation(async ({ input, ctx }) => {
       const access = await requireTaskAction(ctx, "add");
       const engineerId = taskEngineerFilter(access, input.engineerId);
@@ -954,7 +954,7 @@ export const appRouter = router({
       priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
       category: z.string().optional(),
       meetingRecordingLink: z.string().optional(),
-      taskType: z.enum(['design_2d','design_3d','render','quotation','meeting_modeling','meeting_presentation','meeting_closing','contract','work_order','other']).optional(),
+      taskType: z.enum(['design_2d','design_3d','render','quotation','meeting_modeling','meeting_presentation','meeting_closing','contract','work_order','follow_up','other']).optional(),
     })).mutation(async ({ input, ctx }) => {
       const access = await requireTaskAction(ctx, "add");
       const engineerId = access.caller.engineerId;
@@ -1125,7 +1125,7 @@ export const appRouter = router({
       meetingRecordingLink: z.string().optional(),
       startTime: taskTimeSchema.optional(),
       endTime: taskTimeSchema.optional(),
-      taskType: z.enum(['design_2d','design_3d','render','quotation','meeting_modeling','meeting_presentation','meeting_closing','contract','work_order','meeting_2d','meeting_3d','meeting_quotation','closing','negotiation','other']).optional(),
+      taskType: z.enum(['design_2d','design_3d','render','quotation','meeting_modeling','meeting_presentation','meeting_closing','contract','work_order','meeting_2d','meeting_3d','meeting_quotation','closing','negotiation','follow_up','other']).optional(),
       clientName: z.string().optional(),
       notes: z.string().optional(),
       reminderMinutes: z.number().optional(),
@@ -1186,7 +1186,7 @@ export const appRouter = router({
       taskDate: z.string().optional(),
       startTime: taskTimeSchema.optional(),
       endTime: taskTimeSchema.optional(),
-      taskType: z.enum(['design_2d','design_3d','render','quotation','meeting_modeling','meeting_presentation','meeting_closing','contract','work_order','meeting_2d','meeting_3d','meeting_quotation','closing','negotiation','other']).optional(),
+      taskType: z.enum(['design_2d','design_3d','render','quotation','meeting_modeling','meeting_presentation','meeting_closing','contract','work_order','meeting_2d','meeting_3d','meeting_quotation','closing','negotiation','follow_up','other']).optional(),
       priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
       status: z.enum(['planned', 'completed', 'delayed', 'not_done', 'client_delay']).optional(),
       clientName: z.string().optional(),

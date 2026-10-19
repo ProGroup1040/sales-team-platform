@@ -4512,6 +4512,7 @@ export const TASK_TYPE_LABELS: Record<string, string> = {
   design_2d:         "تصميم 2D",
   quotation:         "عرض سعر",
   negotiation:       "تفاوض/إغلاق",
+  follow_up:         "Follow Up",
   other:             "أخرى",
 };
 
@@ -4524,6 +4525,7 @@ export const TASK_TYPE_CATEGORY: Record<string, "meetings" | "design_3d" | "desi
   design_2d:         "design_2d",
   quotation:         "quotation",
   negotiation:       "other",
+  follow_up:         "other",
   other:             "other",
 };
 
@@ -4836,6 +4838,7 @@ export const TASK_TYPE_LABELS_V2: Record<string, string> = {
   meeting_quotation:    "ميتينج عرض سعر (قديم)",
   closing:              "إغلاق بيع",
   negotiation:          "تفاوض",
+  follow_up:            "Follow Up",
   other:                "أخرى",
 };
 
@@ -7870,14 +7873,14 @@ export const DEPARTMENT_LABELS: Record<string, string> = {
 
 /** أنواع المهام المسموحة لكل قسم */
 export const ALLOWED_TASK_TYPES_BY_DEPARTMENT: Record<string, string[]> = {
-  sales_engineer:    ['design_2d', 'design_3d', 'render', 'quotation', 'meeting_modeling', 'meeting_presentation', 'meeting_closing', 'contract', 'work_order'],
-  sales_specialist:  ['design_2d', 'design_3d', 'render', 'quotation', 'meeting_modeling', 'meeting_presentation', 'meeting_closing', 'contract', 'work_order'],
+  sales_engineer:    ['design_2d', 'design_3d', 'render', 'quotation', 'meeting_modeling', 'meeting_presentation', 'meeting_closing', 'contract', 'work_order', 'follow_up'],
+  sales_specialist:  ['design_2d', 'design_3d', 'render', 'quotation', 'meeting_modeling', 'meeting_presentation', 'meeting_closing', 'contract', 'work_order', 'follow_up'],
   interior_designer: ['design_2d', 'design_3d', 'render'],
   tele_sales:        ['quotation', 'meeting_modeling', 'meeting_presentation'],
   site:              ['meeting_modeling', 'meeting_presentation', 'meeting_closing'],
   site_engineer:     ['meeting_modeling', 'meeting_presentation', 'meeting_closing'],
   admin_sales:       ['quotation', 'meeting_modeling', 'contract', 'work_order'],
-  manager:           ['design_2d', 'design_3d', 'render', 'quotation', 'meeting_modeling', 'meeting_presentation', 'meeting_closing', 'contract', 'work_order'],
+  manager:           ['design_2d', 'design_3d', 'render', 'quotation', 'meeting_modeling', 'meeting_presentation', 'meeting_closing', 'contract', 'work_order', 'follow_up'],
 };
 
 /** فلترة المهندسين حسب الدور (legacy) */

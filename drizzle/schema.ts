@@ -100,7 +100,7 @@ export const dailyTasks = mysqlTable("daily_tasks", {
     // Legacy (keep for backward compat)
     "meeting_2d", "meeting_3d", "meeting_quotation",
     // Legacy
-    "closing", "negotiation", "other"
+    "closing", "negotiation", "follow_up", "other"
   ]).default("other"),
   // ─── Goal Linking ─────────────────────────────────────────────────────────
   goalType: mysqlEnum("goalType", [

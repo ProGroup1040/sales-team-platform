@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 import { ALLOWED_TASK_TYPES_BY_DEPARTMENT, getActivityCategory } from "./db";
 
 describe("Task types by engineer department", () => {
-  it("يتيح مهندس المبيعات الأنواع التسعة التشغيلية", () => {
-    expect(ALLOWED_TASK_TYPES_BY_DEPARTMENT.sales_engineer).toHaveLength(9);
+  it("يتيح مهندس المبيعات الأنواع التشغيلية", () => {
+    expect(ALLOWED_TASK_TYPES_BY_DEPARTMENT.sales_engineer).toHaveLength(10);
     expect(ALLOWED_TASK_TYPES_BY_DEPARTMENT.sales_engineer).toContain("work_order");
+    expect(ALLOWED_TASK_TYPES_BY_DEPARTMENT.sales_engineer).toContain("follow_up");
   });
 
   it("يقيد المصمم الداخلي بمهام التصميم فقط", () => {

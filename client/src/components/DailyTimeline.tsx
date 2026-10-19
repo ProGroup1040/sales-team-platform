@@ -20,6 +20,7 @@ export const TASK_TYPE_CONFIG: Record<string, { label: string; color: string; bg
   design_2d:         { label: "تصميم 2D",          color: "text-orange-300",  bg: "bg-orange-500/20",  border: "border-orange-500/40",  dot: "bg-orange-400" },
   quotation:         { label: "عرض سعر",           color: "text-pink-300",    bg: "bg-pink-500/20",    border: "border-pink-500/40",    dot: "bg-pink-400" },
   negotiation:       { label: "تفاوض/إغلاق",       color: "text-rose-300",    bg: "bg-rose-500/20",    border: "border-rose-500/40",    dot: "bg-rose-400" },
+  follow_up:          { label: "Follow Up",        color: "text-sky-300",    bg: "bg-sky-500/20",    border: "border-sky-500/40",    dot: "bg-sky-400" },
   other:             { label: "أخرى",              color: "text-slate-300",   bg: "bg-slate-500/20",   border: "border-slate-500/40",   dot: "bg-slate-400" },
 };
 

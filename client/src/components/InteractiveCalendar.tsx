@@ -34,7 +34,7 @@ import {
 type ViewMode = 'day' | 'week' | 'month' | 'timeline';
 type TaskStatus = 'planned' | 'completed' | 'delayed' | 'not_done' | 'client_delay';
 type TaskType = 'design_2d' | 'design_3d' | 'render' | 'quotation' | 'meeting_modeling' |
-  'meeting_presentation' | 'meeting_closing' | 'contract' | 'work_order' |
+  'meeting_presentation' | 'meeting_closing' | 'contract' | 'work_order' | 'follow_up' |
   'meeting_2d' | 'meeting_3d' | 'meeting_quotation' | 'closing' | 'negotiation' | 'other';
 type Priority = 'low' | 'medium' | 'high' | 'urgent';
 
@@ -88,6 +88,7 @@ const TASK_TYPE_CONFIG: Record<string, { label: string; color: string; bg: strin
   quotation:            { label: 'عرض سعر',          color: 'text-gray-300',   bg: 'bg-gray-700/60',   border: 'border-gray-500' },
   contract:             { label: 'عقد',              color: 'text-yellow-300', bg: 'bg-yellow-900/60', border: 'border-yellow-500' },
   work_order:           { label: 'أمر شغل',          color: 'text-teal-300',   bg: 'bg-teal-900/60',   border: 'border-teal-500' },
+  follow_up:            { label: 'Follow Up',         color: 'text-sky-300',    bg: 'bg-sky-900/60',    border: 'border-sky-500' },
   closing:              { label: 'إغلاق صفقة',       color: 'text-green-300',  bg: 'bg-green-900/60',  border: 'border-green-500' },
   other:                { label: 'أخرى',             color: 'text-slate-300',  bg: 'bg-slate-700/60',  border: 'border-slate-500' },
   meeting_2d:           { label: 'اجتماع 2D',        color: 'text-blue-300',   bg: 'bg-blue-900/60',   border: 'border-blue-500' },
@@ -135,6 +136,7 @@ const TASK_TYPES: Array<{ value: TaskType; label: string }> = [
   { value: 'meeting_closing',      label: 'Meeting - Closing' },
   { value: 'contract',             label: 'Contract' },
   { value: 'work_order',           label: 'Work Order' },
+  { value: 'follow_up',            label: 'Follow Up' },
   { value: 'closing',              label: 'Closing' },
   { value: 'other',                label: 'Other' },
 ];

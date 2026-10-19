@@ -234,7 +234,7 @@ function AddTaskDialog({ engineers, dateStr, onDone, selfEngineerId }: { enginee
   const isSelfOnly = selfEngineerId !== undefined;
   const effectiveEngineerId = isSelfOnly ? String(selfEngineerId) : form.engineerId;
 
-  // الـ 9 Task Types الموحدة (مع Contract و Work Order)
+  // الـ 10 Task Types الموحدة (مع Contract و Work Order و Follow Up)
   const ALL_TASK_TYPES = [
     { key: 'design_2d',            label: '2D Design',             color: 'bg-cyan-500/20 border-cyan-500/50 text-cyan-400',     icon: '📰' },
     { key: 'design_3d',            label: '3D Modeling',           color: 'bg-purple-500/20 border-purple-500/50 text-purple-400', icon: '📱' },
@@ -245,6 +245,7 @@ function AddTaskDialog({ engineers, dateStr, onDone, selfEngineerId }: { enginee
     { key: 'meeting_closing',      label: 'Meeting Closing',       color: 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400', icon: '✅' },
     { key: 'contract',             label: 'Contract (إعداد عقد)',   color: 'bg-rose-500/20 border-rose-500/50 text-rose-400',     icon: '📝' },
     { key: 'work_order',           label: 'Work Order (أمر شغل)',  color: 'bg-orange-500/20 border-orange-500/50 text-orange-400', icon: '🔧' },
+    { key: 'follow_up',            label: 'Follow Up',              color: 'bg-sky-500/20 border-sky-500/50 text-sky-400',       icon: '🔁' },
   ];
 
   // Department Enforcement: جلب قسم المهندس المختار
@@ -2008,13 +2009,14 @@ export default function TasksModule() {
               design_2d: "bg-orange-500/20 border-orange-500/30 text-orange-300",
               quotation: "bg-pink-500/20 border-pink-500/30 text-pink-300",
               negotiation: "bg-rose-500/20 border-rose-500/30 text-rose-300",
+              follow_up: "bg-sky-500/20 border-sky-500/30 text-sky-300",
               other: "bg-slate-500/20 border-slate-500/30 text-slate-300",
             };
             const TASK_TYPE_LABELS: Record<string, string> = {
               meeting_2d: "ميتينج 2D", meeting_3d: "ميتينج 3D",
               meeting_quotation: "ميتينج عرض سعر", meeting_closing: "ميتينج إغلاق",
               design_3d: "تصميم 3D", design_2d: "تصميم 2D",
-              quotation: "عرض سعر", negotiation: "تفاوض/إغلاق", other: "أخرى",
+              quotation: "عرض سعر", negotiation: "تفاوض/إغلاق", follow_up: "Follow Up", other: "أخرى",
             };
             // Critical alert styling
             const isCriticalAlert = task.status === "not_done" || task.status === "delayed" || task.isCritical;
@@ -2237,7 +2239,7 @@ export default function TasksModule() {
               meeting_2d: "ميتينج 2D", meeting_3d: "ميتينج 3D",
               meeting_quotation: "ميتينج عرض سعر", meeting_closing: "ميتينج إغلاق",
               design_3d: "تصميم 3D", design_2d: "تصميم 2D",
-              quotation: "عرض سعر", negotiation: "تفاوض/إغلاق", other: "أخرى",
+              quotation: "عرض سعر", negotiation: "تفاوض/إغلاق", follow_up: "Follow Up", other: "أخرى",
             };
             return (
               <div key={task.id} className={`p-4 rounded-xl border ${alertStyle.border} ${alertStyle.bg}`}>
