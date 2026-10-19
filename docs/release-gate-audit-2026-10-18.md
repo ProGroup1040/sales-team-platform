@@ -68,3 +68,17 @@ A successful CI run is useful evidence for that run's tested commit and fixture 
 7. Deploy through the approved deployment process, verify the running SHA and migration ledger, then re-test the failing report.
 
 No production data, financial policy, historical records, commission rules, or access policy should be altered as a diagnostic shortcut.
+
+## Follow-up evidence — 2026-10-19
+
+### CI failure reproduced from GitHub Actions
+
+The failed CI run for PR #3 was `39133558274` and checked merge commit `148c910d878c3a5e021f1b3aabfe27591c177f30` (PR head `e7d90611dc6231e27ec07835bb883f66a602d8ed` merged into baseline `b69558b1c55394ec1514b9360d3c9db2e52395e3`). MySQL 8.4 reached healthy status before migrations started. The failure occurred during `pnpm drizzle-kit migrate` in migration `0075_reconcile_legacy_sales_schema.sql` with MySQL `ER_PARSE_ERROR` near `SET @has_net_amount :=`. Therefore the previous migration was not being executed successfully in the CI MySQL 8.4 environment.
+
+### Remediation applied, pending CI proof
+
+Migration 0075 was changed to execute its conditional DDL through a temporary stored procedure, with explicit `SIGNAL` failures for a missing `sales` table, both amount columns, or neither amount column. The supported states are now explicit: `finalAmount` only is renamed to `netAmount`; `netAmount` only is accepted; unexpected both/neither states fail closed; `customers.notes` is added only when absent. The procedure is called and dropped in separate Drizzle statements. This change passed local `pnpm check` and `pnpm build`, but local execution cannot prove MySQL behavior because this sandbox has no running MySQL server or Docker runtime. A new GitHub Actions run is required.
+
+### Current release decision
+
+`BLOCKED`. PR #3 remains Draft and must not be merged or deployed. Production access is unavailable in this environment: no deployed server log, redacted `SHOW CREATE TABLE payments`, migration ledger, or deployed revision was provided. The exact production root cause of `financial.periodAnalysis` HTTP 500 is therefore still unconfirmed. The CI migration blocker is confirmed separately and has a narrowly scoped remediation pending CI verification. Full MySQL integration and cross-user own/all authorization evidence are still required before changing the decision to `READY FOR REVIEW`.
