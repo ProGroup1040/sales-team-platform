@@ -554,6 +554,13 @@
       "when": 1792402133784,
       "tag": "0078_reconcile_legacy_sales_contract",
       "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "5",
+      "when": 1792404000000,
+      "tag": "0079_validate_reconciled_sales_schema",
+      "breakpoints": true
     }
   ]
 }
