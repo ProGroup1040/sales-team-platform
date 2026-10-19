@@ -174,6 +174,10 @@ function CreateUserForm({ onSuccess }: { onSuccess: () => void }) {
       toast.error("يرجى تصحيح الأخطاء قبل المتابعة");
       return;
     }
+    if (["sales_engineer", "sales_specialist", "admin_sales"].includes(form.role) && (!form.engineerId || form.engineerId === "none")) {
+      toast.error("يجب ربط المستخدم بحساب مهندس قبل المتابعة");
+      return;
+    }
     createMut.mutate({
       name: form.name.trim(),
       username: form.username.trim().toLowerCase(),
@@ -301,7 +305,7 @@ function CreateUserForm({ onSuccess }: { onSuccess: () => void }) {
           </Select>
         </div>
         <div className="space-y-1">
-          <Label>ربط بمهندس <span className="text-xs text-muted-foreground">(اختياري)</span></Label>
+          <Label>ربط بمهندس {!["manager"].includes(form.role) && <span className="text-red-400">*</span>}</Label>
           <Select value={form.engineerId} onValueChange={(v) => setForm(p => ({ ...p, engineerId: v }))} disabled={isLoading}>
             <SelectTrigger>
               <SelectValue placeholder="اختر مهندس" />
@@ -449,10 +453,12 @@ function EditUserForm({ user, onSuccess }: { user: any; onSuccess: () => void })
     name: user.name || "",
     role: user.role || "sales_engineer",
     status: user.status || "active",
+    engineerId: user.engineerId ? String(user.engineerId) : "none",
     password: "",
   });
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const engineersQuery = trpc.engineers.list.useQuery(undefined, { staleTime: 60000 });
 
   const updateMut = trpc.appUsers.update.useMutation({
     onSuccess: () => {
@@ -478,6 +484,7 @@ function EditUserForm({ user, onSuccess }: { user: any; onSuccess: () => void })
       name: form.name.trim(),
       role: form.role as Role,
       status: form.status as "active" | "inactive",
+      engineerId: form.engineerId === "none" ? null : Number(form.engineerId),
       password: form.password || undefined,
     });
   };
@@ -516,6 +523,18 @@ function EditUserForm({ user, onSuccess }: { user: any; onSuccess: () => void })
             </SelectContent>
           </Select>
         </div>
+      </div>
+      <div className="space-y-1">
+        <Label>ربط بمهندس {!["manager"].includes(form.role) && <span className="text-red-400">*</span>}</Label>
+        <Select value={form.engineerId} onValueChange={(v) => setForm(p => ({ ...p, engineerId: v }))} disabled={updateMut.isPending || engineersQuery.isLoading}>
+          <SelectTrigger><SelectValue placeholder="اختر مهندس" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">بدون ربط</SelectItem>
+            {engineersQuery.data?.map((eng: any) => (
+              <SelectItem key={eng.id} value={String(eng.id)}>{eng.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       <div className="space-y-1">
         <Label>كلمة مرور جديدة <span className="text-xs text-muted-foreground">(اتركها فارغة للإبقاء على الحالية)</span></Label>

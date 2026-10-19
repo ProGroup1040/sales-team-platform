@@ -11723,7 +11723,7 @@ export async function updateAppUser(
     if (data.engineerId !== undefined) updated.engineerId = data.engineerId;
     if (data.status !== undefined) updated.status = data.status;
     if (data.password !== undefined) updated.passwordHash = await bcrypt.hash(data.password, 10);
-    if (data.password !== undefined || data.role !== undefined || data.status !== undefined) {
+    if (data.password !== undefined || data.role !== undefined || data.status !== undefined || data.engineerId !== undefined) {
       updated.sessionVersion = (existing.sessionVersion ?? 1) + 1;
     }
     testAppUsers.set(userId, updated);
@@ -11737,7 +11737,7 @@ export async function updateAppUser(
   if (data.password !== undefined) {
     updateData.passwordHash = await bcrypt.hash(data.password, 10);
   }
-  if (data.password !== undefined || data.role !== undefined || data.status !== undefined) {
+  if (data.password !== undefined || data.role !== undefined || data.status !== undefined || data.engineerId !== undefined) {
     updateData.sessionVersion = sql`${appUsers.sessionVersion} + 1`;
   }
   if (Object.keys(updateData).length > 0) {

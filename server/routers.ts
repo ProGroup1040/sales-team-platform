@@ -714,7 +714,22 @@ function assertCanAssignRole(actorRole: string, targetRole: string | undefined) 
     throw new TRPCError({ code: "FORBIDDEN", message: "لا تملك صلاحية تعيين هذا الدور" });
   }
 }
+const ENGINEER_LINK_REQUIRED_ROLES = new Set(["sales_engineer", "sales_specialist", "admin_sales"]);
 
+async function validateAppUserEngineerLink(userId: number | undefined, role: string, engineerId: number | null | undefined) {
+  if (ENGINEER_LINK_REQUIRED_ROLES.has(role) && !engineerId) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "يجب ربط هذا المستخدم بحساب مهندس قبل تفعيل صلاحيات التشغيل" });
+  }
+  if (!engineerId) return;
+  const engineer = await getEngineerById(engineerId);
+  if (!engineer || engineer.isDeleted || engineer.status !== "active") {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "حساب المهندس غير موجود أو غير نشط" });
+  }
+  const linkedUser = await getAppUserByEngineerId(engineerId);
+  if (linkedUser && linkedUser.id !== userId) {
+    throw new TRPCError({ code: "CONFLICT", message: "هذا المهندس مرتبط بالفعل بمستخدم نظام آخر" });
+  }
+}
 async function requireEngineerAccountManagementCaller(ctx: any, engineerId: number, message: string) {
   const caller = await requireUserManagementCaller(ctx, message);
   const target = await getEngineerById(engineerId);
@@ -3474,6 +3489,7 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         const caller = await requireUserManagementCaller(ctx, 'ليس لديك صلاحية إنشاء مستخدمين');
         assertCanAssignRole(caller.role, input.role);
+        await validateAppUserEngineerLink(undefined, input.role, input.engineerId ?? null);
         try {
           const newUser = await createAppUser(input);
           await logActivity({ userId: caller.id, action: 'create', module: 'users', details: `إنشاء مستخدم: ${input.username}` });
@@ -3505,6 +3521,7 @@ export const appRouter = router({
         if (!target) throw new TRPCError({ code: 'NOT_FOUND', message: 'المستخدم غير موجود' });
         const { userId, ...data } = input;
         assertCanAssignRole(caller.role, data.role ?? target.role);
+        await validateAppUserEngineerLink(userId, data.role ?? target.role, data.engineerId === undefined ? target.engineerId : data.engineerId);
         await updateAppUser(userId, data);
         await logActivity({ userId: caller.id, action: 'update', module: 'users', recordId: userId, details: `تحديث مستخدم #${userId}` });
         return { success: true };

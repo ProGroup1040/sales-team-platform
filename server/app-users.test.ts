@@ -76,6 +76,17 @@ describe("Internal App Users System", () => {
     await expect(verifyAppUserToken(loginResult!.token)).resolves.toBeNull();
   });
 
+  it("persists an engineer link and invalidates tokens issued before the link", async () => {
+    const loginResult = await loginAppUser(testUsername, testPassword);
+    expect(loginResult).not.toBeNull();
+
+    await updateAppUser(testUserId, { engineerId: 42 });
+
+    await expect(verifyAppUserToken(loginResult!.token)).resolves.toBeNull();
+    const refreshed = await loginAppUser(testUsername, testPassword);
+    expect(refreshed?.user.engineerId).toBe(42);
+  });
+
   it("should list active app users", async () => {
     const users = await getAppUsers();
     expect(Array.isArray(users)).toBe(true);
