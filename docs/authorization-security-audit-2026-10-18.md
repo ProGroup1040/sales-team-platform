@@ -24,6 +24,7 @@ This section supersedes stale branch-status statements below for the current `ma
 | #21 | Restrict accounting-period overrides and sensitive sales/discount configuration writes | [Run 39256230276](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39256230276) |
 | #22 | Validate deal scope before creating a financial contract linked to that deal | [Run 39256607628](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39256607628) |
 | #24 | Expand the static scope-guard inventory to cover linked-record identifier fields | [Run 39257536747](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39257536747) |
+| #25 | Require financial-management role and `pricing_system: all` for shared product/Playbook catalog writes | [Run 39258424814](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39258424814) |
 
 Each listed CI run completed successfully, including migrations, TypeScript validation, runtime readiness, tests, and production build. Each change was merged using Squash Merge.
 
@@ -73,13 +74,14 @@ The 34 inline router namespaces are explicitly classified by the same static inv
 - **Visit-to-lead association:** `visits.create` now validates `leadId` ownership before linking a visit to a lead.
 - **Financial contract-to-deal association:** `financial.addContract` now validates `dealId` scope when a deal link is supplied.
 - **Sensitive closing configuration:** accounting-period fields passed through `closing.updateStage` now require the same admin/manager local session gate as the dedicated endpoint. Discount caps, engineer targets, operational targets, and discount/commission tier writes now require a financial-management role and `closing: all` scope.
+- **Shared catalog mutation:** `products` and Playbook catalog create/update/delete/import routes previously relied on module/action grants despite changing shared records. They now require a financial-management role and `pricing_system: all` scope.
 - **Discount aggregate exposure:** `closing.validateDiscount` previously returned a team-wide remaining discount budget even to `closing: own` callers. The handler now passes the authorized engineer scope into discount validation; team-wide calculation is retained only for `all` scope.
 - **Cross-engineer quotation association:** `session.create` previously validated an optional deal ID but not the optional quotation ID. It now checks quotation ownership before creating a session linked to that quotation.
 - **Unauthorized project-read side effect:** `assertProjectTimelineAccess` now uses a read-only ownership query before denying a foreign project ID; the MySQL-backed regression test confirms the denied request does not recalculate the other engineer's project.
 
 ### Runtime coverage now present
 
-MySQL-backed regression coverage now exercises representative own/all boundaries for tasks (including forged engineer filters across list, filtered, calendar, timeline, and time summaries), leads, visits, deals, deal tasks, financial collections, meeting sessions, playbook quotations, Admin Sales tasks and meetings, and project timeline details. Runtime tests also deny own-scope access to team-wide KPI/report aggregates. The static inventory continues to check action classification and explicit all-scope guards.
+MySQL-backed regression coverage now exercises representative own/all boundaries for tasks (including forged engineer filters across list, filtered, calendar, timeline, and time summaries), leads, visits, deals, deal tasks, financial collections, meeting sessions, playbook quotations, Admin Sales tasks and meetings, and project timeline details. Runtime tests also deny own-scope access to team-wide KPI/report aggregates and shared catalog writes. The static inventory continues to check action classification and explicit all-scope guards.
 
 This is not proof that every declared procedure has been dynamically exercised. The remaining acceptance gate is a complete endpoint-by-endpoint ownership review, especially routes with linked record IDs, bulk/sync operations, and derived aggregates.
 

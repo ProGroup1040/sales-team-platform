@@ -19,6 +19,7 @@ The operation-grant matrix above describes the required module/action permission
 - `closing.setDiscountCap`, `sales.setEngineerTarget`, `sales.setOperationalTargets`, and `sales.upsertDiscountTier`, `sales.deleteDiscountTier`, `sales.upsertCommissionTier`, and `sales.deleteCommissionTier` require a financial-management role and `closing: all` scope.
 - `visits.create` validates the optional `leadId`; `closing.create` validates linked lead/visit IDs; `session.create` validates linked deal/quotation IDs; `financial.addContract` validates a supplied deal ID; `dealTasks.create` and `playbook.createQuotation` validate linked deals.
 - `closing.validateDiscount` calculates the remaining budget using the authorized engineer scope for `own` users; team-wide budget calculations are retained for `all` scope.
+- Shared product and Playbook catalog writes require both a financial-management role and `pricing_system: all`; own-scope write grants cannot mutate shared records.
 - Project timeline ownership checks use a read-only query before rejecting access, avoiding runtime recalculation writes on another engineer's project.
 
 These guards supplement rather than replace the module/action permission requirement. MySQL-backed tests cover representative allowed-own and denied-foreign cases; see the follow-up execution table in the authorization audit.
