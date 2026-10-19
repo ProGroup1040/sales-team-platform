@@ -815,8 +815,16 @@ async function assertProjectTimelineAccess(ctx: any, projectId?: number, manager
   if (canManageProjectTimeline(caller.role)) return caller;
   if (managerOnly) throw new TRPCError({ code: "FORBIDDEN", message: "هذه العملية متاحة للإدارة فقط" });
   if (projectId !== undefined) {
-    const detail = await getProjectTimelineDetail(projectId);
-    const project = detail?.project;
+    // Authorization prechecks must be read-only. getProjectTimelineDetail recalculates
+    // and persists runtime fields, so calling it before ownership validation would
+    // let a denied direct-ID request mutate another engineer's project.
+    const db = await getDb();
+    if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "قاعدة البيانات غير متاحة" });
+    const { projects } = await import("../drizzle/schema");
+    const [project] = await db.select({
+      salesEngineerId: projects.salesEngineerId,
+      currentResponsibleId: projects.currentResponsibleId,
+    }).from(projects).where(eq(projects.id, projectId)).limit(1);
     if (!project || (project.salesEngineerId !== caller.id && project.currentResponsibleId !== caller.id)) {
       throw new TRPCError({ code: "FORBIDDEN", message: "لا تملك صلاحية تعديل هذا المشروع" });
     }
