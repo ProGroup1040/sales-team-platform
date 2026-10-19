@@ -13,7 +13,9 @@ vi.mock("./db", async (importOriginal) => {
     manualOverrideEngineerTarget: vi.fn(),
     logActivity: vi.fn(),
     getAppUserByEngineerId: vi.fn(),
+    getAppUserById: vi.fn(),
     getUserPermissions: vi.fn(),
+    updateUserPermissions: vi.fn(),
   };
 });
 
@@ -21,7 +23,9 @@ import {
   bulkCreateEngineersAccounts,
   createEngineerAccount,
   getAppUserByEngineerId,
+  getAppUserById,
   getUserPermissions,
+  updateUserPermissions,
   getEngineerById,
   logActivity,
   manualOverrideEngineerTarget,
@@ -37,7 +41,9 @@ const mockedDb = {
   toggleEngineerAccountStatus: vi.mocked(toggleEngineerAccountStatus),
   createEngineerAccount: vi.mocked(createEngineerAccount),
   getAppUserByEngineerId: vi.mocked(getAppUserByEngineerId),
+  getAppUserById: vi.mocked(getAppUserById),
   getUserPermissions: vi.mocked(getUserPermissions),
+  updateUserPermissions: vi.mocked(updateUserPermissions),
   logActivity: vi.mocked(logActivity),
   manualOverrideEngineerTarget: vi.mocked(manualOverrideEngineerTarget),
 };
@@ -62,6 +68,63 @@ describe("appUsers privileged account procedures", () => {
       { module: "collections", canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
       { module: "tasks", canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all" },
     ] as never);
+  });
+
+  it("rejects own-scope task permissions for an unlinked account", async () => {
+    mockedDb.getAppUserById.mockResolvedValue({
+      id: 55,
+      name: "Unlinked manager",
+      role: "manager",
+      engineerId: null,
+    } as never);
+
+    await expect(callerFor("admin").appUsers.updatePermissions({
+      userId: 55,
+      permissions: [{
+        module: "tasks",
+        canView: 1,
+        canAdd: 0,
+        canEdit: 0,
+        canDelete: 0,
+        dataScope: "own",
+      }],
+    })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: expect.stringContaining("يتطلب ربط المستخدم بمهندس"),
+    });
+
+    expect(mockedDb.updateUserPermissions).not.toHaveBeenCalled();
+  });
+
+  it("preserves an explicit all-scope task grant for an unlinked account", async () => {
+    mockedDb.getAppUserById.mockResolvedValue({
+      id: 56,
+      name: "Unlinked team viewer",
+      role: "manager",
+      engineerId: null,
+    } as never);
+    mockedDb.updateUserPermissions.mockResolvedValue(undefined as never);
+
+    await expect(callerFor("admin").appUsers.updatePermissions({
+      userId: 56,
+      permissions: [{
+        module: "tasks",
+        canView: 1,
+        canAdd: 0,
+        canEdit: 0,
+        canDelete: 0,
+        dataScope: "all",
+      }],
+    })).resolves.toMatchObject({ success: true });
+
+    expect(mockedDb.updateUserPermissions).toHaveBeenCalledWith(56, [{
+      module: "tasks",
+      canView: 1,
+      canAdd: 0,
+      canEdit: 0,
+      canDelete: 0,
+      dataScope: "all",
+    }]);
   });
 
   it("requires an explicit strong password for bulk account creation", async () => {
