@@ -3653,8 +3653,9 @@ export async function getDiscountSummary(year?: number, month?: number, startDat
   };
 }
 /** التحقق من أن خصم صفقة جديدة لا يتجاوز الحد المتبقي */
-export async function validateDealDiscount(dealId: number | undefined, discountValue: number): Promise<{ valid: boolean; remaining: number; message?: string }> {
-  const summary = await getDiscountSummary();
+export async function validateDealDiscount(dealId: number | undefined, discountValue: number, engineerId?: number): Promise<{ valid: boolean; remaining: number; message?: string }> {
+  // Own-scope callers must validate against their own deal budget; never return the team-wide remaining budget.
+  const summary = await getDiscountSummary(undefined, undefined, undefined, undefined, engineerId);
   if (!summary) return { valid: false, remaining: 0, message: 'خطأ في جلب بيانات الخصم' };
 
   // إذا كنا نعدّل صفقة موجودة، نستثني خصمها القديم من الحساب
