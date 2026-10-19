@@ -2385,8 +2385,8 @@ export const appRouter = router({
         return getCollectionsWithCommission(input.engineerId);
       }),
     periodAnalysis: protectedProcedure.input(z.object({
-      startDate: z.string(),
-      endDate: z.string(),
+      startDate: z.string().date(),
+      endDate: z.string().date(),
     })).query(async ({ input, ctx }) => {
       await requireFinancialManager(ctx, "تحليل التحصيل المالي محصور بالإدارة المالية");
       await requireAllScope(ctx, "collections");

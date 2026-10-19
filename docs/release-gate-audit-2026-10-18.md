@@ -103,3 +103,17 @@ The earlier CI failures were resolved in sequence: migration 0075 parser failure
 | Deployed revision and migration ledger | BLOCKED | Target environment metadata still required |
 
 The release decision remains **`BLOCKED`**. PR #3 is still Draft and must not be merged or deployed until the production evidence and remaining legacy/scope gates are supplied and verified.
+
+## Engineering follow-up — 2026-10-19
+
+The following repository-side work was added on the current PR branch and is pending verification by the MySQL 8.4 CI job for the new head:
+
+| Gate | Status | Evidence added |
+|---|---|---|
+| `financial.periodAnalysis` October 1–31, 2026 boundaries and empty result | FIXED AND TESTED (repository test pending CI database run) | `server/financial-period-analysis.integration.test.ts`; date-only validation and exclusive end-date query in `server/db.ts` and `server/routers.ts` |
+| Migration 0074 duplicate `collections.dealId` safety | FIXED AND TESTED (pending CI database run) | `server/release-gate-migrations.integration.test.ts`; duplicate rows are asserted unchanged after the expected failure |
+| Migration 0075 legacy state matrix and retry cleanup | FIXED AND TESTED (pending CI database run) | `server/release-gate-migrations.integration.test.ts`; final-only, net-only, both, neither, missing tables, notes present/absent, and retry cases |
+| Runtime own/all financial authorization | FIXED AND TESTED (pending CI database run) | Expanded `server/financial-scope.test.ts` with owned-list, direct-ID denial, all-scope manager, and period aggregate assertions |
+| Production error, production schema, deployed SHA, and production migration ledger | BLOCKED | Requires read-only evidence from the affected deployment; repository CI cannot establish this |
+
+No production data, credentials, financial records, access policy, or historical values were changed. The release decision remains **`BLOCKED`** until the new MySQL integration tests pass on the exact PR head and the production-only evidence plus required human approval are supplied.

@@ -12402,18 +12402,27 @@ export async function setDealAccountingMonth(params: {
 export async function getCollectionPeriodAnalysis(startDate: string, endDate: string) {
   const db = await getDb();
   if (!db) return null;
-  const start = new Date(startDate);
-  const end = new Date(endDate);
+  const isDateOnly = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
+  if (!isDateOnly(startDate) || !isDateOnly(endDate)) {
+    throw new Error('Collection period dates must use YYYY-MM-DD');
+  }
+  const start = new Date(`${startDate}T00:00:00.000Z`);
+  const endExclusive = new Date(`${endDate}T00:00:00.000Z`);
+  endExclusive.setUTCDate(endExclusive.getUTCDate() + 1);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(endExclusive.getTime()) || start >= endExclusive) {
+    throw new Error('Invalid collection period');
+  }
+  const periodCondition = and(
+    gte(payments.paymentDate, start as unknown as Date),
+    lt(payments.paymentDate, endExclusive as unknown as Date),
+  );
 
   // إجمالي التحصيل في الفترة
   const periodPayments = await db.select({
     total: sql<string>`COALESCE(SUM(${payments.amount}), 0)`,
     count: sql<number>`COUNT(*)`,
   }).from(payments)
-    .where(and(
-      gte(payments.paymentDate, start as unknown as Date),
-      lte(payments.paymentDate, end as unknown as Date),
-    ));
+    .where(periodCondition);
 
   // التحصيل حسب الشهر (للرسم البياني)
   const monthlyBreakdown = await db.select({
@@ -12424,7 +12433,7 @@ export async function getCollectionPeriodAnalysis(startDate: string, endDate: st
   }).from(payments)
     .where(and(
       gte(payments.paymentDate, start as unknown as Date),
-      lte(payments.paymentDate, end as unknown as Date),
+      lt(payments.paymentDate, endExclusive as unknown as Date),
     ))
     .groupBy(sql`YEAR(${payments.paymentDate}), MONTH(${payments.paymentDate})`)
     .orderBy(sql`YEAR(${payments.paymentDate}), MONTH(${payments.paymentDate})`);
@@ -12437,7 +12446,7 @@ export async function getCollectionPeriodAnalysis(startDate: string, endDate: st
   }).from(payments)
     .where(and(
       gte(payments.paymentDate, start as unknown as Date),
-      lte(payments.paymentDate, end as unknown as Date),
+      lt(payments.paymentDate, endExclusive as unknown as Date),
     ))
     .groupBy(payments.paymentType);
 
