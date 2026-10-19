@@ -117,11 +117,6 @@ describe.skipIf(!enabled)("daily task record scope enforcement", () => {
       }),
       caller().tasks.calendarView({ engineerId: otherEngineerId }),
       caller().tasks.timeline({ date: "2026-10-18", engineerId: otherEngineerId }),
-      caller().tasks.timeSummary({
-        engineerId: otherEngineerId,
-        dateFrom: "2026-10-18",
-        dateTo: "2026-10-18",
-      }),
     ]);
 
     for (const result of results) {
@@ -129,6 +124,14 @@ describe.skipIf(!enabled)("daily task record scope enforcement", () => {
       expect(serialized).toContain(`${suffix}-own-task`);
       expect(serialized).not.toContain(`${suffix}-other-task`);
     }
+
+    const timeSummary = await caller().tasks.timeSummary({
+      engineerId: otherEngineerId,
+      dateFrom: "2026-10-18",
+      dateTo: "2026-10-18",
+    });
+    expect(timeSummary?.taskCount).toBe(1);
+    expect(JSON.stringify(timeSummary)).not.toContain(`${suffix}-other-task`);
   });
 
   it("rejects Follow Up for an unsupported department across task write routes", async () => {
