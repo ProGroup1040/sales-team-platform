@@ -1311,6 +1311,7 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         const access = await getOperationalScopeAccess(ctx, "visits", "canAdd");
         const engineerId = scopedEngineerId(access, input.engineerId);
+        if (input.leadId !== undefined) await requireLeadRecordScope(ctx, input.leadId, "canView");
         await createVisit({ ...input, engineerId });
         return { success: true };
       }),
