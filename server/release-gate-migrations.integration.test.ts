@@ -9,6 +9,7 @@ const migration0075 = readFileSync(new URL("../drizzle/0075_reconcile_legacy_sal
 const migration0076 = readFileSync(new URL("../drizzle/0076_follow_up_task_type.sql", import.meta.url), "utf8");
 const migration0077 = readFileSync(new URL("../drizzle/0077_reconcile_legacy_customers.sql", import.meta.url), "utf8");
 const migration0078 = readFileSync(new URL("../drizzle/0078_reconcile_legacy_sales_contract.sql", import.meta.url), "utf8");
+const migration0079 = readFileSync(new URL("../drizzle/0079_validate_reconciled_sales_schema.sql", import.meta.url), "utf8");
 const fixtureId = randomUUID().replace(/-/g, "").slice(0, 20);
 const fixtureTables = {
   collections: `release_gate_${fixtureId}_collections`,
@@ -105,6 +106,63 @@ describe.skipIf(!databaseUrl)("release-gate MySQL migration verification", () =>
     await applyMigration(migration0075);
     const [values] = await query<any[]>("SELECT notes FROM customers WHERE id = 1");
     expect(values[0]?.notes).toBe("preserve this");
+  }, 15_000);
+
+
+  it("0075 rejects both amount columns without rewriting either value", async () => {
+    await query("DROP TABLE customers");
+    await query("DROP TABLE sales");
+    await query("CREATE TABLE sales (id INT PRIMARY KEY, finalAmount DECIMAL(14,2) NOT NULL, netAmount DECIMAL(14,2) NOT NULL)");
+    await query("INSERT INTO sales VALUES (1, 123.45, 456.78)");
+    await query("CREATE TABLE customers (id INT PRIMARY KEY, notes TEXT)");
+
+    await expect(applyMigration(migration0075)).rejects.toThrow();
+    const [rows] = await query<any[]>("SELECT finalAmount, netAmount FROM sales WHERE id = 1");
+    expect(String(rows[0]?.finalAmount)).toBe("123.45");
+    expect(String(rows[0]?.netAmount)).toBe("456.78");
+  }, 15_000);
+
+  it("0075 rejects neither amount column instead of silently accepting an invalid schema", async () => {
+    await query("DROP TABLE customers");
+    await query("DROP TABLE sales");
+    await query("CREATE TABLE sales (id INT PRIMARY KEY)");
+    await query("CREATE TABLE customers (id INT PRIMARY KEY, notes TEXT)");
+
+    await expect(applyMigration(migration0075)).rejects.toThrow();
+    const [columns] = await query<any[]>("SHOW COLUMNS FROM sales");
+    expect(columns.map((column) => column.Field)).toEqual(["id"]);
+  }, 15_000);
+
+  it("0075 rejects missing required tables before changing schema and can safely retry", async () => {
+    await query("DROP TABLE customers");
+    await query("DROP TABLE sales");
+    await query("CREATE TABLE sales (id INT PRIMARY KEY, finalAmount DECIMAL(14,2) NOT NULL)");
+    await query("INSERT INTO sales VALUES (1, 987.65)");
+
+    await expect(applyMigration(migration0075)).rejects.toThrow();
+    const [beforeRetry] = await query<any[]>("SHOW COLUMNS FROM sales");
+    expect(beforeRetry.map((column) => column.Field)).toContain("finalAmount");
+    expect(beforeRetry.map((column) => column.Field)).not.toContain("netAmount");
+
+    await query("CREATE TABLE customers (id INT PRIMARY KEY)");
+    await applyMigration(migration0075);
+    const [afterRetry] = await query<any[]>("SELECT netAmount FROM sales WHERE id = 1");
+    expect(String(afterRetry[0]?.netAmount)).toBe("987.65");
+    const [customerColumns] = await query<any[]>("SHOW COLUMNS FROM customers");
+    expect(customerColumns.map((column) => column.Field)).toContain("notes");
+  }, 15_000);
+
+  it("0079 accepts only the fully reconciled schema and rejects ambiguous legacy state", async () => {
+    await query("DROP TABLE customers");
+    await query("DROP TABLE sales");
+    await query("CREATE TABLE sales (id INT PRIMARY KEY, netAmount DECIMAL(14,2) NOT NULL)");
+    await query("CREATE TABLE customers (id INT PRIMARY KEY, notes TEXT)");
+    await applyMigration(migration0079);
+
+    await query("ALTER TABLE sales ADD COLUMN finalAmount DECIMAL(14,2) NOT NULL DEFAULT 0");
+    await expect(applyMigration(migration0079)).rejects.toThrow();
+    const [rows] = await query<any[]>("SELECT netAmount, finalAmount FROM sales");
+    expect(rows).toHaveLength(0);
   }, 15_000);
 
   it("0076 preserves legacy task values and permits follow_up", async () => {
