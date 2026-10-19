@@ -9,6 +9,7 @@ const enabled = Boolean(process.env.DATABASE_URL);
 const testUserId = 1_000_000_000 + ((Date.now() + process.pid + 173) % 900_000_000);
 const suffix = `financial-scope-${Date.now()}-${process.pid}`;
 const unauthorizedContractName = `${suffix}-foreign-deal-contract`;
+const authorizedContractName = `${suffix}-own-deal-contract`;
 const engineerIds: number[] = [];
 const collectionIds: number[] = [];
 const dealIds: number[] = [];
@@ -16,6 +17,7 @@ let ownEngineerId = 0;
 let otherEngineerId = 0;
 let ownCollectionId = 0;
 let otherCollectionId = 0;
+let ownDealId = 0;
 let otherDealId = 0;
 
 function caller(role: "sales_engineer" | "manager" = "sales_engineer") {
@@ -106,13 +108,14 @@ describe.skipIf(!enabled)("financial record scope enforcement", () => {
         closingYear: now.getFullYear(),
       },
     ]).$returningId();
+    ownDealId = dealRows[0]?.id ?? 0;
     otherDealId = dealRows[1]?.id ?? 0;
     dealIds.push(...dealRows.map((row) => row.id));
   });
 
   afterAll(async () => {
     const db = await getDb();
-    if (db) await db.delete(collections).where(eq(collections.clientName, unauthorizedContractName));
+    if (db) await db.delete(collections).where(inArray(collections.clientName, [unauthorizedContractName, authorizedContractName]));
     if (db && collectionIds.length) await db.delete(collections).where(inArray(collections.id, collectionIds));
     if (db && dealIds.length) await db.delete(deals).where(inArray(deals.id, dealIds));
     if (db && engineerIds.length) await db.delete(engineers).where(inArray(engineers.id, engineerIds));
@@ -151,6 +154,30 @@ describe.skipIf(!enabled)("financial record scope enforcement", () => {
     const result = await caller().sales.trend({ months: 1 });
     expect(result).toHaveLength(1);
     expect(result[0]?.actual).toBe(100);
+  });
+
+  it("allows linking a financial contract to the caller's own deal when closing scope is own", async () => {
+    await updateUserPermissions(testUserId, [{
+      module: "collections",
+      canView: 1,
+      canAdd: 1,
+      canEdit: 1,
+      canDelete: 1,
+      dataScope: "all",
+    }, {
+      module: "closing",
+      canView: 1,
+      canAdd: 0,
+      canEdit: 0,
+      canDelete: 0,
+      dataScope: "own",
+    }]);
+
+    await expect(caller("manager").financial.addContract({
+      clientName: authorizedContractName,
+      contractAmount: 1000,
+      dealId: ownDealId,
+    })).resolves.toMatchObject({ success: true });
   });
 
   it("denies linking a financial contract to a foreign deal when closing scope is own", async () => {
