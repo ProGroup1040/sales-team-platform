@@ -106,6 +106,31 @@ describe.skipIf(!enabled)("daily task record scope enforcement", () => {
       .resolves.toMatchObject({ success: true });
   });
 
+  it("scopes task list, filtered, calendar, timeline, and time summaries despite caller-supplied engineer IDs", async () => {
+    const results = await Promise.all([
+      caller().tasks.list({ date: "2026-10-18", engineerId: otherEngineerId }),
+      caller().tasks.filtered({
+        dateRange: "custom",
+        dateFrom: "2026-10-18",
+        dateTo: "2026-10-18",
+        engineerId: otherEngineerId,
+      }),
+      caller().tasks.calendarView({ engineerId: otherEngineerId }),
+      caller().tasks.timeline({ date: "2026-10-18", engineerId: otherEngineerId }),
+      caller().tasks.timeSummary({
+        engineerId: otherEngineerId,
+        dateFrom: "2026-10-18",
+        dateTo: "2026-10-18",
+      }),
+    ]);
+
+    for (const result of results) {
+      const serialized = JSON.stringify(result);
+      expect(serialized).toContain(`${suffix}-own-task`);
+      expect(serialized).not.toContain(`${suffix}-other-task`);
+    }
+  });
+
   it("rejects Follow Up for an unsupported department across task write routes", async () => {
     await expect(caller().tasks.createMine({
       taskDate: "2026-10-18",
