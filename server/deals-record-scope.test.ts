@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import type { TrpcContext } from "./_core/context";
 import { appRouter } from "./routers";
 import { getDb, updateUserPermissions } from "./db";
@@ -128,6 +128,60 @@ describe.skipIf(!enabled)("deal direct-ID scope enforcement", () => {
   it("denies lost-stage updates for another engineer's deal by direct ID", async () => {
     await expect(caller().closing.updateDealStage({ id: otherDealId, stage: "closed_lost", lostReason: "competitor" }))
       .rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("blocks own-scope users from overriding the accounting period through the general stage endpoint", async () => {
+    await expect(caller().closing.updateStage({
+      id: ownDealId,
+      accountingMonth: 1,
+      accountingYear: 2026,
+    })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+
+    const db = await getDb();
+    if (!db) throw new Error("Database is required for deal record scope integration tests");
+    const [saved] = await db.select({
+      accountingMonth: deals.accountingMonth,
+      accountingYear: deals.accountingYear,
+      stage: deals.stage,
+    }).from(deals).where(eq(deals.id, ownDealId)).limit(1);
+    expect(saved?.accountingMonth).toBeNull();
+    expect(saved?.accountingYear).toBeNull();
+    expect(saved?.stage).toBe("proposal");
+  });
+
+  it("blocks own-scope sales engineers from changing discount caps and company-wide tier configuration", async () => {
+    await expect(caller().closing.setDiscountCap({
+      engineerId: ownEngineerId,
+      year: 2026,
+      month: 10,
+      monthlyCap: 1000,
+    })).rejects.toMatchObject({ code: "FORBIDDEN" });
+
+    await expect(caller().sales.setEngineerTarget({
+      engineerId: ownEngineerId,
+      year: 2026,
+      month: 10,
+      targetAmount: 10000,
+    })).rejects.toMatchObject({ code: "FORBIDDEN" });
+
+    await expect(caller().sales.setOperationalTargets({
+      engineerId: ownEngineerId,
+      year: 2026,
+      month: 10,
+      targetClosings: 10,
+    })).rejects.toMatchObject({ code: "FORBIDDEN" });
+
+    await expect(caller().sales.upsertDiscountTier({
+      minSales: 0,
+      maxDiscountPct: 5,
+      label: `${suffix}-unauthorized-tier`,
+    })).rejects.toMatchObject({ code: "FORBIDDEN" });
+
+    await expect(caller().sales.upsertCommissionTier({
+      minAchievementPct: 0,
+      commissionPct: 5,
+      label: `${suffix}-unauthorized-tier`,
+    })).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("allows the assigned engineer to read and update their own deal", async () => {

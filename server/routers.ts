@@ -749,6 +749,16 @@ async function requireFinancialManager(ctx: any, message: string) {
   return caller;
 }
 
+async function requireAccountingMonthManager(ctx: any) {
+  const req = (ctx as any).req;
+  const session = await (await import("./localAuth")).getLocalSessionFromRequest(req);
+  if (!session) throw new TRPCError({ code: "UNAUTHORIZED" });
+  if (!["admin", "manager"].includes(session.role)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "تعديل شهر احتساب الصفقة متاح للمدير والمسؤول فقط" });
+  }
+  return session;
+}
+
 async function requireCollectionFinancialAccess(
   ctx: any,
   collectionId: number,
@@ -1442,6 +1452,9 @@ export const appRouter = router({
       engineerId: z.string().optional(), // لإنشاء Task تلقائياً
       clientName: z.string().optional(), // لإنشاء Task تلقائياً
     })).mutation(async ({ input, ctx }) => {
+      if (input.accountingMonth !== undefined || input.accountingYear !== undefined) {
+        await requireAccountingMonthManager(ctx);
+      }
       await requireDealRecordScope(ctx, input.id, "canEdit");
       await updateDealFull(input.id, input);
       return { success: true };
@@ -1512,7 +1525,8 @@ export const appRouter = router({
       month: z.number(),
       monthlyCap: z.number().positive(),
     })).mutation(async ({ input, ctx }) => {
-      const access = await getOperationalScopeAccess(ctx, "closing", "canEdit");
+      await requireFinancialManager(ctx, "تعديل حد الخصم متاح للإدارة المالية فقط");
+      const access = await requireAllScope(ctx, "closing", "canEdit");
       await setDiscountBonusCap(scopedEngineerId(access, input.engineerId), input.year, input.month, input.monthlyCap);
       return { success: true };
     }),
@@ -1877,7 +1891,8 @@ export const appRouter = router({
       engineerId: z.number(), year: z.number(), month: z.number(),
       targetAmount: z.number().positive(), manpower: z.number().optional(), notes: z.string().optional(),
     })).mutation(async ({ input, ctx }) => {
-      const access = await getOperationalScopeAccess(ctx, "closing", "canEdit");
+      await requireFinancialManager(ctx, "تعديل أهداف المبيعات متاح للإدارة المالية فقط");
+      const access = await requireAllScope(ctx, "closing", "canEdit");
       await upsertEngineerTarget({ ...input, engineerId: scopedEngineerId(access, input.engineerId) });
       return { success: true };
     }),
@@ -1889,7 +1904,8 @@ export const appRouter = router({
       targetClosings: z.number().optional(), targetDeals: z.number().optional(),
       targetContract: z.number().optional(), targetWorkOrder: z.number().optional(),
     })).mutation(async ({ input, ctx }) => {
-      const access = await getOperationalScopeAccess(ctx, "closing", "canEdit");
+      await requireFinancialManager(ctx, "تعديل الأهداف التشغيلية متاح للإدارة المالية فقط");
+      const access = await requireAllScope(ctx, "closing", "canEdit");
       await upsertEngineerOperationalTargets({ ...input, engineerId: scopedEngineerId(access, input.engineerId) });
       return { success: true };
     }),
@@ -1899,12 +1915,14 @@ export const appRouter = router({
       id: z.number().optional(), minSales: z.number(), maxSales: z.number().optional(),
       maxDiscountPct: z.number(), label: z.string().optional(),
     })).mutation(async ({ input, ctx }) => {
+      await requireFinancialManager(ctx, "تعديل شرائح الخصم متاح للإدارة المالية فقط");
       await requireAllScope(ctx, "closing", "canAdd");
       await upsertDiscountTier(input);
       return { success: true };
     }),
     deleteDiscountTier: protectedProcedure.input(z.object({ id: z.number() }))
       .mutation(async ({ input, ctx }) => {
+        await requireFinancialManager(ctx, "حذف شرائح الخصم متاح للإدارة المالية فقط");
         await requireAllScope(ctx, "closing", "canDelete");
         await deleteDiscountTier(input.id);
         return { success: true };
@@ -1915,12 +1933,14 @@ export const appRouter = router({
       id: z.number().optional(), minAchievementPct: z.number(), maxAchievementPct: z.number().optional(),
       commissionPct: z.number(), label: z.string().optional(),
     })).mutation(async ({ input, ctx }) => {
+      await requireFinancialManager(ctx, "تعديل شرائح الكوميشن متاح للإدارة المالية فقط");
       await requireAllScope(ctx, "closing", "canAdd");
       await upsertCommissionTier(input);
       return { success: true };
     }),
     deleteCommissionTier: protectedProcedure.input(z.object({ id: z.number() }))
       .mutation(async ({ input, ctx }) => {
+        await requireFinancialManager(ctx, "حذف شرائح الكوميشن متاح للإدارة المالية فقط");
         await requireAllScope(ctx, "closing", "canDelete");
         await deleteCommissionTier(input.id);
         return { success: true };
