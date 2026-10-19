@@ -1453,8 +1453,9 @@ export const appRouter = router({
       dealId: z.number().optional(),
       discountValue: z.number().min(0),
     })).query(async ({ input, ctx }) => {
+      const access = await getOperationalScopeAccess(ctx, "closing");
       if (input.dealId !== undefined) await requireDealRecordScope(ctx, input.dealId, "canView");
-      return validateDealDiscount(input.dealId, input.discountValue);
+      return validateDealDiscount(input.dealId, input.discountValue, scopedEngineerId(access));
     }),
     engineerDiscountSummary: protectedProcedure.input(z.object({
       year: z.number().optional(),
