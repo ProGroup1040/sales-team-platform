@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import type { TrpcContext } from "./_core/context";
 import { appRouter } from "./routers";
 import { getDb, updateUserPermissions } from "./db";
@@ -131,6 +131,19 @@ describe.skipIf(!enabled)("project timeline direct-ID scope enforcement", () => 
     const result = await caller().projectTimeline.detail({ projectId: ownProjectId });
     expect(JSON.stringify(result)).toContain(`${suffix}-own-project-client`);
     expect(JSON.stringify(result)).not.toContain(`${suffix}-other-project-client`);
+  });
+
+  it("does not recalculate another engineer's project before denying direct-ID access", async () => {
+    const db = await getDb();
+    if (!db) throw new Error("Database is required for project timeline scope tests");
+    await db.update(projects).set({ projectStatus: "delayed" }).where(eq(projects.id, otherProjectId));
+
+    await expect(caller().projectTimeline.detail({ projectId: otherProjectId }))
+      .rejects.toMatchObject({ code: "FORBIDDEN" });
+
+    const [project] = await db.select({ projectStatus: projects.projectStatus })
+      .from(projects).where(eq(projects.id, otherProjectId)).limit(1);
+    expect(project?.projectStatus).toBe("delayed");
   });
 
   it("denies direct-ID reads of another engineer's project detail", async () => {
