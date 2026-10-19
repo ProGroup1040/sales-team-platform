@@ -7,6 +7,7 @@ import { dailyTasks, engineers } from "../drizzle/schema";
 
 const enabled = Boolean(process.env.DATABASE_URL);
 const testUserId = 1_000_000_000 + ((Date.now() + process.pid + 347) % 900_000_000);
+const managerUserId = testUserId + 1;
 const suffix = `task-scope-${Date.now()}-${process.pid}`;
 const engineerIds: number[] = [];
 const taskIds: number[] = [];
@@ -24,6 +25,22 @@ function caller() {
       role: "sales_engineer",
       name: "Own-scope task test",
       engineerId: ownEngineerId,
+    },
+    req: { headers: {} } as TrpcContext["req"],
+    res: {} as TrpcContext["res"],
+  };
+  return appRouter.createCaller(ctx);
+}
+
+function unlinkedManagerCaller() {
+  const ctx: TrpcContext = {
+    user: null,
+    actor: {
+      id: managerUserId,
+      source: "app_user",
+      role: "manager",
+      name: "Unlinked manager task test",
+      engineerId: null,
     },
     req: { headers: {} } as TrpcContext["req"],
     res: {} as TrpcContext["res"],
@@ -89,6 +106,43 @@ describe.skipIf(!enabled)("daily task record scope enforcement", () => {
     if (db && taskIds.length) await db.delete(dailyTasks).where(inArray(dailyTasks.id, taskIds));
     if (db && engineerIds.length) await db.delete(engineers).where(inArray(engineers.id, engineerIds));
     await updateUserPermissions(testUserId, []);
+    await updateUserPermissions(managerUserId, []);
+  });
+
+  it("rejects own-scope task reads for an unlinked account with an actionable error", async () => {
+    await updateUserPermissions(managerUserId, [{
+      module: "tasks",
+      canView: 1,
+      canAdd: 0,
+      canEdit: 0,
+      canDelete: 0,
+      dataScope: "own",
+    }]);
+
+    await expect(unlinkedManagerCaller().tasks.stats({ date: "2026-10-18" }))
+      .rejects.toMatchObject({
+        code: "FORBIDDEN",
+        message: expect.stringContaining("غير مرتبط بمهندس"),
+      });
+    await expect(unlinkedManagerCaller().tasks.list({ date: "2026-10-18" }))
+      .rejects.toMatchObject({
+        code: "FORBIDDEN",
+        message: expect.stringContaining("غير مرتبط بمهندس"),
+      });
+  });
+
+  it("allows an unlinked account to read tasks only with an explicit all-scope grant", async () => {
+    await updateUserPermissions(managerUserId, [{
+      module: "tasks",
+      canView: 1,
+      canAdd: 0,
+      canEdit: 0,
+      canDelete: 0,
+      dataScope: "all",
+    }]);
+
+    await expect(unlinkedManagerCaller().tasks.stats({ date: "2026-10-18" })).resolves.toBeDefined();
+    await expect(unlinkedManagerCaller().tasks.list({ date: "2026-10-18" })).resolves.toBeDefined();
   });
 
   it("denies status updates to another engineer's task by direct ID", async () => {
