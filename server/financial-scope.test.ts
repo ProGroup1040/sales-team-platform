@@ -12,15 +12,16 @@ const engineerIds: number[] = [];
 const collectionIds: number[] = [];
 let ownEngineerId = 0;
 let otherEngineerId = 0;
+let ownCollectionId = 0;
 let otherCollectionId = 0;
 
-function caller() {
+function caller(role: "sales_engineer" | "manager" = "sales_engineer") {
   const ctx: TrpcContext = {
     user: null,
     actor: {
       id: testUserId,
       source: "app_user",
-      role: "sales_engineer",
+      role,
       name: "Own-scope financial test",
       engineerId: ownEngineerId,
     },
@@ -68,7 +69,7 @@ describe.skipIf(!enabled)("financial record scope enforcement", () => {
       clientName: `${suffix}-other-client`,
       contractAmount: "2000.00",
     }).$returningId();
-    const ownCollectionId = ownCollection[0]?.id ?? 0;
+    ownCollectionId = ownCollection[0]?.id ?? 0;
     otherCollectionId = otherCollection[0]?.id ?? 0;
     if (!ownCollectionId || !otherCollectionId) throw new Error("Could not create financial scope collections");
     collectionIds.push(ownCollectionId, otherCollectionId);
@@ -101,5 +102,29 @@ describe.skipIf(!enabled)("financial record scope enforcement", () => {
       month: 10,
       year: 2026,
     })).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("returns only owned contracts for own scope", async () => {
+    const result = await caller().financial.allContracts({});
+    expect(result.every((contract: { engineerId?: number | null }) => contract.engineerId === ownEngineerId)).toBe(true);
+    expect(result.some((contract: { id: number }) => contract.id === otherCollectionId)).toBe(false);
+  });
+
+  it("allows an all-scope manager to read both contracts and the period aggregate", async () => {
+    await updateUserPermissions(testUserId, [{
+      module: "collections",
+      canView: 1,
+      canAdd: 1,
+      canEdit: 1,
+      canDelete: 1,
+      dataScope: "all",
+    }]);
+    const result = await caller("manager").financial.allContracts({});
+    expect(result.some((contract: { id: number }) => contract.id === ownCollectionId)).toBe(true);
+    expect(result.some((contract: { id: number }) => contract.id === otherCollectionId)).toBe(true);
+    await expect(caller("manager").financial.periodAnalysis({
+      startDate: "2026-10-01",
+      endDate: "2026-10-31",
+    })).resolves.toBeDefined();
   });
 });
