@@ -16,7 +16,6 @@ let ownEngineerId = 0;
 let otherEngineerId = 0;
 let ownCollectionId = 0;
 let otherCollectionId = 0;
-let ownDealId = 0;
 let otherDealId = 0;
 
 function caller(role: "sales_engineer" | "manager" = "sales_engineer") {
@@ -107,7 +106,6 @@ describe.skipIf(!enabled)("financial record scope enforcement", () => {
         closingYear: now.getFullYear(),
       },
     ]).$returningId();
-    ownDealId = dealRows[0]?.id ?? 0;
     otherDealId = dealRows[1]?.id ?? 0;
     dealIds.push(...dealRows.map((row) => row.id));
   });
