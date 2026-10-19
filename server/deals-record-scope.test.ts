@@ -98,6 +98,23 @@ describe.skipIf(!enabled)("deal direct-ID scope enforcement", () => {
     await updateUserPermissions(testUserId, []);
   });
 
+  it("scopes deal list and stats to the authenticated engineer despite a forged engineerId filter", async () => {
+    const result = await caller().closing.list({
+      limit: 100,
+      offset: 0,
+      engineerId: otherEngineerId,
+    });
+    const serialized = JSON.stringify(result);
+    expect(serialized).toContain(`${suffix}-own-client`);
+    expect(serialized).not.toContain(`${suffix}-other-client`);
+
+    const stats = await caller().closing.stats({
+      year: new Date().getFullYear(),
+      month: new Date().getMonth() + 1,
+    });
+    expect(JSON.stringify(stats)).not.toContain(`${suffix}-other-client`);
+  });
+
   it("denies timeline reads for another engineer's deal by direct ID", async () => {
     await expect(caller().closing.timeline({ dealId: otherDealId }))
       .rejects.toMatchObject({ code: "FORBIDDEN" });
