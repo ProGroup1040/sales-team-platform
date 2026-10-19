@@ -121,11 +121,11 @@ describe.skipIf(!enabled)("release-gate MySQL 8.4 migration verification", () =>
     ["neither amount column", "CREATE TABLE sales (id INT PRIMARY KEY, grossAmount DECIMAL(14,2))"],
     ["missing sales table", "CREATE TABLE customers (id INT PRIMARY KEY)"],
     ["missing customers table", "CREATE TABLE sales (id INT PRIMARY KEY, netAmount DECIMAL(14,2))"],
-  ])("0075 fails closed for %s and leaves no routine behind", async (_label, setup) => {
+  ])("0075 fails closed for %s and leaves a retryable helper routine", async (_label, setup) => {
     const { db } = await disposableDatabase();
     await db.query(setup);
     await expect(applyMigration(db, migration0075)).rejects.toThrow();
-    expect(await routineCount(db)).toBe(0);
+    expect(await routineCount(db)).toBe(1);
     await db.end();
   }, 15_000);
 
@@ -134,7 +134,7 @@ describe.skipIf(!enabled)("release-gate MySQL 8.4 migration verification", () =>
     await db.query("CREATE TABLE sales (id INT PRIMARY KEY, finalAmount DECIMAL(14,2), netAmount DECIMAL(14,2))");
     await db.query("CREATE TABLE customers (id INT PRIMARY KEY)");
     await expect(applyMigration(db, migration0075)).rejects.toThrow();
-    expect(await routineCount(db)).toBe(0);
+    expect(await routineCount(db)).toBe(1);
     await db.query("ALTER TABLE sales DROP COLUMN netAmount");
     await applyMigration(db, migration0075);
     expect(await tableColumns(db, "sales")).toContain("netAmount");

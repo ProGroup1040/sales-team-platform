@@ -1,7 +1,7 @@
 -- Reconcile the historical sales schema without silently accepting an unexpected state.
 -- Drizzle executes each migration statement as one MySQL query. The procedure
 -- therefore keeps the conditional DDL in one server-side statement.
-CREATE PROCEDURE `reconcile_legacy_sales_schema`()
+CREATE PROCEDURE IF NOT EXISTS `reconcile_legacy_sales_schema`()
 BEGIN
   DECLARE has_sales_table INT DEFAULT 0;
   DECLARE has_final_amount INT DEFAULT 0;
