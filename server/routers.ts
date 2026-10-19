@@ -3209,6 +3209,9 @@ export const appRouter = router({
         if (input.dealId !== undefined) {
           await requireDealRecordScope(ctx, input.dealId, "canView");
         }
+        if (input.quotationId !== undefined) {
+          await requirePlaybookQuotationScope(ctx, input.quotationId, "canView");
+        }
         const id = await createMeetingSession({ ...input, engineerId });
         return { success: true, sessionId: id };
       }),
