@@ -87,6 +87,7 @@ describe.skipIf(!enabled)("financial.periodAnalysis date boundaries", () => {
 
   it("rejects malformed and reversed date ranges before querying", async () => {
     await expect(getCollectionPeriodAnalysis("2026-10-01T00:00:00Z", "2026-10-31")).rejects.toThrow("YYYY-MM-DD");
+    await expect(getCollectionPeriodAnalysis("2026-02-30", "2026-10-31")).rejects.toThrow("YYYY-MM-DD");
     await expect(getCollectionPeriodAnalysis("2026-11-01", "2026-10-31")).rejects.toThrow("Invalid collection period");
   });
 });

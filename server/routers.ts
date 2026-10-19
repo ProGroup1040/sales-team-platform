@@ -6,6 +6,7 @@ import { assertLoginAttemptAllowed, clearLoginAttempts, LoginRateLimitError, rec
 import { systemRouter } from "./_core/systemRouter";
 import { getRequestCookie, setResponseCookie, clearResponseCookie } from "./_core/httpCookies";
 import { TRPCError } from "@trpc/server";
+import { eq } from "drizzle-orm";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { getWebPushPublicKey, savePushSubscription, removePushSubscription } from "./pushNotifications";
 import { resolveUserPermissions } from "./permissionResolution";
@@ -379,6 +380,16 @@ function assertTaskTimeRange(startTime?: string, endTime?: string) {
   }
 }
 
+async function assertFollowUpAllowedForEngineer(engineerId: number, taskType?: string) {
+  if (!taskType || taskType === "other") return;
+  const engineer = await getEngineerById(engineerId);
+  const department = engineer?.department ?? engineer?.role ?? "sales_engineer";
+  const allowed = ALLOWED_TASK_TYPES_BY_DEPARTMENT[department as keyof typeof ALLOWED_TASK_TYPES_BY_DEPARTMENT];
+  const constrainedTypes = new Set(Object.values(ALLOWED_TASK_TYPES_BY_DEPARTMENT).flat());
+  if (allowed && constrainedTypes.has(taskType) && !allowed.includes(taskType)) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: `نوع المهمة ${taskType === "follow_up" ? "Follow Up" : taskType} غير مسموح لقسم ${department}` });
+  }
+}
 
 type ScopePermissionAction = "canView" | "canAdd" | "canEdit" | "canDelete";
 
@@ -935,17 +946,7 @@ export const appRouter = router({
       const access = await requireTaskAction(ctx, "add");
       const engineerId = taskEngineerFilter(access, input.engineerId);
       if (!engineerId) throw new TRPCError({ code: "BAD_REQUEST", message: "يجب تحديد المهندس المسؤول عن المهمة" });
-      // باككند Department Enforcement: التحقق من أن الـ taskType مسموح للقسم
-      if (input.taskType && input.taskType !== 'other') {
-        const eng = await getEngineerById(engineerId);
-        if (eng) {
-          const dept = eng.department ?? eng.role ?? 'sales_engineer';
-          const allowed = ALLOWED_TASK_TYPES_BY_DEPARTMENT[dept as keyof typeof ALLOWED_TASK_TYPES_BY_DEPARTMENT];
-          if (allowed && !allowed.includes(input.taskType)) {
-            throw new TRPCError({ code: 'BAD_REQUEST', message: `نوع المهمة غير مسموح لقسم ${dept}` });
-          }
-        }
-      }
+      await assertFollowUpAllowedForEngineer(engineerId, input.taskType);
       await createTask({ ...input, engineerId }); return { success: true };
     }),
     createMine: protectedProcedure.input(z.object({
@@ -959,16 +960,7 @@ export const appRouter = router({
       const access = await requireTaskAction(ctx, "add");
       const engineerId = access.caller.engineerId;
       if (!engineerId) throw new TRPCError({ code: "BAD_REQUEST", message: "لا يوجد مهندس مرتبط بهذا الحساب" });
-      if (input.taskType && input.taskType !== 'other') {
-        const eng = await getEngineerById(engineerId);
-        if (eng) {
-          const dept = eng.department ?? eng.role ?? 'sales_engineer';
-          const allowed = ALLOWED_TASK_TYPES_BY_DEPARTMENT[dept as keyof typeof ALLOWED_TASK_TYPES_BY_DEPARTMENT];
-          if (allowed && !allowed.includes(input.taskType)) {
-            throw new TRPCError({ code: 'BAD_REQUEST', message: `نوع المهمة غير مسموح لقسم ${dept}` });
-          }
-        }
-      }
+      await assertFollowUpAllowedForEngineer(engineerId, input.taskType);
       await createTask({ ...input, engineerId });
       return { success: true };
     }),
@@ -1135,6 +1127,7 @@ export const appRouter = router({
       if (!engineerId) throw new TRPCError({ code: "BAD_REQUEST", message: "يجب تحديد المهندس المسؤول عن المهمة" });
       const { startTime, endTime, taskType, clientName, notes, reminderMinutes, ...rest } = input;
       assertTaskTimeRange(startTime, endTime);
+      await assertFollowUpAllowedForEngineer(engineerId, taskType);
       // Check overlap if times provided
       if (startTime && endTime) {
         const overlap = await checkTimeOverlap({ engineerId, taskDate: input.taskDate, startTime, endTime });
@@ -1199,6 +1192,14 @@ export const appRouter = router({
       const { id, ...updates } = input;
       if (updates.engineerId !== undefined && access.scope !== "all") {
         throw new TRPCError({ code: "FORBIDDEN", message: "لا يمكنك تغيير مالك المهمة" });
+      }
+      if (updates.taskType) {
+        const { dailyTasks } = await import("../drizzle/schema");
+        const db = await getDb();
+        const [currentTask] = db ? await db.select({ engineerId: dailyTasks.engineerId }).from(dailyTasks).where(eq(dailyTasks.id, id)).limit(1) : [];
+        const effectiveEngineerId = updates.engineerId ?? currentTask?.engineerId;
+        if (!effectiveEngineerId) throw new TRPCError({ code: "NOT_FOUND", message: "المهمة غير موجودة" });
+        await assertFollowUpAllowedForEngineer(effectiveEngineerId, updates.taskType);
       }
       assertTaskTimeRange(updates.startTime, updates.endTime);
       if (updates.startTime && updates.endTime) {

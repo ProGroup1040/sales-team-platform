@@ -75,13 +75,13 @@ No production data, financial policy, historical records, commission rules, or a
 
 The failed CI run for PR #3 was `39133558274` and checked merge commit `148c910d878c3a5e021f1b3aabfe27591c177f30` (PR head `e7d90611dc6231e27ec07835bb883f66a602d8ed` merged into baseline `b69558b1c55394ec1514b9360d3c9db2e52395e3`). MySQL 8.4 reached healthy status before migrations started. The failure occurred during `pnpm drizzle-kit migrate` in migration `0075_reconcile_legacy_sales_schema.sql` with MySQL `ER_PARSE_ERROR` near `SET @has_net_amount :=`. Therefore the previous migration was not being executed successfully in the CI MySQL 8.4 environment.
 
-### Remediation applied, pending CI proof
+### Immutable-migration correction
 
-Migration 0075 was changed to execute its conditional DDL through a temporary stored procedure, with explicit `SIGNAL` failures for a missing `sales` table, both amount columns, or neither amount column. The supported states are now explicit: `finalAmount` only is renamed to `netAmount`; `netAmount` only is accepted; unexpected both/neither states fail closed; `customers.notes` is added only when absent. The procedure is called and dropped in separate Drizzle statements. This change passed local `pnpm check` and `pnpm build`, but local execution cannot prove MySQL behavior because this sandbox has no running MySQL server or Docker runtime. A new GitHub Actions run is required.
+Migration 0075 was already issued and recorded by the migration journal. It must not be rewritten: environments that already applied it do not rerun its changed text. The later stored-procedure rewrite was therefore reverted. The released migration remains an idempotent reconciliation step for the supported `finalAmount`-only and `netAmount`-only states; its both/neither-state behavior is documented as a legacy-schema release gate, not silently retrofitted through altered historical SQL. Any new reconciliation policy must use a newly numbered migration after clone validation.
 
 ### Current release decision
 
-`BLOCKED`. PR #3 remains Draft and must not be merged or deployed. Production access is unavailable in this environment: no deployed server log, redacted `SHOW CREATE TABLE payments`, migration ledger, or deployed revision was provided. The exact production root cause of `financial.periodAnalysis` HTTP 500 is therefore still unconfirmed. The CI migration blocker is confirmed separately and has a narrowly scoped remediation pending CI verification. Full MySQL integration and cross-user own/all authorization evidence are still required before changing the decision to `READY FOR REVIEW`.
+`BLOCKED`. PR #3 remains Draft and must not be merged or deployed. Production access is unavailable in this environment: no deployed server log, redacted `SHOW CREATE TABLE payments`, migration ledger, or deployed revision was provided. The exact production root cause of `financial.periodAnalysis` HTTP 500 is therefore still unconfirmed. Full MySQL integration and cross-user own/all authorization evidence are still required before changing the decision to `READY FOR REVIEW`.
 
 ### Final CI evidence for the current branch
 
@@ -112,7 +112,8 @@ The following repository-side work was added on the current PR branch and is pen
 |---|---|---|
 | `financial.periodAnalysis` October 1–31, 2026 boundaries and empty result | FIXED AND TESTED (repository test pending CI database run) | `server/financial-period-analysis.integration.test.ts`; date-only validation and exclusive end-date query in `server/db.ts` and `server/routers.ts` |
 | Migration 0074 duplicate `collections.dealId` safety | FIXED AND TESTED (pending CI database run) | `server/release-gate-migrations.integration.test.ts`; duplicate rows are asserted unchanged after the expected failure |
-| Migration 0075 legacy state matrix and retry cleanup | FIXED AND TESTED (pending CI database run) | `server/release-gate-migrations.integration.test.ts`; final-only, net-only, both, neither, missing tables, notes present/absent, and retry cases |
+| Migration 0075 released-schema compatibility | TESTED (pending CI database run) | `server/release-gate-migrations.integration.test.ts`; final-only and already-reconciled states are covered without rewriting issued SQL; both/neither remains a clone-review gate for any future numbered migration |
+| Legacy `customers` and `sales` write contracts | FIXED AND TESTED (pending CI database run) | New non-destructive migrations 0077/0078, managed-database schema verification, and customer/sale integration tests cover missing columns and non-auto-increment legacy IDs |
 | Runtime own/all financial authorization | FIXED AND TESTED (pending CI database run) | Expanded `server/financial-scope.test.ts` with owned-list, direct-ID denial, all-scope manager, and period aggregate assertions |
 | Production error, production schema, deployed SHA, and production migration ledger | BLOCKED | Requires read-only evidence from the affected deployment; repository CI cannot establish this |
 
@@ -120,6 +121,6 @@ No production data, credentials, financial records, access policy, or historical
 
 ## Exact-head CI result — 2026-10-19
 
-GitHub Actions run [39216970706](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39216970706) passed for commit `2bde9c3a91d04c69a3a348748d0db64246ad9fa7`. The `validate` job completed successfully on MySQL 8.4, including database migrations, TypeScript checking, runtime readiness checks, the full Vitest suite, and the production build. This run verifies the repository-side migration state matrix, October financial period regression, and own/all financial authorization tests on the CI fixture database.
+GitHub Actions run [39216970706](https://github.com/ProGroup1040/sales-team-platform/actions/runs/39216970706) passed for commit `2bde9c3a91d04c69a3a348748d0db64246ad9fa7`. It is historical evidence for that exact SHA only. After restoring immutable migration 0075 content, a fresh MySQL 8.4 CI run is required before treating the current branch's migration coverage as verified.
 
 PR #3 remains open and Draft. GitHub reports it as mergeable with a clean merge state and the required CI check green, but no approving review is recorded. The exact production error, redacted production `payments` schema, deployed revision, and production migration ledger remain unavailable; therefore the release decision remains **`BLOCKED`** and no merge was attempted.

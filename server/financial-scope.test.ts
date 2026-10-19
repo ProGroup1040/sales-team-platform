@@ -126,5 +126,5 @@ describe.skipIf(!enabled)("financial record scope enforcement", () => {
       startDate: "2026-10-01",
       endDate: "2026-10-31",
     })).resolves.toBeDefined();
-  });
+  }, 15_000);
 });

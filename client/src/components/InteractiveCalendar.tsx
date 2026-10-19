@@ -69,6 +69,7 @@ interface Engineer {
   id: number;
   name: string;
   role?: string;
+  department?: string | null;
 }
 
 interface Props {
@@ -421,6 +422,18 @@ function TaskModal({
     onError: (e) => toast.error(e.message || 'خطأ في التحديث'),
   });
   const isSaving = createMutation.isPending || updateMutation.isPending || createAdminMutation.isPending || updateAdminMutation.isPending;
+  const selectedEngineer = engineers.find(engineer => engineer.id === Number(form.engineerId));
+  const supportsFollowUp = ['sales_engineer', 'sales_specialist'].includes(
+    selectedEngineer?.department || selectedEngineer?.role || '',
+  );
+  const selectableTaskTypes = TASK_TYPES.filter(type => type.value !== 'follow_up' || supportsFollowUp);
+
+  useEffect(() => {
+    if (form.taskType === 'follow_up' && !supportsFollowUp) {
+      setForm(current => ({ ...current, taskType: '' }));
+    }
+  }, [form.taskType, supportsFollowUp]);
+
   const handleSave = () => {
     if (isAdminSalesMode) {
       if (!adminForm.taskTitle.trim()) { toast.error('يجب إدخال عنوان المهمة'); return; }
@@ -586,7 +599,7 @@ function TaskModal({
                   </SelectTrigger>
                   <SelectContent className="bg-slate-800 border-slate-600">
                     <SelectItem value="all" className="text-slate-400">— اختر نوع المهمة —</SelectItem>
-                    {TASK_TYPES.map(t => (
+                    {selectableTaskTypes.map(t => (
                       <SelectItem key={t.value} value={t.value} className="text-white">{t.label}</SelectItem>
                     ))}
                   </SelectContent>

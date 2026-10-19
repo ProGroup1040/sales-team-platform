@@ -540,6 +540,20 @@
       "when": 1792400000000,
       "tag": "0076_follow_up_task_type",
       "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "5",
+      "when": 1792401519699,
+      "tag": "0077_reconcile_legacy_customers",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "5",
+      "when": 1792402133784,
+      "tag": "0078_reconcile_legacy_sales_contract",
+      "breakpoints": true
     }
   ]
 }

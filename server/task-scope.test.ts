@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import type { TrpcContext } from "./_core/context";
 import { appRouter } from "./routers";
 import { getDb, updateUserPermissions } from "./db";
@@ -46,7 +46,8 @@ describe.skipIf(!enabled)("daily task record scope enforcement", () => {
 
     const ownEngineer = await db.insert(engineers).values({
       name: `${suffix}-own`,
-      role: "sales_engineer",
+      department: "interior_designer",
+      role: "interior_designer",
       status: "active",
     }).$returningId();
     ownEngineerId = ownEngineer[0]?.id ?? 0;
@@ -103,5 +104,43 @@ describe.skipIf(!enabled)("daily task record scope enforcement", () => {
   it("allows updating a task owned by the authenticated engineer", async () => {
     await expect(caller().tasks.updateStatus({ id: ownTaskId, status: "completed" }))
       .resolves.toMatchObject({ success: true });
+  });
+
+  it("rejects Follow Up for an unsupported department across task write routes", async () => {
+    await expect(caller().tasks.createMine({
+      taskDate: "2026-10-18",
+      title: `${suffix}-mine-follow-up`,
+      taskType: "follow_up",
+    })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+
+    await expect(caller().tasks.createWithTime({
+      engineerId: ownEngineerId,
+      taskDate: "2026-10-18",
+      title: `${suffix}-calendar-follow-up`,
+      taskType: "follow_up",
+    })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+
+    await expect(caller().tasks.updateFull({ id: ownTaskId, taskType: "follow_up" }))
+      .rejects.toMatchObject({ code: "BAD_REQUEST" });
+
+    const db = await getDb();
+    const [task] = db ? await db.select({ taskType: dailyTasks.taskType }).from(dailyTasks).where(eq(dailyTasks.id, ownTaskId)).limit(1) : [];
+    expect(task?.taskType).not.toBe("follow_up");
+  });
+
+  it("allows Follow Up for a sales engineer through the calendar mutation", async () => {
+    const db = await getDb();
+    if (!db) throw new Error("Database is required for task scope integration tests");
+    await db.update(engineers).set({ department: "sales_engineer", role: "sales_engineer" }).where(eq(engineers.id, ownEngineerId));
+    const title = `${suffix}-allowed-follow-up`;
+
+    await expect(caller().tasks.createWithTime({
+      engineerId: ownEngineerId,
+      taskDate: "2026-10-18",
+      title,
+      taskType: "follow_up",
+    })).resolves.toMatchObject({ success: true });
+    const [createdTask] = await db.select({ id: dailyTasks.id }).from(dailyTasks).where(eq(dailyTasks.title, title)).limit(1);
+    if (createdTask?.id) taskIds.push(createdTask.id);
   });
 });

@@ -11,10 +11,10 @@ describe("sale creation money calculation", () => {
   beforeAll(async () => {
     const db = await getDb();
     if (!db) throw new Error("Database required for sale creation integration test");
-    // The legacy live customers table predates the current Drizzle `notes` column.
-    // Create the minimal fixture through SQL so this invoice test stays focused on sales.
-    const [result] = await db.execute(sql`INSERT INTO customers (name) VALUES (${tag})`);
-    customerId = Number((result as { insertId?: number }).insertId);
+    // The deployed legacy table uses a primary key without AUTO_INCREMENT.
+    // This fixture owns an explicit unused ID so the invoice test stays focused on sales.
+    customerId = 1_000_000_000 + ((Date.now() + process.pid) % 900_000_000);
+    await db.execute(sql`INSERT INTO customers (id, name) VALUES (${customerId}, ${tag})`);
   });
 
   afterAll(async () => {

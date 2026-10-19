@@ -1263,9 +1263,30 @@ export async function getProductCategories(): Promise<string[]> {
 }
 
 export async function createCustomer(data: any) {
-  const db = await getDb();
-  if (!db) return;
-  await db.insert(customers).values(data);
+  const db = await requireDb();
+  const identityRows = await db.execute(sql`
+    SELECT EXTRA AS extra
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'id'
+  `) as unknown as Array<{ extra: string | null }>;
+  const [identity] = identityRows;
+  if (String(identity?.extra ?? '').includes('auto_increment')) {
+    await db.insert(customers).values(data);
+    return;
+  }
+
+  // Some deployed legacy customer tables have a primary key but no AUTO_INCREMENT.
+  // Retry an explicit next ID if another concurrent insert claimed the same value.
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const [next] = await db.select({ id: sql<string>`COALESCE(MAX(${customers.id}), 0) + 1` }).from(customers);
+    try {
+      await db.insert(customers).values({ ...data, id: Number(next?.id ?? 1) });
+      return;
+    } catch (error: any) {
+      const mysqlCode = error?.code ?? error?.cause?.code;
+      if (mysqlCode !== 'ER_DUP_ENTRY' || attempt === 7) throw error;
+    }
+  }
 }
 
 export async function updateCustomer(id: number, data: any) {
@@ -1308,22 +1329,42 @@ export async function getSales(opts: any) {
 
 export async function createSale(data: any) {
   const db = await requireDb();
-  const invoiceNumber = `INV-${Date.now()}`;
   const totalCents = toCents(data.totalAmount ?? 0);
   const discountCents = toCents(data.discount ?? 0);
   const taxCents = toCents(data.tax ?? 0);
   if (totalCents < 0 || discountCents < 0 || taxCents < 0) throw new Error("Sale money values must be non-negative");
   const finalCents = totalCents - discountCents + taxCents;
   if (finalCents < 0) throw new Error("Sale discount cannot exceed total plus tax");
-  const [result] = await db.insert(sales).values({
-    ...data,
-    invoiceNumber,
-    totalAmount: fromCents(totalCents),
-    discount: fromCents(discountCents),
-    tax: fromCents(taxCents),
-    finalAmount: fromCents(finalCents),
-  });
-  return { id: Number((result as { insertId?: number }).insertId), invoiceNumber };
+  const identityRows = await db.execute(sql`
+    SELECT EXTRA AS extra
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sales' AND COLUMN_NAME = 'id'
+  `) as unknown as Array<{ extra: string | null }>;
+  const usesAutoIncrement = String(identityRows[0]?.extra ?? '').includes('auto_increment');
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const invoiceNumber = `INV-${Date.now()}-${attempt}`;
+    const insertValues: Record<string, unknown> = {
+      ...data,
+      invoiceNumber,
+      totalAmount: fromCents(totalCents),
+      discount: fromCents(discountCents),
+      tax: fromCents(taxCents),
+      finalAmount: fromCents(finalCents),
+    };
+    if (!usesAutoIncrement) {
+      const [next] = await db.select({ id: sql<string>`COALESCE(MAX(${sales.id}), 0) + 1` }).from(sales);
+      insertValues.id = Number(next?.id ?? 1);
+    }
+    try {
+      const [result] = await db.insert(sales).values(insertValues as any);
+      return { id: usesAutoIncrement ? Number((result as { insertId?: number }).insertId) : Number(insertValues.id), invoiceNumber };
+    } catch (error: any) {
+      const mysqlCode = error?.code ?? error?.cause?.code;
+      if (mysqlCode !== 'ER_DUP_ENTRY' || attempt === 7) throw error;
+    }
+  }
+  throw new Error("Could not allocate a legacy sale ID");
 }
 
 export async function updateSaleStatus(id: number, status: string) {
@@ -12405,14 +12446,21 @@ export async function setDealAccountingMonth(params: {
 export async function getCollectionPeriodAnalysis(startDate: string, endDate: string) {
   const db = await getDb();
   if (!db) return null;
-  const isDateOnly = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
-  if (!isDateOnly(startDate) || !isDateOnly(endDate)) {
+  const parseDateOnly = (value: string) => {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (!match) return null;
+    const date = new Date(`${value}T00:00:00.000Z`);
+    const [year, month, day] = match.slice(1).map(Number);
+    return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day ? date : null;
+  };
+  const start = parseDateOnly(startDate);
+  const end = parseDateOnly(endDate);
+  if (!start || !end) {
     throw new Error('Collection period dates must use YYYY-MM-DD');
   }
-  const start = new Date(`${startDate}T00:00:00.000Z`);
-  const endExclusive = new Date(`${endDate}T00:00:00.000Z`);
+  const endExclusive = new Date(end);
   endExclusive.setUTCDate(endExclusive.getUTCDate() + 1);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(endExclusive.getTime()) || start >= endExclusive) {
+  if (start >= endExclusive) {
     throw new Error('Invalid collection period');
   }
   const periodCondition = and(
@@ -12428,9 +12476,11 @@ export async function getCollectionPeriodAnalysis(startDate: string, endDate: st
     .where(periodCondition);
 
   // التحصيل حسب الشهر (للرسم البياني)
+  const paymentYear = sql<number>`YEAR(\`payments\`.\`paymentDate\`)`;
+  const paymentMonth = sql<number>`MONTH(\`payments\`.\`paymentDate\`)`;
   const monthlyBreakdown = await db.select({
-    year: sql<number>`YEAR(${payments.paymentDate})`,
-    month: sql<number>`MONTH(${payments.paymentDate})`,
+    year: paymentYear,
+    month: paymentMonth,
     total: sql<string>`COALESCE(SUM(${payments.amount}), 0)`,
     count: sql<number>`COUNT(*)`,
   }).from(payments)
@@ -12438,8 +12488,8 @@ export async function getCollectionPeriodAnalysis(startDate: string, endDate: st
       gte(payments.paymentDate, start as unknown as Date),
       lt(payments.paymentDate, endExclusive as unknown as Date),
     ))
-    .groupBy(sql`YEAR(${payments.paymentDate}), MONTH(${payments.paymentDate})`)
-    .orderBy(sql`YEAR(${payments.paymentDate}), MONTH(${payments.paymentDate})`);
+    .groupBy(paymentYear, paymentMonth)
+    .orderBy(paymentYear, paymentMonth);
 
   // التحصيل حسب نوع الدفعة
   const byType = await db.select({
