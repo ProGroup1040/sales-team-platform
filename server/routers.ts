@@ -918,11 +918,15 @@ export const appRouter = router({
           throw error;
         }
       };
+      const canManageSharedCatalog =
+        access.scope === "all" &&
+        ["manager", "admin_sales", "admin"].includes(access.caller.role);
       const permissions = {
         canView: true,
-        canAdd: await can("canAdd"),
-        canEdit: await can("canEdit"),
-        canDelete: await can("canDelete"),
+        // Shared catalog mutations must match the platform's financial-manager + all-scope rule.
+        canAdd: canManageSharedCatalog && await can("canAdd"),
+        canEdit: canManageSharedCatalog && await can("canEdit"),
+        canDelete: canManageSharedCatalog && await can("canDelete"),
       };
       const token = await new SignJWT({
         displayName: access.caller.name,
