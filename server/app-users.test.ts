@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { createAppUser, getAppUserJwtSecret, loginAppUser, verifyAppUserToken, getAppUsers, getUserPermissions, updateAppUser, updateUserPermissions, logActivity, getActivityLogs, DEFAULT_ROLE_PERMISSIONS } from "./db";
+import { createAppUser, getAppUserById, getAppUserJwtSecret, loginAppUser, verifyAppUserToken, getAppUsers, getUserPermissions, updateAppUser, updateUserPermissions, logActivity, getActivityLogs, DEFAULT_ROLE_PERMISSIONS } from "./db";
 import { getDb } from "./db";
 
 // ─── Test Suite: Internal App Users System ────────────────────────────────────
@@ -81,8 +81,10 @@ describe("Internal App Users System", () => {
   it("persists an engineer link and invalidates tokens issued before the link", async () => {
     const loginResult = await loginAppUser(testUsername, testPassword);
     expect(loginResult).not.toBeNull();
+    const currentUser = await getAppUserById(testUserId);
+    if (currentUser?.engineerId) linkedEngineerId = currentUser.engineerId;
     const db = await getDb();
-    if (db) {
+    if (db && !currentUser?.engineerId) {
       const { engineers } = await import("../drizzle/schema");
       const [result] = await db.insert(engineers).values({
         name: `App User Link ${Date.now()}`,
@@ -93,12 +95,13 @@ describe("Internal App Users System", () => {
       });
       linkedEngineerId = Number((result as any).insertId);
     }
+    const targetEngineerId = currentUser?.engineerId ?? linkedEngineerId;
 
-    await updateAppUser(testUserId, { engineerId: linkedEngineerId });
+    await updateAppUser(testUserId, { engineerId: targetEngineerId });
 
     await expect(verifyAppUserToken(loginResult!.token)).resolves.toBeNull();
     const refreshed = await loginAppUser(testUsername, testPassword);
-    expect(refreshed?.user.engineerId).toBe(linkedEngineerId);
+    expect(refreshed?.user.engineerId).toBe(targetEngineerId);
   });
 
   it("should list active app users", async () => {
