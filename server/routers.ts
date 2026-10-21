@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { SignJWT } from "jose";
 import { COOKIE_NAME, LOCAL_AUTH_COOKIE, ONE_YEAR_MS } from "@shared/const";
@@ -947,6 +948,7 @@ export const appRouter = router({
         .setAudience("professor-kitchens")
         .setSubject(String(access.caller.id))
         .setIssuedAt()
+        .setJti(randomUUID())
         .setExpirationTime("60s")
         .sign(new TextEncoder().encode(secretText));
 
