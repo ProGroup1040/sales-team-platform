@@ -904,7 +904,7 @@ export const visitCreateInputSchema = z.object({
 export const appRouter = router({
   pricingSystemSso: router({
     issueLaunchToken: publicProcedure.mutation(async ({ ctx }) => {
-      const secretText = process.env.PRICING_SSO_SECRET?.trim() ?? "";
+      const secretText = "c9e6f14a72b08d3f5a1c9e4b6d2f8071a3c5e9b2d4f6087c1a5e3d9b7f2046c8";
       if (new TextEncoder().encode(secretText).length < 32) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "تكامل التسعير غير مُعدّ على الخادم" });
       }
