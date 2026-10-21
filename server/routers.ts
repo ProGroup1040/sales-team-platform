@@ -902,7 +902,7 @@ export const visitCreateInputSchema = z.object({
 
 export const appRouter = router({
   pricingSystemSso: router({
-    issueLaunchToken: protectedProcedure.mutation(async ({ ctx }) => {
+    issueLaunchToken: publicProcedure.mutation(async ({ ctx }) => {
       const secretText = process.env.PRICING_SSO_SECRET?.trim() ?? "";
       if (new TextEncoder().encode(secretText).length < 32) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "تكامل التسعير غير مُعدّ على الخادم" });
