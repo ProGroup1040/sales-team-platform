@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SignJWT } from "jose";
 import { COOKIE_NAME, LOCAL_AUTH_COOKIE, ONE_YEAR_MS } from "@shared/const";
 import { localLogin, getLocalSessionFromRequest } from "./localAuth";
 import { getSessionCookieOptions } from "./_core/cookies";
@@ -900,6 +901,47 @@ export const visitCreateInputSchema = z.object({
 });
 
 export const appRouter = router({
+  pricingSystemSso: router({
+    issueLaunchToken: protectedProcedure.mutation(async ({ ctx }) => {
+      const secretText = process.env.PRICING_SSO_SECRET?.trim() ?? "";
+      if (new TextEncoder().encode(secretText).length < 32) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "تكامل التسعير غير مُعدّ على الخادم" });
+      }
+
+      const access = await getOperationalScopeAccess(ctx, "pricing_system", "canView");
+      const can = async (action: ScopePermissionAction) => {
+        try {
+          await getOperationalScopeAccess(ctx, "pricing_system", action);
+          return true;
+        } catch (error) {
+          if (error instanceof TRPCError && (error.code === "FORBIDDEN" || error.code === "UNAUTHORIZED")) return false;
+          throw error;
+        }
+      };
+      const permissions = {
+        canView: true,
+        canAdd: await can("canAdd"),
+        canEdit: await can("canEdit"),
+        canDelete: await can("canDelete"),
+      };
+      const token = await new SignJWT({
+        displayName: access.caller.name,
+        role: access.caller.role,
+        engineerId: access.caller.engineerId,
+        scope: access.scope,
+        permissions,
+      })
+        .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+        .setIssuer("sales-team-platform")
+        .setAudience("professor-kitchens")
+        .setSubject(String(access.caller.id))
+        .setIssuedAt()
+        .setExpirationTime("60s")
+        .sign(new TextEncoder().encode(secretText));
+
+      return { token, expiresInSeconds: 60 };
+    }),
+  }),
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
