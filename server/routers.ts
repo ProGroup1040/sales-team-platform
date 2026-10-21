@@ -918,15 +918,21 @@ export const appRouter = router({
           throw error;
         }
       };
+      const permissions = {
+        canView: true,
+        canAdd: await can("canAdd"),
+        canEdit: await can("canEdit"),
+        canDelete: await can("canDelete"),
+      };
       const canManageSharedCatalog =
         access.scope === "all" &&
         ["manager", "admin_sales", "admin"].includes(access.caller.role);
-      const permissions = {
+      const catalogPermissions = {
         canView: true,
         // Shared catalog mutations must match the platform's financial-manager + all-scope rule.
-        canAdd: canManageSharedCatalog && await can("canAdd"),
-        canEdit: canManageSharedCatalog && await can("canEdit"),
-        canDelete: canManageSharedCatalog && await can("canDelete"),
+        canAdd: canManageSharedCatalog && permissions.canAdd,
+        canEdit: canManageSharedCatalog && permissions.canEdit,
+        canDelete: canManageSharedCatalog && permissions.canDelete,
       };
       const token = await new SignJWT({
         displayName: access.caller.name,
@@ -934,6 +940,7 @@ export const appRouter = router({
         engineerId: access.caller.engineerId,
         scope: access.scope,
         permissions,
+        catalogPermissions,
       })
         .setProtectedHeader({ alg: "HS256", typ: "JWT" })
         .setIssuer("sales-team-platform")
