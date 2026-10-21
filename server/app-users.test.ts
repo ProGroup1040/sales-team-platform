@@ -5,6 +5,7 @@ import { getDb } from "./db";
 // ─── Test Suite: Internal App Users System ────────────────────────────────────
 describe("Internal App Users System", () => {
   let testUserId: number;
+  let linkedEngineerId = 42;
   const testUsername = `test_user_${Date.now()}`;
   const testPassword = "TestPassword-2026";
 
@@ -13,11 +14,12 @@ describe("Internal App Users System", () => {
     if (testUserId) {
       const db = await getDb();
       if (db) {
-        const { appUsers, userPermissions, activityLogs } = await import("../drizzle/schema");
+        const { appUsers, userPermissions, activityLogs, engineers } = await import("../drizzle/schema");
         const { eq } = await import("drizzle-orm");
         await db.delete(activityLogs).where(eq(activityLogs.userId, testUserId));
         await db.delete(userPermissions).where(eq(userPermissions.userId, testUserId));
         await db.delete(appUsers).where(eq(appUsers.id, testUserId));
+        if (linkedEngineerId !== 42) await db.delete(engineers).where(eq(engineers.id, linkedEngineerId));
       }
     }
   });
@@ -79,12 +81,24 @@ describe("Internal App Users System", () => {
   it("persists an engineer link and invalidates tokens issued before the link", async () => {
     const loginResult = await loginAppUser(testUsername, testPassword);
     expect(loginResult).not.toBeNull();
+    const db = await getDb();
+    if (db) {
+      const { engineers } = await import("../drizzle/schema");
+      const [result] = await db.insert(engineers).values({
+        name: `App User Link ${Date.now()}`,
+        username: `app-link-${Date.now()}`,
+        role: "sales_engineer",
+        department: "sales_engineer",
+        status: "active",
+      });
+      linkedEngineerId = Number((result as any).insertId);
+    }
 
-    await updateAppUser(testUserId, { engineerId: 42 });
+    await updateAppUser(testUserId, { engineerId: linkedEngineerId });
 
     await expect(verifyAppUserToken(loginResult!.token)).resolves.toBeNull();
     const refreshed = await loginAppUser(testUsername, testPassword);
-    expect(refreshed?.user.engineerId).toBe(42);
+    expect(refreshed?.user.engineerId).toBe(linkedEngineerId);
   });
 
   it("should list active app users", async () => {
