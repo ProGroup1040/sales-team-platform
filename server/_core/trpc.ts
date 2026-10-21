@@ -72,6 +72,13 @@ const MODULE_BY_NAMESPACE: Record<string, string> = {
   session: "tasks",
 };
 
+// Some legacy procedures live under a namespace that does not match the
+// feature whose permission they consume. Keep these exceptions explicit and
+// centralized instead of weakening the whole namespace.
+const MODULE_BY_PATH: Record<string, string> = {
+  "kpi.allowedTaskTypes": "tasks",
+};
+
 const ROLE_GATED_NAMESPACES = new Set(["rolePermissions"]);
 const AUTHORIZATION_EXEMPT_NAMESPACES = new Set([
   "auth",
@@ -223,7 +230,7 @@ async function requireOperationalPermission(path: string, type: "query" | "mutat
     return;
   }
 
-  let module = MODULE_BY_NAMESPACE[namespace];
+  let module = MODULE_BY_PATH[path] ?? MODULE_BY_NAMESPACE[namespace];
   if (namespace === "softDelete") {
     const entity = path.split(".")[1] ?? "";
     module = entity.includes("lead") ? "crm"
