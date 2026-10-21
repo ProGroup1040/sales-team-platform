@@ -3561,7 +3561,9 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         const caller = await requireUserManagementCaller(ctx, 'ليس لديك صلاحية إنشاء مستخدمين');
         assertCanAssignRole(caller.role, input.role);
-        await validateAppUserEngineerLink(undefined, input.role, input.engineerId ?? null);
+        // A new operational user may intentionally have no selected engineer:
+        // createAppUser will create or safely reuse the matching legacy record.
+        if (input.engineerId) await validateAppUserEngineerLink(undefined, input.role, input.engineerId);
         try {
           const newUser = await createAppUser(input);
           await logActivity({ userId: caller.id, action: 'create', module: 'users', details: `إنشاء مستخدم: ${input.username}` });
@@ -3572,6 +3574,9 @@ export const appRouter = router({
           }
           if (err.message === 'EMAIL_EXISTS') {
             throw new TRPCError({ code: 'CONFLICT', message: 'البريد الإلكتروني مستخدم بالفعل' });
+          }
+          if (err.message === 'ENGINEER_LINK_EXISTS') {
+            throw new TRPCError({ code: 'CONFLICT', message: 'هذا المهندس لديه حساب نظام بالفعل؛ استخدم تعديل المستخدم أو أنشئ حسابًا ببيانات جديدة' });
           }
           console.error('[appUsers.create] Error:', err);
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'حدث خطأ في الخادم، يرجى المحاولة مرة أخرى' });

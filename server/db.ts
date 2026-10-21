@@ -11371,24 +11371,51 @@ export async function createAppUser(data: {
     if (existingEmail) throw new Error("EMAIL_EXISTS");
   }
   const passwordHash = await bcrypt.hash(data.password, 10);
+  const createsEngineerIdentity = ["sales_engineer", "sales_specialist", "admin_sales"].includes(data.role);
+  let effectiveEngineerId = data.engineerId ?? null;
+  if (createsEngineerIdentity && !effectiveEngineerId) {
+    const [byUsername] = await db.select().from(engineers).where(eq(engineers.username, username)).limit(1);
+    const [byEmail] = !byUsername && email
+      ? await db.select().from(engineers).where(eq(engineers.email, email)).limit(1)
+      : [];
+    const existingEngineer = byUsername ?? byEmail;
+    if (existingEngineer) {
+      const linkedUser = await getAppUserByEngineerId(existingEngineer.id);
+      if (linkedUser) throw new Error("ENGINEER_LINK_EXISTS");
+      effectiveEngineerId = existingEngineer.id;
+      await db.update(engineers).set({
+        name: data.name.trim(), username, email, passwordHash,
+        department: data.role as any, role: data.role as any,
+        status: "active", forcePasswordChange: 0,
+        sessionVersion: sql`${engineers.sessionVersion} + 1`,
+      } as any).where(eq(engineers.id, existingEngineer.id));
+    } else {
+      const [engineerResult] = await db.insert(engineers).values({
+        name: data.name.trim(), email, username, passwordHash,
+        department: data.role as any, role: data.role as any,
+        status: "active", forcePasswordChange: 0,
+      } as any);
+      effectiveEngineerId = Number((engineerResult as any).insertId);
+    }
+  }
   const [result] = await db.insert(appUsers).values({
     name: data.name.trim(),
     username,
     passwordHash,
     role: data.role,
-    engineerId: data.engineerId ?? null,
+    engineerId: effectiveEngineerId,
     email,
     status: "active",
   });
   const userId = (result as any).insertId as number;
   // Keep the legacy engineer login and the permission-system identity as one
   // account instead of creating two independent identities.
-  if (data.engineerId) {
+  if (effectiveEngineerId) {
     const [engineer] = await db.select({ id: engineers.id }).from(engineers)
-      .where(and(eq(engineers.id, data.engineerId), eq(engineers.isDeleted, 0))).limit(1);
+      .where(and(eq(engineers.id, effectiveEngineerId), eq(engineers.isDeleted, 0))).limit(1);
     if (engineer) {
       const usernameConflict = await db.select({ id: engineers.id }).from(engineers)
-        .where(and(eq(engineers.username, username), sql`${engineers.id} <> ${data.engineerId}`)).limit(1);
+        .where(and(eq(engineers.username, username), sql`${engineers.id} <> ${effectiveEngineerId}`)).limit(1);
       if (usernameConflict.length > 0) {
         await db.delete(appUsers).where(eq(appUsers.id, userId));
         throw new Error("USERNAME_EXISTS");
@@ -11398,7 +11425,7 @@ export async function createAppUser(data: {
         passwordHash,
         forcePasswordChange: 0,
         sessionVersion: sql`${engineers.sessionVersion} + 1`,
-      } as any).where(eq(engineers.id, data.engineerId));
+      } as any).where(eq(engineers.id, effectiveEngineerId));
     }
   }
   // إنشاء الصلاحيات الافتراضية حسب الدور

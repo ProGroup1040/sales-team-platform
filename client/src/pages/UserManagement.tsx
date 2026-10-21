@@ -176,10 +176,6 @@ function CreateUserForm({ onSuccess }: { onSuccess: () => void }) {
       toast.error("يرجى تصحيح الأخطاء قبل المتابعة");
       return;
     }
-    if (["sales_engineer", "sales_specialist", "admin_sales"].includes(form.role) && (!form.engineerId || form.engineerId === "none")) {
-      toast.error("يجب ربط المستخدم بحساب مهندس قبل المتابعة");
-      return;
-    }
     createMut.mutate({
       name: form.name.trim(),
       username: form.username.trim().toLowerCase(),
@@ -307,7 +303,7 @@ function CreateUserForm({ onSuccess }: { onSuccess: () => void }) {
           </Select>
         </div>
         <div className="space-y-1">
-          <Label>ربط بمهندس {!["manager"].includes(form.role) && <span className="text-red-400">*</span>}</Label>
+          <Label>ربط بمهندس <span className="text-xs text-muted-foreground">(اختياري — يتم الإنشاء التلقائي عند تركه فارغًا)</span></Label>
           <Select value={form.engineerId} onValueChange={(v) => setForm(p => ({ ...p, engineerId: v }))} disabled={isLoading}>
             <SelectTrigger>
               <SelectValue placeholder="اختر مهندس" />
