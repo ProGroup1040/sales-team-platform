@@ -121,6 +121,8 @@ function CreateUserForm({ onSuccess }: { onSuccess: () => void }) {
   const [touched, setTouched] = useState<Record<string, boolean>>({});
 
   const engineersQuery = trpc.engineers.list.useQuery(undefined, { staleTime: 60000 });
+  const appUsersQuery = trpc.appUsers.list.useQuery(undefined, { staleTime: 60000 });
+  const linkedEngineerIds = new Set((appUsersQuery.data ?? []).map((user: any) => user.engineerId).filter(Boolean));
 
   const createMut = trpc.appUsers.create.useMutation({
     onSuccess: () => {
@@ -312,7 +314,7 @@ function CreateUserForm({ onSuccess }: { onSuccess: () => void }) {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="none">بدون ربط</SelectItem>
-              {engineersQuery.data?.map((eng: any) => (
+              {engineersQuery.data?.filter((eng: any) => !linkedEngineerIds.has(eng.id)).map((eng: any) => (
                 <SelectItem key={eng.id} value={String(eng.id)}>{eng.name}</SelectItem>
               ))}
             </SelectContent>
@@ -459,6 +461,9 @@ function EditUserForm({ user, onSuccess }: { user: any; onSuccess: () => void })
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const engineersQuery = trpc.engineers.list.useQuery(undefined, { staleTime: 60000 });
+  const appUsersQuery = trpc.appUsers.list.useQuery(undefined, { staleTime: 60000 });
+  const currentEngineerId = user.engineerId ? Number(user.engineerId) : null;
+  const linkedEngineerIds = new Set((appUsersQuery.data ?? []).map((item: any) => item.engineerId).filter(Boolean));
 
   const updateMut = trpc.appUsers.update.useMutation({
     onSuccess: () => {
@@ -530,7 +535,7 @@ function EditUserForm({ user, onSuccess }: { user: any; onSuccess: () => void })
           <SelectTrigger><SelectValue placeholder="اختر مهندس" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="none">بدون ربط</SelectItem>
-            {engineersQuery.data?.map((eng: any) => (
+            {engineersQuery.data?.filter((eng: any) => eng.id === currentEngineerId || !linkedEngineerIds.has(eng.id)).map((eng: any) => (
               <SelectItem key={eng.id} value={String(eng.id)}>{eng.name}</SelectItem>
             ))}
           </SelectContent>

@@ -3594,7 +3594,14 @@ export const appRouter = router({
         const { userId, ...data } = input;
         assertCanAssignRole(caller.role, data.role ?? target.role);
         await validateAppUserEngineerLink(userId, data.role ?? target.role, data.engineerId === undefined ? target.engineerId : data.engineerId);
-        await updateAppUser(userId, data);
+        try {
+          await updateAppUser(userId, data);
+        } catch (err: any) {
+          if (err.message === "USERNAME_EXISTS") {
+            throw new TRPCError({ code: "CONFLICT", message: "اسم المستخدم مستخدم في حساب مهندس آخر" });
+          }
+          throw err;
+        }
         await logActivity({ userId: caller.id, action: 'update', module: 'users', recordId: userId, details: `تحديث مستخدم #${userId}` });
         return { success: true };
       }),

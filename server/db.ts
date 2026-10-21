@@ -11381,6 +11381,26 @@ export async function createAppUser(data: {
     status: "active",
   });
   const userId = (result as any).insertId as number;
+  // Keep the legacy engineer login and the permission-system identity as one
+  // account instead of creating two independent identities.
+  if (data.engineerId) {
+    const [engineer] = await db.select({ id: engineers.id }).from(engineers)
+      .where(and(eq(engineers.id, data.engineerId), eq(engineers.isDeleted, 0))).limit(1);
+    if (engineer) {
+      const usernameConflict = await db.select({ id: engineers.id }).from(engineers)
+        .where(and(eq(engineers.username, username), sql`${engineers.id} <> ${data.engineerId}`)).limit(1);
+      if (usernameConflict.length > 0) {
+        await db.delete(appUsers).where(eq(appUsers.id, userId));
+        throw new Error("USERNAME_EXISTS");
+      }
+      await db.update(engineers).set({
+        username,
+        passwordHash,
+        forcePasswordChange: 0,
+        sessionVersion: sql`${engineers.sessionVersion} + 1`,
+      } as any).where(eq(engineers.id, data.engineerId));
+    }
+  }
   // إنشاء الصلاحيات الافتراضية حسب الدور
   await createDefaultPermissions(userId, data.role);
   const [user] = await db.select().from(appUsers).where(eq(appUsers.id, userId));
@@ -11730,6 +11750,14 @@ export async function updateAppUser(
     testAppUsers.set(userId, updated);
     return;
   }
+  const [currentUser] = await db.select().from(appUsers).where(eq(appUsers.id, userId)).limit(1);
+  if (!currentUser) throw new Error("USER_NOT_FOUND");
+  const targetEngineerId = data.engineerId !== undefined ? data.engineerId : currentUser.engineerId;
+  if (targetEngineerId) {
+    const [usernameConflict] = await db.select({ id: engineers.id }).from(engineers)
+      .where(and(eq(engineers.username, currentUser.username), sql`${engineers.id} <> ${targetEngineerId}`)).limit(1);
+    if (usernameConflict) throw new Error("USERNAME_EXISTS");
+  }
   const updateData: Record<string, unknown> = {};
   if (data.name !== undefined) updateData.name = data.name;
   if (data.role !== undefined) updateData.role = data.role;
@@ -11743,6 +11771,18 @@ export async function updateAppUser(
   }
   if (Object.keys(updateData).length > 0) {
     await db.update(appUsers).set(updateData).where(eq(appUsers.id, userId));
+  }
+  if (targetEngineerId) {
+    const [updatedUser] = await db.select({ username: appUsers.username, passwordHash: appUsers.passwordHash })
+      .from(appUsers).where(eq(appUsers.id, userId)).limit(1);
+    if (updatedUser) {
+      await db.update(engineers).set({
+        username: updatedUser.username,
+        passwordHash: updatedUser.passwordHash,
+        forcePasswordChange: 0,
+        sessionVersion: sql`${engineers.sessionVersion} + 1`,
+      } as any).where(eq(engineers.id, targetEngineerId));
+    }
   }
 }
 
@@ -12288,22 +12328,49 @@ export async function bulkCreateEngineersAccounts(defaultPassword: string): Prom
     }
 
     // Legacy engineer logins can exist without the app_users identity required
-    // by per-user permissions. Synchronize them without changing their password.
-    if (eng.username) {
-      const normalizedUsername = eng.username.trim().toLowerCase();
-      const [usernameOwner] = await db.select({
-        id: appUsers.id,
-        engineerId: appUsers.engineerId,
-      }).from(appUsers).where(eq(appUsers.username, normalizedUsername)).limit(1);
+    // by per-user permissions. Match by username first, then by email, without
+    // guessing from names (which could link two different people).
+    const normalizedUsername = eng.username?.trim().toLowerCase();
+    const [usernameOwner] = normalizedUsername
+      ? await db.select({ id: appUsers.id, engineerId: appUsers.engineerId, username: appUsers.username, passwordHash: appUsers.passwordHash })
+        .from(appUsers).where(eq(appUsers.username, normalizedUsername)).limit(1)
+      : [];
+    const [emailOwner] = !usernameOwner && eng.email
+      ? await db.select({ id: appUsers.id, engineerId: appUsers.engineerId, username: appUsers.username, passwordHash: appUsers.passwordHash })
+        .from(appUsers).where(eq(appUsers.email, eng.email.trim().toLowerCase())).limit(1)
+      : [];
+    const identityOwner = usernameOwner ?? emailOwner;
 
-      if (usernameOwner) {
+    if (identityOwner) {
+      if (identityOwner.engineerId == null) {
+        await db.update(appUsers).set({
+          engineerId: eng.id,
+          name: eng.name,
+          role: mapEngineerRoleToAppUserRole(eng.role) as any,
+        }).where(eq(appUsers.id, identityOwner.id));
+        if (!normalizedUsername || normalizedUsername !== identityOwner.username) {
+          await db.update(engineers).set({
+            username: identityOwner.username,
+            passwordHash: identityOwner.passwordHash,
+            forcePasswordChange: 0,
+            sessionVersion: sql`${engineers.sessionVersion} + 1`,
+          } as any).where(eq(engineers.id, eng.id));
+        }
+        created.push({ id: eng.id, name: eng.name, username: identityOwner.username });
+        continue;
+      }
+      if (identityOwner.engineerId !== eng.id) {
         skipped.push({
           id: eng.id,
           name: eng.name,
-          reason: "اسم المستخدم مستخدم في حساب نظام آخر؛ يلزم حل التعارض يدوياً",
+          reason: "بيانات الدخول مستخدمة في حساب مهندس آخر؛ يلزم حل التعارض يدوياً",
         });
         continue;
       }
+    }
+
+    // Synchronize an existing legacy account without changing its password.
+    if (normalizedUsername) {
 
       let passwordHash = eng.passwordHash;
       if (!passwordHash) {
