@@ -83,6 +83,7 @@ const ROLE_GATED_NAMESPACES = new Set(["rolePermissions"]);
 const AUTHORIZATION_EXEMPT_NAMESPACES = new Set([
   "auth",
   "localAuth",
+  "pricingSystemSso", // The launch-token procedure explicitly enforces pricing_system grants itself.
   "appUsers", // These procedures have dedicated account/role/target checks.
   "pushNotifications", // Must enforce actor ownership in each notification procedure.
   "system", // systemRouter has its own adminProcedure boundary.
