@@ -106,9 +106,9 @@ describe.skipIf(!databaseUrl)("release-gate MySQL migration verification", () =>
     await query("CREATE TABLE customers (id INT PRIMARY KEY, notes TEXT)");
     await expect(applyMigration(migration0079)).rejects.toThrow();
     const [tables] = await query<any[]>(
-      "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('sales', 'customers') ORDER BY TABLE_NAME",
+      `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('${fixtureTables.sales}', '${fixtureTables.customers}') ORDER BY TABLE_NAME`,
     );
-    expect(tables.map((row) => row.TABLE_NAME)).toEqual(["customers"]);
+    expect(tables.map((row) => row.TABLE_NAME)).toEqual([fixtureTables.customers]);
   }, 15_000);
 
   it("0079 rejects a missing customers table without accepting the sales table alone", async () => {
