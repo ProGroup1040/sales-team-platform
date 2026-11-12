@@ -5,7 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 
-const PRICING_BASE_URL = "https://projectdash-mrvpkesv.manus.space";
+const PRICING_BASE_URL = (
+  import.meta.env.VITE_PRICING_BASE_URL || "https://projectdash-mrvpkesv.manus.space"
+).replace(/\/+$/, "");
 const SSO_CALLBACK_PATH = "/sso/pricing";
 
 export default function PricingSystem() {
@@ -32,7 +34,7 @@ export default function PricingSystem() {
       popup.document.title = "جاري فتح منظومة التسعير";
       popup.document.body.textContent = "جاري التحقق من الصلاحيات وفتح منظومة التسعير...";
     } catch {
-      // The handoff remains a POST; no credential is placed in a URL.
+      // The handoff remains a POST; no credential is placed in the URL.
     }
 
     setOpening(true);
