@@ -85,6 +85,40 @@ describe.skipIf(!databaseUrl)("release-gate MySQL migration verification", () =>
     expect(indexes.length).toBeGreaterThan(0);
   }, 15_000);
 
+  it("0074 permits multiple NULL dealIds while enforcing uniqueness for real deal IDs", async () => {
+    await query("CREATE TABLE collections (id INT AUTO_INCREMENT PRIMARY KEY, dealId INT NULL)");
+    await query("INSERT INTO collections (dealId) VALUES (NULL), (NULL), (88)");
+    await applyMigration(migration0074);
+    await query("INSERT INTO collections (dealId) VALUES (NULL)");
+    await expect(query("INSERT INTO collections (dealId) VALUES (88)")).rejects.toThrow();
+    const [rows] = await query<any[]>("SELECT COUNT(*) AS rowCount FROM collections WHERE dealId IS NULL");
+    expect(Number(rows[0]?.rowCount)).toBe(3);
+  }, 15_000);
+
+  it("0079 rejects a missing sales table without creating or rewriting business tables", async () => {
+    await query("DROP TABLE IF EXISTS sales");
+    await query("DROP TABLE IF EXISTS customers");
+    await query("CREATE TABLE customers (id INT PRIMARY KEY, notes TEXT)");
+    await expect(applyMigration(migration0079)).rejects.toThrow();
+    const [tables] = await query<any[]>(
+      "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('sales', 'customers') ORDER BY TABLE_NAME",
+    );
+    expect(tables.map((row) => row.TABLE_NAME)).toEqual(["customers"]);
+  }, 15_000);
+
+  it("0079 rejects a missing customers table without accepting the sales table alone", async () => {
+    await query("DROP TABLE IF EXISTS sales");
+    await query("DROP TABLE IF EXISTS customers");
+    await query("CREATE TABLE sales (id INT PRIMARY KEY, netAmount DECIMAL(14,2) NOT NULL)");
+    await expect(applyMigration(migration0079)).rejects.toThrow();
+    const [columns] = await query<any[]>("SHOW COLUMNS FROM sales");
+    expect(columns.map((column) => column.Field)).toEqual(["id", "netAmount"]);
+    const [customers] = await query<any[]>(
+      "SELECT COUNT(*) AS rowCount FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers'",
+    );
+    expect(Number(customers[0]?.rowCount)).toBe(0);
+  }, 15_000);
+
   it("0075 retains its released content and reconciles finalAmount without data loss", async () => {
     await query("CREATE TABLE sales (id INT PRIMARY KEY, finalAmount DECIMAL(14,2) NOT NULL)");
     await query("INSERT INTO sales VALUES (1, 123.45)");
