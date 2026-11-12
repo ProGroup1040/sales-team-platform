@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createConnection } from "mysql2/promise";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 const databaseUrl = process.env.DATABASE_URL;
 const migration0074 = readFileSync(new URL("../drizzle/0074_collections_one_contract_per_deal.sql", import.meta.url), "utf8");
@@ -61,6 +61,11 @@ describe.skipIf(!databaseUrl)("release-gate MySQL migration verification", () =>
 
   beforeAll(async () => {
     connection = await createConnection(databaseUrl!);
+  });
+
+  beforeEach(async () => {
+    // MySQL DDL commits implicitly; isolate every scenario from prior fixtures.
+    await connection!.query(`DROP TABLE IF EXISTS \`${fixtureTables.auditLogs}\`, \`${fixtureTables.dailyTasks}\`, \`${fixtureTables.customers}\`, \`${fixtureTables.sales}\`, \`${fixtureTables.collections}\``);
   });
 
   afterAll(async () => {
@@ -135,8 +140,8 @@ describe.skipIf(!databaseUrl)("release-gate MySQL migration verification", () =>
   }, 15_000);
 
   it("0075 is idempotent for an already reconciled legacy schema", async () => {
-    await query("DROP TABLE customers");
-    await query("DROP TABLE sales");
+    await query("DROP TABLE IF EXISTS customers");
+    await query("DROP TABLE IF EXISTS sales");
     await query("CREATE TABLE sales (id INT PRIMARY KEY, netAmount DECIMAL(14,2) NOT NULL)");
     await query("CREATE TABLE customers (id INT PRIMARY KEY, notes TEXT)");
     await query("INSERT INTO customers VALUES (1, 'preserve this')");
@@ -149,8 +154,8 @@ describe.skipIf(!databaseUrl)("release-gate MySQL migration verification", () =>
 
 
   it("0079 rejects both amount columns without rewriting either value", async () => {
-    await query("DROP TABLE customers");
-    await query("DROP TABLE sales");
+    await query("DROP TABLE IF EXISTS customers");
+    await query("DROP TABLE IF EXISTS sales");
     await query("CREATE TABLE sales (id INT PRIMARY KEY, finalAmount DECIMAL(14,2) NOT NULL, netAmount DECIMAL(14,2) NOT NULL)");
     await query("INSERT INTO sales VALUES (1, 123.45, 456.78)");
     await query("CREATE TABLE customers (id INT PRIMARY KEY, notes TEXT)");
@@ -162,8 +167,8 @@ describe.skipIf(!databaseUrl)("release-gate MySQL migration verification", () =>
   }, 15_000);
 
   it("0079 rejects neither amount column instead of silently accepting an invalid schema", async () => {
-    await query("DROP TABLE customers");
-    await query("DROP TABLE sales");
+    await query("DROP TABLE IF EXISTS customers");
+    await query("DROP TABLE IF EXISTS sales");
     await query("CREATE TABLE sales (id INT PRIMARY KEY)");
     await query("CREATE TABLE customers (id INT PRIMARY KEY, notes TEXT)");
 
@@ -173,8 +178,8 @@ describe.skipIf(!databaseUrl)("release-gate MySQL migration verification", () =>
   }, 15_000);
 
   it("0075 keeps its issued partial-retry behavior when customers is missing", async () => {
-    await query("DROP TABLE customers");
-    await query("DROP TABLE sales");
+    await query("DROP TABLE IF EXISTS customers");
+    await query("DROP TABLE IF EXISTS sales");
     await query("CREATE TABLE sales (id INT PRIMARY KEY, finalAmount DECIMAL(14,2) NOT NULL)");
     await query("INSERT INTO sales VALUES (1, 987.65)");
 
@@ -192,8 +197,8 @@ describe.skipIf(!databaseUrl)("release-gate MySQL migration verification", () =>
   }, 15_000);
 
   it("0079 accepts only the fully reconciled schema and rejects ambiguous legacy state", async () => {
-    await query("DROP TABLE customers");
-    await query("DROP TABLE sales");
+    await query("DROP TABLE IF EXISTS customers");
+    await query("DROP TABLE IF EXISTS sales");
     await query("CREATE TABLE sales (id INT PRIMARY KEY, netAmount DECIMAL(14,2) NOT NULL)");
     await query("CREATE TABLE customers (id INT PRIMARY KEY, notes TEXT)");
     await applyMigration(migration0079);
@@ -217,7 +222,7 @@ describe.skipIf(!databaseUrl)("release-gate MySQL migration verification", () =>
   }, 15_000);
 
   it("0077 adds missing customer columns without rewriting legacy notes", async () => {
-    await query("DROP TABLE customers");
+    await query("DROP TABLE IF EXISTS customers");
     await query("CREATE TABLE customers (id INT AUTO_INCREMENT PRIMARY KEY, notes TEXT)");
     await query("INSERT INTO customers (notes) VALUES ('legacy note')");
 
@@ -232,7 +237,7 @@ describe.skipIf(!databaseUrl)("release-gate MySQL migration verification", () =>
   }, 30_000);
 
   it("0078 adds the sales write contract while preserving legacy net amounts", async () => {
-    await query("DROP TABLE sales");
+    await query("DROP TABLE IF EXISTS sales");
     await query("CREATE TABLE sales (id INT PRIMARY KEY, netAmount DECIMAL(14,2) NOT NULL)");
     await query("INSERT INTO sales (id, netAmount) VALUES (1, 321.09)");
 
@@ -247,7 +252,7 @@ describe.skipIf(!databaseUrl)("release-gate MySQL migration verification", () =>
   }, 45_000);
 
   it("0078 repairs a finalAmount-only table when 0075 was already recorded", async () => {
-    await query("DROP TABLE sales");
+    await query("DROP TABLE IF EXISTS sales");
     await query("CREATE TABLE sales (id INT PRIMARY KEY, finalAmount DECIMAL(14,2) NOT NULL)");
     await query("INSERT INTO sales (id, finalAmount) VALUES (1, 654.32)");
     await applyMigration(migration0078);
