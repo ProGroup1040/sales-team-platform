@@ -9,6 +9,8 @@ const enabled = Boolean(process.env.DATABASE_URL);
 const testUserId = 1_000_000_000 + ((Date.now() + process.pid + 347) % 900_000_000);
 const managerUserId = testUserId + 1;
 const suffix = `task-scope-${Date.now()}-${process.pid}`;
+const now = new Date();
+const testDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 const engineerIds: number[] = [];
 const taskIds: number[] = [];
 let ownEngineerId = 0;
@@ -82,7 +84,7 @@ describe.skipIf(!enabled)("daily task record scope enforcement", () => {
 
     const ownTask = await db.insert(dailyTasks).values({
       engineerId: ownEngineerId,
-      taskDate: "2026-10-18",
+      taskDate: testDate,
       title: `${suffix}-own-task`,
       status: "planned",
     }).$returningId();
@@ -92,7 +94,7 @@ describe.skipIf(!enabled)("daily task record scope enforcement", () => {
 
     const otherTask = await db.insert(dailyTasks).values({
       engineerId: otherEngineerId,
-      taskDate: "2026-10-18",
+      taskDate: testDate,
       title: `${suffix}-other-task`,
       status: "planned",
     }).$returningId();
@@ -119,12 +121,12 @@ describe.skipIf(!enabled)("daily task record scope enforcement", () => {
       dataScope: "own",
     }]);
 
-    await expect(unlinkedManagerCaller().tasks.stats({ date: "2026-10-18" }))
+    await expect(unlinkedManagerCaller().tasks.stats({ date: testDate }))
       .rejects.toMatchObject({
         code: "FORBIDDEN",
         message: expect.stringContaining("غير مرتبط بمهندس"),
       });
-    await expect(unlinkedManagerCaller().tasks.list({ date: "2026-10-18" }))
+    await expect(unlinkedManagerCaller().tasks.list({ date: testDate }))
       .rejects.toMatchObject({
         code: "FORBIDDEN",
         message: expect.stringContaining("غير مرتبط بمهندس"),
@@ -141,8 +143,8 @@ describe.skipIf(!enabled)("daily task record scope enforcement", () => {
       dataScope: "all",
     }]);
 
-    await expect(unlinkedManagerCaller().tasks.stats({ date: "2026-10-18" })).resolves.toBeDefined();
-    await expect(unlinkedManagerCaller().tasks.list({ date: "2026-10-18" })).resolves.toBeDefined();
+    await expect(unlinkedManagerCaller().tasks.stats({ date: testDate })).resolves.toBeDefined();
+    await expect(unlinkedManagerCaller().tasks.list({ date: testDate })).resolves.toBeDefined();
   });
 
   it("denies status updates to another engineer's task by direct ID", async () => {
@@ -162,15 +164,15 @@ describe.skipIf(!enabled)("daily task record scope enforcement", () => {
 
   it("scopes task list, filtered, calendar, timeline, and time summaries despite caller-supplied engineer IDs", async () => {
     const results = await Promise.all([
-      caller().tasks.list({ date: "2026-10-18", engineerId: otherEngineerId }),
+      caller().tasks.list({ date: testDate, engineerId: otherEngineerId }),
       caller().tasks.filtered({
         dateRange: "custom",
-        dateFrom: "2026-10-18",
-        dateTo: "2026-10-18",
+        dateFrom: testDate,
+        dateTo: testDate,
         engineerId: otherEngineerId,
       }),
       caller().tasks.calendarView({ engineerId: otherEngineerId }),
-      caller().tasks.timeline({ date: "2026-10-18", engineerId: otherEngineerId }),
+      caller().tasks.timeline({ date: testDate, engineerId: otherEngineerId }),
     ]);
 
     for (const result of results) {
@@ -181,8 +183,8 @@ describe.skipIf(!enabled)("daily task record scope enforcement", () => {
 
     const timeSummary = await caller().tasks.timeSummary({
       engineerId: otherEngineerId,
-      dateFrom: "2026-10-18",
-      dateTo: "2026-10-18",
+      dateFrom: testDate,
+      dateTo: testDate,
     });
     expect(timeSummary?.taskCount).toBe(1);
     expect(JSON.stringify(timeSummary)).not.toContain(`${suffix}-other-task`);
@@ -190,14 +192,14 @@ describe.skipIf(!enabled)("daily task record scope enforcement", () => {
 
   it("rejects Follow Up for an unsupported department across task write routes", async () => {
     await expect(caller().tasks.createMine({
-      taskDate: "2026-10-18",
+      taskDate: testDate,
       title: `${suffix}-mine-follow-up`,
       taskType: "follow_up",
     })).rejects.toMatchObject({ code: "BAD_REQUEST" });
 
     await expect(caller().tasks.createWithTime({
       engineerId: ownEngineerId,
-      taskDate: "2026-10-18",
+      taskDate: testDate,
       title: `${suffix}-calendar-follow-up`,
       taskType: "follow_up",
     })).rejects.toMatchObject({ code: "BAD_REQUEST" });
@@ -218,7 +220,7 @@ describe.skipIf(!enabled)("daily task record scope enforcement", () => {
 
     await expect(caller().tasks.createWithTime({
       engineerId: ownEngineerId,
-      taskDate: "2026-10-18",
+      taskDate: testDate,
       title,
       taskType: "follow_up",
     })).resolves.toMatchObject({ success: true });

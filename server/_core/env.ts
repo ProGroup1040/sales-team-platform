@@ -1,3 +1,7 @@
+export function getPricingSsoSecret(environment: NodeJS.ProcessEnv = process.env) {
+  return environment.PRICING_SSO_SECRET?.trim() ?? "";
+}
+
 export function getSessionSecret(environment: NodeJS.ProcessEnv = process.env) {
   // APP_JWT_SECRET is an application-owned override for environments where the
   // platform-managed JWT_SECRET cannot be changed directly.
