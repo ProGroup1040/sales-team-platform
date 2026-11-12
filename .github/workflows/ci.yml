@@ -55,7 +55,7 @@ jobs:
           cat /tmp/sales-team-platform-server.log
           exit 1
       - name: Test
-        run: pnpm test
+        run: pnpm test -- --no-file-parallelism --maxWorkers=1
       - name: Stop server
         if: always()
         run: |
