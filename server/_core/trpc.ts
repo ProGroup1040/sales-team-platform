@@ -250,6 +250,11 @@ async function requireOperationalPermission(path: string, type: "query" | "mutat
     });
   }
 
+  // Admin and Manager are organization-wide operators. Their trusted role is
+  // the authorization source for full operational CRUD access and all-data
+  // scope; they must not depend on manually populated per-user grant rows.
+  if (actor.role === "admin" || actor.role === "manager") return;
+
   let appUserId: number | null = null;
   if (actor.source === "app_user") appUserId = actor.id;
   else if (actor.engineerId ?? (actor.source === "local" ? actor.id : null)) {

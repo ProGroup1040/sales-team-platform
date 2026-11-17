@@ -127,7 +127,7 @@ function buildDynamicAccess(
 
   // Map module permissions to navigation access keys
   const getModuleView = (moduleKey: string): boolean => {
-    if (isAdmin) return true;
+    if (isAdmin || isManager) return true;
     return modulePerms[moduleKey]?.canView ?? false;
   };
 
