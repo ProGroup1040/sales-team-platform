@@ -80,6 +80,7 @@ export default function ClosingModule() {
   const { canViewSection } = useSectionPermission();
   const [showAdd, setShowAdd] = useState(false);
   const [filterStage, setFilterStage] = useState("all");
+  const [showAllHistory, setShowAllHistory] = useState(false);
   const [filterEngineerId, setFilterEngineerId] = useState<number | undefined>(undefined);
   const [searchQuery, setSearchQuery] = useState("");
   const [updateDeal, setUpdateDeal] = useState<UpdateDealState | null>(null);
@@ -107,7 +108,12 @@ export default function ClosingModule() {
   }), [filterParams]);
 
   const { data: stats } = trpc.closing.stats.useQuery({ year: filterYear, month: filterMonth });
-  const { data: dealsData } = trpc.closing.list.useQuery({ limit: 200, stage: filterStage !== 'all' ? filterStage : undefined, year: filterYear, month: filterMonth, engineerId: filterEngineerId });
+  const { data: dealsData } = trpc.closing.list.useQuery({
+    limit: showAllHistory ? 500 : 200,
+    stage: filterStage !== 'all' ? filterStage : undefined,
+    ...(showAllHistory ? {} : { year: filterYear, month: filterMonth }),
+    engineerId: filterEngineerId,
+  });
   const { data: engineers } = trpc.engineers.list.useQuery();
   // ─── Discount queries تتحدث تلقائياً عند تغيير الفترة ───────────────────────
   const { data: discountSummary } = trpc.closing.discountSummary.useQuery(discountQueryParams);
@@ -424,7 +430,14 @@ export default function ClosingModule() {
               <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <CardTitle className="text-base">قائمة الصفقات</CardTitle>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Button
+                      size="sm"
+                      variant={showAllHistory ? "default" : "outline"}
+                      onClick={() => setShowAllHistory(value => !value)}
+                    >
+                      {showAllHistory ? 'عرض الفترة المحددة' : 'عرض كل السجل'}
+                    </Button>
                     <Select value={filterEngineerId ? String(filterEngineerId) : 'all'} onValueChange={v => setFilterEngineerId(v === 'all' ? undefined : Number(v))}>
                       <SelectTrigger className="w-36 h-8 text-sm"><SelectValue placeholder="كل المهندسين" /></SelectTrigger>
                       <SelectContent>
@@ -441,6 +454,11 @@ export default function ClosingModule() {
                     </Select>
                   </div>
                 </div>
+                {showAllHistory && (
+                  <p className="text-xs text-muted-foreground">
+                    عرض {dealsData?.total ?? 0} صفقة نشطة من جميع الفترات. يظل نطاق صلاحيات الحساب مطبقًا، بينما تظل مؤشرات الأداء والخصومات مرتبطة بالفترة المختارة.
+                  </p>
+                )}
                 <Input
                   placeholder="🔍 بحث باسم العميل..."
                   value={searchQuery}
