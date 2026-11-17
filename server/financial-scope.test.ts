@@ -197,7 +197,7 @@ describe.skipIf(!enabled)("financial record scope enforcement", () => {
       dataScope: "own",
     }]);
 
-    await expect(caller("manager").financial.addContract({
+    await expect(caller("sales_engineer").financial.addContract({
       clientName: unauthorizedContractName,
       contractAmount: 1000,
       dealId: otherDealId,

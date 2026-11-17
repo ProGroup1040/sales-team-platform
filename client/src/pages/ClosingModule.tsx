@@ -74,7 +74,7 @@ type LostReasonState = {
 
 export default function ClosingModule() {
   const { session } = useLocalAuth();
-  const canEdit = session?.role === 'admin' || session?.role === 'admin_sales';
+  const canEdit = session?.role === 'admin' || session?.role === 'manager' || session?.role === 'admin_sales';
 
   const [activeTab, setActiveTab] = useState<'deals' | 'discount' | 'engineers' | 'lost'>('deals');
   const { canViewSection } = useSectionPermission();

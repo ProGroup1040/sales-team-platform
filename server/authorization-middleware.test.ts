@@ -39,7 +39,7 @@ const testRouter = router({
   }),
 });
 
-function createCaller() {
+function createCaller(role: "sales_engineer" | "manager" | "admin" = "sales_engineer") {
   return testRouter.createCaller({
     req: {} as never,
     res: {} as never,
@@ -47,9 +47,9 @@ function createCaller() {
     actor: {
       id: 701,
       source: "app_user",
-      role: "sales_engineer",
+      role,
       name: "Authorization test actor",
-      engineerId: 1701,
+      engineerId: role === "sales_engineer" ? 1701 : null,
     },
   });
 }
@@ -78,6 +78,23 @@ describe("operational authorization middleware", () => {
   it("denies edit-only actors from deleting records", async () => {
     mockedGetUserPermissions.mockResolvedValue(permissionRows({ canEdit: 1 }) as Awaited<ReturnType<typeof getUserPermissions>>);
     await expect(createCaller().tasks.delete()).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it.each(["manager", "admin"] as const)(
+    "%s receives full operational access without per-user permission rows",
+    async (role) => {
+      mockedGetUserPermissions.mockResolvedValue([] as Awaited<ReturnType<typeof getUserPermissions>>);
+      await expect(createCaller(role).tasks.list()).resolves.toEqual({ ok: true });
+      await expect(createCaller(role).tasks.updateStatus()).resolves.toEqual({ ok: true });
+      await expect(createCaller(role).tasks.delete()).resolves.toEqual({ ok: true });
+      await expect(createCaller(role).closing.autoCreateFromTask()).resolves.toEqual({ ok: true });
+      expect(mockedGetUserPermissions).not.toHaveBeenCalled();
+    },
+  );
+
+  it("continues to deny non-privileged roles without explicit permission rows", async () => {
+    mockedGetUserPermissions.mockResolvedValue([] as Awaited<ReturnType<typeof getUserPermissions>>);
+    await expect(createCaller("sales_engineer").tasks.list()).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("requires every declared grant for an upsert/synchronization mutation", async () => {

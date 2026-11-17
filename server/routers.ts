@@ -404,6 +404,13 @@ async function getOperationalScopeAccess(
   const caller = await getCallerFromContext(ctx);
   if (!caller) throw new TRPCError({ code: "UNAUTHORIZED", message: "يجب تسجيل الدخول أولاً" });
 
+  // Admin and Manager always operate across the full organization. Keep this
+  // policy centralized so every list, aggregate, direct-ID guard, and write
+  // uses the same all-data scope without requiring per-user grant rows.
+  if (caller.role === "admin" || caller.role === "manager") {
+    return { caller, scope: "all" };
+  }
+
   const linkedAppUser = caller.engineerId ? await getAppUserByEngineerId(caller.engineerId) : null;
   const permissionUserId = ctx?.actor?.source === "app_user" ? caller.id : linkedAppUser?.id;
   const permission = permissionUserId
@@ -2966,9 +2973,20 @@ export const appRouter = router({
     // جلب صلاحيات الـ role الحالي (للـ DashboardLayout)
     myPermissions: publicProcedure
       .query(async ({ ctx }) => {
-        // UI visibility is based only on explicit per-user grants. Role-based
-        // admin checks remain separate for security-sensitive management APIs.
+        // Admin and Manager receive complete navigation grants from their
+        // authenticated role; operational endpoints enforce the same policy.
         const session = await getLocalSessionFromRequest(ctx.req);
+        const role = session?.role ?? ctx.actor?.role;
+        if (role === "admin" || role === "manager") {
+          const modules = [
+            "overview", "tasks", "crm", "visits", "closing", "project_timeline",
+            "sales", "kpi", "collections", "planning", "reports", "sales_execution",
+            "promotion", "users", "permissions", "pricing_system", "discounts", "deals",
+          ];
+          return modules.map((module) => ({
+            module, canView: 1, canAdd: 1, canEdit: 1, canDelete: 1, dataScope: "all",
+          }));
+        }
         if (session) {
           const linkedUser = await getAppUserByEngineerId(session.engineerId);
           if (!linkedUser) return [];
@@ -3889,6 +3907,17 @@ export const appRouter = router({
       .query(async ({ ctx }) => {
         const role = ctx.actor?.role;
         if (!role) throw new TRPCError({ code: "UNAUTHORIZED" });
+        // Privileged roles see every configured section; do not let stale or
+        // incomplete role-section rows hide parts of the application.
+        if (role === "admin" || role === "manager") {
+          const map: Record<string, { visibility: string; canEdit: boolean }> = {};
+          for (const [module, sections] of Object.entries(MODULE_SECTIONS)) {
+            for (const section of sections) {
+              map[`${module}.${section.section}`] = { visibility: "all", canEdit: true };
+            }
+          }
+          return map;
+        }
         const perms = await getSectionPermissions(role);
         // Build map: module.section → { visibility, canEdit }
         const map: Record<string, { visibility: string; canEdit: boolean }> = {};
