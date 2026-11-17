@@ -43,12 +43,19 @@ describe.skipIf(!enabled)("section permission self-read authorization", () => {
     if (db) await db.delete(sectionPermissions).where(inArray(sectionPermissions.role, roles));
   });
 
+  it.each(["admin", "manager"])("%s receives every configured section", async (role) => {
+    const result = await caller(role).sectionPermissions.myPermissions();
+    expect(Object.keys(result).length).toBeGreaterThan(1);
+    expect(Object.values(result).every((permission) =>
+      permission.visibility === "all" && permission.canEdit === true
+    )).toBe(true);
+    expect(result).toHaveProperty("closing.summary");
+  });
+
   it.each([
-    ["admin", "all", true],
-    ["manager", "all", true],
     ["sales_engineer", "self", false],
     ["section_test_unknown", "hidden", false],
-  ])("returns only the %s actor's section map", async (role, visibility, canEdit) => {
+  ])("returns only the %s actor's configured section map", async (role, visibility, canEdit) => {
     const result = await caller(role).sectionPermissions.myPermissions();
     expect(result).toEqual({ "closing.summary": { visibility, canEdit } });
   });
