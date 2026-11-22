@@ -457,9 +457,9 @@ export async function searchWhatsAppLeads(
 
   const normalizedQuery = query.trim();
   const escaped = normalizedQuery.replace(/[\\%_]/g, "\\$&");
-  const textPattern = \`%\${escaped}%\`;
+  const textPattern = "%" + escaped + "%";
   const digits = normalizedQuery.replace(/\D/g, "");
-  const phonePattern = digits.length >= 2 ? \`%\${digits}%\` : null;
+  const phonePattern = digits.length >= 2 ? "%" + digits + "%" : null;
 
   const nameMatch = like(leads.name, textPattern);
   const phoneMatch = or(
