@@ -24,10 +24,10 @@ const PROGROUP_CRM_CONFIG = Object.freeze({
 
 const PROGROUP_CRM_FIELDS = Object.freeze({
   whatsappContact: ["contact", "whatsappcontact", "contactid", "جهة الاتصال", "معرف جهة الاتصال"],
-  phone: ["phone", "phonenumber", "mobile", "mobilenumber", "رقم الهاتف", "رقم التليفون", "الموبايل", "الهاتف"],
-  whatsappId: ["whatsappid", "whatsapplid", "lid", "whatsapp_id", "معرف واتساب", "معرف الواتساب", "الليد"],
+  phone: ["phone", "phonenumber", "clientphone", "mobile", "mobilenumber", "رقم الهاتف", "رقم التليفون", "الموبايل", "الهاتف"],
+  whatsappId: ["whatsappid", "whatsapplid", "whatsappidlid", "lid", "whatsapp_id", "معرف واتساب", "معرف الواتساب", "الليد"],
   whatsappUsername: ["username", "whatsappusername", "اسم المستخدم", "يوزر"],
-  name: ["name", "contactname", "customername", "fullname", "الاسم", "اسم العميل", "اسم جهة الاتصال"],
+  name: ["name", "contactname", "customername", "clientname", "fullname", "الاسم", "اسم العميل", "اسم جهة الاتصال"],
   email: ["email", "clientemail", "mail", "البريد الإلكتروني", "الايميل"],
   lastMessage: ["lastmessage", "message", "lasttext", "آخر رسالة", "اخر رسالة", "الرسالة الأخيرة"],
   lastSeen: ["lastseen", "lastmessagedate", "آخر ظهور", "اخر ظهور", "تاريخ آخر رسالة"],
@@ -111,27 +111,36 @@ function syncExistingProGroupCrm() {
   const sheet = getApprovedCrmSheet_();
   assertSecret_();
 
-  const lastRow = sheet.getLastRow();
-  if (lastRow < 2) {
-    Logger.log("The approved CRM sheet contains no contact rows.");
-    return { submitted: 0, batches: 0 };
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) {
+    throw new Error("Another CRM sync is running. Wait for it to finish, then retry.");
   }
 
-  const records = readContactRows_(sheet, 2, lastRow);
-  let submitted = 0;
-  let batches = 0;
+  try {
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) {
+      Logger.log("The approved CRM sheet contains no contact rows.");
+      return { submitted: 0, batches: 0 };
+    }
 
-  for (let offset = 0; offset < records.length; offset += PROGROUP_CRM_CONFIG.batchSize) {
-    const batch = records.slice(offset, offset + PROGROUP_CRM_CONFIG.batchSize);
-    const result = postRecords_(batch);
-    submitted += result.received;
-    batches += 1;
-    Logger.log("CRM import batch " + batches + ": " + JSON.stringify(result));
+    const records = readContactRows_(sheet, 2, lastRow);
+    let submitted = 0;
+    let batches = 0;
+
+    for (let offset = 0; offset < records.length; offset += PROGROUP_CRM_CONFIG.batchSize) {
+      const batch = records.slice(offset, offset + PROGROUP_CRM_CONFIG.batchSize);
+      const result = postRecords_(batch);
+      submitted += result.received;
+      batches += 1;
+      Logger.log("CRM import batch " + batches + ": " + JSON.stringify(result));
+    }
+
+    const summary = { submitted: submitted, batches: batches };
+    Logger.log("CRM initial sync completed: " + JSON.stringify(summary));
+    return summary;
+  } finally {
+    lock.releaseLock();
   }
-
-  const summary = { submitted: submitted, batches: batches };
-  Logger.log("CRM initial sync completed: " + JSON.stringify(summary));
-  return summary;
 }
 
 /** Read a contiguous row range, resolving columns by normalized header names. */
