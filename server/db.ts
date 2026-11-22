@@ -446,7 +446,17 @@ export async function createLead(data: {
   });
 }
 
-/** Search CRM leads for task assignment. Own-scope users only see leads assigned to them. */
+/** Search CRM leads for task assignment without weakening the caller's own/all scope. */
+export async function searchWhatsAppLeads(
+  query: string,
+  assignedEngineerId?: number,
+  searchIn: "all" | "name" | "phone" | "whatsapp" = "all",
+) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const normalizedQuery = query.trim();
+  const escaped = normalizedQuery.replace(/[\\%_]/g, "\\/** Search CRM leads for task assignment. Own-scope users only see leads assigned to them. */
 export async function searchWhatsAppLeads(query: string, assignedEngineerId?: number) {
   const db = await getDb(); if (!db) return [];
   const term = "%" + query.trim().replace(/[\\%_]/g, "\\$&") + "%";
@@ -454,6 +464,66 @@ export async function searchWhatsAppLeads(query: string, assignedEngineerId?: nu
   const conditions = [eq(leads.isDeleted, 0), match];
   if (assignedEngineerId !== undefined) conditions.push(or(eq(leads.assignedEngineerId, assignedEngineerId), isNull(leads.assignedEngineerId))!);
   return db.select({ id: leads.id, name: leads.name, phone: leads.phone, email: leads.email, whatsappId: leads.whatsappId, whatsappUsername: leads.whatsappUsername, whatsappContact: leads.whatsappContact, lastMessage: leads.lastMessage, status: leads.status, clientAddress: leads.clientAddress, clientPayment: leads.clientPayment, clientDay: leads.clientDay, kitchenSize: leads.kitchenSize, kitchenModel: leads.kitchenModel }).from(leads).where(and(...conditions)).orderBy(desc(leads.updatedAt)).limit(12);
+}");
+  const textPattern = `%${escaped}%`;
+  const digits = normalizedQuery.replace(/\\D/g, "");
+  const phonePattern = digits.length >= 2 ? `%${digits}%` : null;
+
+  const nameMatch = like(leads.name, textPattern);
+  const phoneMatch = or(
+    like(leads.phone, textPattern),
+    ...(phonePattern ? [like(leads.phoneNormalized, phonePattern)] : []),
+  )!;
+  const whatsappMatch = or(
+    like(leads.whatsappId, textPattern),
+    like(leads.whatsappUsername, textPattern),
+    like(leads.whatsappContact, textPattern),
+  )!;
+
+  const match = searchIn === "name"
+    ? nameMatch
+    : searchIn === "phone"
+      ? phoneMatch
+      : searchIn === "whatsapp"
+        ? whatsappMatch
+        : or(
+            nameMatch,
+            phoneMatch,
+            whatsappMatch,
+            like(leads.email, textPattern),
+            like(leads.clientAddress, textPattern),
+          )!;
+
+  const conditions = [eq(leads.isDeleted, 0), match];
+  // Existing policy: own-scope users can see their assigned leads and the
+  // unassigned intake pool; all-scope users are not filtered by engineer.
+  if (assignedEngineerId !== undefined) {
+    conditions.push(or(eq(leads.assignedEngineerId, assignedEngineerId), isNull(leads.assignedEngineerId))!);
+  }
+
+  return db.select({
+    id: leads.id,
+    name: leads.name,
+    phone: leads.phone,
+    phoneNormalized: leads.phoneNormalized,
+    email: leads.email,
+    whatsappId: leads.whatsappId,
+    whatsappUsername: leads.whatsappUsername,
+    whatsappContact: leads.whatsappContact,
+    lastMessage: leads.lastMessage,
+    status: leads.status,
+    source: leads.source,
+    assignedEngineerId: leads.assignedEngineerId,
+    clientAddress: leads.clientAddress,
+    clientPayment: leads.clientPayment,
+    clientDay: leads.clientDay,
+    kitchenSize: leads.kitchenSize,
+    kitchenModel: leads.kitchenModel,
+    updatedAt: leads.updatedAt,
+  }).from(leads)
+    .where(and(...conditions))
+    .orderBy(desc(leads.updatedAt))
+    .limit(25);
 }
 
 export async function getLeadForTask(id: number, assignedEngineerId?: number) {
