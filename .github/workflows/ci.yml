@@ -40,6 +40,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Apply database migrations
         run: pnpm drizzle-kit migrate
+      - name: Validate Google Apps Script syntax
+        run: node --check --input-type=commonjs < integrations/google-apps-script/ProGroupWhatsAppCrm.gs
       - name: Type check
         run: pnpm check
       - name: Start server for runtime readiness tests
