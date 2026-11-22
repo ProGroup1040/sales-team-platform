@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { and, between, count, desc, eq, gte, isNull, lte, or, sql, sum, avg, lt, ne, inArray, notInArray, not } from "drizzle-orm";
+import { and, between, count, desc, eq, gte, isNull, lte, or, sql, sum, avg, lt, ne, inArray, notInArray, not, like } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { SYSTEM_MODULES, SYSTEM_ROLES } from "@shared/authorization";
 import { centsToNumber, fromCents, sumCents, subtractMoney, toCents, toCentsOrZero } from "@shared/money";
@@ -258,6 +258,7 @@ export async function createTask(data: {
   actualHours?: number;
   completionDate?: string;
   clientName?: string;
+  leadId?: number;
   dealId?: number;
   startTime?: string;
   endTime?: string;
@@ -288,6 +289,7 @@ export async function createTask(data: {
     actualHours: data.actualHours ?? null,
     completionDate: data.completionDate ? new Date(data.completionDate + 'T00:00:00') : null,
     clientName: data.clientName ?? null,
+    leadId: data.leadId ?? null,
     dealId: data.dealId ?? null,
     startTime: data.startTime ?? null,
     endTime: data.endTime ?? null,
@@ -444,6 +446,57 @@ export async function createLead(data: {
   });
 }
 
+/** Search CRM leads for task assignment. Own-scope users only see leads assigned to them. */
+export async function searchWhatsAppLeads(query: string, assignedEngineerId?: number) {
+  const db = await getDb(); if (!db) return [];
+  const term = "%" + query.trim().replace(/[\\%_]/g, "\\$&") + "%";
+  const match = or(like(leads.name, term), like(leads.phone, term), like(leads.phoneNormalized, term), like(leads.whatsappId, term), like(leads.whatsappUsername, term), like(leads.whatsappContact, term))!;
+  const conditions = [eq(leads.isDeleted, 0), match];
+  if (assignedEngineerId !== undefined) conditions.push(or(eq(leads.assignedEngineerId, assignedEngineerId), isNull(leads.assignedEngineerId))!);
+  return db.select({ id: leads.id, name: leads.name, phone: leads.phone, email: leads.email, whatsappId: leads.whatsappId, whatsappUsername: leads.whatsappUsername, whatsappContact: leads.whatsappContact, lastMessage: leads.lastMessage, status: leads.status, clientAddress: leads.clientAddress, clientPayment: leads.clientPayment, clientDay: leads.clientDay, kitchenSize: leads.kitchenSize, kitchenModel: leads.kitchenModel }).from(leads).where(and(...conditions)).orderBy(desc(leads.updatedAt)).limit(12);
+}
+
+export async function getLeadForTask(id: number, assignedEngineerId?: number) {
+  const db = await getDb(); if (!db) return null;
+  const conditions = [eq(leads.id, id), eq(leads.isDeleted, 0)];
+  if (assignedEngineerId !== undefined) conditions.push(or(eq(leads.assignedEngineerId, assignedEngineerId), isNull(leads.assignedEngineerId))!);
+  const [lead] = await db.select({ id: leads.id, name: leads.name }).from(leads).where(and(...conditions)).limit(1);
+  return lead ?? null;
+}
+
+export type WhatsAppLeadSyncInput = { whatsappId?: string | null; whatsappUsername?: string | null; whatsappContact?: string | null; name?: string | null; phone?: string | number | null; email?: string | null; lastMessage?: string | null; lastSeen?: string | null; clientAddress?: string | null; clientPayment?: string | null; clientDay?: string | null; kitchenSize?: string | null; kitchenModel?: string | null };
+const normalizeCrmPhone = (value: string | number | null | undefined) => value === null || value === undefined ? null : String(value).replace(/\D/g, "") || null;
+
+/** Idempotent upsert by exact WhatsApp ID, then normalized phone. Never merge by name or treat LID as phone. */
+export async function syncWhatsAppLead(data: WhatsAppLeadSyncInput) {
+  const db = await requireDb();
+  const whatsappId = data.whatsappId?.trim() || null;
+  const phone = data.phone === null || data.phone === undefined ? null : String(data.phone).trim();
+  const phoneNormalized = normalizeCrmPhone(data.phone);
+  if (!whatsappId && !phoneNormalized) throw new Error("A WhatsApp ID or phone number is required");
+  let existing: typeof leads.$inferSelect | undefined;
+  if (whatsappId) { const [found] = await db.select().from(leads).where(eq(leads.whatsappId, whatsappId)).limit(1); existing = found; }
+  if (!existing && phoneNormalized) {
+    const [found] = await db.select().from(leads).where(eq(leads.phoneNormalized, phoneNormalized)).limit(1);
+    if (found && (!found.whatsappId || !whatsappId || found.whatsappId === whatsappId)) existing = found;
+  }
+  const updates: Partial<typeof leads.$inferInsert> = { updatedAt: new Date() };
+  const put = (key: keyof typeof updates, value: string | null | undefined) => { if (value !== undefined && value !== null && value.trim() !== "") Object.assign(updates, { [key]: value }); };
+  put("name", data.name); put("phone", phone); put("phoneNormalized", phoneNormalized); put("whatsappId", whatsappId);
+  put("whatsappUsername", data.whatsappUsername); put("whatsappContact", data.whatsappContact); put("email", data.email);
+  put("lastMessage", data.lastMessage); put("clientAddress", data.clientAddress); put("clientPayment", data.clientPayment);
+  put("clientDay", data.clientDay); put("kitchenSize", data.kitchenSize); put("kitchenModel", data.kitchenModel);
+  if (data.lastSeen) { const parsed = new Date(data.lastSeen); if (!Number.isNaN(parsed.getTime())) updates.lastSeen = parsed; }
+  if (existing) { await db.update(leads).set(updates).where(eq(leads.id, existing.id)); return { id: existing.id, action: "updated" as const }; }
+  const name = data.name?.trim() || phone || whatsappId || "WhatsApp Lead";
+  try {
+    const [inserted] = await db.insert(leads).values({ name, phone, phoneNormalized, whatsappId, whatsappUsername: data.whatsappUsername || null, whatsappContact: data.whatsappContact || null, email: data.email || null, lastMessage: data.lastMessage || null, lastSeen: data.lastSeen && !Number.isNaN(new Date(data.lastSeen).getTime()) ? new Date(data.lastSeen) : null, clientAddress: data.clientAddress || null, clientPayment: data.clientPayment || null, clientDay: data.clientDay || null, kitchenSize: data.kitchenSize || null, kitchenModel: data.kitchenModel || null, source: "social_media", status: "new" });
+    return { id: Number(inserted.insertId), action: "created" as const };
+  } catch (error) {
+    if (whatsappId) { const [raced] = await db.select().from(leads).where(eq(leads.whatsappId, whatsappId)).limit(1); if (raced) { await db.update(leads).set(updates).where(eq(leads.id, raced.id)); return { id: raced.id, action: "updated" as const }; } }
+    throw error;
+  }
+}
 export async function updateLeadStatus(id: number, status: string, responseTimeMinutes?: number) {
   const db = await getDb();
   if (!db) return;

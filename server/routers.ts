@@ -16,6 +16,7 @@ import { getPricingSsoSecret } from "./_core/env";
 import {
   getEngineers, getEngineerById, updateEngineerProfile, createEngineer,
   getDailyTasksStats, getTasksList, createTask, updateTaskStatus, rescheduleTask,
+  searchWhatsAppLeads, getLeadForTask,
   getCriticalTasks, getEngineersWithRole, createEngineerWithRole, deleteEngineer,
   getLeadsStats, getLeadsList, createLead, updateLeadStatus,
   getVisitsStats, getVisitsList, createVisit, updateVisitStatus, updateVisitFull,
@@ -1040,6 +1041,11 @@ export const appRouter = router({
         const access = await requireTaskAction(ctx, "view");
         return getTasksList(input.date, taskEngineerFilter(access, input.engineerId));
       }),
+    searchLeads: protectedProcedure.input(z.object({ query: z.string().min(2).max(120) }))
+      .query(async ({ input, ctx }) => {
+        const access = await requireTaskAction(ctx, "view");
+        return searchWhatsAppLeads(input.query, taskEngineerFilter(access));
+      }),
     create: protectedProcedure.input(z.object({
       engineerId: z.number(), taskDate: z.string(), title: z.string().min(1),
       description: z.string().optional(), plannedHours: z.number().optional(),
@@ -1047,12 +1053,15 @@ export const appRouter = router({
       category: z.string().optional(), // 'closing' | 'meeting' | 'general'
       meetingRecordingLink: z.string().optional(),
       taskType: z.enum(['design_2d','design_3d','render','quotation','meeting_modeling','meeting_presentation','meeting_closing','contract','work_order','follow_up','other']).optional(),
+      leadId: z.number().int().positive().optional(), clientName: z.string().max(120).optional(),
     })).mutation(async ({ input, ctx }) => {
       const access = await requireTaskAction(ctx, "add");
       const engineerId = taskEngineerFilter(access, input.engineerId);
       if (!engineerId) throw new TRPCError({ code: "BAD_REQUEST", message: "يجب تحديد المهندس المسؤول عن المهمة" });
       await assertFollowUpAllowedForEngineer(engineerId, input.taskType);
-      await createTask({ ...input, engineerId }); return { success: true };
+      const lead = input.leadId ? await getLeadForTask(input.leadId, taskEngineerFilter(access)) : null;
+      if (input.leadId && !lead) throw new TRPCError({ code: "NOT_FOUND", message: "العميل غير متاح ضمن صلاحياتك" });
+      await createTask({ ...input, clientName: lead?.name ?? input.clientName, engineerId }); return { success: true };
     }),
     createMine: protectedProcedure.input(z.object({
       taskDate: z.string(), title: z.string().min(1),
@@ -1061,12 +1070,15 @@ export const appRouter = router({
       category: z.string().optional(),
       meetingRecordingLink: z.string().optional(),
       taskType: z.enum(['design_2d','design_3d','render','quotation','meeting_modeling','meeting_presentation','meeting_closing','contract','work_order','follow_up','other']).optional(),
+      leadId: z.number().int().positive().optional(), clientName: z.string().max(120).optional(),
     })).mutation(async ({ input, ctx }) => {
       const access = await requireTaskAction(ctx, "add");
       const engineerId = access.caller.engineerId;
       if (!engineerId) throw new TRPCError({ code: "BAD_REQUEST", message: "لا يوجد مهندس مرتبط بهذا الحساب" });
       await assertFollowUpAllowedForEngineer(engineerId, input.taskType);
-      await createTask({ ...input, engineerId });
+      const lead = input.leadId ? await getLeadForTask(input.leadId, taskEngineerFilter(access)) : null;
+      if (input.leadId && !lead) throw new TRPCError({ code: "NOT_FOUND", message: "العميل غير متاح ضمن صلاحياتك" });
+      await createTask({ ...input, clientName: lead?.name ?? input.clientName, engineerId });
       return { success: true };
     }),
     updateStatus: protectedProcedure.input(z.object({
