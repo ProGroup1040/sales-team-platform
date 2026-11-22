@@ -424,7 +424,7 @@ function AddTaskDialog({ engineers, dateStr, onDone, selfEngineerId }: { enginee
                   {leadQuery.trim().length >= 2 && !leadSearch.isFetching && !leadSearch.isError && (leadSearch.data?.length ?? 0) === 0 && (
                     <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
                       <p className="text-xs text-white/65">مفيش نتائج مطابقة ضمن نطاق صلاحيات حسابك.</p>
-                      <p className="mt-1 text-[11px] text-white/35">جرّب البحث بالاسم الكامل، أو جزء من الرقم، أو WhatsApp ID / LID. لو متأكد إن العميل موجود، راجع ربط حسابك بالمهندس ونطاق صلاحية CRM/Tasks.</p>
+                      <p className="mt-1 text-[11px] text-white/35">جرّب البحث بالاسم الكامل، أو جزء من الرقم، أو WhatsApp ID / LID. لو متأكد إن العميل موجود، راجع صلاحية عرض المهام ونطاق بيانات المهام؛ حسابات own لازم تكون مرتبطة بمهندس.</p>
                     </div>
                   )}
                 </>
