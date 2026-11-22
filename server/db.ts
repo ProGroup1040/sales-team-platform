@@ -456,18 +456,10 @@ export async function searchWhatsAppLeads(
   if (!db) return [];
 
   const normalizedQuery = query.trim();
-  const escaped = normalizedQuery.replace(/[\\%_]/g, "\\/** Search CRM leads for task assignment. Own-scope users only see leads assigned to them. */
-export async function searchWhatsAppLeads(query: string, assignedEngineerId?: number) {
-  const db = await getDb(); if (!db) return [];
-  const term = "%" + query.trim().replace(/[\\%_]/g, "\\$&") + "%";
-  const match = or(like(leads.name, term), like(leads.phone, term), like(leads.phoneNormalized, term), like(leads.whatsappId, term), like(leads.whatsappUsername, term), like(leads.whatsappContact, term))!;
-  const conditions = [eq(leads.isDeleted, 0), match];
-  if (assignedEngineerId !== undefined) conditions.push(or(eq(leads.assignedEngineerId, assignedEngineerId), isNull(leads.assignedEngineerId))!);
-  return db.select({ id: leads.id, name: leads.name, phone: leads.phone, email: leads.email, whatsappId: leads.whatsappId, whatsappUsername: leads.whatsappUsername, whatsappContact: leads.whatsappContact, lastMessage: leads.lastMessage, status: leads.status, clientAddress: leads.clientAddress, clientPayment: leads.clientPayment, clientDay: leads.clientDay, kitchenSize: leads.kitchenSize, kitchenModel: leads.kitchenModel }).from(leads).where(and(...conditions)).orderBy(desc(leads.updatedAt)).limit(12);
-}");
-  const textPattern = `%${escaped}%`;
-  const digits = normalizedQuery.replace(/\\D/g, "");
-  const phonePattern = digits.length >= 2 ? `%${digits}%` : null;
+  const escaped = normalizedQuery.replace(/[\\%_]/g, "\\$&");
+  const textPattern = \`%\${escaped}%\`;
+  const digits = normalizedQuery.replace(/\D/g, "");
+  const phonePattern = digits.length >= 2 ? \`%\${digits}%\` : null;
 
   const nameMatch = like(leads.name, textPattern);
   const phoneMatch = or(
@@ -495,8 +487,7 @@ export async function searchWhatsAppLeads(query: string, assignedEngineerId?: nu
           )!;
 
   const conditions = [eq(leads.isDeleted, 0), match];
-  // Existing policy: own-scope users can see their assigned leads and the
-  // unassigned intake pool; all-scope users are not filtered by engineer.
+  // Preserve the existing own-scope policy: assigned leads plus the unassigned intake pool.
   if (assignedEngineerId !== undefined) {
     conditions.push(or(eq(leads.assignedEngineerId, assignedEngineerId), isNull(leads.assignedEngineerId))!);
   }
