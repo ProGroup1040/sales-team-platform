@@ -4113,13 +4113,14 @@ export async function getTasksCalendarView(engineerId?: number) {
   const now = new Date();
   const dateKey = (year: number, month: number, day: number) =>
     `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-  const monthStart = dateKey(now.getFullYear(), now.getMonth(), 1);
-  const today = dateKey(now.getFullYear(), now.getMonth(), now.getDate());
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
 
-  // daily_tasks.taskDate is a MySQL DATE; compare date-only strings, never UTC timestamps.
+  // Drizzle models this MySQL DATE column as Date. Keep Date query bounds,
+  // but never convert taskDate to UTC ISO text when building calendar buckets.
   const conditions: any[] = [
     gte(dailyTasks.taskDate, monthStart),
-    lte(dailyTasks.taskDate, today),
+    lte(dailyTasks.taskDate, todayEnd),
     eq(dailyTasks.isDeleted, 0),
   ];
   if (engineerId) conditions.push(eq(dailyTasks.engineerId, engineerId));
@@ -4167,7 +4168,8 @@ export async function getTasksCalendarView(engineerId?: number) {
   // توزيع المهام على الأيام
   const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 };
   for (const task of tasks) {
-    const key = task.taskDate;
+    const taskDate = task.taskDate;
+    const key = dateKey(taskDate.getFullYear(), taskDate.getMonth(), taskDate.getDate());
     if (dayMap.has(key)) {
       dayMap.get(key)!.push({
         ...task,
