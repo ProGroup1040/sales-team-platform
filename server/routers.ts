@@ -16,7 +16,7 @@ import { getPricingSsoSecret } from "./_core/env";
 import {
   getEngineers, getEngineerById, updateEngineerProfile, createEngineer,
   getDailyTasksStats, getTasksList, createTask, updateTaskStatus, rescheduleTask,
-  searchWhatsAppLeads, getLeadForTask,
+  searchWhatsAppLeads, getLeadForTask, getTaskClientDetails,
   getCriticalTasks, getEngineersWithRole, createEngineerWithRole, deleteEngineer,
   getLeadsStats, getLeadsList, createLead, updateLeadStatus,
   getVisitsStats, getVisitsList, createVisit, updateVisitStatus, updateVisitFull,
@@ -1041,6 +1041,11 @@ export const appRouter = router({
         const access = await requireTaskAction(ctx, "view");
         return getTasksList(input.date, taskEngineerFilter(access, input.engineerId));
       }),
+    clientDetails: protectedProcedure.input(z.object({ taskId: z.number().int().positive() }))
+      .query(async ({ input, ctx }) => {
+        const access = await requireTaskAction(ctx, "view", input.taskId);
+        return getTaskClientDetails(input.taskId, taskEngineerFilter(access));
+      }),
     searchLeads: protectedProcedure.input(z.object({
       query: z.string().trim().min(2).max(120),
       searchIn: z.enum(["all", "name", "phone", "whatsapp"]).default("all"),
@@ -1240,16 +1245,19 @@ export const appRouter = router({
       startTime: taskTimeSchema.optional(),
       endTime: taskTimeSchema.optional(),
       taskType: z.enum(['design_2d','design_3d','render','quotation','meeting_modeling','meeting_presentation','meeting_closing','contract','work_order','meeting_2d','meeting_3d','meeting_quotation','closing','negotiation','follow_up','other']).optional(),
-      clientName: z.string().optional(),
+      leadId: z.number().int().positive().optional(),
+      clientName: z.string().max(120).optional(),
       notes: z.string().optional(),
       reminderMinutes: z.number().optional(),
     })).mutation(async ({ input, ctx }) => {
       const access = await requireTaskAction(ctx, "add");
       const engineerId = taskEngineerFilter(access, input.engineerId);
       if (!engineerId) throw new TRPCError({ code: "BAD_REQUEST", message: "يجب تحديد المهندس المسؤول عن المهمة" });
-      const { startTime, endTime, taskType, clientName, notes, reminderMinutes, ...rest } = input;
+      const { startTime, endTime, taskType, leadId, clientName, notes, reminderMinutes, ...rest } = input;
       assertTaskTimeRange(startTime, endTime);
       await assertFollowUpAllowedForEngineer(engineerId, taskType);
+      const lead = leadId ? await getLeadForTask(leadId, taskEngineerFilter(access)) : null;
+      if (leadId && !lead) throw new TRPCError({ code: "NOT_FOUND", message: "العميل غير متاح ضمن صلاحياتك" });
       // Check overlap if times provided
       if (startTime && endTime) {
         const overlap = await checkTimeOverlap({ engineerId, taskDate: input.taskDate, startTime, endTime });
@@ -1257,7 +1265,11 @@ export const appRouter = router({
           throw new Error(`تداخل زمني مع مهمة: ${overlap.conflictingTask?.title} (${overlap.conflictingTask?.startTime} - ${overlap.conflictingTask?.endTime})`);
         }
       }
-      await createTask({ ...rest, engineerId, startTime, endTime, taskType, clientName, notes, reminderMinutes });
+      await createTask({
+        ...rest, engineerId, startTime, endTime, taskType,
+        leadId: lead?.id ?? leadId, clientName: lead?.name ?? clientName,
+        notes, reminderMinutes,
+      });
       return { success: true };
     }),
     // ─── Move Task (Drag & Drop) ─────────────────────────────────────────────────────────────────

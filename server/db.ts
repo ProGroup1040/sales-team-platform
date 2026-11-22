@@ -525,6 +525,41 @@ export async function getLeadForTask(id: number, assignedEngineerId?: number) {
   return lead ?? null;
 }
 
+/** Load task CRM context using the server-resolved task scope. */
+export async function getTaskClientDetails(taskId: number, assignedEngineerId?: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [task] = await db.select({
+    engineerId: dailyTasks.engineerId,
+    leadId: dailyTasks.leadId,
+    clientName: dailyTasks.clientName,
+  }).from(dailyTasks).where(and(eq(dailyTasks.id, taskId), eq(dailyTasks.isDeleted, 0))).limit(1);
+  if (!task) return null;
+  if (assignedEngineerId !== undefined && task.engineerId !== assignedEngineerId) return null;
+
+  const fallback = {
+    id: null, name: task.clientName, phone: null, email: null, whatsappId: null,
+    whatsappUsername: null, clientAddress: null, clientPayment: null, clientDay: null,
+    kitchenSize: null, kitchenModel: null, lastMessage: null, status: null, source: null,
+    linked: false,
+  };
+  if (!task.leadId) return fallback;
+
+  const leadConditions = [eq(leads.id, task.leadId), eq(leads.isDeleted, 0)];
+  if (assignedEngineerId !== undefined) {
+    leadConditions.push(or(eq(leads.assignedEngineerId, assignedEngineerId), isNull(leads.assignedEngineerId))!);
+  }
+  const [lead] = await db.select({
+    id: leads.id, name: leads.name, phone: leads.phone, email: leads.email,
+    whatsappId: leads.whatsappId, whatsappUsername: leads.whatsappUsername,
+    clientAddress: leads.clientAddress, clientPayment: leads.clientPayment,
+    clientDay: leads.clientDay, kitchenSize: leads.kitchenSize,
+    kitchenModel: leads.kitchenModel, lastMessage: leads.lastMessage,
+    status: leads.status, source: leads.source,
+  }).from(leads).where(and(...leadConditions)).limit(1);
+  return lead ? { ...lead, linked: true } : fallback;
+}
+
 export type WhatsAppLeadSyncInput = { whatsappId?: string | null; whatsappUsername?: string | null; whatsappContact?: string | null; name?: string | null; phone?: string | number | null; email?: string | null; lastMessage?: string | null; lastSeen?: string | null; clientAddress?: string | null; clientPayment?: string | null; clientDay?: string | null; kitchenSize?: string | null; kitchenModel?: string | null };
 const normalizeCrmPhone = (value: string | number | null | undefined) => value === null || value === undefined ? null : String(value).replace(/\D/g, "") || null;
 
