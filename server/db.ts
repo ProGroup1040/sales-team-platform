@@ -4179,10 +4179,13 @@ export async function getTasksCalendarView(engineerId?: number) {
   }
 
   // ترتيب المهام داخل كل يوم حسب Priority ثم completedAt
-  const days = Array.from(dayMap.entries()).map(([date, dayTasks]) => ({
+  const days = Array.from(dayMap.entries()).map(([date, dayTasks]) => {
+    const [year, month, day] = date.split("-").map(Number);
+    const calendarDate = new Date(year, month - 1, day);
+    return {
     date,
-    dayNum: new Date(date).getDate(),
-    dayName: new Date(date).toLocaleDateString('ar-EG', { weekday: 'short' }),
+    dayNum: day,
+    dayName: calendarDate.toLocaleDateString('ar-EG', { weekday: 'short' }),
     isToday: date === dateKey(now.getFullYear(), now.getMonth(), now.getDate()),
     tasks: dayTasks.sort((a, b) => a.priorityOrder - b.priorityOrder),
     summary: {
@@ -4193,7 +4196,8 @@ export async function getTasksCalendarView(engineerId?: number) {
       planned: dayTasks.filter(t => t.status === 'planned').length,
       client_delay: dayTasks.filter(t => t.status === 'client_delay').length,
     },
-  }));
+    };
+  });
 
   // ملخص إجمالي MTD
   const summary = {
