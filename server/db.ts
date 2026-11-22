@@ -4111,12 +4111,15 @@ export async function getTasksCalendarView(engineerId?: number) {
   if (!db) return { days: [], summary: { total: 0, completed: 0, delayed: 0, not_done: 0, planned: 0, client_delay: 0 } };
 
   const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+  const dateKey = (year: number, month: number, day: number) =>
+    `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  const monthStart = dateKey(now.getFullYear(), now.getMonth(), 1);
+  const today = dateKey(now.getFullYear(), now.getMonth(), now.getDate());
 
+  // daily_tasks.taskDate is a MySQL DATE; compare date-only strings, never UTC timestamps.
   const conditions: any[] = [
     gte(dailyTasks.taskDate, monthStart),
-    lte(dailyTasks.taskDate, todayEnd),
+    lte(dailyTasks.taskDate, today),
     eq(dailyTasks.isDeleted, 0),
   ];
   if (engineerId) conditions.push(eq(dailyTasks.engineerId, engineerId));
@@ -4153,8 +4156,6 @@ export async function getTasksCalendarView(engineerId?: number) {
   // Converting local midnight or a DATE string through toISOString() can shift the day
   // across time zones (e.g. Cairo), leaving fetched tasks out of their calendar buckets.
   const dayMap = new Map<string, any[]>();
-  const dateKey = (year: number, month: number, day: number) =>
-    `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 
   // إنشاء أعمدة لكل يوم من بداية الشهر حتى اليوم
   const totalDays = now.getDate();
@@ -4166,9 +4167,7 @@ export async function getTasksCalendarView(engineerId?: number) {
   // توزيع المهام على الأيام
   const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 };
   for (const task of tasks) {
-    const key = typeof task.taskDate === "string"
-      ? task.taskDate.slice(0, 10)
-      : dateKey(new Date(task.taskDate).getFullYear(), new Date(task.taskDate).getMonth(), new Date(task.taskDate).getDate());
+    const key = task.taskDate;
     if (dayMap.has(key)) {
       dayMap.get(key)!.push({
         ...task,
