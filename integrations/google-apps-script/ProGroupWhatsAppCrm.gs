@@ -208,7 +208,10 @@ function getApprovedCrmSheet_() {
   if (!sheet) {
     throw new Error('Approved CRM tab "' + PROGROUP_CRM_CONFIG.sheetName + '" was not found. No other tab will be used.');
   }
-  if (sheet.getLastColumn() < 1) throw new Error("The approved CRM sheet has no header row.");
+  const lastColumn = sheet.getLastColumn();
+  if (lastColumn < 1) throw new Error("The approved CRM sheet has no header row.");
+  const headers = sheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0];
+  buildColumnMap_(headers);
   return sheet;
 }
 
