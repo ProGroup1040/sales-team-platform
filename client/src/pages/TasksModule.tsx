@@ -231,9 +231,13 @@ function AddTaskDialog({ engineers, dateStr, onDone, selfEngineerId }: { enginee
   const EMPTY_FORM = { engineerId: "", title: "", description: "", priority: "", plannedHours: "", taskType: "", meetingRecordingLink: "" };
   const [form, setForm] = useState(EMPTY_FORM);
   const [leadQuery, setLeadQuery] = useState("");
+  const [leadSearchMode, setLeadSearchMode] = useState<"all" | "name" | "phone" | "whatsapp">("all");
   const [selectedLead, setSelectedLead] = useState<{ id: number; name: string; phone: string | null; whatsappId: string | null; whatsappUsername: string | null; email: string | null; clientAddress: string | null; clientPayment: string | null; clientDay: string | null; kitchenSize: string | null; kitchenModel: string | null } | null>(null);
   const utils = trpc.useUtils();
-  const leadSearch = trpc.tasks.searchLeads.useQuery({ query: leadQuery.trim() }, { enabled: open && leadQuery.trim().length >= 2, staleTime: 15000 });
+  const leadSearch = trpc.tasks.searchLeads.useQuery(
+    { query: leadQuery.trim(), searchIn: leadSearchMode },
+    { enabled: open && leadQuery.trim().length >= 2, staleTime: 10000, retry: 1 },
+  );
   const isSelfOnly = selfEngineerId !== undefined;
   const effectiveEngineerId = isSelfOnly ? String(selfEngineerId) : form.engineerId;
 
@@ -332,19 +336,97 @@ function AddTaskDialog({ engineers, dateStr, onDone, selfEngineerId }: { enginee
                 className="bg-white/5 border-white/10 text-white" placeholder="أدخل عنوان المهمة" />
             </div>
 
-            <div className="space-y-2">
-              <Label className="text-white/70">العميل من CRM (اختياري)</Label>
+            <div className="space-y-3 rounded-xl border border-white/10 bg-slate-950/50 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <Label className="text-white/85">ربط عميل من CRM <span className="text-white/40 font-normal">(اختياري)</span></Label>
+                  <p className="mt-1 text-[11px] text-white/40">بحث موحّد بالاسم أو رقم الهاتف أو WhatsApp ID / LID</p>
+                </div>
+                <span className="rounded-full border border-indigo-400/20 bg-indigo-400/10 px-2 py-1 text-[10px] text-indigo-200">CRM</span>
+              </div>
               {selectedLead ? (
-                <div className="flex items-center justify-between gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3">
-                  <div className="min-w-0"><p className="text-sm font-medium text-emerald-200">{selectedLead.name}</p><p className="text-xs text-white/50">{selectedLead.phone || selectedLead.whatsappId || selectedLead.whatsappUsername || "WhatsApp contact"}</p><p className="mt-1 text-xs text-white/45">{[selectedLead.email, selectedLead.clientAddress, selectedLead.clientDay, selectedLead.clientPayment, selectedLead.kitchenSize, selectedLead.kitchenModel].filter(Boolean).join(" · ")}</p></div>
-                  <Button type="button" size="sm" variant="ghost" className="text-white/60" onClick={() => { setSelectedLead(null); setLeadQuery(""); }}>تغيير</Button>
+                <div className="rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-emerald-100">{selectedLead.name}</p>
+                      <p className="mt-1 text-xs text-white/65">{selectedLead.phone || "لا يوجد رقم هاتف"}</p>
+                      {selectedLead.whatsappId && <p className="mt-1 break-all text-[11px] text-white/45">WhatsApp ID: {selectedLead.whatsappId}</p>}
+                      <p className="mt-2 text-xs text-white/50">{[selectedLead.email, selectedLead.clientAddress, selectedLead.clientDay, selectedLead.clientPayment, selectedLead.kitchenSize, selectedLead.kitchenModel].filter(Boolean).join(" · ") || "لا توجد تفاصيل إضافية"}</p>
+                      <p className="mt-2 text-[10px] text-emerald-200/70">CRM Record #{selectedLead.id} — سيتم حفظ رابط العميل داخل المهمة</p>
+                    </div>
+                    <Button type="button" size="sm" variant="ghost" className="shrink-0 text-white/70 hover:text-white" onClick={() => { setSelectedLead(null); setLeadQuery(""); }}>إلغاء الربط</Button>
+                  </div>
                 </div>
               ) : (
                 <>
-                  <Input value={leadQuery} onChange={e => setLeadQuery(e.target.value)} className="bg-white/5 border-white/10 text-white" placeholder="ابحث بالاسم أو الهاتف أو WhatsApp ID..." />
-                  {leadSearch.isFetching && <p className="text-xs text-white/40">جاري البحث...</p>}
-                  {leadQuery.trim().length >= 2 && (leadSearch.data?.length ?? 0) > 0 && <div className="max-h-44 overflow-y-auto rounded-lg border border-white/10 bg-slate-950">{leadSearch.data?.map(lead => <button type="button" key={lead.id} onClick={() => { setSelectedLead({ id: lead.id, name: lead.name, phone: lead.phone, whatsappId: lead.whatsappId, whatsappUsername: lead.whatsappUsername, email: lead.email, clientAddress: lead.clientAddress, clientPayment: lead.clientPayment, clientDay: lead.clientDay, kitchenSize: lead.kitchenSize, kitchenModel: lead.kitchenModel }); setLeadQuery(lead.name); }} className="block w-full border-b border-white/5 px-3 py-2 text-right hover:bg-white/5"><span className="block text-sm text-white">{lead.name}</span><span className="block text-xs text-white/45">{[lead.phone, lead.whatsappId, lead.whatsappUsername].filter(Boolean).join(" · ")}</span><span className="block truncate text-xs text-white/35">{[lead.clientAddress, lead.kitchenSize, lead.kitchenModel].filter(Boolean).join(" · ")}</span>{lead.lastMessage && <span className="block truncate text-xs text-white/35">{lead.lastMessage}</span>}</button>)}</div>}
-                  {leadQuery.trim().length >= 2 && !leadSearch.isFetching && (leadSearch.data?.length ?? 0) === 0 && <p className="text-xs text-white/40">لا توجد نتائج في نطاق صلاحياتك.</p>}
+                  <div className="flex flex-wrap gap-1.5">
+                    {([
+                      ["all", "الكل"],
+                      ["name", "الاسم"],
+                      ["phone", "رقم الهاتف"],
+                      ["whatsapp", "WhatsApp / LID"],
+                    ] as const).map(([mode, label]) => (
+                      <button key={mode} type="button" aria-pressed={leadSearchMode === mode}
+                        onClick={() => setLeadSearchMode(mode)}
+                        className={`rounded-full border px-3 py-1.5 text-[11px] transition-colors ${leadSearchMode === mode ? "border-indigo-400/50 bg-indigo-500/20 text-indigo-100" : "border-white/10 bg-white/5 text-white/55 hover:bg-white/10"}`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="relative">
+                    <Input value={leadQuery} onChange={e => setLeadQuery(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Escape") setLeadQuery(""); }}
+                      className="bg-white/5 border-white/10 pr-3 pl-16 text-white"
+                      placeholder={leadSearchMode === "phone" ? "اكتب الرقم بأي تنسيق..." : leadSearchMode === "whatsapp" ? "اكتب WhatsApp ID أو LID..." : leadSearchMode === "name" ? "اكتب اسم العميل..." : "ابحث بالاسم أو الرقم أو WhatsApp ID..."} />
+                    {leadQuery && <button type="button" onClick={() => setLeadQuery("")} className="absolute left-2 top-1/2 -translate-y-1/2 rounded px-2 py-1 text-xs text-white/45 hover:bg-white/10 hover:text-white">مسح</button>}
+                  </div>
+                  {leadQuery.trim().length < 2 && <p className="text-[11px] text-white/40">اكتب حرفين على الأقل لبدء البحث. البحث بالرقم يتجاهل المسافات والرموز.</p>}
+                  {leadSearch.isFetching && <p className="text-xs text-indigo-200/70">جاري البحث في العملاء المسموح لك بالوصول إليهم...</p>}
+                  {leadSearch.isError && (
+                    <div className="rounded-lg border border-amber-400/25 bg-amber-400/10 p-3">
+                      <p className="text-xs font-medium text-amber-100">تعذّر تنفيذ البحث — دي مشكلة صلاحيات أو اتصال، مش دليل إن العميل غير موجود.</p>
+                      <p className="mt-1 break-words text-[11px] text-amber-100/70">{leadSearch.error.message}</p>
+                      <Button type="button" size="sm" variant="outline" className="mt-2 border-amber-300/30 text-amber-100" onClick={() => void leadSearch.refetch()}>إعادة المحاولة</Button>
+                    </div>
+                  )}
+                  {leadQuery.trim().length >= 2 && !leadSearch.isFetching && !leadSearch.isError && (leadSearch.data?.length ?? 0) > 0 && (
+                    <div className="overflow-hidden rounded-lg border border-white/10 bg-slate-950">
+                      <div className="flex items-center justify-between border-b border-white/10 px-3 py-2">
+                        <span className="text-[11px] font-medium text-white/70">نتائج البحث</span>
+                        <span className="text-[10px] text-white/40">{leadSearch.data?.length ?? 0} عميل — بحد أقصى 25 نتيجة</span>
+                      </div>
+                      <div className="max-h-64 overflow-y-auto">
+                        {leadSearch.data?.map(lead => (
+                          <button type="button" key={lead.id}
+                            onClick={() => { setSelectedLead({ id: lead.id, name: lead.name, phone: lead.phone, whatsappId: lead.whatsappId, whatsappUsername: lead.whatsappUsername, email: lead.email, clientAddress: lead.clientAddress, clientPayment: lead.clientPayment, clientDay: lead.clientDay, kitchenSize: lead.kitchenSize, kitchenModel: lead.kitchenModel }); setLeadQuery(lead.name); }}
+                            className="block w-full border-b border-white/5 px-3 py-3 text-right transition-colors last:border-0 hover:bg-indigo-500/10">
+                            <div className="flex items-start justify-between gap-3">
+                              <span className="min-w-0 truncate text-sm font-semibold text-white">{lead.name}</span>
+                              <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-white/50">#{lead.id}</span>
+                            </div>
+                            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-white/55">
+                              {lead.phone && <span dir="ltr">{lead.phone}</span>}
+                              {lead.whatsappId && <span className="break-all">WA: {lead.whatsappId}</span>}
+                              {lead.whatsappUsername && <span>@{lead.whatsappUsername}</span>}
+                              {lead.email && <span>{lead.email}</span>}
+                            </div>
+                            <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-white/40">
+                              <span className="rounded bg-white/5 px-2 py-0.5">الحالة: {lead.status}</span>
+                              <span className="rounded bg-white/5 px-2 py-0.5">المصدر: {lead.source}</span>
+                              <span>{lead.assignedEngineerId ? `مهندس #${lead.assignedEngineerId}` : "غير معيّن — قائمة العملاء الجديدة"}</span>
+                            </div>
+                            {(lead.clientAddress || lead.kitchenSize || lead.kitchenModel) && <p className="mt-1 truncate text-[10px] text-white/35">{[lead.clientAddress, lead.kitchenSize, lead.kitchenModel].filter(Boolean).join(" · ")}</p>}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {leadQuery.trim().length >= 2 && !leadSearch.isFetching && !leadSearch.isError && (leadSearch.data?.length ?? 0) === 0 && (
+                    <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                      <p className="text-xs text-white/65">مفيش نتائج مطابقة ضمن نطاق صلاحيات حسابك.</p>
+                      <p className="mt-1 text-[11px] text-white/35">جرّب البحث بالاسم الكامل، أو جزء من الرقم، أو WhatsApp ID / LID. لو متأكد إن العميل موجود، راجع ربط حسابك بالمهندس ونطاق صلاحية CRM/Tasks.</p>
+                    </div>
+                  )}
                 </>
               )}
             </div>
