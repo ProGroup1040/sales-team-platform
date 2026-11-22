@@ -1,6 +1,6 @@
 import {
   int, tinyint, mysqlEnum, mysqlTable, text, timestamp,
-  varchar, decimal, date, float, boolean, uniqueIndex
+  varchar, decimal, date, float, boolean, uniqueIndex, index
 } from "drizzle-orm/mysql-core";
 
 // ─── Users ────────────────────────────────────────────────────────────────────
@@ -112,6 +112,7 @@ export const dailyTasks = mysqlTable("daily_tasks", {
   completionDate: date("completionDate"),
   // ─── Client / Deal Linking ────────────────────────────────────────────────
   clientName: varchar("clientName", { length: 120 }),
+  leadId: int("leadId"),
   dealId: int("dealId"),
   // ─── Meeting Recording ─────────────────────────────────────────────────────
   category: varchar("category", { length: 80 }), // e.g. 'closing', 'meeting', 'general'
@@ -120,7 +121,9 @@ export const dailyTasks = mysqlTable("daily_tasks", {
   // ─── Reminder ─────────────────────────────────────────────────────────────
   reminderMinutes: int("reminderMinutes").default(0), // 0=none, 15, 30, 60
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => [
+  index("daily_tasks_lead_id_idx").on(table.leadId),
+]);
 export type DailyTask = typeof dailyTasks.$inferSelect;
 
 // ─── Leads ────────────────────────────────────────────────────────────────────
@@ -128,6 +131,17 @@ export const leads = mysqlTable("leads", {
   id: int("id").autoincrement().primaryKey(),
   name: varchar("name", { length: 120 }).notNull(),
   phone: varchar("phone", { length: 30 }),
+  phoneNormalized: varchar("phoneNormalized", { length: 32 }),
+  whatsappId: varchar("whatsappId", { length: 160 }),
+  whatsappUsername: varchar("whatsappUsername", { length: 128 }),
+  whatsappContact: varchar("whatsappContact", { length: 180 }),
+  lastMessage: text("lastMessage"),
+  lastSeen: timestamp("lastSeen"),
+  clientAddress: text("clientAddress"),
+  clientPayment: varchar("clientPayment", { length: 120 }),
+  clientDay: varchar("clientDay", { length: 80 }),
+  kitchenSize: varchar("kitchenSize", { length: 120 }),
+  kitchenModel: varchar("kitchenModel", { length: 160 }),
   email: varchar("email", { length: 320 }),
   source: mysqlEnum("source", ["website", "referral", "social_media", "call", "walk_in", "other"]).default("other").notNull(),
   assignedEngineerId: int("assignedEngineerId"),
@@ -143,7 +157,10 @@ export const leads = mysqlTable("leads", {
   deleteReason: mysqlEnum("deleteReason", ["data_entry_error", "duplicate", "client_cancelled", "other"]),
   deleteReasonCustom: varchar("deleteReasonCustom", { length: 255 }),
   deletedBy: varchar("deletedBy", { length: 120 }),
-});
+}, (table) => [
+  uniqueIndex("leads_whatsapp_id_unique").on(table.whatsappId),
+  index("leads_phone_normalized_idx").on(table.phoneNormalized),
+]);
 export type Lead = typeof leads.$inferSelect;
 
 // ─── Visits ───────────────────────────────────────────────────────────────────

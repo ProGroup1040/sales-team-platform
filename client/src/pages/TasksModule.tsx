@@ -230,7 +230,10 @@ function AddTaskDialog({ engineers, dateStr, onDone, selfEngineerId }: { enginee
   const [open, setOpen] = useState(false);
   const EMPTY_FORM = { engineerId: "", title: "", description: "", priority: "", plannedHours: "", taskType: "", meetingRecordingLink: "" };
   const [form, setForm] = useState(EMPTY_FORM);
+  const [leadQuery, setLeadQuery] = useState("");
+  const [selectedLead, setSelectedLead] = useState<{ id: number; name: string; phone: string | null; whatsappId: string | null; whatsappUsername: string | null; email: string | null; clientAddress: string | null; clientPayment: string | null; clientDay: string | null; kitchenSize: string | null; kitchenModel: string | null } | null>(null);
   const utils = trpc.useUtils();
+  const leadSearch = trpc.tasks.searchLeads.useQuery({ query: leadQuery.trim() }, { enabled: open && leadQuery.trim().length >= 2, staleTime: 15000 });
   const isSelfOnly = selfEngineerId !== undefined;
   const effectiveEngineerId = isSelfOnly ? String(selfEngineerId) : form.engineerId;
 
@@ -261,7 +264,7 @@ function AddTaskDialog({ engineers, dateStr, onDone, selfEngineerId }: { enginee
   const handleSuccess = () => {
       utils.tasks.stats.invalidate(); utils.tasks.list.invalidate();
       toast.success("تمت إضافة المهمة"); setOpen(false);
-      setForm(EMPTY_FORM); onDone();
+      setForm(EMPTY_FORM); setLeadQuery(""); setSelectedLead(null); onDone();
   };
   const createMut = trpc.tasks.create.useMutation({
     onSuccess: handleSuccess,
@@ -327,6 +330,23 @@ function AddTaskDialog({ engineers, dateStr, onDone, selfEngineerId }: { enginee
               <Label className="text-white/70">عنوان المهمة *</Label>
               <Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
                 className="bg-white/5 border-white/10 text-white" placeholder="أدخل عنوان المهمة" />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-white/70">العميل من CRM (اختياري)</Label>
+              {selectedLead ? (
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3">
+                  <div className="min-w-0"><p className="text-sm font-medium text-emerald-200">{selectedLead.name}</p><p className="text-xs text-white/50">{selectedLead.phone || selectedLead.whatsappId || selectedLead.whatsappUsername || "WhatsApp contact"}</p><p className="mt-1 text-xs text-white/45">{[selectedLead.email, selectedLead.clientAddress, selectedLead.clientDay, selectedLead.clientPayment, selectedLead.kitchenSize, selectedLead.kitchenModel].filter(Boolean).join(" · ")}</p></div>
+                  <Button type="button" size="sm" variant="ghost" className="text-white/60" onClick={() => { setSelectedLead(null); setLeadQuery(""); }}>تغيير</Button>
+                </div>
+              ) : (
+                <>
+                  <Input value={leadQuery} onChange={e => setLeadQuery(e.target.value)} className="bg-white/5 border-white/10 text-white" placeholder="ابحث بالاسم أو الهاتف أو WhatsApp ID..." />
+                  {leadSearch.isFetching && <p className="text-xs text-white/40">جاري البحث...</p>}
+                  {leadQuery.trim().length >= 2 && (leadSearch.data?.length ?? 0) > 0 && <div className="max-h-44 overflow-y-auto rounded-lg border border-white/10 bg-slate-950">{leadSearch.data?.map(lead => <button type="button" key={lead.id} onClick={() => { setSelectedLead({ id: lead.id, name: lead.name, phone: lead.phone, whatsappId: lead.whatsappId, whatsappUsername: lead.whatsappUsername, email: lead.email, clientAddress: lead.clientAddress, clientPayment: lead.clientPayment, clientDay: lead.clientDay, kitchenSize: lead.kitchenSize, kitchenModel: lead.kitchenModel }); setLeadQuery(lead.name); }} className="block w-full border-b border-white/5 px-3 py-2 text-right hover:bg-white/5"><span className="block text-sm text-white">{lead.name}</span><span className="block text-xs text-white/45">{[lead.phone, lead.whatsappId, lead.whatsappUsername].filter(Boolean).join(" · ")}</span><span className="block truncate text-xs text-white/35">{[lead.clientAddress, lead.kitchenSize, lead.kitchenModel].filter(Boolean).join(" · ")}</span>{lead.lastMessage && <span className="block truncate text-xs text-white/35">{lead.lastMessage}</span>}</button>)}</div>}
+                  {leadQuery.trim().length >= 2 && !leadSearch.isFetching && (leadSearch.data?.length ?? 0) === 0 && <p className="text-xs text-white/40">لا توجد نتائج في نطاق صلاحياتك.</p>}
+                </>
+              )}
             </div>
 
             {/* نوع المهمة - 7 أنواع مع Department Enforcement */}
@@ -399,6 +419,7 @@ function AddTaskDialog({ engineers, dateStr, onDone, selfEngineerId }: { enginee
                   plannedHours: Number(form.plannedHours),
                   taskType: form.taskType as any,
                   meetingRecordingLink: form.meetingRecordingLink || undefined,
+                  leadId: selectedLead?.id, clientName: selectedLead?.name,
                 };
                 if (isSelfOnly) {
                   createMineMut.mutate(payload);

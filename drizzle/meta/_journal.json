@@ -568,6 +568,13 @@
       "when": 1792417144018,
       "tag": "0080_audit_log_accounting_month_history",
       "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "5",
+      "when": 1795333834553,
+      "tag": "0081_realtime_whatsapp_crm",
+      "breakpoints": true
     }
   ]
 }
