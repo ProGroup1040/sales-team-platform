@@ -97,9 +97,14 @@ function readContactRow_(sheet, rowNumber) {
     whatsappId: value_(row, ["whatsappid", "whatsapp_id", "lid", "whatsapplid"]),
     whatsappUsername: value_(row, ["username", "whatsappusername"]),
     name: value_(row, ["name", "contactname", "customername", "fullname"]),
+    email: value_(row, ["email", "clientemail", "mail"]),
     lastMessage: value_(row, ["lastmessage", "last_message", "message", "lasttext"]),
     lastSeen: dateValue_(value_(row, ["lastseen", "last_seen", "lastmessagedate"])),
-    source: value_(row, ["source", "leadsource"]) || "WhatsApp"
+    clientAddress: value_(row, ["clientaddress", "address", "location"]),
+    clientPayment: value_(row, ["clientpayment", "payment", "paymentmethod"]),
+    clientDay: value_(row, ["clientday", "day", "preferredday"]),
+    kitchenSize: value_(row, ["kitchensize", "kitchenspace", "space"]),
+    kitchenModel: value_(row, ["kitchenmodel", "model", "kitchentype"])
   };
 }
 
@@ -147,6 +152,16 @@ function postRecords_(records) {
   const body = response.getContentText();
   if (status < 200 || status >= 300) {
     throw new Error("Sales Platform CRM sync failed. HTTP " + status + ": " + body);
+  }
+
+  let result;
+  try {
+    result = JSON.parse(body);
+  } catch (error) {
+    throw new Error("Sales Platform returned an unreadable response. HTTP " + status + ": " + body);
+  }
+  if (result.success !== true || (Array.isArray(result.errors) && result.errors.length > 0)) {
+    throw new Error("Sales Platform reported a partial/failed sync. HTTP " + status + ": " + body);
   }
   Logger.log(body);
 }
