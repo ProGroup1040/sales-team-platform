@@ -98,6 +98,11 @@ function UpdateStatusDialog({ task, onDone }: { task: any; onDone: () => void })
   const [recordingLink, setRecordingLink] = useState(task.meetingRecordingLink ?? "");
   const [showReview, setShowReview] = useState(false);
   const utils = trpc.useUtils();
+  const clientDetailsQ = trpc.tasks.clientDetails.useQuery(
+    { taskId: task.id },
+    { enabled: open && Boolean(task.leadId), staleTime: 30000, retry: 1 },
+  );
+  const client = clientDetailsQ.data;
   const isClosingOrMeeting = task.category === 'closing' || task.category === 'meeting';
   const needsRecording = isClosingOrMeeting && !task.meetingRecordingLink;
 
@@ -143,6 +148,32 @@ function UpdateStatusDialog({ task, onDone }: { task: any; onDone: () => void })
                 )}
               </div>
             </div>
+
+            {/* CRM client context */}
+            {(task.clientName || task.leadId) && (
+              <div className="overflow-hidden rounded-xl border border-cyan-400/20 bg-gradient-to-br from-cyan-500/[0.10] via-slate-950/70 to-indigo-500/[0.08]">
+                <div className="flex items-center justify-between border-b border-white/10 px-3 py-2.5">
+                  <div className="flex items-center gap-2"><Users className="h-4 w-4 text-cyan-300" /><span className="text-xs font-semibold text-cyan-100">العميل المرتبط بالمهمة</span></div>
+                  {client?.linked && <span className="rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2 py-0.5 text-[10px] text-emerald-200">مرتبط بـ CRM</span>}
+                </div>
+                <div className="space-y-2.5 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0"><p className="truncate text-sm font-bold text-white">{client?.name || task.clientName || "عميل مرتبط"}</p>{client?.id && <p className="mt-0.5 text-[10px] text-white/40">CRM #{client.id}</p>}</div>
+                    {client?.status && <span className="shrink-0 rounded-full bg-white/5 px-2 py-1 text-[10px] text-white/60">{client.status}</span>}
+                  </div>
+                  {clientDetailsQ.isFetching && <p className="text-[11px] text-cyan-100/60">جاري تحميل بيانات العميل...</p>}
+                  {clientDetailsQ.isError && <p className="text-[11px] text-amber-200/80">تعذر تحميل التفاصيل الإضافية؛ اسم العميل المحفوظ مع المهمة ظاهر بالأعلى.</p>}
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {(client?.phone || client?.email) && <div className="rounded-lg border border-white/5 bg-white/[0.04] p-2"><p className="text-[10px] text-white/40">التواصل</p>{client?.phone && <p dir="ltr" className="mt-1 text-xs text-white/85 text-right">{client.phone}</p>}{client?.email && <p className="mt-1 break-all text-[11px] text-white/60">{client.email}</p>}</div>}
+                    {(client?.whatsappId || client?.whatsappUsername) && <div className="rounded-lg border border-white/5 bg-white/[0.04] p-2"><p className="text-[10px] text-white/40">WhatsApp</p>{client?.whatsappUsername && <p className="mt-1 text-xs text-white/85">@{client.whatsappUsername}</p>}{client?.whatsappId && <p dir="ltr" className="mt-1 break-all text-[10px] text-white/55">{client.whatsappId}</p>}</div>}
+                    {client?.clientAddress && <div className="rounded-lg border border-white/5 bg-white/[0.04] p-2 sm:col-span-2"><p className="text-[10px] text-white/40">العنوان</p><p className="mt-1 text-xs text-white/85">{client.clientAddress}</p></div>}
+                    {(client?.kitchenSize || client?.kitchenModel || client?.clientPayment || client?.clientDay) && <div className="rounded-lg border border-white/5 bg-white/[0.04] p-2 sm:col-span-2"><p className="text-[10px] text-white/40">تفاصيل الطلب</p><div className="mt-1 flex flex-wrap gap-1.5">{client?.kitchenSize && <span className="rounded bg-white/5 px-2 py-1 text-[10px] text-white/75">المقاس: {client.kitchenSize}</span>}{client?.kitchenModel && <span className="rounded bg-white/5 px-2 py-1 text-[10px] text-white/75">الموديل: {client.kitchenModel}</span>}{client?.clientPayment && <span className="rounded bg-white/5 px-2 py-1 text-[10px] text-white/75">الدفع: {client.clientPayment}</span>}{client?.clientDay && <span className="rounded bg-white/5 px-2 py-1 text-[10px] text-white/75">اليوم المناسب: {client.clientDay}</span>}</div></div>}
+                  </div>
+                  {client?.lastMessage && <div className="rounded-lg border border-white/5 bg-black/20 p-2"><p className="text-[10px] text-white/40">آخر رسالة</p><p className="mt-1 line-clamp-3 whitespace-pre-wrap text-xs text-white/70">{client.lastMessage}</p></div>}
+                  {!task.leadId && <p className="text-[10px] text-white/40">المهمة محفوظ بها اسم العميل فقط، بدون سجل CRM مرتبط.</p>}
+                </div>
+              </div>
+            )}
 
             {/* Recording Link Section */}
             {isClosingOrMeeting && (

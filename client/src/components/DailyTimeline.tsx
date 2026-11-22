@@ -66,6 +66,12 @@ function AddTimeTaskDialog({ engineers, dateStr, onDone, prefillStart }: AddTime
   };
   const [form, setForm] = useState(EMPTY);
   const [overlapError, setOverlapError] = useState<string | null>(null);
+  const [leadQuery, setLeadQuery] = useState("");
+  const [selectedLead, setSelectedLead] = useState<{ id: number; name: string; phone: string | null; whatsappId: string | null } | null>(null);
+  const leadSearch = trpc.tasks.searchLeads.useQuery(
+    { query: leadQuery.trim(), searchIn: "all" },
+    { enabled: open && leadQuery.trim().length >= 2, staleTime: 10000, retry: 1 },
+  );
   const utils = trpc.useUtils();
 
   const durationMinutes = useMemo(() => {
@@ -88,7 +94,7 @@ function AddTimeTaskDialog({ engineers, dateStr, onDone, prefillStart }: AddTime
       utils.tasks.stats.invalidate();
       utils.tasks.list.invalidate();
       toast.success("تمت إضافة المهمة");
-      setOpen(false); setForm(EMPTY); onDone();
+      setOpen(false); setForm(EMPTY); setLeadQuery(""); setSelectedLead(null); onDone();
     },
     onError: (err) => {
       if (err.message.includes("تداخل")) {
@@ -126,6 +132,24 @@ function AddTimeTaskDialog({ engineers, dateStr, onDone, prefillStart }: AddTime
               <Label className="text-white/70 text-sm">عنوان المهمة *</Label>
               <Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
                 className="bg-white/5 border-white/10 text-white" placeholder="أدخل عنوان المهمة" />
+            </div>
+            {/* CRM Client */}
+            <div className="space-y-2 rounded-xl border border-cyan-400/20 bg-cyan-500/[0.05] p-3">
+              <div><Label className="text-white/85 text-sm">ربط العميل من CRM <span className="text-white/40 font-normal">(اختياري)</span></Label><p className="mt-1 text-[11px] text-white/40">اربط المهمة بالعميل عشان بياناته تظهر عند تحديث الحالة</p></div>
+              {selectedLead ? (
+                <div className="flex items-center justify-between gap-2 rounded-lg border border-emerald-400/25 bg-emerald-400/10 p-2.5">
+                  <div className="min-w-0"><p className="truncate text-sm font-semibold text-emerald-100">{selectedLead.name}</p><p className="mt-0.5 text-[11px] text-white/55">{selectedLead.phone || selectedLead.whatsappId || "لا توجد وسيلة تواصل مسجلة"}</p></div>
+                  <Button type="button" size="sm" variant="ghost" className="shrink-0 text-white/65" onClick={() => { setSelectedLead(null); setLeadQuery(""); }}>إلغاء</Button>
+                </div>
+              ) : (
+                <>
+                  <Input value={leadQuery} onChange={e => setLeadQuery(e.target.value)} className="bg-white/5 border-white/10 text-white text-sm" placeholder="ابحث باسم العميل أو الهاتف أو WhatsApp..." />
+                  {leadQuery.trim().length >= 2 && leadSearch.isFetching && <p className="text-[11px] text-cyan-100/60">جاري البحث...</p>}
+                  {leadQuery.trim().length >= 2 && !leadSearch.isFetching && !leadSearch.isError && (leadSearch.data?.length ?? 0) > 0 && <div className="max-h-40 overflow-y-auto rounded-lg border border-white/10 bg-slate-950">{leadSearch.data?.map(lead => <button key={lead.id} type="button" onClick={() => { setSelectedLead({ id: lead.id, name: lead.name, phone: lead.phone, whatsappId: lead.whatsappId }); setLeadQuery(lead.name); }} className="block w-full border-b border-white/5 px-3 py-2 text-right last:border-0 hover:bg-cyan-500/10"><span className="block truncate text-xs font-semibold text-white">{lead.name}</span><span className="mt-0.5 block truncate text-[10px] text-white/50">{[lead.phone, lead.whatsappId].filter(Boolean).join(" · ")}</span></button>)}</div>}
+                  {leadQuery.trim().length >= 2 && !leadSearch.isFetching && !leadSearch.isError && (leadSearch.data?.length ?? 0) === 0 && <p className="text-[11px] text-white/40">لا توجد نتائج ضمن صلاحيات حسابك.</p>}
+                  {leadSearch.isError && <p className="text-[11px] text-amber-200/80">تعذر البحث في CRM: {leadSearch.error.message}</p>}
+                </>
+              )}
             </div>
             {/* Task Type */}
             <div className="space-y-2">
@@ -194,6 +218,8 @@ function AddTimeTaskDialog({ engineers, dateStr, onDone, prefillStart }: AddTime
                 plannedHours: durationMinutes / 60, category: form.category,
                 startTime: form.startTime, endTime: form.endTime,
                 taskType: form.taskType as any,
+                leadId: selectedLead?.id,
+                clientName: selectedLead?.name,
               })}>
               {createMut.isPending ? "جاري الإضافة..." : "إضافة المهمة"}
             </Button>
@@ -275,6 +301,7 @@ function TimelineBlock({ task, hourHeight, startHour }: { task: any; hourHeight:
                 <p className="text-white font-medium">{formatDuration(task.durationMinutes)}</p>
               </div>
             </div>
+            {task.clientName && <div className="rounded-lg border border-cyan-400/20 bg-cyan-500/[0.07] p-2.5"><p className="text-[10px] text-cyan-200/60">العميل المرتبط</p><p className="mt-1 text-sm font-semibold text-cyan-100">{task.clientName}</p>{task.leadId && <p className="mt-0.5 text-[10px] text-white/40">CRM #{task.leadId}</p>}</div>}
             {task.engineerName && (
               <div className="text-xs text-white/50 flex items-center gap-1.5">
                 <Users className="h-3.5 w-3.5" /> {task.engineerName}
