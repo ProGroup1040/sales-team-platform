@@ -4149,21 +4149,26 @@ export async function getTasksCalendarView(engineerId?: number) {
   const allEngineers = await db.select({ id: engineers.id, name: engineers.name }).from(engineers).where(eq(engineers.isDeleted, 0));
   const engMap = new Map(allEngineers.map(e => [e.id, e.name]));
 
-  // تجميع المهام حسب اليوم
+  // تجميع المهام حسب اليوم. MySQL DATE values are calendar dates, not UTC instants.
+  // Converting local midnight or a DATE string through toISOString() can shift the day
+  // across time zones (e.g. Cairo), leaving fetched tasks out of their calendar buckets.
   const dayMap = new Map<string, any[]>();
+  const dateKey = (year: number, month: number, day: number) =>
+    `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 
   // إنشاء أعمدة لكل يوم من بداية الشهر حتى اليوم
   const totalDays = now.getDate();
   for (let d = 1; d <= totalDays; d++) {
-    const dayDate = new Date(now.getFullYear(), now.getMonth(), d);
-    const key = dayDate.toISOString().split('T')[0];
+    const key = dateKey(now.getFullYear(), now.getMonth(), d);
     dayMap.set(key, []);
   }
 
   // توزيع المهام على الأيام
   const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 };
   for (const task of tasks) {
-    const key = new Date(task.taskDate).toISOString().split('T')[0];
+    const key = typeof task.taskDate === "string"
+      ? task.taskDate.slice(0, 10)
+      : dateKey(new Date(task.taskDate).getFullYear(), new Date(task.taskDate).getMonth(), new Date(task.taskDate).getDate());
     if (dayMap.has(key)) {
       dayMap.get(key)!.push({
         ...task,
@@ -4178,7 +4183,7 @@ export async function getTasksCalendarView(engineerId?: number) {
     date,
     dayNum: new Date(date).getDate(),
     dayName: new Date(date).toLocaleDateString('ar-EG', { weekday: 'short' }),
-    isToday: date === now.toISOString().split('T')[0],
+    isToday: date === dateKey(now.getFullYear(), now.getMonth(), now.getDate()),
     tasks: dayTasks.sort((a, b) => a.priorityOrder - b.priorityOrder),
     summary: {
       total: dayTasks.length,
