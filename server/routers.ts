@@ -1041,10 +1041,15 @@ export const appRouter = router({
         const access = await requireTaskAction(ctx, "view");
         return getTasksList(input.date, taskEngineerFilter(access, input.engineerId));
       }),
-    searchLeads: protectedProcedure.input(z.object({ query: z.string().min(2).max(120) }))
+    searchLeads: protectedProcedure.input(z.object({
+      query: z.string().trim().min(2).max(120),
+      searchIn: z.enum(["all", "name", "phone", "whatsapp"]).default("all"),
+    }))
       .query(async ({ input, ctx }) => {
         const access = await requireTaskAction(ctx, "view");
-        return searchWhatsAppLeads(input.query, taskEngineerFilter(access));
+        // Keep authorization server-derived. Never accept engineerId/scope from search input.
+        const assignedEngineerId = taskEngineerFilter(access);
+        return searchWhatsAppLeads(input.query, assignedEngineerId, input.searchIn);
       }),
     create: protectedProcedure.input(z.object({
       engineerId: z.number(), taskDate: z.string(), title: z.string().min(1),

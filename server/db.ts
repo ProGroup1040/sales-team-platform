@@ -446,14 +446,75 @@ export async function createLead(data: {
   });
 }
 
-/** Search CRM leads for task assignment. Own-scope users only see leads assigned to them. */
-export async function searchWhatsAppLeads(query: string, assignedEngineerId?: number) {
-  const db = await getDb(); if (!db) return [];
-  const term = "%" + query.trim().replace(/[\\%_]/g, "\\$&") + "%";
-  const match = or(like(leads.name, term), like(leads.phone, term), like(leads.phoneNormalized, term), like(leads.whatsappId, term), like(leads.whatsappUsername, term), like(leads.whatsappContact, term))!;
+/** Search CRM leads for task assignment without weakening the caller's own/all scope. */
+export async function searchWhatsAppLeads(
+  query: string,
+  assignedEngineerId?: number,
+  searchIn: "all" | "name" | "phone" | "whatsapp" = "all",
+) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const normalizedQuery = query.trim();
+  const escaped = normalizedQuery.replace(/[\\%_]/g, "\\$&");
+  const textPattern = "%" + escaped + "%";
+  const digits = normalizedQuery.replace(/\D/g, "");
+  const phonePattern = digits.length >= 2 ? "%" + digits + "%" : null;
+
+  const nameMatch = like(leads.name, textPattern);
+  const phoneMatch = or(
+    like(leads.phone, textPattern),
+    ...(phonePattern ? [like(leads.phoneNormalized, phonePattern)] : []),
+  )!;
+  const whatsappMatch = or(
+    like(leads.whatsappId, textPattern),
+    like(leads.whatsappUsername, textPattern),
+    like(leads.whatsappContact, textPattern),
+  )!;
+
+  const match = searchIn === "name"
+    ? nameMatch
+    : searchIn === "phone"
+      ? phoneMatch
+      : searchIn === "whatsapp"
+        ? whatsappMatch
+        : or(
+            nameMatch,
+            phoneMatch,
+            whatsappMatch,
+            like(leads.email, textPattern),
+            like(leads.clientAddress, textPattern),
+          )!;
+
   const conditions = [eq(leads.isDeleted, 0), match];
-  if (assignedEngineerId !== undefined) conditions.push(or(eq(leads.assignedEngineerId, assignedEngineerId), isNull(leads.assignedEngineerId))!);
-  return db.select({ id: leads.id, name: leads.name, phone: leads.phone, email: leads.email, whatsappId: leads.whatsappId, whatsappUsername: leads.whatsappUsername, whatsappContact: leads.whatsappContact, lastMessage: leads.lastMessage, status: leads.status, clientAddress: leads.clientAddress, clientPayment: leads.clientPayment, clientDay: leads.clientDay, kitchenSize: leads.kitchenSize, kitchenModel: leads.kitchenModel }).from(leads).where(and(...conditions)).orderBy(desc(leads.updatedAt)).limit(12);
+  // Preserve the existing own-scope policy: assigned leads plus the unassigned intake pool.
+  if (assignedEngineerId !== undefined) {
+    conditions.push(or(eq(leads.assignedEngineerId, assignedEngineerId), isNull(leads.assignedEngineerId))!);
+  }
+
+  return db.select({
+    id: leads.id,
+    name: leads.name,
+    phone: leads.phone,
+    phoneNormalized: leads.phoneNormalized,
+    email: leads.email,
+    whatsappId: leads.whatsappId,
+    whatsappUsername: leads.whatsappUsername,
+    whatsappContact: leads.whatsappContact,
+    lastMessage: leads.lastMessage,
+    status: leads.status,
+    source: leads.source,
+    assignedEngineerId: leads.assignedEngineerId,
+    clientAddress: leads.clientAddress,
+    clientPayment: leads.clientPayment,
+    clientDay: leads.clientDay,
+    kitchenSize: leads.kitchenSize,
+    kitchenModel: leads.kitchenModel,
+    updatedAt: leads.updatedAt,
+  }).from(leads)
+    .where(and(...conditions))
+    .orderBy(desc(leads.updatedAt))
+    .limit(25);
 }
 
 export async function getLeadForTask(id: number, assignedEngineerId?: number) {
@@ -4050,9 +4111,13 @@ export async function getTasksCalendarView(engineerId?: number) {
   if (!db) return { days: [], summary: { total: 0, completed: 0, delayed: 0, not_done: 0, planned: 0, client_delay: 0 } };
 
   const now = new Date();
+  const dateKey = (year: number, month: number, day: number) =>
+    `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
 
+  // Drizzle models this MySQL DATE column as Date. Keep Date query bounds,
+  // but never convert taskDate to UTC ISO text when building calendar buckets.
   const conditions: any[] = [
     gte(dailyTasks.taskDate, monthStart),
     lte(dailyTasks.taskDate, todayEnd),
@@ -4088,21 +4153,23 @@ export async function getTasksCalendarView(engineerId?: number) {
   const allEngineers = await db.select({ id: engineers.id, name: engineers.name }).from(engineers).where(eq(engineers.isDeleted, 0));
   const engMap = new Map(allEngineers.map(e => [e.id, e.name]));
 
-  // تجميع المهام حسب اليوم
+  // تجميع المهام حسب اليوم. MySQL DATE values are calendar dates, not UTC instants.
+  // Converting local midnight or a DATE string through toISOString() can shift the day
+  // across time zones (e.g. Cairo), leaving fetched tasks out of their calendar buckets.
   const dayMap = new Map<string, any[]>();
 
   // إنشاء أعمدة لكل يوم من بداية الشهر حتى اليوم
   const totalDays = now.getDate();
   for (let d = 1; d <= totalDays; d++) {
-    const dayDate = new Date(now.getFullYear(), now.getMonth(), d);
-    const key = dayDate.toISOString().split('T')[0];
+    const key = dateKey(now.getFullYear(), now.getMonth(), d);
     dayMap.set(key, []);
   }
 
   // توزيع المهام على الأيام
   const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 };
   for (const task of tasks) {
-    const key = new Date(task.taskDate).toISOString().split('T')[0];
+    const taskDate = task.taskDate;
+    const key = dateKey(taskDate.getFullYear(), taskDate.getMonth(), taskDate.getDate());
     if (dayMap.has(key)) {
       dayMap.get(key)!.push({
         ...task,
@@ -4113,11 +4180,14 @@ export async function getTasksCalendarView(engineerId?: number) {
   }
 
   // ترتيب المهام داخل كل يوم حسب Priority ثم completedAt
-  const days = Array.from(dayMap.entries()).map(([date, dayTasks]) => ({
+  const days = Array.from(dayMap.entries()).map(([date, dayTasks]) => {
+    const [year, month, day] = date.split("-").map(Number);
+    const calendarDate = new Date(year, month - 1, day);
+    return {
     date,
-    dayNum: new Date(date).getDate(),
-    dayName: new Date(date).toLocaleDateString('ar-EG', { weekday: 'short' }),
-    isToday: date === now.toISOString().split('T')[0],
+    dayNum: day,
+    dayName: calendarDate.toLocaleDateString('ar-EG', { weekday: 'short' }),
+    isToday: date === dateKey(now.getFullYear(), now.getMonth(), now.getDate()),
     tasks: dayTasks.sort((a, b) => a.priorityOrder - b.priorityOrder),
     summary: {
       total: dayTasks.length,
@@ -4127,7 +4197,8 @@ export async function getTasksCalendarView(engineerId?: number) {
       planned: dayTasks.filter(t => t.status === 'planned').length,
       client_delay: dayTasks.filter(t => t.status === 'client_delay').length,
     },
-  }));
+    };
+  });
 
   // ملخص إجمالي MTD
   const summary = {
